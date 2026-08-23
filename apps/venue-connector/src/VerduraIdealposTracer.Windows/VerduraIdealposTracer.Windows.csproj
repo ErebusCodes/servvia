@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Story 9-2: this project is Windows-only by necessity (System.Windows.
+    Automation / UIAutomationClient is a Windows Desktop API) and could NOT
+    be built or executed in the session that authored it — this repository
+    was developed on macOS with no Windows machine or Windows Desktop SDK
+    available (see the story's Dev Agent Record for the exact boundary).
+    The code here is written to compile and run on a real Windows host with
+    the Windows Desktop workload installed; it has not been verified to do
+    so. Do not present anything from this project as REAL_WINDOWS_CONNECTOR
+    or REAL_IDEALPOS_UI_DISCOVERY evidence until it has actually been built
+    and run against a real Windows machine with Idealpos installed.
+
+    net8.0-windows chosen for consistency with docs/integrations/idealpos.md
+    §14.1's "provisionally .NET 8" note for the Verdura Connector — revisit
+    if live discovery or the target venue's Windows version indicates a
+    better-supported runtime (see the operator runbook).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>false</UseWindowsForms>
+    <RootNamespace>VerduraIdealposTracer.Windows</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VerduraIdealposTracer.Core\VerduraIdealposTracer.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Part of the Windows Desktop SDK's UI Automation client surface. -->
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
+  </ItemGroup>
+
+</Project>

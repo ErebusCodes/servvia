@@ -1,0 +1,146 @@
+name: verdura
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-verdura}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-verdura_local_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-verdura_dev}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5434}:5432'
+    volumes:
+      - verdura-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-verdura} -d ${POSTGRES_DB:-verdura_dev}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - verdura-redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Formerly the "backend" service. Renamed with the apps/ restructure
+  # (2026-08-17) — see docs/decisions/2026-08-17-repository-restructure.md.
+  api:
+    profiles: [host]
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-verdura}:${POSTGRES_PASSWORD:-verdura_local_dev_only}@postgres:5432/${POSTGRES_DB:-verdura_dev}
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      NODE_ENV: development
+      PORT: '3000'
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-docker-access-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-local-docker-refresh-secret-change-me}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-local-docker-service-token-change-me}
+      KDS_VENUE_PINS: '${KDS_VENUE_PINS:-{"10000000-0000-4000-8000-000000000001":"108"}}'
+      KDS_TOKEN_EXPIRY: ${KDS_TOKEN_EXPIRY:-12h}
+      ADMIN_CONSOLE_PIN: ${ADMIN_CONSOLE_PIN:-108}
+      ADMIN_CONSOLE_EMAIL: ${ADMIN_CONSOLE_EMAIL:-owner@verdura.co.nz}
+      SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-owner@verdura.co.nz}
+      SEED_OWNER_PASSWORD: ${SEED_OWNER_PASSWORD:-change-me-in-production}
+      SEED_BILLING_EMAIL: ${SEED_BILLING_EMAIL:-admin@verdura.co.nz}
+      MEDIA_STORAGE_PATH: /app/apps/api/storage
+    command: node docker/start-backend.mjs
+    ports:
+      - '3000:3000'
+    volumes:
+      - verdura-media:/app/apps/api/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Formerly "customer".
+  customer-website:
+    profiles: [host]
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        WORKSPACE: apps/customer-website
+        VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
+    restart: unless-stopped
+    ports: ['5173:80']
+    depends_on: [api]
+
+  # Formerly "kiosk" (kiosk-frontend). Read-only signage today plus a
+  # legacy, still-reachable self-service ordering flow and an embedded KDS
+  # duplicate — see apps/window-display/README.md.
+  window-display:
+    profiles: [host]
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        WORKSPACE: apps/window-display
+        VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
+    restart: unless-stopped
+    ports: ['5174:80']
+    depends_on: [api]
+
+  # Formerly "kds". Canonical Kitchen Display — a device-mode build of
+  # admin-console. See apps/kitchen-display/README.md.
+  kitchen-display:
+    profiles: [host]
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        WORKSPACE: apps/admin-console
+        VITE_APP_MODE: kds
+        VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
+    restart: unless-stopped
+    ports: ['5175:80']
+    depends_on: [api]
+
+  # Formerly "admin" (admin-frontend).
+  admin-console:
+    profiles: [host]
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        WORKSPACE: apps/admin-console
+        VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
+    restart: unless-stopped
+    ports: ['5176:80']
+    depends_on: [api]
+
+  # Formerly "tablet" (tablet-frontend, an empty/abandoned scaffold — see
+  # docs/decisions/2026-08-17-repository-restructure.md). The canonical
+  # Order Tablet is a device-mode build of admin-console. See
+  # apps/order-tablet/README.md.
+  order-tablet:
+    profiles: [host]
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      args:
+        WORKSPACE: apps/admin-console
+        VITE_APP_MODE: tablet
+        VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
+    restart: unless-stopped
+    ports: ['5177:80']
+    depends_on: [api]
+
+volumes:
+  verdura-postgres:
+  verdura-redis:
+  verdura-media:

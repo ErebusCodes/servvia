@@ -1,0 +1,55 @@
+// @ts-nocheck
+/* Mock operational data for the Verdura admin UI kit. */
+window.VData = {
+  reservations: [
+    { id: 'R-2041', guest: 'Marcus Okonjo', time: '6:00 PM', party: 4, table: 'T12', phone: '(415) 555-0142', status: 'seated', tag: 'VIP' },
+    { id: 'R-2042', guest: 'Lena Park', time: '6:15 PM', party: 2, table: 'T04', phone: '(415) 555-0188', status: 'confirmed', tag: null },
+    { id: 'R-2043', guest: 'Diego Alvarez', time: '6:30 PM', party: 6, table: 'T18', phone: '(415) 555-0119', status: 'confirmed', tag: 'Birthday' },
+    { id: 'R-2044', guest: 'Priya Nair', time: '6:45 PM', party: 3, table: '—', phone: '(415) 555-0173', status: 'pending', tag: null },
+    { id: 'R-2045', guest: 'Tom Becker', time: '7:00 PM', party: 5, table: 'T08', phone: '(415) 555-0150', status: 'confirmed', tag: null },
+    { id: 'R-2046', guest: 'Aisha Rahman', time: '7:15 PM', party: 2, table: 'T02', phone: '(415) 555-0161', status: 'seated', tag: 'Allergy' },
+    { id: 'R-2047', guest: 'Greg Myers', time: '7:30 PM', party: 8, table: 'T17', phone: '(415) 555-0134', status: 'confirmed', tag: 'Large party' },
+    { id: 'R-2048', guest: 'Sofia Russo', time: '7:30 PM', party: 2, table: '—', phone: '(415) 555-0177', status: 'no_show', tag: null },
+    { id: 'R-2049', guest: 'Kenji Watanabe', time: '7:45 PM', party: 4, table: 'T14', phone: '(415) 555-0102', status: 'completed', tag: null },
+    { id: 'R-2050', guest: 'Nora Hassan', time: '8:00 PM', party: 3, table: 'T06', phone: '(415) 555-0190', status: 'cancelled', tag: null },
+  ],
+  orders: [
+    { id: 'ORD-4821', table: 'T12', items: 5, total: 142.50, channel: 'Dine-in', elapsed: '2m', status: 'new' },
+    { id: 'ORD-4820', table: 'T04', items: 2, total: 58.00, channel: 'Dine-in', elapsed: '4m', status: 'accepted' },
+    { id: 'ORD-4819', table: 'TableStation', code: 'kiosk-table', items: 3, total: 31.25, channel: 'Kiosk', elapsed: '6m', status: 'preparing' },
+    { id: 'ORD-4818', table: 'T18', items: 8, total: 268.00, channel: 'Dine-in', elapsed: '9m', status: 'preparing' },
+    { id: 'ORD-4817', table: 'Online', items: 4, total: 74.90, channel: 'Delivery', elapsed: '11m', status: 'ready' },
+    { id: 'ORD-4816', table: 'T08', items: 6, total: 188.40, channel: 'Dine-in', elapsed: '14m', status: 'ready' },
+    { id: 'ORD-4815', table: 'T02', items: 2, total: 44.00, channel: 'Dine-in', elapsed: '22m', status: 'completed' },
+  ],
+  activity: [
+    { who: 'Marcus O.', what: 'seated at table T12', when: '2 min ago', tone: 'primary', icon: 'check' },
+    { who: 'Kitchen-2 printer', what: 'went offline', when: '8 min ago', tone: 'warning', icon: 'printer' },
+    { who: 'ORD-4817', what: 'marked ready for delivery', when: '11 min ago', tone: 'success', icon: 'orders' },
+    { who: 'Square POS', what: 'sync completed · 1,204 items', when: '15 min ago', tone: 'info', icon: 'sync' },
+    { who: 'Sofia Russo', what: 'marked as no-show', when: '18 min ago', tone: 'danger', icon: 'alert' },
+    { who: 'Lena P.', what: 'reservation confirmed', when: '24 min ago', tone: 'neutral', icon: 'calendar' },
+  ],
+  systems: [
+    { name: 'POS Sync · Square', status: 'healthy', detail: 'Last sync 15m ago' },
+    { name: 'Kitchen Display System', status: 'healthy', detail: '4 stations online' },
+    { name: 'WindowKiosk', status: 'syncing', detail: 'Reconnecting…', code: 'kiosk-window' },
+    { name: 'TableStation', status: 'healthy', detail: 'Online', code: 'kiosk-table' },
+    { name: 'Printer · Kitchen-2', status: 'warning', detail: 'No response 8m' },
+    { name: 'Payment Gateway', status: 'healthy', detail: 'Stripe · operational' },
+  ],
+  transactions: [
+    { id: 'TXN-90412', guest: 'Marcus Okonjo', method: 'Visa ••4821', amount: 142.50, type: 'Sale', time: '6:42 PM', status: 'completed' },
+    { id: 'TXN-90411', guest: 'Lena Park', method: 'Amex ••1009', amount: 58.00, type: 'Sale', time: '6:31 PM', status: 'completed' },
+    { id: 'TXN-90410', guest: 'Walk-in', method: 'Cash', amount: 24.00, type: 'Sale', time: '6:20 PM', status: 'completed' },
+    { id: 'TXN-90409', guest: 'Diego Alvarez', method: 'Visa ••3375', amount: 35.00, type: 'Deposit', time: '5:58 PM', status: 'completed' },
+    { id: 'TXN-90408', guest: 'Nora Hassan', method: 'Mastercard ••7781', amount: 44.00, type: 'Refund', time: '5:40 PM', status: 'failed' },
+    { id: 'TXN-90407', guest: 'Kenji Watanabe', method: 'Apple Pay', amount: 96.25, type: 'Sale', time: '5:22 PM', status: 'completed' },
+  ],
+  kitchenStations: [
+    { name: 'Grill', active: 4, load: 82, avg: '12:40' },
+    { name: 'Sauté', active: 3, load: 64, avg: '09:10' },
+    { name: 'Cold / Salad', active: 2, load: 38, avg: '04:25' },
+    { name: 'Pastry', active: 1, load: 22, avg: '06:50' },
+  ],
+};

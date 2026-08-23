@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Story 9-2: cross-platform by design. Contains the discovery state
+    machine, the connector-command-protocol client (Story 2-10), local
+    durable persistence, and every abstraction the Windows-only UI
+    Automation implementation plugs into (VerduraIdealposTracer.Windows).
+    Nothing in this project references System.Windows.Automation or any
+    other Windows-only API — that boundary is what lets this project (and
+    its unit tests) build and run on any platform, including the non-
+    Windows environment this story was authored in.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>VerduraIdealposTracer.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

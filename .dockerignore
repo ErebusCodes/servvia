@@ -1,0 +1,12 @@
+.git
+.worktrees
+node_modules
+**/node_modules
+**/dist
+**/.env
+**/.env.local
+local-postgres/data
+apps/api/storage
+coverage
+_bmad
+_bmad-output

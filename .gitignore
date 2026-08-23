@@ -1,0 +1,40 @@
+node_modules/
+.DS_Store
+**/.DS_Store
+test-results/
+.claude/settings.local.json
+.env
+.env.*
+!**/.env.example
+dist/
+dev-dist/
+coverage/
+*.tsbuildinfo
+.worktrees/
+
+# One-off local debug scripts have a history of hardcoding real database
+# credentials (see apps/api/db-check.js) — never track these regardless of
+# name; write ad-hoc DB checks against .env-sourced config instead.
+apps/api/db-check.js
+*.env.bak
+
+# Local PostgreSQL development database (disposable — recreated from Prisma
+# migrations + seed data). Raw DB files must never be committed.
+local-postgres/data/
+
+# Locally uploaded media (menu images etc.) — MediaService writes here at
+# runtime; never track user-uploaded content.
+apps/api/storage/
+*.docx
+*.docx
+
+# All video files are ignored by default — Asset/video/intro.mp4 is the one
+# master copy we track, and the two symlinks that point to it (instead of
+# separate per-app copies) are explicitly allowed through below.
+*.mp4
+!Asset/video/intro.mp4
+!apps/customer-website/public/video/intro.mp4
+!apps/window-display/public/video/intro.mp4
+
+AUDIT_REPORT.md
+AUDIT_REPORT_V2.md

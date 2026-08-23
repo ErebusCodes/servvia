@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Verdura Local Storage Broker</title>
+  <script>
+    const PUBLISHED_KEY = 'verdura_kiosk_published_snapshot_v1';
+    const signageClients = new Map();
+
+    function readPublishedSnapshot() {
+      try {
+        const raw = localStorage.getItem(PUBLISHED_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (error) {
+        console.error('Failed to parse published kiosk snapshot', error);
+        return null;
+      }
+    }
+
+    function sendPublishedSnapshot(target, origin) {
+      target.postMessage({
+        type: 'KIOSK_PUBLISHED_CONFIG',
+        config: readPublishedSnapshot()
+      }, origin);
+    }
+
+    window.addEventListener('message', (event) => {
+      // Allow local development ports and standard local origins
+      if (!event.origin.includes('localhost') && !event.origin.includes('127.0.0.1')) {
+        return;
+      }
+      
+      // GET_SHARED_MENU / SHARED_MENU_RESPONSE (menu categories/items via
+      // localStorage) was removed: the customer/kiosk menu now reads the
+      // real backend Menu API (PostgreSQL) directly instead of polling
+      // Admin's localStorage through this broker. This file still handles
+      // kiosk window-signage config sync below, which is unrelated.
+
+      if (event.data && event.data.type === 'SUBSCRIBE_KIOSK_PUBLISHED_CONFIG') {
+        signageClients.set(event.source, event.origin);
+        sendPublishedSnapshot(event.source, event.origin);
+      }
+    });
+
+    window.addEventListener('storage', (event) => {
+      if (event.key !== PUBLISHED_KEY) return;
+      signageClients.forEach((origin, target) => {
+        try {
+          sendPublishedSnapshot(target, origin);
+        } catch {
+          signageClients.delete(target);
+        }
+      });
+    });
+  </script>
+</head>
+<body>
+</body>
+</html>

@@ -1,0 +1,21 @@
+import { Module } from '@nestjs/common';
+import { PosSyncController } from './pos-sync.controller';
+import { PosSyncRecordsController } from './pos-sync-records.controller';
+import { PosSyncRecordsService } from './pos-sync-records.service';
+import { PosSyncDispatcherService } from './pos-sync-dispatcher.service';
+import { IdealposOrderDispatcherService } from './idealpos-order-dispatcher.service';
+import { AuthModule } from '../auth/auth.module';
+import { QueueModule } from '../queue/queue.module';
+import { ConnectorModule } from '../connector/connector.module';
+
+@Module({
+  // Story 9-3: QueueModule is imported so PosSyncDispatcherService can
+  // inject the existing 'pos-sync' BullMQ Queue via @InjectQueue.
+  // ConnectorModule is imported (its exported ConnectorCommandService)
+  // so IdealposOrderDispatcherService can create real delivery commands
+  // through the existing connector protocol rather than a second one.
+  imports: [AuthModule, QueueModule, ConnectorModule],
+  controllers: [PosSyncController, PosSyncRecordsController],
+  providers: [PosSyncRecordsService, PosSyncDispatcherService, IdealposOrderDispatcherService],
+})
+export class PosSyncModule {}

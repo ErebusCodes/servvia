@@ -1,0 +1,1391 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StaffRole {
+  owner
+  admin
+  manager
+  cashier
+  kitchen
+  viewer
+}
+
+enum OrderStatus {
+  pending
+  confirmed
+  preparing
+  ready
+  completed
+  cancelled
+}
+
+// Story 9-1: truthful POS-sync lifecycle. `synced` remains structurally
+// valid (a future real Idealpos adapter needs it) but is unreachable by any
+// code path today — no real adapter exists yet (blocked on decision record
+// DL-064; see docs/decisions-log.md). `failed` is reserved for a genuine,
+// attempted-and-rejected outcome, which also cannot occur yet for the same
+// reason. `unsupported` is the honest classification for "no adapter
+// implementation exists for this venue's configured adapter type" — a
+// structural fact, not a transient failure, so it is distinct from `failed`
+// and is never retried.
+enum POSSyncStatus {
+  not_synced // created, not yet processed
+  // The durable IdealPOS delivery intent has been handed to the Venue
+  // Connector as a ConnectorCommand (idealpos.submit_order.v1) and is
+  // awaiting a terminal report. Distinct from `not_synced` specifically so
+  // the pre-existing (story 9-3) BullMQ dispatch sweep — which still only
+  // knows how to mark a row `unsupported` — naturally stops selecting this
+  // row the moment a real dispatch attempt begins, without that file
+  // needing to change at all.
+  queued_for_connector
+  // The connector reported that IdealposBridge accepted the HTTP
+  // submission (a 2xx response to POST /api/orders, per IdealposBridge's
+  // own documented contract). This is NOT evidence that native IdealPOS
+  // consumed the order, that the kitchen received it, or that a KOT
+  // printed — IdealposBridge's own InsertOrders() call returns void, so
+  // "Bridge accepted" is the strongest evidence obtainable from this
+  // integration point alone. See `synced` below for the stronger claim
+  // this state deliberately does not make.
+  submitted_awaiting_confirmation
+  synced // a real adapter received an authoritative Idealpos confirmation; unreachable today — no mechanism confirms native consumption yet
+  failed // a real adapter attempted submission and Idealpos rejected it, or attempts were exhausted
+  not_applicable // posAdapterType is `none` (NullAdapter) — POS sync was never attempted by design
+  unsupported // posAdapterType is a real type, but no adapter implementation exists yet — POS sync was never attempted because no adapter could run it
+}
+
+enum ReservationStatus {
+  pending
+  confirmed
+  seated
+  completed
+  cancelled
+  no_show
+}
+
+enum PaymentMethod {
+  card
+  bank_transfer
+  pay_at_restaurant
+  cash
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  refunded
+  failed
+  waived
+}
+
+enum PrinterType {
+  kitchen
+  pos
+  bar
+  dessert
+  label
+  custom
+}
+
+enum PrinterConnectionType {
+  tcp
+  usb
+  network
+  windows_shared
+  // Story 8-1: an explicit, visibly-configured dispatch simulation for
+  // non-production use. The worker fails a job closed (never fabricates
+  // delivery) if this connection type is selected while NODE_ENV=production.
+  simulated
+}
+
+enum PrinterProtocol {
+  escpos
+  pcl
+  raw_text
+  pdf
+}
+
+// Story 8-1: truthful PrinterJob lifecycle. `printing` is retained only
+// because Postgres cannot drop an enum value once created and no data ever
+// used it (the queue was never fed in production — see docs/printers.md); no
+// code path sets it after this story. `accepted`/`dispatching` replace it
+// with states that distinguish "a worker durably claimed this job" from
+// "a transport attempt is actively in flight" (the crash-window boundary).
+enum PrintJobStatus {
+  queued // created, not yet claimed by a worker
+  printing // unused legacy value — see comment above
+  accepted // worker durably claimed the job; not evidence of dispatch or printing
+  dispatching // a transport attempt is in flight; a worker dying here must never be silently resent — see `uncertain`
+  delivered // the transport layer accepted the payload (e.g. a TCP write callback fired) — evidence bytes left the server, NOT evidence a ticket printed
+  printed // a real device-path acknowledgement was received; unreachable today — no such mechanism exists yet (Story 8-1 Explicit Exclusions)
+  manual // no automated dispatch path exists for this connection type (or it is not trusted); staff must handle the ticket manually
+  uncertain // dispatch outcome unknown after an interrupted attempt; never auto-retried — resolved only via an explicit, audited reprint
+  failed // dispatch was attempted and definitively did not succeed (retries exhausted, or a non-retryable configuration error)
+  cancelled // administratively voided before dispatch, or the source order was cancelled before dispatch
+  // E8-S1 (expanded, KOT dispatch producer): a durable ConnectorCommand has
+  // been created for this print attempt and dispatch responsibility has
+  // been handed to the connector-mediated path. NOT evidence of claim,
+  // execution, or delivery — those are tracked on the linked
+  // ConnectorCommand row (join via PrinterJob.connectorCommandId) and
+  // reconciled back onto this job's status only once the command reaches a
+  // terminal or quasi-terminal outcome. See printer-dispatcher.service.ts.
+  connector_dispatched
+}
+
+// KDS delivery is a best-effort broadcast to a browser-based Kitchen Display
+// client over a shared per-venue WebSocket room, not a claim-by-one-external-
+// connector protocol like PrinterJob/POSSyncRecord — there is no ack channel
+// back from the Kitchen Display to the server (KitchenDisplayPage.tsx /
+// shared/orders.ts have no such channel; useLiveOrders only refetches on its
+// own socket reconnect). `pushed` is therefore the strongest honest terminal
+// state this enum can ever reach: it means the server attempted a WebSocket
+// emit to the venue's KDS room, never that a Kitchen Display actually
+// received or rendered it. Mirrors PrintJobStatus/POSSyncStatus's own
+// evidence-tier discipline — no `delivered`/`displayed` value exists here
+// because no evidence for either could ever exist with today's transport.
+enum KdsDeliveryStatus {
+  queued // created, not yet claimed by a dispatch sweep
+  pushed // a WebSocket emit to the venue's KDS room was attempted by the dispatcher; NOT evidence a Kitchen Display received or rendered it
+  cancelled // the source order was cancelled before/at push time
+  exhausted // dispatch attempt budget exceeded; requires manual KDS refresh/verification by staff
+}
+
+enum POSAdapterType {
+  api
+  sql
+  odbc
+  csv
+  local_agent
+  none
+}
+
+enum CalendarSyncStatus {
+  synced
+  pending
+  failed
+  not_applicable
+}
+
+enum OrgPlan {
+  single
+  multi
+  enterprise
+}
+
+enum OrderSource {
+  kiosk
+  staff
+  online
+}
+
+// Story 15-13: explicit, authoritative service mode for a staff/tablet
+// order. Never inferred from tableId/tableNumber/source at read time (see
+// OrdersService.createStaffOrder) -- this is the single source of truth.
+// Deliberately does not cover the public kiosk path (OrdersService.create),
+// which is out of Order Tablet scope and keeps its own pre-existing
+// optional-table behavior unchanged.
+enum ServiceMode {
+  dine_in
+  takeaway
+}
+
+// Story 2-9: identity lifecycle for an on-premise Verdura Connector
+// installation. This enum is deliberately about IDENTITY status only —
+// "offline"/"degraded" are connectivity facts derived from `lastSeenAt` at
+// read time, never persisted here, since a stored connectivity flag would
+// itself go silently stale the moment a connector disconnects.
+enum ConnectorInstallationStatus {
+  active // the one (per venue, DB-enforced) currently-trusted identity
+  revoked // explicitly revoked by an administrator; rejected on every future auth attempt
+  replaced // superseded by a newer installation via rotation; rejected identically to revoked
+}
+
+enum ConnectorCommandStatus {
+  pending // created, not yet claimed by any connector
+  claimed // offered to and claimed by a specific active installation under a time-bound lease; not yet accepted
+  accepted // CONNECTOR_ACCEPTED — the connector durably persisted responsibility; NOT evidence of any Idealpos/EFTPOS/KDS/printer success
+  succeeded // truthful terminal success reported by the connector itself, carrying an operation-specific resultType
+  failed // truthful terminal failure reported by the connector itself
+  expired // claim/redelivery budget exhausted before ever reaching `accepted` — safe, nothing was ever confirmed accepted
+  unknown // reached `accepted` but no terminal report arrived within the reconciliation window — reconciliation required, never auto-retried
+  cancelled // administratively cancelled while still pending or claimed; cannot be cancelled once accepted
+}
+
+model Organization {
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  logoUrl      String?
+  billingEmail String
+  plan         OrgPlan  @default(single)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  venues                 Venue[]
+  staff                  Staff[]
+  categories             Category[]
+  menuItems              MenuItem[]
+  mediaAssets            MediaAsset[]
+  auditLogs              AuditLog[]
+  connectorEnrollments   ConnectorEnrollment[]
+  connectorInstallations ConnectorInstallation[]
+  connectorCommands      ConnectorCommand[]
+  tabletEnrollments      TabletEnrollment[]
+  tabletDevices          TabletDevice[]
+}
+
+model Venue {
+  id                     String         @id @default(uuid())
+  organizationId         String
+  name                   String
+  slug                   String
+  address                Json
+  phone                  String?
+  email                  String?
+  timezone               String         @default("Pacific/Auckland")
+  currency               String         @default("NZD")
+  locale                 String         @default("en-NZ")
+  taxJurisdiction        String         @default("NZ_GST")
+  pricesIncludeTax       Boolean        @default(true)
+  operatingHours         Json
+  seatingCapacity        Int
+  coversPerSlot          Int            @default(20)
+  reservationSlotMinutes Int            @default(30)
+  posAdapterType         POSAdapterType @default(none)
+  posConfig              Json           @default("{}")
+  isActive               Boolean        @default(true)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  organization           Organization            @relation(fields: [organizationId], references: [id])
+  tables                 Table[]
+  floorPlans             FloorPlan[]
+  printers               Printer[]
+  reservations           Reservation[]
+  orders                 Order[]
+  venueAccess            VenueAccess[]
+  menuItemOverrides      MenuItemVenueOverride[]
+  mediaAssets            MediaAsset[]
+  printJobs              PrinterJob[]
+  posSyncRecords         POSSyncRecord[]
+  kdsDeliveryRecords     KdsDeliveryRecord[]
+  auditLogs              AuditLog[]
+  connectorEnrollments   ConnectorEnrollment[]
+  connectorInstallations ConnectorInstallation[]
+  connectorCommands      ConnectorCommand[]
+  tabletEnrollments      TabletEnrollment[]
+  tabletDevices          TabletDevice[]
+  table19ValidationRuns    Table19ValidationRun[]
+  paymentObservations      PaymentObservation[]
+  paymentObservationEvents PaymentObservationEvent[]
+
+  @@unique([organizationId, slug])
+}
+
+model Table {
+  id          String   @id @default(uuid())
+  venueId     String
+  tableNumber String
+  name        String?
+  capacity    Int
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  floorPlanId String?
+  xPosition   Float?
+  yPosition   Float?
+  // The exact native POS table identifier this Verdura table maps to (for
+  // IdealPOS via VerduraIdealposBridge: TableMapSetups.Caption, fetched
+  // live from the bridge's GET /api/tables — confirmed by direct source
+  // read of Orders/OrderValidator.cs and Idealpos/IdealposReadRepository.cs
+  // in /Users/sarwarkhan/Documents/IdealposBridge). Null until staff
+  // explicitly configure it — never derived/guessed from tableNumber; the
+  // bridge's own docs flag Caption-vs-Code as unconfirmed against a live
+  // instance, so Verdura must not assume tableNumber happens to match.
+  posTableCode String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  venue        Venue         @relation(fields: [venueId], references: [id])
+  floorPlan    FloorPlan?    @relation(fields: [floorPlanId], references: [id])
+  reservations Reservation[]
+  orders       Order[]
+
+  @@unique([venueId, tableNumber])
+  // Prevents two tables in the same venue from being configured to the
+  // same native destination by mistake. Postgres unique indexes permit
+  // unlimited NULLs, so this never constrains unmapped tables.
+  @@unique([venueId, posTableCode])
+}
+
+model FloorPlan {
+  id           String   @id @default(uuid())
+  venueId      String
+  name         String
+  imageUrl     String?
+  canvasWidth  Int      @default(1200)
+  canvasHeight Int      @default(800)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  venue  Venue   @relation(fields: [venueId], references: [id])
+  tables Table[]
+}
+
+model Staff {
+  id             String    @id @default(uuid())
+  organizationId String
+  email          String    @unique
+  name           String
+  passwordHash   String
+  role           StaffRole
+  isActive       Boolean   @default(true)
+  totpSecret     String?
+  isTotpEnabled  Boolean   @default(false)
+  lastLoginAt    DateTime?
+  lastLoginIp    String?
+  // Argon2id hash of this staff member's short numeric tablet-elevation
+  // PIN (story 15-1, DL-081) — deliberately separate from `passwordHash`.
+  // Never derived from or equal to the staff member's login password; set
+  // only via the dedicated admin/manager-authorized tablet-PIN endpoint.
+  // Null until an admin/manager sets one for this staff member.
+  pinHash        String?
+  pinSetAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization                  Organization            @relation(fields: [organizationId], references: [id])
+  venueAccess                   VenueAccess[]           @relation("StaffAccess")
+  grantsGiven                   VenueAccess[]           @relation("GrantedBy")
+  auditLogs                     AuditLog[]              @relation("ActorLogs")
+  categoriesCreated             Category[]
+  menuItemsCreated              MenuItem[]
+  mediaAssetsCreated            MediaAsset[]
+  printerReprintsRequested      PrinterJob[]
+  connectorEnrollmentsCreated   ConnectorEnrollment[]   @relation("ConnectorEnrollmentCreatedBy")
+  connectorInstallationsRevoked ConnectorInstallation[] @relation("ConnectorInstallationRevokedBy")
+  connectorCommandsCreated      ConnectorCommand[]      @relation("ConnectorCommandCreatedBy")
+  connectorCommandsCancelled    ConnectorCommand[]      @relation("ConnectorCommandCancelledBy")
+  tabletEnrollmentsCreated      TabletEnrollment[]      @relation("TabletEnrollmentCreatedBy")
+  tabletDevicesRevoked          TabletDevice[]          @relation("TabletDeviceRevokedBy")
+  paymentObservationsReviewed   PaymentObservation[]
+}
+
+model VenueAccess {
+  id          String   @id @default(uuid())
+  staffId     String
+  venueId     String
+  grantedAt   DateTime @default(now())
+  grantedById String
+
+  staff     Staff @relation("StaffAccess", fields: [staffId], references: [id])
+  venue     Venue @relation(fields: [venueId], references: [id])
+  grantedBy Staff @relation("GrantedBy", fields: [grantedById], references: [id])
+
+  @@unique([staffId, venueId])
+}
+
+model Reservation {
+  id                    String             @id @default(uuid())
+  venueId               String
+  bookingRef            String             @unique
+  status                ReservationStatus  @default(pending)
+  guestName             String
+  guestEmail            String
+  guestPhone            String?
+  partySize             Int
+  occasion              String?
+  specialRequests       String?
+  reservationDate       String
+  reservationTime       String
+  tableId               String?
+  menuSelections        Json               @default("[]")
+  menuTotal             Int                @default(0)
+  paymentMethod         PaymentMethod      @default(pay_at_restaurant)
+  paymentStatus         PaymentStatus      @default(pending)
+  bookNowPayLater       Boolean            @default(true)
+  stripePaymentIntentId String?
+  calendarEventId       String?
+  calendarSyncStatus    CalendarSyncStatus @default(not_applicable)
+  confirmedAt           DateTime?
+  cancelledAt           DateTime?
+  cancelledBy           String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  venue   Venue              @relation(fields: [venueId], references: [id])
+  table   Table?             @relation(fields: [tableId], references: [id])
+  guests  ReservationGuest[]
+  payment Payment?
+}
+
+model ReservationGuest {
+  id                 String   @id @default(uuid())
+  reservationId      String
+  isPrimary          Boolean  @default(false)
+  name               String?
+  inheritFromPrimary Boolean  @default(true)
+  dietaryPreferences String[] @default([])
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+  reservationId         String        @unique
+  venueId               String
+  method                PaymentMethod
+  status                PaymentStatus @default(pending)
+  amountCents           Int
+  currency              String        @default("NZD")
+  stripePaymentIntentId String?
+  stripeChargeId        String?
+  stripeReceiptUrl      String?
+  confirmedById         String?
+  confirmedAt           DateTime?
+  referenceNote         String?
+  refundedAt            DateTime?
+  refundedById          String?
+  refundAmountCents     Int?
+  refundReason          String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+}
+
+model Category {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  imageUrl       String?
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  createdById    String
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  createdBy    Staff        @relation(fields: [createdById], references: [id])
+  menuItems    MenuItem[]
+}
+
+model MenuItem {
+  id                 String    @id @default(uuid())
+  organizationId     String
+  categoryId         String
+  subCategory        String?
+  title              String
+  description        String
+  imageUrl           String?
+  imageThumbnailUrl  String?
+  priceCents         Int
+  nutritionalDetails Json
+  isSpicy            Boolean   @default(false)
+  isAvailable        Boolean   @default(true)
+  sortOrder          Int       @default(0)
+  modifierGroups     Json      @default("[]")
+  // The exact native POS product/stock-item code this menu item maps to
+  // (for IdealPOS via VerduraIdealposBridge: the `code` field of GET
+  // /api/products, confirmed by direct source read of
+  // Orders/OrderValidator.cs and Idealpos/IdealposReadRepository.cs in
+  // /Users/sarwarkhan/Documents/IdealposBridge). Null until staff
+  // explicitly configure it — never derived/guessed from this MenuItem's
+  // own id or title; the bridge does no name-based product matching, only
+  // an exact code match against IdealPOS's own live product list.
+  posProductCode     String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  createdById        String
+  deletedAt          DateTime?
+
+  organization   Organization            @relation(fields: [organizationId], references: [id])
+  category       Category                @relation(fields: [categoryId], references: [id])
+  createdBy      Staff                   @relation(fields: [createdById], references: [id])
+  venueOverrides MenuItemVenueOverride[]
+  orderItems     OrderItem[]
+
+  // Prevents two menu items in the same organization from being configured
+  // to the same native product code by mistake. Postgres unique indexes
+  // permit unlimited NULLs, so this never constrains unmapped items. Not
+  // scoped per-venue: a single IdealposBridge instance targets one
+  // IdealPOS database with no multi-tenant support (confirmed, bridge
+  // README "No multi-tenant/multi-site support"), and this org's
+  // production venue set is single-venue today — a genuinely different
+  // per-venue PLU numbering scheme would require re-scoping this to
+  // MenuItemVenueOverride instead, deliberately deferred rather than
+  // built speculatively against unevidenced multi-venue requirements.
+  @@unique([organizationId, posProductCode])
+}
+
+model MenuItemVenueOverride {
+  id          String   @id @default(uuid())
+  menuItemId  String
+  venueId     String
+  priceCents  Int?
+  isAvailable Boolean?
+  updatedAt   DateTime @updatedAt
+
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+  venue    Venue    @relation(fields: [venueId], references: [id])
+
+  @@unique([menuItemId, venueId])
+}
+
+// Story: GCS canonical media (2026-08-17). A MediaAsset row is the
+// authoritative record of one uploaded object in cloud storage — it is
+// created before the bytes exist (`pending_upload`) and only becomes
+// safe to render once `approved`. `MenuItem.imageUrl`/`Category.imageUrl`
+// remain the fields frontends actually render (unchanged); on approval the
+// resolved delivery URL for a MediaAsset is written into those fields, so
+// no frontend rendering code needs to know MediaAsset exists at all.
+enum MediaAssetPurpose {
+  menu_item
+  category
+  promotion
+  venue_gallery
+  branding
+  video
+  document
+}
+
+enum MediaAssetType {
+  image
+  video
+}
+
+enum StorageProvider {
+  gcs
+  local // dev/test only — MediaService's existing local-disk path; never used for a real MediaAsset row in production
+}
+
+// Every transition is explicit and one-directional except the final
+// terminal states; nothing here is ever inferred from an HTTP 200 or a
+// missing error — see MediaAssetsService for the state machine.
+enum MediaAssetStatus {
+  pending_upload // row created, signed upload URL issued, object not yet confirmed in the bucket
+  uploaded // client reported success; object existence/size/checksum not yet server-verified
+  validating // server is verifying the object (HEAD request, checksum, MIME sniff, dimension/duration probe)
+  approved // verified and safe to render; only status a delivery URL will be generated for
+  rejected // failed validation (checksum/MIME/size/dimension mismatch) — object is deleted from the bucket, never served
+  failed // upload never completed (client error, abandoned, or expired signed URL) — swept by the abandoned-upload lifecycle policy
+  archived // previously approved, superseded by a newer MediaAsset or manually retired — object retained for rollback, never served as current
+}
+
+enum MediaAssetVisibility {
+  private // default; only ever resolved via a short-lived signed GET URL
+  public // approved delivery copy under an immutable/versioned key; long-lived cache headers are safe because the key never changes meaning
+}
+
+model MediaAsset {
+  id               String               @id @default(uuid())
+  organizationId   String
+  venueId          String
+  purpose          MediaAssetPurpose
+  mediaType        MediaAssetType
+  storageProvider  StorageProvider      @default(gcs)
+  bucket           String
+  objectKey        String
+  originalFilename String
+  mimeType         String
+  sizeBytes        Int
+  checksum         String // sha256, hex-encoded — see MediaAssetsService for the dedup-by-checksum-per-venue lookup this enables
+  width            Int?
+  height           Int?
+  durationMs       Int?
+  altText          String?
+  status           MediaAssetStatus     @default(pending_upload)
+  visibility       MediaAssetVisibility @default(private)
+  cacheVersion     Int                  @default(1)
+  createdById      String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  deletedAt        DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  venue        Venue        @relation(fields: [venueId], references: [id])
+  createdBy    Staff        @relation(fields: [createdById], references: [id])
+
+  // One object key can only ever back one row — prevents two rows from
+  // silently racing to claim the same bucket path.
+  @@unique([bucket, objectKey])
+  // Fast per-venue duplicate lookup before issuing a new upload URL.
+  @@index([venueId, checksum])
+  @@index([venueId, purpose, status])
+}
+
+model Order {
+  id                           String        @id @default(uuid())
+  venueId                      String
+  tableId                      String?
+  tableNumber                  String?
+  status                       OrderStatus   @default(pending)
+  posSyncStatus                POSSyncStatus @default(not_synced)
+  subtotalCents                Int
+  taxCents                     Int           @default(0)
+  totalCents                   Int
+  notes                        String?
+  source                       OrderSource   @default(kiosk)
+  // Story 15-13: explicit, authoritative dine-in/takeaway service mode.
+  // Defaults to dine_in for the additive migration's backfill (every
+  // pre-existing order predates the takeaway capability -- see migration
+  // 20260821000000_order_service_mode's own comment) and because the public
+  // kiosk path (untouched by this story) has never had any other concept.
+  // takeawayReference is populated only for serviceMode = takeaway, from a
+  // dedicated Postgres sequence (never a "latest row + 1" read) -- see
+  // OrdersService.persistOrder.
+  serviceMode                  ServiceMode   @default(dine_in)
+  takeawayReference            String?
+  // Story 6-1: database-enforced idempotency + payment-reference uniqueness.
+  // idempotencyKey is required and scoped per venue (venueId already fixes
+  // organizationId 1:1 via Venue, so (venueId, idempotencyKey) gives the
+  // same isolation as (organizationId, venueId, idempotencyKey) without a
+  // denormalized organizationId column on Order).
+  idempotencyKey               String
+  // Provider-neutral payment reference (populated from stripePaymentIntentId
+  // today). Null for orders with no online payment (e.g. staff-tablet).
+  // Globally unique when present — Postgres unique indexes permit unlimited
+  // NULLs, so this does not constrain payment-less orders.
+  paymentProviderTransactionId String?
+  submittedAt                  DateTime      @default(now())
+  confirmedAt                  DateTime?
+  preparingAt                  DateTime?
+  readyAt                      DateTime?
+  completedAt                  DateTime?
+  cancelledAt                  DateTime?
+  createdAt                    DateTime      @default(now())
+  updatedAt                    DateTime      @updatedAt
+
+  venue                Venue                 @relation(fields: [venueId], references: [id])
+  table                Table?                @relation(fields: [tableId], references: [id])
+  items                OrderItem[]
+  printJobs            PrinterJob[]
+  posSyncRecord        POSSyncRecord?
+  kdsDeliveryRecord    KdsDeliveryRecord?
+  table19ValidationRun Table19ValidationRun?
+  // Story 15-6: native IdealPOS payment-state OBSERVATION only -- never
+  // written by anything in this codebase that initiates, selects tender
+  // for, or otherwise processes payment. Absence of this row means
+  // `not_observed`, by design -- no backfill/eager-creation is needed or
+  // performed for historical orders (see PaymentObservation's own doc
+  // comment).
+  paymentObservation       PaymentObservation?
+  paymentObservationEvents PaymentObservationEvent[]
+
+  @@unique([venueId, idempotencyKey])
+  @@unique([paymentProviderTransactionId])
+  @@unique([takeawayReference])
+}
+
+/// Table 19 controlled live-validation guard (Order Tablet "Send to Kitchen"
+/// / Idealpos+KDS+KOT orchestration validation). Enforces "one controlled
+/// logical order only unless explicitly reset by an authorised operator" --
+/// see OrdersService.assertTable19ValidationModeAllows. Entirely inert
+/// unless TABLE19_LIVE_TEST_ENABLED/TABLE19_LIVE_TEST_VENUE_ID are both set
+/// and NODE_ENV !== 'production'.
+model Table19ValidationRun {
+  id             String    @id @default(uuid())
+  venueId        String
+  orderId        String    @unique
+  createdAt      DateTime  @default(now())
+  resetAt        DateTime?
+  resetByStaffId String?
+
+  venue Venue @relation(fields: [venueId], references: [id])
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([venueId, resetAt])
+}
+
+model OrderItem {
+  id                String  @id @default(uuid())
+  orderId           String
+  menuItemId        String
+  menuItemTitle     String
+  menuItemCategory  String
+  unitPriceCents    Int
+  quantity          Int
+  lineTotalCents    Int
+  selectedModifiers Json    @default("[]")
+  notes             String?
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+}
+
+model Printer {
+  id             String                @id @default(uuid())
+  venueId        String
+  name           String
+  type           PrinterType
+  connectionType PrinterConnectionType
+  protocol       PrinterProtocol       @default(escpos)
+  host           String?
+  port           Int?
+  sharePath      String?
+  paperWidthMm   Int                   @default(80)
+  charPerLine    Int                   @default(42)
+  isActive       Boolean               @default(true)
+  isOnline       Boolean?
+  lastSeenAt     DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  venue     Venue        @relation(fields: [venueId], references: [id])
+  printJobs PrinterJob[]
+}
+
+model PrinterJob {
+  id            String          @id @default(uuid())
+  printerId     String
+  orderId       String?
+  venueId       String
+  status        PrintJobStatus  @default(queued)
+  payload       String
+  payloadFormat PrinterProtocol
+  attemptCount  Int             @default(0)
+  maxAttempts   Int             @default(3)
+  queuedAt      DateTime        @default(now())
+  lastAttemptAt DateTime?
+  // Set only when the transport layer accepted the payload (e.g. a TCP
+  // write callback fired) — NOT proof of physical printing. See `printedAt`.
+  deliveredAt   DateTime?
+  // Set only from real device-path acknowledgement evidence. Unreachable
+  // today — see PrintJobStatus.printed.
+  printedAt     DateTime?
+  failedAt      DateTime?
+  errorMessage  String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  // Story 8-1 reprint lineage: a reprint is a brand-new job row, never a
+  // mutation of the original, so the original's own history stays intact.
+  // Nullable — most jobs are not reprints.
+  reprintOfId          String?
+  reprintRequestedById String?
+
+  // E8-S1 (expanded, KOT dispatch producer): outbox-dispatch bookkeeping,
+  // mirroring POSSyncRecord's dispatch* fields (story 9-3) exactly. None of
+  // these fields are evidence of anything reaching a connector or printer —
+  // they record only whether/when this job has been handed to the
+  // connector-mediated dispatch path (a ConnectorCommand row was durably
+  // created for it). The same invariant POSSyncRecord documents applies:
+  // dispatchClaimId and dispatchClaimExpiresAt are always written together
+  // by PrinterDispatcherService's own updateMany calls, never independently.
+  connectorCommandId     String?   @unique
+  dispatchClaimId        String? // owner token for the current dispatch claim, if any
+  dispatchClaimedAt      DateTime? // when the current dispatch claim was acquired
+  dispatchClaimExpiresAt DateTime? // lease expiry; an expired claim is re-claimable
+  dispatchedAt           DateTime? // set only after the ConnectorCommand was durably created
+  dispatchAttemptCount   Int       @default(0) // producer's own claim/command-creation attempts
+  lastDispatchError      String? // sanitized: command-creation failure reason only, never a raw stack/secret
+  dispatchExhaustedAt    DateTime? // set once dispatchAttemptCount exceeds the configured budget; job becomes `manual`
+
+  printer            Printer           @relation(fields: [printerId], references: [id])
+  order              Order?            @relation(fields: [orderId], references: [id])
+  venue              Venue             @relation(fields: [venueId], references: [id])
+  reprintOf          PrinterJob?       @relation("PrinterJobReprints", fields: [reprintOfId], references: [id])
+  reprints           PrinterJob[]      @relation("PrinterJobReprints")
+  reprintRequestedBy Staff?            @relation(fields: [reprintRequestedById], references: [id])
+  connectorCommand   ConnectorCommand? @relation(fields: [connectorCommandId], references: [id])
+
+  @@index([status, dispatchExhaustedAt, queuedAt])
+}
+
+model POSSyncRecord {
+  id              String         @id @default(uuid())
+  orderId         String         @unique
+  venueId         String
+  adapterType     POSAdapterType
+  status          POSSyncStatus  @default(not_synced)
+  requestPayload  Json?
+  responsePayload Json?
+  posOrderId      String?
+  posTableId      String?
+  // Reserved for a real Idealpos adapter's own submission attempts
+  // (target-operating-model.md; story 9-1). Story 9-3's dispatcher
+  // deliberately does NOT touch these — see dispatch* fields below.
+  attemptCount    Int            @default(0)
+  lastAttemptAt   DateTime?
+  syncedAt        DateTime?
+  failedAt        DateTime?
+  errorMessage    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // Story 9-3: outbox-dispatch bookkeeping only. None of these fields are
+  // evidence of anything reaching Idealpos, a connector, or any external
+  // system — they record only whether this record has been handed to the
+  // cloud-internal `pos-sync` BullMQ queue for the already-truthful
+  // PosSyncProcessor (story 9-1, unchanged) to classify. Deliberately kept
+  // separate from POSSyncStatus and from attemptCount/lastAttemptAt above,
+  // which are reserved for a real adapter's own (currently nonexistent)
+  // Idealpos-facing attempts.
+  // Invariant (independent review, 2026-08-16): dispatchClaimId and
+  // dispatchClaimExpiresAt are always written together by
+  // PosSyncDispatcherService's own updateMany calls — never set
+  // independently. If something other than that service ever sets one
+  // without the other (e.g. a future manual data-repair script), the
+  // resulting row would satisfy neither of sweep()'s eligibility branches
+  // and would never be picked up again short of dispatchExhaustedAt. Not
+  // reachable through any code path in this codebase today; flagged here
+  // so it stays that way.
+  dispatchClaimId        String? // owner token for the current claim, if any
+  dispatchClaimedAt      DateTime? // when the current claim was acquired
+  dispatchClaimExpiresAt DateTime? // lease expiry; an expired claim is re-claimable
+  dispatchedAt           DateTime? // set only after queue.add() resolved without throwing
+  dispatchAttemptCount   Int       @default(0) // dispatcher's own claim attempts, not Idealpos attempts
+  lastDispatchError      String? // sanitized: enqueue/claim failure reason only, never a raw stack/secret
+  dispatchExhaustedAt    DateTime? // set once dispatchAttemptCount exceeds the configured budget; excluded from further auto-retry
+
+  // ── IdealPOS connector delivery (this story) ──
+  // The ConnectorCommand (idealpos.submit_order.v1) created once this
+  // record's order was proven eligible (buildIdealposOrderPayload
+  // succeeded — real table/PLU mapping, no modifiers). Nullable: an
+  // ineligible order goes straight to `failed` and never gets one. Once
+  // set, this row is permanently outside the pre-existing (story 9-3)
+  // BullMQ dispatcher's candidate set — see `status`'s own
+  // `queued_for_connector` doc comment — so no change was needed there.
+  // Unique: at most one live delivery command per durable order; reusing
+  // the same idempotencyKey (the order's own id) on a retried dispatch
+  // attempt returns this same command rather than creating a second one.
+  connectorSubmitCommandId String? @unique
+
+  // DL-092: a transient Bridge/connector delivery failure
+  // (bridge_unreachable_or_failed, or a ConnectorCommand that expired
+  // before ever being claimed/accepted — zero side effects either way) no
+  // longer becomes an immediate terminal `failed`. Instead the record
+  // returns to `not_synced` (re-eligible for sweepDispatch, which already
+  // reuses that exact status/attemptCount gate for "never yet attempted")
+  // and this column records the earliest time it may be retried again.
+  // Null means immediately eligible — true for both a record that has
+  // never been attempted and one whose backoff window has already
+  // elapsed. Mirrors dispatchClaimExpiresAt's lease-gate pattern above,
+  // one model up the file, applied to the connector-delivery attempt
+  // counter (attemptCount) instead of the internal-queue one
+  // (dispatchAttemptCount).
+  nextRetryAt DateTime?
+
+  // DL-092: set once attemptCount reaches the configured retry ceiling
+  // after one or more transient (never deterministic) failures — mirrors
+  // dispatchExhaustedAt's established pattern above. A record with this
+  // set is `failed` for the same structural reason as a deterministic
+  // mapping/Bridge-rejection failure, but errorMessage/this timestamp
+  // together tell an operator the difference: exhausted retries after a
+  // real, repeated delivery attempt, not an immediate contract violation.
+  retryExhaustedAt DateTime?
+
+  order Order @relation(fields: [orderId], references: [id])
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@index([status, dispatchExhaustedAt, createdAt])
+  @@index([status, attemptCount, createdAt])
+  @@index([status, nextRetryAt])
+}
+
+// ── Story 15-6: native IdealPOS payment-state OBSERVATION/reconciliation ──
+//
+// Deliberately a SEPARATE domain from POSSyncRecord above. POSSyncRecord
+// tracks whether an ORDER reached Idealpos (submission); PaymentObservation/
+// PaymentObservationEvent below track whether native Idealpos/EFTPOS later
+// reports the order as PAID -- a distinct, later lifecycle leg that this
+// codebase has never modelled before (DL-087: the Order Tablet never
+// processes or initiates payment; payment happens later, entirely inside
+// Idealpos/EFTPOS; Verdura may only observe and reconcile the resulting
+// native state). Do not conflate the two models, and do not derive
+// PaymentObservationState from POSSyncStatus/ConnectorCommandStatus/
+// KdsDeliveryStatus -- none of those are payment states, and coupling them
+// would let order-submission or kitchen-delivery activity be mistaken for
+// evidence of payment.
+//
+// Current Bridge-contract reality (confirmed by direct source read of
+// /Users/sarwarkhan/Documents/IdealposBridge): there is no `/pay` endpoint
+// and no proven payment-observation endpoint or tender field. The bridge's
+// own order-lifecycle model does include `paid`/`closed` values, but its
+// own doc comment labels them HEURISTIC ("inferred... not directly
+// proven"), and no connector-side code in this repository polls for or
+// reports them today. This domain model is built so a FUTURE, versioned,
+// connector-reported observation can be added without a schema replacement
+// or state reinterpretation -- until then, every real order's payment state
+// is honestly `not_observed` or `observation_unsupported`, fed only by this
+// story's own fixture-injection endpoint for contract testing.
+enum PaymentObservationState {
+  not_observed // no payment evidence has ever been received for this order -- the default; absence of a row means this too
+  observation_unsupported // the venue's adapter/Bridge cannot currently report payment at all (posAdapterType != api, or no supported observation contract exists yet)
+  pending // a supported source explicitly reports payment is pending/in progress
+  paid // a supported AUTHORITATIVE source explicitly reports successful payment
+  declined // a supported source explicitly reports a decline
+  cancelled // payment was explicitly cancelled before settlement
+  reversed // a supported source explicitly reports a reversal of a previously-paid observation
+  refunded // a supported source explicitly reports a refund of a previously-paid observation
+  uncertain // a side effect may have occurred but cannot be proven
+  conflict // contradictory authoritative observations, or an amount/currency/reference mismatch -- requires human review, never silently resolved
+}
+
+/// Distinguishes a real (future) connector-reported observation from this
+/// story's own test/dev fixture-injection surface.
+enum PaymentObservationSourceKind {
+  fixture
+  connector
+}
+
+// Distinguishes synthetic contract-fixture evidence from real Idealpos
+// evidence at the DATA level, not just in test descriptions -- so any
+// operator/audit surface can never mistake a fixture-driven row for a real
+// Table 12 result. Shared vocabulary, not specific to any one dispatch
+// implementation.
+enum IdealposEvidenceTier {
+  fixture_contract // produced by this repo's own fixture/contract test harness -- never reachable in production
+  real_windows_table12 // produced by a real Windows connector talking to a real Idealpos instance during controlled pre-production testing
+  real_production // produced by a real Windows connector during real venue operation
+}
+
+/// The current, projected payment-observation state for one order -- one
+/// row per order, created lazily on the FIRST observation event (never
+/// eagerly/via migration backfill: a missing row already means
+/// `not_observed`). Mutated only via a database compare-and-set keyed on
+/// `state` -- an out-of-order or contradictory observation can never
+/// silently regress or overwrite a terminal state; it is redirected to
+/// `conflict` instead, with the raw fact still preserved immutably in
+/// PaymentObservationEvent.
+model PaymentObservation {
+  id      String                  @id @default(uuid())
+  orderId String                  @unique
+  venueId String
+  state   PaymentObservationState @default(not_observed)
+
+  // Immutable copy of the order's provisional payable total, captured the
+  // first time this row is created -- this row's own history must never be
+  // invalidated by anything else later touching Order's totals.
+  provisionalPayableCents Int?
+
+  // Only ever populated from a proven-authoritative observation event
+  // (never any unverified figure -- see unverifiedAmountCents below for
+  // where an unverified figure belongs).
+  nativeReference    String?
+  nativeAmountCents  Int?
+  nativeCurrency     String?
+  tenderMethod       String?
+  nativeTimestamp    DateTime?
+
+  // Recorded ONLY for operator visibility -- never promoted to
+  // nativeAmountCents/state=paid.
+  unverifiedAmountCents Int?
+  unverifiedAmountSource String?
+
+  discrepancyCents Int?
+  // Free-text but from a closed, code-reviewed set maintained in
+  // payment-observation.constants.ts (exact/mismatch/missing/unsupported/
+  // currency_mismatch/pending) -- no DB enum, to match POSSyncRecord's own
+  // closed-set-in-application convention.
+  discrepancyState String @default("pending_authoritative_total")
+
+  // CAS anchor: the observationId of whichever PaymentObservationEvent most
+  // recently won the projection update. A duplicate delivery of the SAME
+  // observationId is detected here and treated as a no-op, never reapplied.
+  lastAppliedObservationId String?
+  lastObservedAt           DateTime?
+
+  reviewedAt          DateTime?
+  reviewedByStaffId   String?
+  reviewNote          String? // sanitized only -- never a raw stack trace or secret
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order             Order   @relation(fields: [orderId], references: [id])
+  venue             Venue   @relation(fields: [venueId], references: [id])
+  reviewedByStaff   Staff?  @relation(fields: [reviewedByStaffId], references: [id])
+
+  // Database-enforced: one native payment reference can never silently
+  // attach to two different orders (nulls are unrestricted, matching
+  // Order.paymentProviderTransactionId's own established precedent for an
+  // unrelated payment reference).
+  @@unique([nativeReference])
+  @@index([venueId, state, createdAt])
+}
+
+/// Append-only, immutable raw-fact ledger -- every observation ever
+/// received, whether it won the CAS and became the current projection or
+/// was rejected as stale/conflicting/a duplicate. Never updated or deleted
+/// after insert. PaymentObservation above is only ever a PROJECTION of
+/// these events.
+model PaymentObservationEvent {
+  id      String @id @default(uuid())
+  orderId String
+  venueId String
+
+  // Caller-supplied idempotency key (a future connector's result/command id,
+  // or this story's own fixture-injection call id) -- unique per order.
+  observationId String
+
+  schemaVersion Int
+  sourceKind    PaymentObservationSourceKind
+  // Sanitized adapter identity only (e.g. "api") -- never a raw Bridge
+  // response or connector payload.
+  adapterType   POSAdapterType?
+
+  state           PaymentObservationState
+  nativeReference String?
+  amountCents     Int?
+  currency        String?
+  tenderMethod    String?
+  nativeTimestamp DateTime?
+
+  receivedAt DateTime @default(now())
+  // fixture_contract is the only value any code path in this repository may
+  // write today; the other values exist for a future real connector, never
+  // fabricated here.
+  evidenceTier IdealposEvidenceTier @default(fixture_contract)
+
+  payloadFingerprint String? // SHA-256 of the canonicalized observation payload -- connector-local integrity/substitution guard
+  handlerVersion     Int?
+  sanitizedReason    String? // never a raw stack trace, SQL error, or credential
+
+  // Written once, at insert time, by the same transaction that decided
+  // whether this event won the PaymentObservation projection CAS.
+  applied         Boolean @default(false)
+  conflictReason  String?
+
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@unique([orderId, observationId])
+  @@index([venueId, createdAt])
+}
+
+// Durable KDS delivery-intent outbox row. Order creation's own WebSocket push
+// (OrdersService.broadcastOrder, post-commit, immediate) remains the fast
+// path for an already-connected Kitchen Display; this row exists purely as a
+// durability backstop for the crash window between that transaction commit
+// and the post-commit emit — mirrors PrinterJob's/POSSyncRecord's outbox/CAS
+// bookkeeping fields exactly, for consistency across all three delivery legs.
+// One row per order (not per station): no KDS station/device model exists in
+// this schema today, and the WebSocket room is one shared room per venue.
+// Unlike PrinterJob/POSSyncRecord, this row is created unconditionally for
+// every order, the same as OrderItem -- so it uses the same onDelete:
+// Cascade as OrderItem rather than requiring every order-creating test file
+// to learn a new required cleanup step.
+model KdsDeliveryRecord {
+  id      String            @id @default(uuid())
+  orderId String            @unique
+  venueId String
+  status  KdsDeliveryStatus @default(queued)
+
+  dispatchClaimId        String? // owner token for the current dispatch claim, if any
+  dispatchClaimedAt      DateTime? // when the current dispatch claim was acquired
+  dispatchClaimExpiresAt DateTime? // lease expiry; an expired claim is re-claimable
+  pushedAt               DateTime?
+  pushAttemptCount       Int       @default(0)
+  lastDispatchError      String? // sanitized: push-attempt failure reason only, never a raw stack/secret
+  dispatchExhaustedAt    DateTime? // set once pushAttemptCount exceeds the configured budget; requires manual staff verification
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@index([status, dispatchExhaustedAt, createdAt])
+}
+
+model AuditLog {
+  id             String    @id @default(uuid())
+  organizationId String
+  venueId        String?
+  actorId        String
+  actorEmail     String
+  actorRole      StaffRole
+  action         String
+  resource       String
+  resourceId     String?
+  before         Json?
+  after          Json?
+  ipAddress      String?
+  userAgent      String?
+  timestamp      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  venue        Venue?       @relation(fields: [venueId], references: [id])
+  actor        Staff        @relation("ActorLogs", fields: [actorId], references: [id])
+}
+
+// ─── Story 2-9: Enterprise Venue Connector Identity ─────────────────────────
+//
+// Two-table enrollment-then-installation design, mirroring a standard
+// OAuth-style "authorization code -> access credential" exchange:
+//   ConnectorEnrollment — an admin-issued, short-lived, single-use bootstrap
+//     code. Never a durable identity. Its hash is stored, never the
+//     plaintext code (same convention as Staff.passwordHash).
+//   ConnectorInstallation — the durable connector identity created when an
+//     enrollment code is successfully redeemed. Its secret is stored
+//     hashed (Argon2id, matching Staff.passwordHash) and the plaintext
+//     secret is returned to the caller exactly once, at redemption time,
+//     never persisted or re-returned afterward.
+//
+// This models CONNECTOR IDENTITY AND TRUST ONLY. It does not implement an
+// outbound session/command protocol, a durable local queue, or command
+// dispatch — those remain explicitly out of this story's scope (see the
+// story file's "Deferred to a follow-on story" section).
+
+model ConnectorEnrollment {
+  id               String    @id @default(uuid())
+  organizationId   String
+  venueId          String
+  // Argon2id hash of the plaintext bootstrap code. The plaintext is shown
+  // to the administrator exactly once at creation time and is never
+  // persisted anywhere, including logs or audit payloads.
+  codeHash         String
+  createdByStaffId String
+  expiresAt        DateTime
+  // Set atomically (in the same transaction as ConnectorInstallation
+  // creation) the moment this code is successfully redeemed. A non-null
+  // usedAt makes the code permanently unusable — this is the single-use
+  // enforcement mechanism, checked via a guarded update, not an
+  // application-level read-then-write.
+  usedAt           DateTime?
+  createdAt        DateTime  @default(now())
+
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  venue        Venue                  @relation(fields: [venueId], references: [id])
+  createdBy    Staff                  @relation("ConnectorEnrollmentCreatedBy", fields: [createdByStaffId], references: [id])
+  installation ConnectorInstallation?
+
+  @@index([organizationId, venueId])
+  @@index([expiresAt])
+}
+
+model ConnectorInstallation {
+  id                       String                      @id @default(uuid())
+  organizationId           String
+  venueId                  String
+  enrollmentId             String                      @unique
+  // Argon2id hash of the durable connector secret. The plaintext is
+  // returned exactly once, in the enrollment-redemption response, and is
+  // never persisted, logged, or returned again — including to admin
+  // read/list endpoints, which expose only metadata (id, status,
+  // lastSeenAt, reportedVersion, etc.), never secretHash or any derivative
+  // usable to reconstruct or brute-force the secret offline any faster
+  // than attacking the hash itself would already allow.
+  secretHash               String
+  status                   ConnectorInstallationStatus @default(active)
+  // Self-reported by the connector on successful authentication — never
+  // trusted as evidence of Idealpos, EFTPOS, KDS, or printer connectivity.
+  // Purely "this installation is alive and told us this about itself."
+  reportedVersion          String?
+  reportedCapabilities     Json?
+  lastSeenAt               DateTime?
+  revokedAt                DateTime?
+  revokedByStaffId         String?
+  // Set when this installation is superseded by a newer one via rotation —
+  // preserves lineage (mirrors PrinterJob.reprintOfId's established
+  // pattern) instead of silently losing the replacement relationship.
+  replacedByInstallationId String?                     @unique
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+
+  organization    Organization            @relation(fields: [organizationId], references: [id])
+  venue           Venue                   @relation(fields: [venueId], references: [id])
+  enrollment      ConnectorEnrollment     @relation(fields: [enrollmentId], references: [id])
+  revokedBy       Staff?                  @relation("ConnectorInstallationRevokedBy", fields: [revokedByStaffId], references: [id])
+  replacedBy      ConnectorInstallation?  @relation("ConnectorReplacement", fields: [replacedByInstallationId], references: [id])
+  replacementOf   ConnectorInstallation[] @relation("ConnectorReplacement")
+  claimedCommands ConnectorCommand[]
+
+  // NOTE: the DB-enforced "at most one active installation per venue"
+  // invariant cannot be expressed as a normal Prisma @@unique (it must be
+  // a PARTIAL unique index, WHERE status = 'active') — added via raw SQL
+  // in this model's migration, not expressible in this schema file. See
+  // the migration.sql for the authoritative constraint.
+  @@index([organizationId, venueId, status])
+}
+
+// ─── Story 15-1: Order Tablet device identity & staff elevation (DL-081) ────
+//
+// A deliberately separate domain from ConnectorEnrollment/ConnectorInstallation
+// above — same proven security properties (Argon2id-hashed single-use
+// enrollment code, Argon2id-hashed durable device secret, explicit
+// revocation), adapted rather than shared, because an Order Tablet and a
+// Venue Connector are different trust boundaries with different lifecycles
+// (many tablets per venue is normal; a tablet is customer-facing, a
+// connector never is). Unlike ConnectorInstallation, there is no
+// "at most one active per venue" constraint here — multiple concurrently
+// enrolled tablets per venue is the expected case.
+model TabletEnrollment {
+  id               String    @id @default(uuid())
+  organizationId   String
+  venueId          String
+  // Argon2id hash of the plaintext one-time enrollment code. The plaintext
+  // is shown to the administrator exactly once at creation time and is
+  // never persisted anywhere, including logs or audit payloads.
+  codeHash         String
+  // Optional human-friendly label chosen at code-creation time (e.g.
+  // "Patio tablet 3") — carried onto the resulting TabletDevice so an
+  // enrolled device doesn't need a separate naming step.
+  label            String?
+  createdByStaffId String
+  expiresAt        DateTime
+  // Set atomically (in the same transaction as TabletDevice creation) the
+  // moment this code is successfully redeemed — the single-use enforcement
+  // mechanism, checked via a guarded update, not a read-then-write race.
+  usedAt           DateTime?
+  createdAt        DateTime  @default(now())
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  venue        Venue         @relation(fields: [venueId], references: [id])
+  createdBy    Staff         @relation("TabletEnrollmentCreatedBy", fields: [createdByStaffId], references: [id])
+  device       TabletDevice?
+
+  @@index([organizationId, venueId])
+  @@index([expiresAt])
+}
+
+model TabletDevice {
+  id               String             @id @default(uuid())
+  organizationId   String
+  venueId          String
+  enrollmentId     String             @unique
+  label            String
+  // Argon2id hash of the durable device secret. The plaintext is returned
+  // exactly once, in the enrollment-redemption response, and is never
+  // persisted, logged, or returned again — including to admin read/list
+  // endpoints, which expose only metadata (id, label, status, lastSeenAt),
+  // never secretHash or any derivative.
+  secretHash       String
+  status           TabletDeviceStatus @default(active)
+  lastSeenAt       DateTime?
+  revokedAt        DateTime?
+  revokedByStaffId String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id])
+  venue        Venue            @relation(fields: [venueId], references: [id])
+  enrollment   TabletEnrollment @relation(fields: [enrollmentId], references: [id])
+  revokedBy    Staff?           @relation("TabletDeviceRevokedBy", fields: [revokedByStaffId], references: [id])
+
+  @@index([organizationId, venueId, status])
+}
+
+enum TabletDeviceStatus {
+  active
+  revoked
+}
+
+// ─── Story 2-10: Connector Command & Acceptance Protocol ────────────────────
+//
+// The durable, transport-agnostic command envelope + state machine that an
+// authenticated Story 2-9 connector identity claims work against. This
+// proves ONLY that an authenticated, venue-bound connector can durably
+// accept responsibility for a command and truthfully report a terminal
+// result — never that Idealpos, EFTPOS, KDS or a printer were contacted or
+// succeeded. See connector-command.service.ts's class doc comment for the
+// same boundary enforced in code.
+model ConnectorCommand {
+  id             String @id @default(uuid())
+  organizationId String
+  venueId        String
+
+  // Versioned command contract. Exactly one commandType is implemented by
+  // this story: 'connector.self_test.v1' — a synthetic, side-effect-free
+  // echo used only to prove the protocol. A future story adds real command
+  // types (e.g. an Idealpos-order-submit type) without changing this
+  // envelope or its state machine.
+  commandType   String
+  schemaVersion Int    @default(1)
+
+  // Points at the upstream business record that caused this command to
+  // exist. Nullable because this story's own tracer command has no real
+  // upstream business aggregate — it is admin-triggered, not
+  // order/POS-driven, by design (see the story file's Explicit
+  // Exclusions). A future real command type must set both fields (e.g.
+  // sourceAggregateType: 'Order', sourceRecordId: <orderId>).
+  sourceAggregateType String?
+  sourceRecordId      String?
+
+  // Caller-supplied, unique per (organizationId, venueId) — prevents a
+  // retried creation call from creating two independent commands for the
+  // same logical unit of work.
+  idempotencyKey String
+
+  correlationId String?
+  causationId   String?
+
+  // If set, only an installation whose self-reported reportedCapabilities
+  // (Story 2-9 heartbeat) contains this key may claim the command.
+  requiredCapability String?
+  // Ceiling enforced in the service layer at creation time (see
+  // MAX_PAYLOAD_BYTES) — never secrets, card data, or unnecessary customer
+  // information (see the story file's Security Invariants).
+  payload            Json
+
+  status ConnectorCommandStatus @default(pending)
+
+  createdByStaffId String?
+  createdAt        DateTime @default(now())
+  // A command not yet `accepted` by this time is never offered again.
+  expiresAt        DateTime
+
+  // ── Claim/lease bookkeeping — a lease on THIS row, not an internal-queue
+  // dispatch marker (contrast with POSSyncRecord's dispatch* columns,
+  // story 9-3, which mark handoff to an internal BullMQ queue, not a
+  // connector claim) ──
+  claimedByInstallationId String?
+  claimedAt               DateTime?
+  leaseExpiresAt          DateTime?
+  claimAttemptCount       Int       @default(0)
+  maxClaimAttempts        Int       @default(5)
+
+  // ── Acceptance (CONNECTOR_ACCEPTED) ──
+  acceptedAt             DateTime?
+  // A command still `accepted` past this deadline with no terminal report
+  // becomes `unknown` (reconciliation-required) via the sweep — never
+  // auto-retried, since retrying an already-accepted command could
+  // duplicate whatever a future real command type's side effect is.
+  terminalReportDeadline DateTime?
+
+  // ── Terminal report (connector-reported, truthful) ──
+  resultType           String?
+  resultPayload        Json?
+  failureReason        String?
+  reportedAt           DateTime?
+  // The idempotency key the connector supplied on its terminal report
+  // call. A byte-identical repeat (same key) is recognized as the same
+  // report; a conflicting outcome/resultType for an already-terminal
+  // command is rejected and audited, never silently overwritten.
+  reportIdempotencyKey String?
+
+  cancelledAt        DateTime?
+  cancelledByStaffId String?
+
+  updatedAt DateTime @updatedAt
+
+  organization          Organization           @relation(fields: [organizationId], references: [id])
+  venue                 Venue                  @relation(fields: [venueId], references: [id])
+  claimedByInstallation ConnectorInstallation? @relation(fields: [claimedByInstallationId], references: [id])
+  createdByStaff        Staff?                 @relation("ConnectorCommandCreatedBy", fields: [createdByStaffId], references: [id])
+  cancelledByStaff      Staff?                 @relation("ConnectorCommandCancelledBy", fields: [cancelledByStaffId], references: [id])
+  // E8-S1 (expanded): back-relation for PrinterJob.connectorCommandId. At
+  // most one PrinterJob points at a given command (enforced by the @unique
+  // on PrinterJob.connectorCommandId) — full attempt history survives even
+  // after a job's live pointer moves to a newer command, via
+  // sourceAggregateType/sourceRecordId (queryable independently of this
+  // back-relation).
+  printerJob            PrinterJob?
+
+  @@unique([organizationId, venueId, idempotencyKey])
+  @@index([venueId, status, createdAt])
+  @@index([status, expiresAt])
+}

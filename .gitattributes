@@ -1,0 +1,14 @@
+# Force LF line endings for the files the local-dev workflow reads/executes
+# on checkout, regardless of a Windows clone's core.autocrlf setting. Without
+# this, Git for Windows' default autocrlf=true rewrites these to CRLF, which
+# is unnecessary risk for anything env-parsed or run inside Linux containers.
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.sh text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.env.example text eol=lf
+Dockerfile text eol=lf

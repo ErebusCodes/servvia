@@ -1,0 +1,6 @@
+# Compatibility entry point only. The repository-root Compose file is the
+# single service definition; keeping this include avoids breaking old local
+# commands without maintaining a second copy that can drift or bind different
+# ports.
+include:
+  - ../docker-compose.yml

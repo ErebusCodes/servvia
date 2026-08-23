@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NOT a real Idealpos implementation, and NEVER a source of
+    REAL_WINDOWS_CONNECTOR or REAL_IDEALPOS_UI_DISCOVERY evidence. This
+    project exists solely so VerduraIdealposTracer.Tests and
+    VerduraIdealposTracer.DryRunCli can share one clearly-labelled,
+    scriptable, in-memory fake IIdealposUiAutomationClient — see
+    FakeIdealposUiAutomationClient.cs's own doc comment.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>VerduraIdealposTracer.Fixtures</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VerduraIdealposTracer.Core\VerduraIdealposTracer.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,28 @@
+# Windows UI Automation hardening — requirements, not yet implemented
+
+**Status: BLOCKED / NOT YET VERIFIED.** This document specifies two required hardening changes to `VerduraIdealposTracer.Windows`/`VerduraIdealposTracer.Cli` that were identified during the 2026-08-23/24 Order Tablet production-readiness reconciliation, but deliberately **not implemented** this session — both projects target `net8.0-windows` and require the Windows Desktop SDK, which is unavailable on this (macOS) development machine (confirmed: `dotnet build` fails on `System.Windows.Automation`/`AutomationElement` references — see the repository's own README table). Writing code here that has never been compiled, on the strength of "it looks correct against the documented Win32/UIA APIs," would violate this reconciliation's own evidence-first standard: no claim of correctness may be made for code that has never been built. Implement these once a Windows CI runner or a real Windows machine is available to compile and test them (see the CI plan for the former).
+
+## Requirement 1 — session-lock / non-interactive-desktop detection
+
+**Problem:** `WindowsUiAutomationClient.cs` (`VerduraIdealposTracer.Windows`) has a documented gap: session-lock detection is `throw new NotImplementedException(...)`. The class's own doc comment already states it is "UNVERIFIED — this repository was authored with no Windows machine or Idealpos installation available." Driving UI Automation against a locked, disconnected, or otherwise non-interactive desktop session risks silently failing, hanging, or (worse) misinterpreting a locked screen's absence of the expected window as some other failure mode this handler doesn't yet distinguish.
+
+**Acceptance criteria for the real implementation:**
+1. Before any Automation call that assumes an interactive desktop, the client must check the current session's connect state.
+2. The standard, documented mechanism is `WTSQuerySessionInformationW` (`WTS_CURRENT_SESSION`, `WTSConnectState`) from `wtsapi32.dll`, checking for `WTSActive` — this is the correct, minimal-privilege API for this purpose (no dependency on WinForms/`SystemEvents`, which would pull in an unnecessary UI framework reference for a console/service process).
+3. On any state other than `WTSActive` (locked, disconnected, etc.), the client must return a typed "session unavailable" result and **must not** attempt any further Automation call for that operation — fail closed, never proceed on an assumption.
+4. This check must be a real, callable method (e.g. `IsSessionInteractive()` or similar) with its own unit test once compilable on a Windows CI runner — not an inline check duplicated at every call site.
+5. Do not implement this against `System.Windows.Automation`/`AutomationElement` speculatively without a Windows build to verify it compiles and behaves as documented — see this document's own preamble.
+
+## Requirement 2 — `WindowsAutomationSettings` must never silently accept placeholder identifiers
+
+**Problem:** `WindowsAutomationSettings.Placeholder` (and the equivalent construction in `VerduraIdealposTracer.Cli/Program.cs:49`, which does not even use `.Placeholder` but builds an equally-unpopulated instance directly) currently allows `MainWindowStatusControlAutomationId`/`ModalDialogWindowClassNamePattern` to remain `null` with no startup-time refusal. Per this class's own doc comment, these values are placeholders "pending live discovery" and "must be populated from a real discovery session before `WindowsUiAutomationClient` is used against a real installation" — but nothing in the code today actually enforces that; it is only a comment.
+
+**Acceptance criteria for the real implementation:**
+1. Wherever `WindowsAutomationSettings` is actually used to drive real (non-fixture) automation — i.e., in `VerduraIdealposTracer.Cli`'s real operator entry point, not the fixture/dry-run paths — construction (or first use) must throw a clear, actionable error if either identifier remains unset, mirroring the discipline `IdealposBridgeSettings`'s constructor already applies in `Core` (constructor-time validation, not a silent default).
+2. The error message must name exactly which identifier is missing and point to `docs/operator-runbook.md`'s evidence-capture step, so an operator hitting this in the field knows precisely what to do next.
+3. This guard must **not** fire for the fixture/dry-run/discovery-only code paths (`VerduraIdealposTracer.Fixtures`, `VerduraIdealposTracer.DryRunCli`), which intentionally use the placeholder values against a fake client and must keep working unchanged — see the existing `TRACER_RUN_MODE=discovery` default's own "byte-for-byte unchanged" guarantee.
+4. Add a unit test once compilable on a Windows CI runner proving: (a) the real entry point refuses to start with unset identifiers, (b) the fixture/dry-run paths are unaffected.
+
+## Why this is documented, not implemented, this session
+
+Per this reconciliation's explicit working rules: code that cannot be compiled or tested in the current session must not be written and presented as if verified, and a network/native-API surface must not be guessed from documentation alone. Both requirements above are real, evidence-backed gaps (found by direct source read, not speculation) — but implementing them blind, with no Windows build to confirm they even compile, would trade a *documented* gap for an *undocumented, unverified* one. This file is the artifact that closes that gap safely: the next session with Windows CI or machine access has an exact, reviewed spec to implement against, rather than starting from the raw source comments again.

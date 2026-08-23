@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VerduraIdealposTracer.Core/VerduraIdealposTracer.Core.csproj" />
+    <Project Path="src/VerduraIdealposTracer.DryRunCli/VerduraIdealposTracer.DryRunCli.csproj" />
+    <Project Path="src/VerduraIdealposTracer.Fixtures/VerduraIdealposTracer.Fixtures.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VerduraIdealposTracer.Tests/VerduraIdealposTracer.Tests.csproj" />
+  </Folder>
+</Solution>

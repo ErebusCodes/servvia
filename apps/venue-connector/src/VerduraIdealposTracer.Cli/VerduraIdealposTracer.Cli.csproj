@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Story 9-2: the real, operator-facing entry point — wires the real
+    Windows UI Automation client (VerduraIdealposTracer.Windows) to the
+    Story 2-9/2-10 connector command protocol (VerduraIdealposTracer.Core).
+    Windows-only for the same reason as VerduraIdealposTracer.Windows (see
+    that project's .csproj doc comment) and NOT part of this repository's
+    default cross-platform build (apps/venue-connector/VerduraIdealposTracer.
+    slnx intentionally excludes this project and VerduraIdealposTracer.
+    Windows — see docs/operator-runbook.md for how to build and run this
+    on the real target Windows machine).
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>VerduraIdealposTracer.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\VerduraIdealposTracer.Core\VerduraIdealposTracer.Core.csproj" />
+    <ProjectReference Include="..\VerduraIdealposTracer.Windows\VerduraIdealposTracer.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,129 @@
+# Verdura Sprint Status
+# Last updated: 2026-08-15
+# Normative contract: docs/target-operating-model.md
+# Historical done statuses below mean component/story completion only. They do
+# not constitute production, POS, payment, KDS or KOT readiness.
+#
+# STATUS DEFINITIONS:
+#   backlog        — story exists in epics.md but no story file created yet
+#   ready-for-dev  — story file created, awaiting dev-story execution
+#   in-progress    — dev-story is actively running
+#   done           — dev-story + code-review complete
+#   skipped        — intentionally deferred
+#   blocked        — cannot proceed without discovery, authority or dependency
+
+last_updated: "2026-08-16"
+implementation_readiness_gate: FAILED
+production_readiness: NOT_READY
+operating_model: "docs/target-operating-model.md"
+
+enterprise_delivery_gates:
+  vendor-discovery: blocked # DL-064 — Await Idealpos/Oolio/reseller confirmation and venue hardware audit
+  idealpos-live-windows-discovery: blocked # DL-065/066/068 — docs/discovery/idealpos-live-discovery-checklist.md expanded 2026-08-16 (session 2, §J added) but still not started (no item has live-observation or vendor-response evidence); gates DL-064, story 9-2's remaining scope, and the KDS/KOT decision. This is now the SOLE bottleneck on the Idealpos delivery sequence — see idealpos.md §21.
+  idealpos-uibridge-tracer: blocked # DL-068/DL-071 — story 9-2 rescoped 2026-08-16 (session 2) to a real-environment discovery-only tracer (no demo-clone assumption); its discovery-phase implementation (windows-connector/) is built and tested for every part achievable without live Windows/Idealpos access — see the story file. Blocked ONLY on REAL_WINDOWS_CONNECTOR + REAL_IDEALPOS_UI_DISCOVERY evidence (idealpos-live-windows-discovery below), unavailable this session (no Windows machine on hand). Connector-command-protocol dependency fully satisfied by stories 2-9/2-10 (both done).
+  idealpos-kot-suppression-decision: blocked # DL-067 — docs/integrations/idealpos.md §18; discovery item F
+  order-payment-idempotency-and-truthful-provider-state: done # Story 6-1 done 2026-08-15 (order idempotency/payment linkage); Story 8-1 done 2026-08-15 (truthful PrinterJob states); Story 9-1 done 2026-08-15 (truthful POS-sync states, IDEAL-* fabrication removed) — gate closed. Note: this closes the *truthfulness* portion of Idealpos integration only; a real Idealpos adapter remains BLOCKED ON DL-064 (E9-S3..S7)
+  canonical-order-transactional-outbox: backlog # write half done (story 6-1/9-1: Order+OrderItem+POSSyncRecord+PrinterJob in one transaction); dispatch half: pos-sync done via story 9-3 (DL-069, 2026-08-16), print-jobs dispatch still blocked pending connector — gate stays backlog overall since print-jobs dispatch (the other half of the outbox) remains unimplemented
+  venue-connector-identity-and-durable-queue: in-progress # Story 2-9 (identity/enrolment/auth/revocation/rotation, done 2026-08-16) AND story 2-10 (durable command/acceptance protocol + a real proof harness for persist-before-ack, done 2026-08-16) are both real-Postgres verified and independently reviewed. Gate stays in-progress, not done: the connector-SIDE encrypted durable queue (a genuine Windows-connector-process concern — story 2-10's harness proves the protocol, not a production connector) and real command TYPES beyond the synthetic self-test remain unbuilt.
+  idealpos-adapter-and-mapping-validation: blocked # DL-064
+  standard-idealpos-eftpos-journey: blocked # DL-064
+  preparation-station-kds-kot-routing: blocked
+  online-payment-prepaid-tender-journey: backlog
+  reconciliation-and-exception-casework: backlog
+  enterprise-security-observability-and-dr: backlog
+  real-venue-uat: blocked
+  order-tablet-production-journey: backlog # E15 (added 2026-08-16) — Order Tablet is real but partially-functional (fake payment confirmation, local-only print/notes, hardcoded promo/modifiers, fabricated on-screen service-charge line, inconsistent tablet-vs-admin auth); explicitly in scope for 11 Oct, not deferred. Converges on the same connector/Idealpos/EFTPOS/KDS-KOT critical path as venue-connector-identity-and-durable-queue and idealpos-uibridge-tracer above — see docs/epics.md E15.
+
+development_status:
+  # ── Epic 1: Foundation ───────────────────────────────────────────────────────
+  epic-1: in-progress
+
+  1-1-scaffold-verdura-api: done  # NestJS 11.x, Joi schema (MONGO_URI removed, Supabase vars added), commit 12e5680
+  1-2-prisma-schema: done  # 18 models, 9 enums, JSONB cols, UUID PKs; applied to Supabase via MCP, commit 12e5680
+  1-3-prisma-jsonb-fields: done  # JSONB on MenuItem/OrderItem/AuditLog/POSSyncRecord/Venue; merged into 1-2, commit 12e5680
+  1-4-bullmq-health-check: done  # PrismaService + QueueModule + GET /health; commits 1914e91+21ebbcd
+  1-5-github-actions-ci: backlog
+  1-6-scaffold-verdura-admin: done  # Absorbed by Story 2-6; admin-frontend/ workspace scaffolded
+  1-7-scaffold-verdura-kiosk: done  # React 18 + Vite + TS + Tailwind + Zustand; port 5174; typecheck+lint+build green 2026-06-20
+  1-8-scaffold-verdura-printer-service: backlog
+  1-9-scaffold-verdura-pos-agent: backlog
+  1-10-docker-compose-local: backlog
+  1-11-data-migration-script: backlog
+
+  # ── Epic 2: Authentication ───────────────────────────────────────────────────
+  epic-2: in-progress
+
+  2-1-staff-entity-password-hashing: done  # StaffService (Argon2id), StaffModule, seed script; commit 24db171
+  2-2-jwt-refresh-token: done  # AuthService (JWT issuance), JwtStrategy (HS256, shape guard), JwtAuthGuard; commits a1dbc62+c36cc4b
+  2-3-auth-endpoints: done
+  2-4-rbac-guard: done
+  2-5-rate-limiting: done
+  2-6-admin-login-page: done  # Code review patches applied; commit 112e482
+  2-7-cdn-edge-middleware: done  # Web-standard edge middleware, robust hasCookie parsing, typecheck and lint clean
+  2-8-audit-log-auth-events: done  # Log login/logout/failed_login/password_changes events to DB; 100% test & lint clean
+  2-9-internal-service-auth: done  # Phase 1 (identity tracer) done 2026-08-16: ConnectorEnrollment/ConnectorInstallation, Argon2id-hashed durable+bootstrap credentials, DB-enforced single-active-per-venue, revocation/rotation, tenant isolation, minimal self-report heartbeat. 26 unit + 13 real-Postgres integration tests (each re-executed and confirmed this session), 390/390 existing unit tests pass, 107/107 integration tests pass, zero regressions. Migration independently re-verified against both the populated dev DB and a from-zero disposable container. Independent review complete: 1 P1 (non-fatal audit-log handling) + 1 P2 (new-file lint) found and fixed, no unresolved P0/P1. Command/session protocol, durable local queue, full heartbeat reachability telemetry, and the printer/pos-sync ServiceTokenGuard migration remain explicitly out of Phase 1 scope (see deferred-work.md) — Phase 1 alone unblocks admin-facing enrolment/revocation UI and connector-identity-dependent work, but NOT Idealpos submission, which needed the command protocol — see 2-10 below.
+  2-10-connector-command-protocol: done  # Done 2026-08-16, same session as 2-9. Durable ConnectorCommand envelope + 8-state machine (pending/claimed/accepted/succeeded/failed/expired/unknown/cancelled), authenticated-HTTPS-polling transport (DL-070), claim/CONNECTOR_ACCEPTED/truthful-terminal-report protocol, reconciliation sweep, and a real dependency-free connector proof harness (backend/scripts/connector-command-harness.ts) demonstrating persist-before-ack via real SIGKILLs of a real separate OS process + real resume. Implements exactly one synthetic command type (connector.self_test.v1) — no Idealpos/EFTPOS/printer contact of any kind. Evidence: 20 new unit tests (410/410 total), 22 real-Postgres integration tests + 4 DURABLE_CONNECTOR_HARNESS tests (133/133 total across the full 9-suite integration run, 3 consecutive clean runs). Independent review: 1 P1 found+fixed (audit-log event construction outside its own try/catch — same bug class as 2-9's own fix, reintroduced here, now fixed at all 6 call sites via a lazy-factory signature), plus a real fix to the shared integration-suite login rate-limit bucket (this story's test volume alone now exceeds the 10/900s budget in a single full-suite run — fixed by broadening rate-limit clearing to self-heal regardless of file order). No unresolved P0/P1. REAL_WINDOWS_CONNECTOR/REAL_IDEALPOS/REAL_EFTPOS/REAL_KOT_PRINTER not attempted — explicit boundary. Unblocks story 9-2's and Epic 15's E15-S5/S6/S7's connector-command-protocol dependency only — does NOT unblock Idealpos submission itself, which still needs DL-064/live discovery plus a real command type built on this protocol.
+
+  # ── Epic 3: Venues & Tables ─────────────────────────────────────────────────
+  epic-3: in-progress
+
+  3-1-venue-crud-api: done # CRUD API, multi-tenant scoped, 100% tests & lint clean
+  3-2-table-crud-api: done # CRUD API, multi-tenant scoped, 100% tests & lint clean
+  3-3-admin-venue-settings-page: done # React Venue Settings form, TanStack Query integration, 100% build & lint clean
+  3-4-admin-table-management-page: done # React Table Management list/grid, CRUD operations modal, 100% build & lint clean
+  3-5-kiosk-table-selection: done  # Public kiosk tables API + table selection grid; review patches applied 2026-06-20
+
+  # ── Epics 4–13 ──────────────────────────────────────────────────────────────
+  epic-4: in-progress
+
+  4-1-category-crud-api: done  # Category CRUD API, RBAC, P2025 handling; 140 tests pass 2026-06-20
+  4-2-menu-item-crud-api: done  # Review patches applied: IDOR fix (updateMany/deleteMany), categoryId cross-tenant validation, ParseUUIDPipe, MaxLength/Max/IsNotEmpty validators, HTTP 204 on DELETE 2026-06-20
+  4-3-admin-category-management-page: done  # Category list + CRUD + Move Up/Down reorder; typecheck + lint clean; code review complete 2026-06-21; 9 patches + 4 defers logged
+  epic-5: in-progress
+
+  5-1-reservation-crud-api: done  # Code review complete; F-01 patch applied (status FSM removed — E5-S2 scope); 20/20 tests pass; 2 items deferred 2026-06-21
+  5-2-reservation-status-fsm-api: done  # Code review PASS; 27/27 tests; FSM table verified; lint clean on reservations/**; 2026-06-21
+  5-3-capacity-enforcement: done  # Implementation pre-existed E5-S1; 3 edge-case tests added; 30/30 pass 2026-06-21
+  5-4-email-confirmation-cancellation: review  # Implementation complete; 208/208 tests pass; lint clean; 2026-06-22
+  5-5-admin-reservations-list: done  # Interactive grid, query filters, search, quick status transitions, full CRUD; 100% build & test clean; 2026-06-22
+  epic-6: backlog
+  6-1-order-idempotency-and-payment-linkage: done  # Real-Postgres verification session 2026-08-15: 36/36 integration tests + AC7 migration-backfill + clean-DB-from-zero migration all executed and passing; independent review (round 4) found and fixed one in-scope test-cleanup defect, no unresolved P0/P1 remains. 289/289 unit tests pass. See story Dev Agent Record rounds 3-4 and VERIFY.md.
+  epic-7: backlog
+  epic-8: backlog
+  8-1-printer-truthful-states: done  # Implemented + 3 rounds of independent review complete 2026-08-15 (real-Postgres evidence: 55/55 integration, 327/327 unit); no unresolved P0/P1 — see story Dev Agent Record
+  epic-9: backlog
+  9-1-pos-sync-truthful-states: done  # 2026-08-15: IDEAL-* fabrication removed; not_applicable/unsupported state machine (single-transaction, CAS-guarded); historical-row correction (migration + script, proven in sync); admin visibility API; 351/351 unit + 75/75 real-Postgres integration; independent review loop complete (1 P0 + 1 P1 found and fixed, no unresolved P0/P1). Real adapter work remains separately BLOCKED ON: DL-064 (E9-S3..S7) — unaffected by this story.
+  9-2-idealpos-uibridge-tracer: blocked  # 2026-08-16 (session 2): story rescoped at its source from a demo-clone order-entry tracer to a real-environment discovery-only tracer (no live Windows/Idealpos machine was available this session — the mission's own documented contingency applies). Implemented and tested: windows-connector/ (.NET 8 solution) — cross-platform state machine, Story 2-10 protocol client, durable fsync'd local persistence; 28/28 tests real and passing (22 state-machine unit tests covering every required failure case achievable without live access, using a clearly-labelled fake automation client; 2 connector-protocol wire-contract tests added during independent review; 4 real-process crash/replay tests spawning the tracer as a genuinely separate OS process with real Environment.FailFast kills at each persist-before-ack boundary — same rigor as story 2-10's own harness). Additional safety-compliant static evidence recorded (idealpos.md §12.4: version file, 3rd service executable, licensing-service SOAP namespace, ResDiary and "WebIt" vendor-integration surfaces). Integration route selected from evidence (DL-071: API-less UI Automation, discovery phase only — vendor-supported routes remain capability-evidence-only, not selectable). The real Windows-only implementation (VerduraIdealposTracer.Windows/.Cli) was written but NOT built or run — no Windows Desktop SDK available; exact reproducible build error recorded. Independent review complete: 1 P2 fixed (CLI unhandled-exception handling), 1 suspected P1 investigated and empirically disproven (not a real bug — recorded for traceability), no unresolved P0/P1. Blocked on REAL_WINDOWS_CONNECTOR + REAL_IDEALPOS_UI_DISCOVERY evidence — see windows-connector/docs/operator-runbook.md for the exact next step. Does not affect 9-1/9-3's done status.
+  9-3-pos-sync-outbox-dispatch: done  # 2026-08-16: implemented and independently reviewed. New PosSyncDispatcherService (backend/src/pos-sync/) makes the already-truthful, already-tested PosSyncProcessor (story 9-1, confirmed unchanged) actually reachable — cloud-internal only, zero network I/O, no connector dependency (DL-069). Additive migration (7 columns + 1 index on POSSyncRecord). One P0 found+fixed in independent review (BullMQ pos-sync queue lacked defaultJobOptions, breaking the AC17 safety net's failure-recovery path — fixed, proven via a dedicated real-Redis test). Evidence: 364/364 unit, 94/94 real-Postgres integration (19/19 own suite incl. a REAL_REDIS_OR_QUEUE_WORKER-tier end-to-end test), 6+ consecutive clean repeated runs, zero regressions, orders.service.ts and pos-sync.processor.ts both confirmed logic-unchanged. Does NOT wire print-jobs — that remains blocked pending a connector (story 2-9).
+  epic-10: backlog
+  epic-11: backlog
+  epic-12: backlog
+  epic-13: backlog
+  epic-14: backlog
+
+  # ── Epic 15: Order Tablet — Idealpos/EFTPOS/KOT Production Journey ──────────
+  # Added 2026-08-16 during story 2-9's scope-corrected handoff. The Order
+  # Tablet (tablet-frontend/ + admin-frontend/src/pages/order-tablet/) is a
+  # real, substantial implementation that previously had zero epic/story
+  # coverage (see _bmad-output/audits/repository-story-audit-2026-08-16.md
+  # §7). It is explicitly IN SCOPE for the 11 October 2026 critical path per
+  # this session's directive and must not be treated as deferred backlog.
+  # None of the stories below were implemented this session — see
+  # docs/epics.md's E15 banner for the verified current-state findings that
+  # ground each story (payment buttons, print bill, promo codes, modifiers,
+  # notes, GST/service-charge totals, and auth-model inconsistency were all
+  # independently re-confirmed against current source this session, not
+  # assumed from the prior audit).
+  epic-15: backlog
+  15-1-tablet-venue-and-auth-decision: done          # Stale line corrected 2026-08-23 (DL-101): the decision was ratified and implemented 2026-08-18 (docs/decisions-log.md DL-081 — device identity + restricted mode + staff elevation + manager step-up), including a same-day real-browser validation pass that found and fixed 3 defects. This YAML line had not been updated since 2026-08-16 and contradicted both the code (TabletAuthService/TabletDeviceGate carry "Story 15-1 / DL-081" doc comments) and decisions-log.md. Device auth logic itself remains PROVEN only for the environment it was actually browser-tested in (this Mac's local stack); a separate Windows validation pass is NOT YET VERIFIED — see DL-101.
+  15-2-tablet-real-table-order-lifecycle: backlog
+  15-3-tablet-menu-modifier-integrity: backlog
+  15-4-tablet-idempotent-submission-truthful-totals: done  # 2026-08-23 reconciliation: durable idempotent Send to Kitchen, fake payment/bill-print removal landed (a4081a4/d32cc50/0855193), validated on branch order-tablet-idealpos-reconciled
+  15-5-tablet-idealpos-handoff: blocked              # STILL BLOCKED ON: DL-064 (real Table 12/Windows/IdealPOS hardware evidence) — unchanged by this reconciliation, which is software-only and cannot close a hardware-evidence gate. 2026-08-23 reconciliation: real MenuItem.posProductCode/Table.posTableCode mapping, fail-closed payload mapper, connector command execution, Windows CLI routing, DL-091/092/093 races/retry/unknown-recovery all landed and validated (disposable Postgres + real connector protocol, no live IdealPOS) on branch order-tablet-idealpos-reconciled (rescued from detached worktree, see DL-094) — the full software path is now PROVEN, but native IdealPOS consumption/KOT generation/physical print remain NOT YET VERIFIED per this repo's own evidence-tier rule (connector/Bridge acceptance is not proof of native consumption). A COMPETING, richer reconciliation/evidence-tier/discrepancy model exists uncommitted in main's dirty tree (IdealposOrderReconciliationService) but was NOT merged — its schema has no real PLU/table mapping and its Windows handler is wired only to DryRunCli, not the production Cli. See DL-094 for the full comparison; that work remains preserved-uncommitted for future salvage, not lost. **2026-08-23 (DL-095): the Cli's Venue Connector entry point (cloud mode) is now an always-on Generic Host loop (VerduraIdealposTracer.Core.Hosting.ConnectorPollingLoop) instead of one bounded 30-second poll per manual invocation** — same claim/accept/report protocol and fail-closed semantics, unchanged; 10 new unit tests + a real-process graceful-shutdown smoke test (65/65 full suite). Still blocked on the same DL-064 hardware gate — an always-on software host is not native IdealPOS/KOT evidence. See DL-095 and dl-095-always-on-venue-connector-host.md. **2026-08-23 (DL-097): `Table.posTableCode`'s contract (IdealPOS `TableMapSetups.Caption`, never `.Code`) formalized at decisions-log level — already the implemented/tested behaviour since 76c0200, no code change required.** See DL-097 and dl-097-table-posTableCode-contract.md.
+  15-6-tablet-eftpos-cash-truthful-payment: blocked  # card path BLOCKED ON 15-5; cash-confirmation path is not blocked and can land first
+  15-7-tablet-kds-kot-routing-dedup: blocked         # BLOCKED ON: story 9-2 (itself blocked) + DL-067
+  15-8-tablet-bill-settlement-closure: backlog
+  15-9-tablet-offline-retry-recovery: backlog
+  15-10-tablet-reconciliation-audit-visibility: backlog
+  15-11-tablet-automated-test-coverage: backlog      # zero test files exist for OrderTabletPage.tsx/tablet-frontend/ today — confirmed this session
+  15-12-tablet-real-e2e-acceptance: blocked          # terminal gate for the 11 Oct journey; BLOCKED ON every other E15 story + DL-064 + real on-site access; only story permitted to produce REAL_WINDOWS_CONNECTOR/REAL_IDEALPOS evidence

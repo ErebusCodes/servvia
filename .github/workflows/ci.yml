@@ -1,0 +1,227 @@
+name: CI
+
+# Story 16-3 (E16-S3, promotes the long-backlog E1-S5/1-5-github-actions-ci):
+# lint, typecheck, unit and integration tests running unattended on every
+# PR. No .github/workflows directory existed before this — every "green
+# suite" claim in this repo's own story files up to now was self-reported
+# from a manually-run local suite, exactly the "self-reported only"
+# verification-band gap the October-11 audit named directly (see
+# docs/epics.md E16-S3, deferred-work.md).
+#
+# This workflow only reports status checks — it does not itself make them
+# required to merge. Enabling that ("Require status checks to pass before
+# merging", selecting the job names below) is a GitHub branch-protection
+# setting on the live repository and is a separate, deliberate action for
+# a repo admin to take — not something a workflow file can do on its own,
+# and not performed by whichever change introduced this file.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least-privilege by default (2026-08-19 review): none of these jobs write
+# anything back to GitHub (no PR comments, no releases, no pushed commits) —
+# only `contents: read` (to check out code) is ever needed. Declaring this
+# explicitly means the workflow does not inherit a broader default token
+# scope if the repository's own default permissions setting is ever changed
+# later. Also relevant to untrusted-PR-code safety: this workflow never
+# references `secrets.*` at all (every "credential"-shaped value below is a
+# CI-only, ephemeral, non-real placeholder — see the api-integration job's
+# own comment) — combined with GitHub's own default of issuing fork-originated
+# `pull_request` runs a read-only token regardless, there is nothing a
+# malicious PR could exfiltrate from this workflow even before this line
+# existed. Kept explicit anyway, per the same least-privilege principle.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-lint-typecheck-unit:
+    name: API — lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    # No job here should legitimately take more than a few minutes; a bound
+    # avoids an unbounded 360-minute default consuming CI minutes and
+    # delaying feedback if a step ever hangs (e.g. a test waiting on a
+    # never-satisfied network call).
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint:api
+      - run: npm run typecheck --workspace=apps/api
+      - run: npm run build --workspace=apps/api
+      - run: npm test --workspace=apps/api
+
+  api-integration:
+    name: API — real-Postgres integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: verdura
+          POSTGRES_PASSWORD: verdura_ci_only
+          POSTGRES_DB: verdura_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U verdura"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # CI-only values, scoped to an ephemeral service container that never
+      # persists past this job — not real secrets, never used outside CI.
+      # Real environments configure these via deployment-time secrets, per
+      # apps/api/.env.example's own documentation; this workflow does not
+      # change that.
+      DATABASE_URL: postgresql://verdura:verdura_ci_only@127.0.0.1:5432/verdura_dev
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: '6379'
+      JWT_ACCESS_SECRET: ci-only-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-at-least-32-characters
+      INTERNAL_SERVICE_TOKEN: ci-only-internal-service-token-32-chars-min
+      MEDIA_STORAGE_PROVIDER: local
+      SEED_OWNER_EMAIL: owner@verdura.co.nz
+      SEED_OWNER_PASSWORD: ci-only-seed-password-not-a-real-secret
+      SEED_BILLING_EMAIL: admin@verdura.co.nz
+      ADMIN_CONSOLE_PIN: '1080'
+      ADMIN_CONSOLE_EMAIL: owner@verdura.co.nz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Prisma migrate deploy (from zero, against the fresh CI database)
+        run: npm run db:migrate
+      - name: Seed
+        run: npm run db:seed
+      - name: Integration tests
+        run: npm run test:integration --workspace=apps/api
+
+  admin-console:
+    name: Admin Console (Order Tablet / KDS) — lint, typecheck, unit tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint:admin-console
+      - run: npm run typecheck --workspace=apps/admin-console
+      - run: npm test --workspace=apps/admin-console
+      # All three device-mode builds — Order Tablet and Kitchen Display are
+      # the same source built with a different VITE_APP_MODE (see
+      # apps/order-tablet/README.md's own "where the code actually lives"
+      # section), not separate apps; a change that only breaks one mode's
+      # build must not pass CI just because the default mode built cleanly.
+      - run: npm run build:admin-console
+      - run: npm run build:order-tablet
+      - run: npm run build:kitchen-display
+
+  customer-website:
+    name: Customer Website — lint, typecheck, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # No automated test suite exists for this app (no "test" script in
+      # its package.json) — not something this workflow invents; recorded
+      # honestly rather than skipped silently. See deferred-work.md.
+      - run: npm run lint:customer-website
+      - run: npm run typecheck --workspace=apps/customer-website
+      - run: npm run build:customer-website
+
+  window-display:
+    name: Window Display — lint, typecheck, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # No automated test suite exists for this app either — same honest
+      # non-claim as customer-website above.
+      - run: npm run lint:window-display
+      - run: npm run typecheck --workspace=apps/window-display
+      - run: npm run build:window-display
+
+  venue-connector:
+    name: Venue Connector (.NET) — build, unit + crash/replay tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/venue-connector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      # The solution file already scopes out the two Windows-only projects
+      # (VerduraIdealposTracer.Cli/.Windows, both net8.0-windows) — everything
+      # it references is genuinely cross-platform net8.0. Do not add those
+      # two projects to a Linux CI run; they require the Windows Desktop SDK
+      # and are not expected to build here — see the story's own File List
+      # for that documented, real, unresolved limitation.
+      - run: dotnet build VerduraIdealposTracer.slnx -c Release
+      - run: dotnet test tests/VerduraIdealposTracer.Tests/VerduraIdealposTracer.Tests.csproj -c Release --no-build
+
+  venue-connector-windows:
+    name: Venue Connector (.NET) — Windows-only projects build
+    # First-ever compile check for VerduraIdealposTracer.Windows/.Cli
+    # (net8.0-windows) — every session up to and including this
+    # reconciliation authored these on macOS/Linux with no Windows Desktop
+    # SDK available, so their correctness has never actually been
+    # confirmed to compile, only reviewed by reading. This job closes that
+    # gap the moment it first runs on a real windows-latest runner — until
+    # then, this job's own existence is config only, not execution proof
+    # (see this reconciliation's own evidence-tier discipline: config/
+    # local validation is not the same claim as "ran on the real runner").
+    # This is intentionally a SEPARATE job from venue-connector above, not
+    # an added step in it — a Windows-runner failure must never be
+    # conflated with (or block visibility into) the cross-platform job's
+    # own, independently meaningful signal.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/venue-connector
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build src/VerduraIdealposTracer.Windows/VerduraIdealposTracer.Windows.csproj -c Release
+      - run: dotnet build src/VerduraIdealposTracer.Cli/VerduraIdealposTracer.Cli.csproj -c Release
