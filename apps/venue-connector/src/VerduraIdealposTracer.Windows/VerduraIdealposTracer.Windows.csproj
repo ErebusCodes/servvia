@@ -22,6 +22,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWindowsForms>false</UseWindowsForms>
+    <!--
+      Real Windows build (2026-08-24), first attempt: failed with CS0234/
+      CS0246 ("System.Windows.Automation"/"AutomationElement" not found)
+      even with the bare <Reference> items below and the .NET 8 SDK
+      installed. Root cause: UIAutomationClient/UIAutomationTypes are part
+      of the Windows Desktop targeting pack (Microsoft.WindowsDesktop.App.Ref),
+      which the SDK only adds to the framework reference list once a
+      project opts into a desktop UI stack via UseWPF or UseWindowsForms —
+      neither was set (UseWindowsForms is explicitly false, matching that
+      this project uses no WinForms UI). This project doesn't render any
+      WPF UI either; UseWPF is set purely to pull in the same targeting
+      pack that ships the UI Automation client assemblies.
+    -->
+    <UseWPF>true</UseWPF>
     <RootNamespace>VerduraIdealposTracer.Windows</RootNamespace>
   </PropertyGroup>
 
