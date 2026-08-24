@@ -58,7 +58,7 @@ function seedReservationStore() {
 
 interface FetchCall { url: string; init?: RequestInit }
 
-function installFetchMock(taxConfig: unknown) {
+function installFetchMock(taxConfig: unknown, posSyncStatus: string = 'not_applicable') {
   const calls: FetchCall[] = [];
   const createdOrder = {
     id: 'order-1',
@@ -122,7 +122,7 @@ function installFetchMock(taxConfig: unknown) {
     // reached the Order Status screen (found while fixing this suite for
     // the payment-removal redesign).
     if (url.includes('/pos-sync')) {
-      return new Response(JSON.stringify({ orderId: 'order-1', status: 'not_applicable' }), { status: 200 });
+      return new Response(JSON.stringify({ orderId: 'order-1', status: posSyncStatus }), { status: 200 });
     }
     if (url.includes('/print-jobs')) {
       return new Response(JSON.stringify([]), { status: 200 });
@@ -347,6 +347,35 @@ describe('OrderTabletPage — Story 15-4 provisional billing', () => {
     expect(screen.queryByRole('button', { name: /^Pay/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Charge/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/^Payment · Table/)).not.toBeInTheDocument();
+  });
+
+  it('never claims a physical KOT was printed when no PrinterJob exists for this venue — for a venue with no real POS integration, it truthfully says no printer is configured, not "Printed"', async () => {
+    installFetchMock(NZ_SUPPORTED_TAX_CONFIG, 'not_applicable');
+    renderTablet();
+
+    await selectTableAndStartOrder();
+    await addTestItemToCart();
+    fireEvent.click(await screen.findByRole('button', { name: /Send to kitchen/i }));
+
+    await waitFor(() => expect(screen.getByText('No printer configured for this venue.')).toBeInTheDocument());
+    expect(screen.queryByText('Printed')).not.toBeInTheDocument();
+  });
+
+  it('never claims a physical KOT was printed for a venue on the real IdealPOS Bridge either — no Verdura PrinterJob exists there by design (IdealPOS owns kitchen-ticket printing), and the screen says so instead of a generic/absent-sounding message', async () => {
+    installFetchMock(NZ_SUPPORTED_TAX_CONFIG, 'synced');
+    renderTablet();
+
+    await selectTableAndStartOrder();
+    await addTestItemToCart();
+    fireEvent.click(await screen.findByRole('button', { name: /Send to kitchen/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Kitchen ticket is produced by IdealPOS once it confirms this order — see Idealpos status above.'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('No printer configured for this venue.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Printed')).not.toBeInTheDocument();
   });
 
   it('fails safely — disables charging and shows a clear message — for an unsupported venue tax configuration', async () => {

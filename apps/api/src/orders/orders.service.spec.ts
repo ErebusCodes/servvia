@@ -220,6 +220,34 @@ describe('OrdersService', () => {
       });
     });
 
+    it('a venue on the real IdealPOS Bridge (posAdapterType "api") never creates a Verdura PrinterJob, even with active printers configured — IdealPOS owns kitchen-ticket printing for this order, and creating both would print two physical tickets', async () => {
+      const apiAdapterVenue = { ...mockVenue, posAdapterType: 'api' };
+      mockPrisma.venue.findUnique.mockResolvedValue(apiAdapterVenue);
+      mockPrisma.menuItem.findFirst.mockResolvedValue(mockMenuItem);
+      mockPrisma.menuItemVenueOverride.findUnique.mockResolvedValue(null);
+      mockPrisma.printer.findMany.mockResolvedValue([
+        { id: 'printer-1', venueId, isActive: true, protocol: 'raw' },
+      ]);
+      mockNewOrderPreChecks();
+
+      const createdOrder = {
+        id: 'order-uuid',
+        venueId,
+        status: OrderStatus.confirmed,
+        subtotalCents: 2100,
+        taxCents: 274,
+        totalCents: 2100,
+        submittedAt: new Date(),
+      };
+      mockPrisma.order.create.mockResolvedValue(createdOrder);
+      mockPrisma.order.findUnique.mockResolvedValueOnce({ ...createdOrder, items: [] });
+
+      await service.create(createDto);
+
+      expect(mockPrisma.printer.findMany).not.toHaveBeenCalled();
+      expect(mockPrisma.printerJob.create).not.toHaveBeenCalled();
+    });
+
     it('applies venue overrides for price and availability', async () => {
       mockPrisma.venue.findUnique.mockResolvedValue(mockVenue);
       mockPrisma.menuItem.findFirst.mockResolvedValue(mockMenuItem);

@@ -16,6 +16,7 @@ import {
   OrderItem,
   OrderStatus,
   OrderSource,
+  POSAdapterType,
   POSSyncStatus,
   PrintJobStatus,
   Prisma,
@@ -1706,9 +1707,24 @@ export class OrdersService {
         });
       }
 
-      const printers = await tx.printer.findMany({
-        where: { venueId: venue.id, isActive: true },
-      });
+      // A venue on the real IdealPOS Bridge integration (posAdapterType
+      // 'api') already gets its kitchen ticket from IdealPOS's own,
+      // pre-existing KOT workflow once the order lands there via
+      // POSSyncRecord/IdealposOrderDispatcherService above — that is the
+      // authoritative kitchen ticket for this order. Verdura's own
+      // printer.print_kot.v1 pipeline (PrinterJob -> PrinterDispatcherService)
+      // predates that integration and remains the sole KOT source for
+      // venues with no POS owning ticket printing (posAdapterType 'none'),
+      // but creating both here would print two physical tickets for one
+      // order. Skip it specifically for 'api' venues; other adapter types
+      // have no working native KOT path today, so Verdura's own printers
+      // remain authoritative for them.
+      const printers =
+        venue.posAdapterType === POSAdapterType.api
+          ? []
+          : await tx.printer.findMany({
+              where: { venueId: venue.id, isActive: true },
+            });
 
       for (const printer of printers) {
         await tx.printerJob.create({

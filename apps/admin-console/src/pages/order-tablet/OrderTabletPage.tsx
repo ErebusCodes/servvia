@@ -2238,7 +2238,18 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                     ) : !printJobsView ? (
                       <div style={{ color: 'var(--color-text-tertiary)' }}>Checking…</div>
                     ) : printJobsView.length === 0 ? (
-                      <div style={{ color: 'var(--color-text-tertiary)' }}>No printer configured for this venue.</div>
+                      <div style={{ color: 'var(--color-text-tertiary)' }}>
+                        {posSyncView && posSyncView.status !== 'not_applicable' && posSyncView.status !== 'unsupported'
+                          ? // This venue is on a real POS integration -- Verdura
+                            // deliberately never queues its own PrinterJob here
+                            // (see orders.service.ts's persistOrder), since that
+                            // POS's own existing kitchen-ticket workflow is the
+                            // one that fires once the order reaches it (see the
+                            // Idealpos status panel above). No Verdura-native
+                            // print job existing is correct, not a gap.
+                            'Kitchen ticket is produced by IdealPOS once it confirms this order — see Idealpos status above.'
+                          : 'No printer configured for this venue.'}
+                      </div>
                     ) : (
                       printJobsView.map((job) => (
                         <div key={job.id} style={{ padding: '2px 0' }}>

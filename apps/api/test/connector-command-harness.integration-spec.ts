@@ -48,9 +48,19 @@ describe('Connector Command Harness (integration, real process + real local Post
     if (staleKeys.length > 0) await redisClient.del(...staleKeys);
   }
 
-  // npm workspaces hoist devDependencies to the repo-root node_modules —
-  // this backend package has no node_modules/.bin of its own.
-  const tsNodeBin = path.join(__dirname, '..', '..', 'node_modules', '.bin', 'ts-node');
+  // npm workspaces hoist devDependencies to the repo-root node_modules, so
+  // a relative-path guess at node_modules/.bin/ts-node from this file's own
+  // depth (apps/api/test) would silently break the moment either directory
+  // is renamed or nested differently — this previously used a path one
+  // level too shallow (apps/node_modules/.bin/ts-node, which never exists)
+  // and every test here failed with `spawn ts-node ENOENT`. require.resolve
+  // finds ts-node's real entry point via Node's own module resolution,
+  // wherever npm actually hoisted it, and spawning it with process.execPath
+  // (rather than the platform-specific .bin shim, which is a shell/.cmd
+  // wrapper on Windows, not a directly spawnable executable) works
+  // identically cross-platform.
+  const tsNodeBin = process.execPath;
+  const tsNodeCli = require.resolve('ts-node/dist/bin.js');
   const harnessScript = path.join(__dirname, '..', 'scripts', 'connector-command-harness.ts');
 
   async function createOrgVenueOwner(label: string) {
@@ -123,7 +133,7 @@ describe('Connector Command Harness (integration, real process + real local Post
     env: NodeJS.ProcessEnv,
   ): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
     return new Promise((resolve, reject) => {
-      const child = spawn(tsNodeBin, [harnessScript], {
+      const child = spawn(tsNodeBin, [tsNodeCli, harnessScript], {
         env: { ...process.env, ...env },
         cwd: path.join(__dirname, '..'),
         stdio: ['ignore', 'pipe', 'pipe'],

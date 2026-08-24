@@ -176,6 +176,55 @@ function validateVenueIdMatchesDatabase(dbVenueId) {
   );
 }
 
+// Kitchen Display (KdsAuthService) and the Order Tablet's venue-unlock stage
+// (TabletAuthService) both read KDS_VENUE_PINS keyed by the exact live venue
+// id — see both services' own class doc comments. The single most common
+// cause of "PIN 108 doesn't work" has been this key silently not matching
+// the database's actual local venue id: apps/api/.env is gitignored
+// (per-machine), so a fresh checkout/worktree, a deleted .env, or a manual
+// edit can regenerate/keep a stale or placeholder key that the running
+// backend will never find a match for — the terminal then just shows a
+// generic "Invalid PIN" with no hint why, and the "fix" becomes a one-off
+// manual .env edit that doesn't survive the next regeneration. Catching the
+// mismatch here, at startup, makes it impossible to silently drift again:
+// `npm run dev` fails closed with the exact expected key instead of leaving
+// it to be discovered later at the PIN screen.
+//
+// Deliberately dev-only (mirrors assertPinNotInsecureDefault/
+// pin-length.validator.ts's own NODE_ENV branching): this never runs
+// against a production KDS_VENUE_PINS value, and an intentionally blank
+// KDS_VENUE_PINS (KDS/Tablet PIN auth deliberately disabled) is left alone.
+function validateKdsVenuePinConfigured(dbVenueId, backendEnv) {
+  if (backendEnv.NODE_ENV === 'production') return;
+  const raw = backendEnv.KDS_VENUE_PINS;
+  if (!raw) return; // blank is a deliberate "PIN auth disabled" state, not a drift bug
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    fail(
+      `apps/api/.env KDS_VENUE_PINS is not valid JSON: ${raw}\n\n` +
+      `Expected a JSON map of venueId -> PIN, e.g.:\n  KDS_VENUE_PINS={"${dbVenueId}":"108"}`,
+    );
+    return;
+  }
+
+  const configuredPin = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed[dbVenueId] : undefined;
+  if (typeof configuredPin !== 'string' || configuredPin.length === 0) {
+    fail(
+      `KDS_VENUE_PINS in apps/api/.env has no entry for the local database's actual venue id — ` +
+      `Kitchen Display (${'http://localhost:5175/'}) and the Order Tablet's PIN stage ` +
+      `(${'http://localhost:5177/'}) will both silently reject every PIN, including "108".\n\n` +
+      `Database venue id:\n  ${dbVenueId}\n\n` +
+      `Configured KDS_VENUE_PINS:\n  ${raw}\n\n` +
+      `Fix apps/api/.env so its key exactly matches the database's venue id, e.g.:\n` +
+      `  KDS_VENUE_PINS={"${dbVenueId}":"108"}\n\n` +
+      `Compare against apps/api/.env.example, which keeps this pre-filled with the fixed local-dev venue id.`,
+    );
+  }
+}
+
 // Local development is deliberately Docker-only. Refuse remote database
 // URLs instead of silently bypassing the repository's PostgreSQL container.
 function isLocalDatabaseUrl(databaseUrl) {
@@ -476,6 +525,12 @@ async function main() {
     // earlier, source-code-based check (and why it fails instead of
     // silently rewriting .env files on a mismatch).
     validateVenueIdMatchesDatabase(counts.localVenueId);
+
+    // Same "compare against the live database, fail loud" philosophy,
+    // applied to Kitchen Display / Order Tablet PIN auth — see
+    // validateKdsVenuePinConfigured()'s own comment for the recurring bug
+    // this exists to catch before it ever reaches the browser.
+    validateKdsVenuePinConfigured(counts.localVenueId, backendEnv);
   }
 
   // Re-check immediately before spawning anything: the Docker/Postgres/

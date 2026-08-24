@@ -124,4 +124,27 @@ describe('KdsAuthService', () => {
     expect(mockAuthService.signKdsDeviceToken).toHaveBeenCalledWith(VENUE_ID, 'org-1');
     expect(result).toEqual({ accessToken: 'signed-device-token', expiresIn: '12h' });
   });
+
+  it('venue scoping: a PIN configured for a different venue does not authenticate this venue, even when the PINs happen to be identical strings', async () => {
+    const OTHER_VENUE_ID = '22222222-2222-2222-2222-222222222222';
+    mockConfigService.get.mockImplementation((key: string) =>
+      key === 'KDS_VENUE_PINS' ? JSON.stringify({ [OTHER_VENUE_ID]: '108' }) : undefined,
+    );
+    await expect(service.authenticate(VENUE_ID, '108')).rejects.toThrow(UnauthorizedException);
+    expect(mockAuthService.signKdsDeviceToken).not.toHaveBeenCalled();
+  });
+
+  it('fails closed in production when the configured PIN is still the insecure checked-in default "108", even though the venue and PIN otherwise match', async () => {
+    const previousEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      mockConfigService.get.mockImplementation((key: string) =>
+        key === 'KDS_VENUE_PINS' ? JSON.stringify({ [VENUE_ID]: '108' }) : undefined,
+      );
+      await expect(service.authenticate(VENUE_ID, '108')).rejects.toThrow();
+      expect(mockAuthService.signKdsDeviceToken).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = previousEnv;
+    }
+  });
 });

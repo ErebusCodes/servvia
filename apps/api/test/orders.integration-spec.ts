@@ -12,18 +12,35 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import * as argon2 from 'argon2';
+import type Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { REDIS_CLIENT } from '../src/redis/redis.constants';
 
 describe('Orders API (integration, real local Postgres)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let redisClient: Redis;
   let accessToken: string;
   let venueId: string;
   let organizationId: string;
   let menuItemId: string;
   let realMenuItemPriceCents: number;
   let csrfToken: string;
+
+  // The two IdealPOS-owns-KOT tests below each add one extra /api/kiosk/orders
+  // POST on top of the dozens already in this file, all sharing one Redis
+  // rate-limit bucket per (ip, method, path) for the file's whole run (see
+  // integration-rate-limit-reset.ts — cleared once per FILE, not per test).
+  // Clearing just this bucket after those two tests keeps their added load
+  // from tipping a later, unrelated test (e.g. the Story 6-1 rollback test)
+  // over the shared limit — restores the exact budget every other test in
+  // this file already assumed, rather than reaching for a bigger, riskier
+  // redesign of the shared rate-limiting test infra.
+  async function clearKioskOrdersRateLimit(): Promise<void> {
+    const keys = await redisClient.keys('rate-limit:*kiosk/orders*');
+    if (keys.length > 0) await redisClient.del(...keys);
+  }
 
   // Public POSTs (kiosk order creation) go through CsrfMiddleware just like
   // reservations does — Bearer-authenticated admin/orders calls bypass it,
@@ -58,6 +75,7 @@ describe('Orders API (integration, real local Postgres)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
+    redisClient = app.get<Redis>(REDIS_CLIENT);
 
     const venue = await prisma.venue.findFirstOrThrow({ where: { slug: 'auckland' } });
     venueId = venue.id;
@@ -335,11 +353,20 @@ describe('Orders API (integration, real local Postgres)', () => {
     await cleanupOrder(res.body.id);
   });
 
-  it('one order-creation transaction durably creates all three delivery-leg outbox rows: POSSyncRecord, PrinterJob(s), and KdsDeliveryRecord, all sharing one orderId', async () => {
-    // Self-contained venue (posAdapterType 'api' + one active printer) rather
-    // than the shared 'auckland' seed venue -- makes the "exactly one of
-    // each" assertion deterministic instead of depending on that venue's
+  it('one order-creation transaction durably creates both remaining delivery-leg outbox rows for a venue with no POS adapter: PrinterJob(s) and KdsDeliveryRecord, sharing one orderId (no POSSyncRecord — posAdapterType is "none")', async () => {
+    // Self-contained venue (posAdapterType 'none' + one active printer)
+    // rather than the shared 'auckland' seed venue -- makes the "exactly one
+    // of each" assertion deterministic instead of depending on that venue's
     // possibly-shared POS/printer configuration.
+    //
+    // posAdapterType is deliberately 'none' here, not 'api': once a venue is
+    // on the real IdealPOS Bridge integration, IdealPOS's own existing KOT
+    // workflow is the kitchen ticket for that order, and Verdura's
+    // PrinterJob pipeline is skipped for exactly that reason (see
+    // orders.service.ts's persistOrder — printers is `[]` when
+    // posAdapterType is 'api', so creating one here would print two
+    // physical tickets for one order). The 'api' + no-PrinterJob case has
+    // its own dedicated test immediately below.
     const org = await prisma.organization.create({
       data: {
         name: 'Phase 4 Integration Three-Intents Org',
@@ -355,7 +382,7 @@ describe('Orders API (integration, real local Postgres)', () => {
         address: {},
         operatingHours: {},
         seatingCapacity: 10,
-        posAdapterType: 'api',
+        posAdapterType: 'none',
       },
     });
     const printer = await prisma.printer.create({
@@ -406,8 +433,10 @@ describe('Orders API (integration, real local Postgres)', () => {
         prisma.kdsDeliveryRecord.findMany({ where: { orderId } }),
       ]);
 
-      expect(posSyncRecords).toHaveLength(1);
-      expect(posSyncRecords[0].status).toBe('not_synced');
+      // posAdapterType 'none' -- no POSSyncRecord row at all (Order.posSyncStatus
+      // is set to 'not_applicable' directly on the order instead; see the
+      // dedicated 'api' test below for the row that DOES get created).
+      expect(posSyncRecords).toHaveLength(0);
 
       expect(printerJobs).toHaveLength(1);
       expect(printerJobs[0].printerId).toBe(printer.id);
@@ -420,13 +449,12 @@ describe('Orders API (integration, real local Postgres)', () => {
       expect(kdsDeliveryRecords[0].status).toBe('queued');
       expect(kdsDeliveryRecords[0].venueId).toBe(venue.id);
 
-      // All four rows genuinely originate from the same persistOrder
-      // transaction, not four unrelated writes: same orderId, and created
+      // Both rows genuinely originate from the same persistOrder
+      // transaction, not unrelated writes: same orderId, and created
       // within the same instant (well under any plausible cross-request gap).
       const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
       const timestamps = [
         order.createdAt.getTime(),
-        posSyncRecords[0].createdAt.getTime(),
         printerJobs[0].createdAt.getTime(),
         kdsDeliveryRecords[0].createdAt.getTime(),
       ];
@@ -458,6 +486,107 @@ describe('Orders API (integration, real local Postgres)', () => {
       }
       await prisma.organization.delete({ where: { id: org.id } });
     }
+  });
+
+  it('a venue on the real IdealPOS Bridge (posAdapterType "api") creates a POSSyncRecord and a KdsDeliveryRecord, but never a PrinterJob, even with an active printer configured — IdealPOS\'s own existing KOT workflow is the kitchen ticket once the order reaches it, and a second physical ticket would be a real operational duplicate', async () => {
+    const org = await prisma.organization.create({
+      data: {
+        name: 'Phase 4 Integration IdealPOS-Owns-KOT Org',
+        slug: `phase4-idealpos-owns-kot-org-${Date.now()}`,
+        billingEmail: 'idealpos-owns-kot@phase4-integration.test',
+      },
+    });
+    const venue = await prisma.venue.create({
+      data: {
+        organizationId: org.id,
+        name: 'Phase 4 Integration IdealPOS-Owns-KOT Venue',
+        slug: `phase4-idealpos-owns-kot-venue-${Date.now()}`,
+        address: {},
+        operatingHours: {},
+        seatingCapacity: 10,
+        posAdapterType: 'api',
+      },
+    });
+    // Deliberately configured even though it must never fire for this
+    // venue — proves the skip is keyed on posAdapterType, not merely on
+    // "no printers happen to exist".
+    const printer = await prisma.printer.create({
+      data: {
+        venueId: venue.id,
+        name: 'Phase 4 Integration IdealPOS-Owns-KOT Printer',
+        type: 'kitchen',
+        connectionType: 'tcp',
+        host: '127.0.0.1',
+        port: 9998,
+        isActive: true,
+      },
+    });
+    const staff = await prisma.staff.findFirstOrThrow({ where: { organizationId } });
+    const category = await prisma.category.create({
+      data: { organizationId: org.id, name: 'IdealPOS-Owns-KOT category', createdById: staff.id },
+    });
+    const item = await prisma.menuItem.create({
+      data: {
+        organizationId: org.id,
+        categoryId: category.id,
+        title: 'IdealPOS-Owns-KOT item',
+        description: 'test item',
+        priceCents: 1000,
+        nutritionalDetails: {},
+        isAvailable: true,
+        createdById: staff.id,
+      },
+    });
+
+    try {
+      const res = await request(app.getHttpServer())
+        .post('/api/kiosk/orders')
+        .set(csrfHeaders())
+        .send({
+          venueId: venue.id,
+          notes: noteTag('idealpos-owns-kot'),
+          stripePaymentIntentId: `pi_idealpos_owns_kot_${Date.now()}`,
+          idempotencyKey: `idem_idealpos_owns_kot_${Date.now()}`,
+          items: [{ menuItemId: item.id, quantity: 1 }],
+        })
+        .expect(201);
+      const orderId = res.body.id as string;
+
+      const [posSyncRecords, printerJobs, kdsDeliveryRecords] = await Promise.all([
+        prisma.pOSSyncRecord.findMany({ where: { orderId } }),
+        prisma.printerJob.findMany({ where: { orderId } }),
+        prisma.kdsDeliveryRecord.findMany({ where: { orderId } }),
+      ]);
+
+      expect(posSyncRecords).toHaveLength(1);
+      expect(posSyncRecords[0].status).toBe('not_synced');
+
+      expect(printerJobs).toHaveLength(0);
+
+      expect(kdsDeliveryRecords).toHaveLength(1);
+    } finally {
+      await prisma.connectorCommand.deleteMany({ where: { venueId: venue.id } });
+      await prisma.printerJob.deleteMany({ where: { venueId: venue.id } });
+      await prisma.pOSSyncRecord.deleteMany({ where: { venueId: venue.id } });
+      await prisma.orderItem.deleteMany({ where: { order: { venueId: venue.id } } });
+      await prisma.order.deleteMany({ where: { venueId: venue.id } });
+      await prisma.printer.deleteMany({ where: { venueId: venue.id } });
+      await prisma.menuItem.deleteMany({ where: { organizationId: org.id } });
+      await prisma.category.deleteMany({ where: { organizationId: org.id } });
+      await prisma.venue.delete({ where: { id: venue.id } });
+      const kioskSystemStaff = await prisma.staff.findMany({ where: { organizationId: org.id } });
+      for (const s of kioskSystemStaff) {
+        await prisma.auditLog.deleteMany({ where: { actorId: s.id } });
+        await prisma.staff.delete({ where: { id: s.id } });
+      }
+      await prisma.organization.delete({ where: { id: org.id } });
+    }
+
+    // See clearKioskOrdersRateLimit's own comment: this and the preceding
+    // test each added one /api/kiosk/orders POST on top of this file's
+    // existing shared-bucket load — reset here so neither affects any
+    // later, otherwise-unrelated test's rate-limit budget.
+    await clearKioskOrdersRateLimit();
   });
 
   it('a staff order requires a real table — a synthetic/non-UUID table id is rejected', async () => {

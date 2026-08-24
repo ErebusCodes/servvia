@@ -129,6 +129,12 @@ describe('TabletAuthService', () => {
       );
     });
 
+    it('enrollment boundary: the venue-unlock PIN "108" is never valid as an enrollment bootstrap token — enrollment and PIN unlock are separate stages with separate credentials', async () => {
+      await expect(service.enrollDevice('108')).rejects.toThrow(UnauthorizedException);
+      expect(prisma.tabletEnrollment.findUnique).not.toHaveBeenCalled();
+      expect(prisma.tabletDevice.create).not.toHaveBeenCalled();
+    });
+
     it('rejects an unknown enrollment id', async () => {
       prisma.tabletEnrollment.findUnique.mockResolvedValue(null);
       await expect(service.enrollDevice('unknown-id.somecode')).rejects.toThrow(
@@ -272,6 +278,26 @@ describe('TabletAuthService', () => {
       } finally {
         process.env.NODE_ENV = previousEnv;
       }
+    });
+
+    it('accepts the repository-wide local-dev default PIN "108" — the same key KdsAuthService reads, proving Kitchen Display and the Order Tablet unlock stage agree on one configuration source', async () => {
+      config.KDS_VENUE_PINS = JSON.stringify({ 'venue-1': '108' });
+      prisma.staff.upsert.mockResolvedValue({
+        id: 'sys',
+        email: 'x@y.com',
+        role: StaffRole.viewer,
+      });
+      await expect(service.unlockDevice(device, '108')).resolves.toBeUndefined();
+    });
+
+    it('venue scoping: a PIN configured for a different venue does not unlock this device, even when the PINs happen to be identical strings', async () => {
+      config.KDS_VENUE_PINS = JSON.stringify({ 'venue-2': '1088' });
+      prisma.staff.upsert.mockResolvedValue({
+        id: 'sys',
+        email: 'x@y.com',
+        role: StaffRole.viewer,
+      });
+      await expect(service.unlockDevice(device, '1088')).rejects.toThrow(UnauthorizedException);
     });
   });
 
