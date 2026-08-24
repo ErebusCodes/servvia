@@ -22,6 +22,20 @@ namespace VerduraIdealposTracer.Tests;
 /// IdealPOS/Bridge — this is UNIT_OR_MOCK evidence for the *hosting/loop*
 /// behaviour only, exactly as truthfully scoped as every other test in this
 /// project.
+///
+/// Each test's <c>CancellationTokenSource</c> duration is the actual wall-
+/// clock time the loop runs before assertions inspect what it did (the loop
+/// runs until cancelled, not until some other terminal condition) — bumped
+/// from the original 100/150/300ms to 1500/2000ms after a real Windows run
+/// (2026-08-24, the target production machine) failed
+/// DeterministicFailure_BridgeRejects_ReportsFailedAndLoopKeepsRunning with
+/// zero reports observed, while 5/5 reruns on the authoring Mac passed at
+/// the original values. Root cause: a hardcoded ~150ms budget for two
+/// 20ms-interval poll cycles plus async/thread-pool warm-up has very little
+/// margin, and a busier or differently-scheduled machine can exhaust it
+/// before the loop completes even once — a test-timing fragility, not a
+/// defect in ConnectorPollingLoop itself. The new values keep the whole
+/// suite well under a few seconds while giving ~10x the original margin.
 /// </summary>
 public sealed class ConnectorPollingLoopTests : IDisposable
 {
@@ -164,7 +178,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         var (loop, protocol, log) = Build();
         protocol.EnqueuePoll(); // always empty
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token); // must return, never throw
 
         Assert.Contains(log.Info, m => m.Contains("starting", StringComparison.OrdinalIgnoreCase));
@@ -177,7 +191,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         var (loop, protocol, _) = Build(pollInterval: TimeSpan.FromSeconds(30));
         protocol.EnqueuePoll(); // empty -> loop immediately enters the 30s inter-poll delay
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         var sw = System.Diagnostics.Stopwatch.StartNew();
         await loop.RunAsync(cts.Token);
         sw.Stop();
@@ -194,7 +208,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-42"));
         protocol.EnqueuePoll(); // subsequent polls empty
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token);
 
         Assert.Single(protocol.Reports);
@@ -212,7 +226,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token);
 
         Assert.Single(protocol.Reports);
@@ -229,7 +243,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token);
 
         using var doc = JsonDocument.Parse(protocol.Reports[0].Body);
@@ -246,7 +260,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
         await loop.RunAsync(cts.Token); // must not throw despite two failed polls
 
         Assert.True(protocol.PollCount >= 3);
@@ -265,7 +279,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-99"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token);
 
         Assert.True(protocol.Reports.Count >= 1);
@@ -285,7 +299,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
             new ClaimedCommand("cmd-2", "some.unrecognized.type.v1", 1, [], null));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token);
 
         Assert.Single(protocol.Reports);
@@ -305,7 +319,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token); // must not throw
 
         Assert.Empty(protocol.Reports); // never reported — the command was never truly ours
@@ -327,7 +341,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-77"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
         await loop.RunAsync(cts.Token);
 
         Assert.Single(protocol.Reports);
