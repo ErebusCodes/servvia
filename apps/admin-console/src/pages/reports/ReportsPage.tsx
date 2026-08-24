@@ -1479,7 +1479,7 @@ export function ReportsPage() {
       {showExportModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 24, width: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <h4 style={{ fontWeight: 600, color: 'var(--color-text)' }}>Export Data Scope</h4>
+            <h4 style={{ fontWeight: 600, color: 'var(--color-text)' }}>Export Data Scope ({exportFormat.toUpperCase()})</h4>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', color: 'var(--color-text-tertiary)' }}>Scope</span>
               <select

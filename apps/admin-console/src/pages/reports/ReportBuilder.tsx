@@ -20,7 +20,7 @@ export function ReportBuilder({ onSaveReport, savedReports, onLoadReport, onDele
 
   // Destructure components from design system
   const DS = (window as any).DesignSystem_7f3fe8 || {};
-  const { Button, Card, CardHeader, DataTable, Checkbox } = DS;
+  const { Button, Card, CardHeader, DataTable } = DS;
 
   const toggleMetric = (m: string) => {
     if (metrics.includes(m)) {
@@ -90,7 +90,7 @@ export function ReportBuilder({ onSaveReport, savedReports, onLoadReport, onDele
     ];
 
     // Build rows
-    let rowsList = labelList.map((label, idx) => {
+    const rowsList = labelList.map((label, idx) => {
       const row: any = { id: idx, dim: label };
       metrics.forEach(m => {
         row[m] = metricGenerators[m]?.(idx) || 0;
@@ -225,6 +225,7 @@ export function ReportBuilder({ onSaveReport, savedReports, onLoadReport, onDele
                       setChartType(r.chartType);
                       setDateRange(r.dateRange);
                       setGroupBy(r.grouping);
+                      onLoadReport(r);
                     }}
                     style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-primary-text)', cursor: 'pointer' }}
                   >

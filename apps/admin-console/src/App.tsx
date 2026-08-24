@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useBootstrapAuth } from './hooks/useBootstrapAuth';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
-import { useAuthStore } from './store/auth.store';
 import { KdsPinGate } from './components/kds/KdsPinGate';
 import { TabletDeviceGate } from './components/tablet/TabletDeviceGate';
 import { DashboardPage } from './pages/dashboard/DashboardPage';

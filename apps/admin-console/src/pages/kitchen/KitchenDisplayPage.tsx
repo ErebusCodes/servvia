@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'r
 import {
   useLiveOrders,
   useLiveOrderStatusMutation,
-  type LiveOrder as Order,
   type LiveOrderStatus,
 } from '../../shared/orders';
 import { compareMenuItemsAlphabetically } from '../../shared/menu/menuData';
@@ -338,7 +337,7 @@ export function KitchenDisplayPage() {
   const [station, setStation] = useState('All');
   const [query, setQuery] = useState('');
   const [viewMode, setViewMode] = useState<'live' | 'expedite' | 'station' | 'history'>('live');
-  const [showCompleted, setShowCompleted] = useState(true);
+  const showCompleted = true;
 
   // History states
   const [histTime, setHistTime] = useState<'today' | 'hour'>('today');
@@ -363,15 +362,6 @@ export function KitchenDisplayPage() {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  const clock = useMemo(() => {
-    const d = new Date();
-    let h = d.getHours();
-    const m = String(d.getMinutes()).padStart(2, '0');
-    const ap = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    return h + ':' + m + ' ' + ap;
-  }, [tick]);
 
   const flash = useCallback((m: string) => {
     setToast(m);

@@ -544,7 +544,9 @@ export function AuditLogsPage() {
         const parsed = JSON.parse(stored);
         if (parsed.length > 0) return parsed[0].id;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error(e);
+    }
     return MOCK_DATASET[0]?.id || null;
   });
   

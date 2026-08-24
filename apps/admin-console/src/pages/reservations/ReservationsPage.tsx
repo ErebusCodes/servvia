@@ -29,14 +29,6 @@ const IconUsers = ({ className = "w-4 h-4" }: { className?: string }) => (
   </svg>
 );
 
-const IconTable = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <line x1="3" y1="9" x2="21" y2="9" />
-    <line x1="9" y1="21" x2="9" y2="9" />
-  </svg>
-);
-
 const IconPlus = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19" />
@@ -116,12 +108,6 @@ const IconGoogle = ({ className = "w-4 h-4" }: { className?: string }) => (
   </svg>
 );
 
-const IconFilter = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-  </svg>
-);
-
 const IconProfile = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -156,13 +142,6 @@ const IconSMS = ({ className = "w-4 h-4" }: { className?: string }) => (
   </svg>
 );
 
-const IconMessage = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M8 10h.01M12 10h.01M16 10h.01" strokeWidth="2" strokeLinecap="round" />
-  </svg>
-);
-
 const IconBasket = ({ className = "w-4 h-4" }: { className?: string }) => (
   <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
     <path d="M16 11V7a4 4 0 0 0-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -174,20 +153,6 @@ const IconWarning = ({ className = "w-4 h-4" }: { className?: string }) => (
     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
     <line x1="12" y1="9" x2="12" y2="13" />
     <line x1="12" y1="17" x2="12.01" y2="17" />
-  </svg>
-);
-
-const IconCake = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8" />
-    <path d="M4 16h16" />
-    <path d="M12 11V7m0-2v.01" />
-  </svg>
-);
-
-const IconCheers = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 3h12v3c0 3-3 6-6 6s-6-3-6-6V3zm6 9v7m-4 2h8" />
   </svg>
 );
 
@@ -810,7 +775,6 @@ export function ReservationsPage() {
   const todaySummary = useMemo(() => {
     const total = filteredReservationsForSummary.length;
     const seated = filteredReservationsForSummary.filter(r => r.status === 'seated').length;
-    const pending = filteredReservationsForSummary.filter(r => r.status === 'pending').length;
     const noShow = filteredReservationsForSummary.filter(r => r.status === 'no_show').length;
     const cancelled = filteredReservationsForSummary.filter(r => r.status === 'cancelled').length;
     
@@ -876,11 +840,9 @@ export function ReservationsPage() {
       const calculatedCovers = matchRes.reduce((sum, r) => sum + r.partySize, 0);
 
       const covers = calculatedCovers > 0 ? calculatedCovers : (defaultCovers[time] || 0);
-      const resCount = covers;
-      const walkCount = 0;
 
       let resWidth = 40;
-      let walkWidth = 0;
+      const walkWidth = 0;
       if (covers > 0) {
         resWidth = 70;
       } else {
@@ -1002,19 +964,6 @@ export function ReservationsPage() {
     } else {
       setSelectedRowIds(prev => prev.filter(item => item !== id));
     }
-  };
-
-  // Clear all filters
-  const handleClearAllFilters = () => {
-    setSelectedStatus('');
-    setSelectedTimeRange('');
-    setSelectedVenue('');
-    setSelectedSource('');
-    setSearchTerm('');
-    setSelectedTimelineSlot(getNearestSlot(getCurrent12hTime()));
-    setIsTimelineSlotFiltered(false);
-    setCurrentPage(1);
-    triggerToast("All filters cleared.");
   };
 
   // Form Handlers

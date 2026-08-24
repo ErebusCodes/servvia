@@ -35,9 +35,6 @@ export function formatValueForRole(val: string | number, role: UserRole, isCurre
 
 // Generate base metrics that respond dynamically to filters
 export function getReportData(filters: FilterState, role: UserRole) {
-  // Deterministic seed from filter properties
-  const seed = (filters.venue.length * 3) + (filters.service.length * 7) + (filters.dateRange.length * 2);
-  
   // Scale factor based on Date Range
   let scale = 1.0;
   if (filters.dateRange === 'today') scale = 0.15;
@@ -120,7 +117,6 @@ export function getReportData(filters: FilterState, role: UserRole) {
   ];
 
   // 2. Kitchen Tab Data
-  const basePrep = 12.8;
   const kitchenKpis = [
     { label: 'Average Prep Time', value: '12:48', delta: '−0:42', trend: 'down', positiveIsGood: true, icon: 'clock', hint: 'Target: 15:00' },
     { label: 'SLA Compliance', value: '91%', delta: '+3%', trend: 'up', icon: 'check', hint: 'Goal: >90% compliant' },

@@ -1,5 +1,3 @@
-import { useEffect } from 'react';
-
 const getMainSiteUrl = () => {
   const { origin, hostname } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {

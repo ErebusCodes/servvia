@@ -124,7 +124,6 @@ function LiveFloorPlan() {
 
 function KitchenPerformance() {
   const capacity = 78;
-  const statusText = 'NORMAL';
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {

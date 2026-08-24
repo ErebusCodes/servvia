@@ -90,7 +90,7 @@ interface TabletCartItem {
 // ─────────────────────────────── Helper Functions ─────────────────────────────
 
 function getItemPriceInfo(priceStr: string, title: string) {
-  const clean = priceStr.replace(/[^\d/\.\s]/g, '').trim(); // Remove "from", "$", etc.
+  const clean = priceStr.replace(/[^\d/.\s]/g, '').trim(); // Remove "from", "$", etc.
   if (clean.includes('/')) {
     const parts = clean.split('/').map(p => parseFloat(p.trim()) || 0);
     const base = parts[0] || 0;
@@ -430,7 +430,6 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   const formatPrice = (n: number) => '$' + n.toFixed(2);
   const lineUnit = (ln: TabletCartItem) => ln.unit + ln.mods.reduce((a, m) => a + m.delta, 0);
   const lineTotal = (ln: TabletCartItem) => lineUnit(ln) * ln.qty;
-  const seatLabel = (n: number) => n === 0 ? 'Table (shared)' : 'Seat ' + n;
 
   const getActiveOrderForTable = (tableNumber: string) => {
     return orders.find(o => o.tableNumber === tableNumber && o.status !== 'completed' && o.status !== 'cancelled');
@@ -1238,6 +1237,16 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         },
       };
     });
+    // handleTapItem is intentionally omitted below: it's a plain
+    // (non-useCallback) function recreated every render, so listing it here
+    // would make this memo recompute on every render too. Traced its
+    // transitive closures (handleOpenSlide/handleAddLine): they only read
+    // `activeSeat`/`categories` (both already listed) plus stable setState
+    // functions — no stale-closure risk today. If handleAddLine/
+    // handleOpenSlide/handleTapItem ever start reading additional component
+    // state, that state must be added here explicitly, since this
+    // suppression means the linter can no longer catch it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, activeSeat, categories]);
 
   const q = search.trim().toLowerCase();
@@ -1484,10 +1493,10 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   const gstStr = formatPrice(totals.gst);
 
   const startReady = !!table && (occSel || guests > 0);
-  const startDisabled = !table || (!occSel && guests < 1);
-  const startBg = (!!table && (occSel || guests > 0)) ? 'var(--color-primary)' : 'var(--color-surface-3)';
-  const startColor = (!!table && (occSel || guests > 0)) ? '#fff' : 'var(--color-text-tertiary)';
-  const startCursor = (!!table && (occSel || guests > 0)) ? 'pointer' : 'default';
+  const startDisabled = !startReady;
+  const startBg = startReady ? 'var(--color-primary)' : 'var(--color-surface-3)';
+  const startColor = startReady ? '#fff' : 'var(--color-text-tertiary)';
+  const startCursor = startReady ? 'pointer' : 'default';
   const startLabel = occSel ? 'Open order · add items' : (guests > 0 ? 'Start order · ' + guests + (guests === 1 ? ' guest' : ' guests') : 'Set guest count to start');
 
   const startOrder = () => {

@@ -149,7 +149,7 @@ interface ReservationState {
   deleteReservation: (id: string) => Promise<void>;
 }
 
-export const useReservationStore = create<ReservationState>((set, get) => ({
+export const useReservationStore = create<ReservationState>((set) => ({
   reservations: [],
   loading: false,
   loaded: false,

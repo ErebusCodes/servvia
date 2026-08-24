@@ -501,7 +501,6 @@ function ic(paths: string | string[], size: number = 18) {
 const icPublish = ic(['M5 12h14', 'M13 6l6 6-6 6'], 16);
 const icSearch = ic(['M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0', 'm21 21-4.3-4.3'], 16);
 const icPlus = ic(['M12 5v14', 'M5 12h14'], 16);
-const icUpload = ic(['M12 16V4', 'M8 8l4-4 4 4', 'M4 20h16'], 16);
 
 // ─────────────────────────────── Initial Seeding ───────────────────────────────
 

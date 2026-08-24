@@ -43,7 +43,11 @@ const INITIAL_GROUND_TABLES: TableItem[] = TABLE_LAYOUTS.map((t) => {
 
 export function TableManagementPage() {
   const [tables, setTables] = useState<TableItem[]>(INITIAL_GROUND_TABLES);
-  const [floor, setFloor] = useState('ground');
+  // No floor-switcher UI currently exists in this page (the "Floor Editor"/
+  // "QR Codes"/"Add Table" buttons below are unrelated actions, and none of
+  // them are wired to change floors either) — this stays a fixed value
+  // rather than dead useState/setState machinery until that UI exists.
+  const floor = 'ground';
   const [selectedId, setSelectedId] = useState<string | null>('T12');
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelTab, setPanelTab] = useState('Overview');
@@ -188,15 +192,6 @@ export function TableManagementPage() {
     { label: 'Occupancy', value: '68%', delta: '+8%', deltaColor: '#b45309', sub: 'vs yesterday', chipBg: '#fef3c7', chipFg: '#d97706', icon: renderIcon('grid') },
   ];
 
-  // ---------- Floor Tabs Data ----------
-  const floorsDef = [
-    { id: 'ground', label: 'Ground Floor (24)' },
-    { id: 'level1', label: 'Level 1 (18)' },
-    { id: 'bar', label: 'Bar (12)' },
-    { id: 'terrace', label: 'Terrace (16)' },
-    { id: 'private', label: 'Private Dining (6)' },
-  ];
-
   // ---------- Timeline Data ----------
   const chip = (label: string, kind?: 'blue' | 'green' | 'red', dot?: string) => {
     const K = {
@@ -251,31 +246,6 @@ export function TableManagementPage() {
     { time: '6:38 PM', title: 'Table 7 payment completed', sub: '$89.50' },
     { time: '6:38 PM', title: 'Table 21 reservation arrived', sub: 'Party of 4' },
     { time: '6:36 PM', title: 'Table 3 marked as cleaning', sub: 'Alex Rivera' },
-  ];
-
-  // ---------- Floor plan walls, stools, plants, cards ----------
-  const walls = [
-    { x: 228, y: 140, w: 130, h: 3 }, { x: 412, y: 140, w: 250, h: 3 },
-    { x: 228, y: 140, w: 3, h: 220 }, { x: 228, y: 402, w: 3, h: 82 },
-    { x: 660, y: 40, w: 3, h: 180 }, { x: 660, y: 262, w: 3, h: 222 },
-    { x: 228, y: 482, w: 108, h: 3 }, { x: 430, y: 482, w: 233, h: 3 },
-    { x: 20, y: 372, w: 3, h: 112 }, { x: 20, y: 372, w: 128, h: 3 }, { x: 20, y: 482, w: 210, h: 3 },
-    { x: 228, y: 36, w: 435, h: 3 },
-    { x: 228, y: 36, w: 3, h: 106 },
-  ];
-
-  const stools = [
-    { x: 26, y: 58 }, { x: 44, y: 58 }, { x: 62, y: 58 }, { x: 80, y: 58 }, { x: 98, y: 58 }, { x: 116, y: 58 },
-  ];
-
-  const plants = [
-    { x: 210, y: 30 }, { x: 210, y: 148 }, { x: 415, y: 150 }, { x: 640, y: 350 }, { x: 196, y: 388 }, { x: 588, y: 470 },
-  ];
-
-  const planCards = [
-    { x: 486, y: 46, l1: '6:30 PM', l2: '2 Guests', l3: 'Alex R.' },
-    { x: 434, y: 284, l1: '7:00 PM', l2: '4 Guests', l3: 'Emma J.' },
-    { x: 134, y: 398, l1: '8:00 PM', l2: '10 Guests', l3: 'Corporate Dinner' },
   ];
 
   const statusLegend = [

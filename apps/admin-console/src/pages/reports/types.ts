@@ -1,5 +1,3 @@
-import React from 'react';
-
 export type UserRole = 'owner' | 'admin' | 'finance' | 'operations' | 'kitchen' | 'venueManager' | 'staff';
 
 export interface FilterState {
