@@ -141,6 +141,14 @@ jobs:
     name: Admin Console (Order Tablet / KDS) — lint, typecheck, unit tests, build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # KdsPinGate (and other components) read import.meta.env.VITE_VENUE_ID
+      # at render time and render an explicit "not configured" error state
+      # without it — correct fail-closed behavior for a real misconfigured
+      # deployment, but it means their tests need a real value here too,
+      # same as apps/admin-console/.env.example's own documented default
+      # (the canonical local-dev seed venue, also used by docker-compose.yml).
+      VITE_VENUE_ID: 10000000-0000-4000-8000-000000000001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

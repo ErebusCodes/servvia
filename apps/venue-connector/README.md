@@ -11,7 +11,7 @@ A minimal, modern .NET tracer proving the safest viable mechanism for a future V
 | `src/VerduraIdealposTracer.Core` | `net8.0` (cross-platform) | ✅ Yes | Discovery state machine, Story 2-10 command-protocol client, durable local persistence. No Windows-only API references. |
 | `src/VerduraIdealposTracer.Fixtures` | `net8.0` | ✅ Yes | A clearly-labelled fake `IIdealposUiAutomationClient` — never real evidence. |
 | `src/VerduraIdealposTracer.DryRunCli` | `net8.0` | ✅ Yes | Cross-platform dry-run entry point (uses the fake client). Doubles as this story's own crash/replay test subject. |
-| `tests/VerduraIdealposTracer.Tests` | `net8.0` | ✅ Yes — real, run in this session | 22 unit tests + 4 real-process crash/replay tests, all against the fake client. `UNIT_OR_MOCK` evidence only. |
+| `tests/VerduraIdealposTracer.Tests` | `net8.0` | ✅ Yes — real, re-run 2026-08-25 (`dotnet test`: 75/75 passing) | Has grown well past this story's original 22 unit + 4 crash/replay tests as later work (connector command protocol, KOT print handling, polling loop, IdealposBridge client) added its own coverage — see each test file for what it actually covers. Still entirely against the fake client / mocks. `UNIT_OR_MOCK` evidence only, never `REAL_WINDOWS_CONNECTOR`/`REAL_IDEALPOS`. |
 | `src/VerduraIdealposTracer.Windows` | `net8.0-windows` | ❌ No — requires the Windows Desktop SDK | The real `System.Windows.Automation` implementation. **Unverified.** |
 | `src/VerduraIdealposTracer.Cli` | `net8.0-windows` | ❌ No | The real operator-facing entry point, wiring `Windows` + `Core` together. **Unverified.** |
 
