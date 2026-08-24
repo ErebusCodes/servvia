@@ -47,6 +47,21 @@ export class GcsStorageProvider implements StorageProviderPort {
     impersonateServiceAccountEmail: string,
   ) {
     this.storage = GcsStorageProvider.buildStorageClient(projectId, impersonateServiceAccountEmail);
+    // A rejection here (e.g. Application Default Credentials unavailable)
+    // must reach every real caller of the methods below, each of which
+    // awaits `this.storage` itself and handles/propagates the error
+    // properly — attaching a .catch() to a promise doesn't consume it for
+    // other listeners, it only stops this specific derived chain from
+    // becoming an unhandled rejection if nothing awaits `this.storage`
+    // during the (usually brief) window between construction and first
+    // real use. Without this, a transient credential problem at process
+    // startup can crash the entire Node process before any request even
+    // touches media storage.
+    this.storage.catch((error: unknown) => {
+      this.logger.warn(
+        `GCS client construction failed (will surface on first real use): ${String(error)}`,
+      );
+    });
   }
 
   private static async buildStorageClient(

@@ -69,7 +69,13 @@ export class UploadCancelledError extends Error {
 
 export async function sha256Hex(file: File): Promise<string> {
   const buf = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest('SHA-256', buf);
+  // Some File/Blob polyfills (observed under jsdom on Node 20, the exact
+  // version this repo's CI pins) return an ArrayBuffer-like object from a
+  // different realm than the global `ArrayBuffer`, which fails
+  // SubtleCrypto's strict instanceof check even though the bytes are
+  // perfectly valid. Re-wrapping through Uint8Array normalizes that without
+  // changing behavior for a real ArrayBuffer.
+  const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(buf));
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
