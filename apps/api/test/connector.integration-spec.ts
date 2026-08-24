@@ -165,7 +165,9 @@ describe('Connector Identity (integration, real local Postgres)', () => {
     bootstrapToken1 = res.body.bootstrapToken as string;
     collectedSecrets.push(bootstrapToken1, bootstrapToken1.split('.')[1]);
 
-    const row = await prisma.connectorEnrollment.findUniqueOrThrow({ where: { id: enrollmentId1 } });
+    const row = await prisma.connectorEnrollment.findUniqueOrThrow({
+      where: { id: enrollmentId1 },
+    });
     expect(row.venueId).toBe(venueId);
     expect(row.usedAt).toBeNull();
     expect(row.codeHash).not.toBe(bootstrapToken1.split('.')[1]);
@@ -365,8 +367,12 @@ describe('Connector Identity (integration, real local Postgres)', () => {
     collectedSecrets.push(tokenA, tokenA.split('.')[1], tokenB, tokenB.split('.')[1]);
 
     const [resultA, resultB] = await Promise.all([
-      request(app.getHttpServer()).post('/api/connector/enroll').set('Authorization', `Bearer ${tokenA}`),
-      request(app.getHttpServer()).post('/api/connector/enroll').set('Authorization', `Bearer ${tokenB}`),
+      request(app.getHttpServer())
+        .post('/api/connector/enroll')
+        .set('Authorization', `Bearer ${tokenA}`),
+      request(app.getHttpServer())
+        .post('/api/connector/enroll')
+        .set('Authorization', `Bearer ${tokenB}`),
     ]);
 
     // Two legitimate outcomes exist for two concurrent redemptions racing
@@ -392,7 +398,9 @@ describe('Connector Identity (integration, real local Postgres)', () => {
         collectedSecrets.push(credential, splitCredential(credential)[1]);
       }
     }
-    expect([resultA.status, resultB.status].filter((s) => s === 200).length).toBeGreaterThanOrEqual(1);
+    expect([resultA.status, resultB.status].filter((s) => s === 200).length).toBeGreaterThanOrEqual(
+      1,
+    );
 
     const activeRows = await prisma.connectorInstallation.findMany({
       where: { venueId: concurrencyVenueId, status: 'active' },
@@ -423,8 +431,9 @@ describe('Connector Identity (integration, real local Postgres)', () => {
           organizationId: orgId,
           venueId: deterministicVenue.id,
           codeHash,
-          createdByStaffId: (await prisma.staff.findFirstOrThrow({ where: { organizationId: orgId } }))
-            .id,
+          createdByStaffId: (
+            await prisma.staff.findFirstOrThrow({ where: { organizationId: orgId } })
+          ).id,
           expiresAt: new Date(Date.now() + 60_000),
           usedAt: new Date(),
         },

@@ -61,13 +61,17 @@ describe('TabletOrdersController', () => {
 
   describe('createRestrictedOrder', () => {
     it('attributes the order to the resolved per-device system actor, never a fabricated staff identity', async () => {
-      const systemActor = { id: 'sys-actor-1', email: 'tablet-device+device-1@verdura.internal', role: StaffRole.viewer };
+      const systemActor = {
+        id: 'sys-actor-1',
+        email: 'tablet-device+device-1@verdura.internal',
+        role: StaffRole.viewer,
+      };
       mockTabletAuthService.resolveDeviceSystemActor.mockResolvedValue(systemActor);
       mockOrdersService.createStaffOrder.mockResolvedValue({ id: 'ORD-600001' });
 
       const dto: CreateTabletOrderDto = {
         tableId: 'table-1',
-        serviceMode: 'dine_in' as CreateTabletOrderDto['serviceMode'],
+        serviceMode: 'dine_in',
         items: [{ menuItemId: 'item-1', quantity: 1 }] as CreateTabletOrderDto['items'],
         notes: undefined,
         idempotencyKey: 'idem-key-1234567890',
@@ -75,7 +79,10 @@ describe('TabletOrdersController', () => {
 
       await controller.createRestrictedOrder(reqWith(deviceUser), dto);
 
-      expect(mockTabletAuthService.resolveDeviceSystemActor).toHaveBeenCalledWith('org-1', 'device-1');
+      expect(mockTabletAuthService.resolveDeviceSystemActor).toHaveBeenCalledWith(
+        'org-1',
+        'device-1',
+      );
       expect(mockOrdersService.createStaffOrder).toHaveBeenCalledWith(
         {
           venueId: 'venue-1',
@@ -86,7 +93,11 @@ describe('TabletOrdersController', () => {
           idempotencyKey: 'idem-key-1234567890',
         },
         'org-1',
-        { id: 'sys-actor-1', email: 'tablet-device+device-1@verdura.internal', role: StaffRole.viewer },
+        {
+          id: 'sys-actor-1',
+          email: 'tablet-device+device-1@verdura.internal',
+          role: StaffRole.viewer,
+        },
       );
     });
 
@@ -99,7 +110,7 @@ describe('TabletOrdersController', () => {
       mockOrdersService.createStaffOrder.mockResolvedValue({ id: 'ORD-600002' });
 
       const dto: CreateTabletOrderDto = {
-        serviceMode: 'takeaway' as CreateTabletOrderDto['serviceMode'],
+        serviceMode: 'takeaway',
         items: [] as CreateTabletOrderDto['items'],
         idempotencyKey: 'idem-key-takeaway-0000001',
       };

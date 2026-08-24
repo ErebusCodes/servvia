@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseUUIDPipe, NotFoundException, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  NotFoundException,
+  UseGuards,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';

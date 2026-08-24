@@ -93,7 +93,9 @@ describe('KDS Delivery Dispatch (integration, real local Postgres)', () => {
       const result = await dispatcher.sweepDispatch();
       expect(result.pushed).toBeGreaterThanOrEqual(1);
 
-      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
+      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({
+        where: { id: record.id },
+      });
       expect(reloaded.status).toBe(KdsDeliveryStatus.pushed);
       expect(reloaded.pushedAt).not.toBeNull();
       expect(reloaded.pushAttemptCount).toBe(1);
@@ -117,7 +119,9 @@ describe('KDS Delivery Dispatch (integration, real local Postgres)', () => {
       expect(totalPushed).toBe(records.length);
 
       for (const record of records) {
-        const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
+        const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({
+          where: { id: record.id },
+        });
         expect(reloaded.pushAttemptCount).toBe(1);
       }
     });
@@ -128,7 +132,9 @@ describe('KDS Delivery Dispatch (integration, real local Postgres)', () => {
 
       await dispatcher.sweepDispatch();
 
-      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
+      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({
+        where: { id: record.id },
+      });
       expect(reloaded.status).toBe(KdsDeliveryStatus.cancelled);
       expect(reloaded.pushedAt).toBeNull();
     });
@@ -144,7 +150,9 @@ describe('KDS Delivery Dispatch (integration, real local Postgres)', () => {
       const result = await dispatcher.sweepDispatch();
       expect(result.pushed).toBeGreaterThanOrEqual(1);
 
-      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
+      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({
+        where: { id: record.id },
+      });
       expect(reloaded.pushAttemptCount).toBe(2);
       expect(reloaded.pushedAt!.getTime()).toBeGreaterThan(Date.now() - 10_000);
     });
@@ -155,7 +163,9 @@ describe('KDS Delivery Dispatch (integration, real local Postgres)', () => {
 
       await dispatcher.sweepDispatch();
 
-      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({ where: { id: record.id } });
+      const reloaded = await prisma.kdsDeliveryRecord.findUniqueOrThrow({
+        where: { id: record.id },
+      });
       expect(reloaded.status).toBe(KdsDeliveryStatus.exhausted);
       expect(reloaded.dispatchExhaustedAt).not.toBeNull();
       expect(reloaded.pushedAt).toBeNull();
@@ -203,8 +213,12 @@ describe('KDS Delivery Dispatch (integration, real local Postgres)', () => {
       try {
         await dispatcher.sweepDispatch();
 
-        const reloadedA = await prisma.kdsDeliveryRecord.findUniqueOrThrow({ where: { id: recordA.id } });
-        const reloadedB = await prisma.kdsDeliveryRecord.findUniqueOrThrow({ where: { id: recordB.id } });
+        const reloadedA = await prisma.kdsDeliveryRecord.findUniqueOrThrow({
+          where: { id: recordA.id },
+        });
+        const reloadedB = await prisma.kdsDeliveryRecord.findUniqueOrThrow({
+          where: { id: recordB.id },
+        });
         expect(reloadedA.status).toBe(KdsDeliveryStatus.pushed);
         expect(reloadedB.status).toBe(KdsDeliveryStatus.pushed);
         expect(reloadedA.venueId).toBe(venueId);

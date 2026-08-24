@@ -510,7 +510,7 @@ describe('Orders API (integration, real local Postgres)', () => {
     // Deliberately configured even though it must never fire for this
     // venue — proves the skip is keyed on posAdapterType, not merely on
     // "no printers happen to exist".
-    const printer = await prisma.printer.create({
+    await prisma.printer.create({
       data: {
         venueId: venue.id,
         name: 'Phase 4 Integration IdealPOS-Owns-KOT Printer',
@@ -1026,7 +1026,8 @@ describe('Orders API (integration, real local Postgres)', () => {
           await prisma.orderItem.deleteMany({ where: { orderId: orderAtVenueTwoId } });
           await prisma.order.deleteMany({ where: { id: orderAtVenueTwoId } });
         }
-        if (secondVenueMenuItem) await prisma.menuItem.delete({ where: { id: secondVenueMenuItem.id } });
+        if (secondVenueMenuItem)
+          await prisma.menuItem.delete({ where: { id: secondVenueMenuItem.id } });
         if (secondVenueTable) await prisma.table.delete({ where: { id: secondVenueTable.id } });
         if (secondVenue) await prisma.venue.delete({ where: { id: secondVenue.id } });
       }
@@ -1184,7 +1185,13 @@ describe('Orders API (integration, real local Postgres)', () => {
     it('reusing a takeaway idempotencyKey with a different cart (changed table-equivalent request shape) is rejected, never returned as a false replay', async () => {
       const key = `idem_15_13_cart_conflict_${Date.now()}`;
       const menuItem2 = await prisma.menuItem.findFirstOrThrow({
-        where: { organizationId: (await prisma.venue.findUniqueOrThrow({ where: { id: venueId } })).organizationId, id: { not: menuItemId }, isAvailable: true, deletedAt: null },
+        where: {
+          organizationId: (await prisma.venue.findUniqueOrThrow({ where: { id: venueId } }))
+            .organizationId,
+          id: { not: menuItemId },
+          isAvailable: true,
+          deletedAt: null,
+        },
       });
 
       const first = await request(app.getHttpServer())
@@ -1280,7 +1287,7 @@ describe('Orders API (integration, real local Postgres)', () => {
       await Promise.all(ids.map((id) => cleanupOrder(id)));
     });
 
-    it('a cancelled takeaway order\'s reference is never reused by a later order', async () => {
+    it("a cancelled takeaway order's reference is never reused by a later order", async () => {
       const first = await request(app.getHttpServer())
         .post('/api/admin/orders')
         .set('Authorization', `Bearer ${accessToken}`)

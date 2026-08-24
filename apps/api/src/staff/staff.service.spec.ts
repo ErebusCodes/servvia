@@ -8,7 +8,6 @@ import { StaffRole, Staff } from '@prisma/client';
 /** Isolates the one genuinely-untyped `jest.Mock` access this file needs to
  * a single well-justified spot rather than scattering `as` casts. */
 function firstCallArg(mockFn: jest.Mock): Record<string, unknown> {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
   return mockFn.mock.calls[0][0];
 }
 

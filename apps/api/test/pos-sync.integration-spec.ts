@@ -498,11 +498,7 @@ describe('POS Sync (integration, real local Postgres)', () => {
       // `$executeRaw` template literal omits the trailing semicolon that
       // Prisma doesn't require but the standalone migration.sql needs)
       // — everything else must match exactly.
-      const normalize = (sql: string) =>
-        sql
-          .replace(/\s+/g, ' ')
-          .trim()
-          .replace(/;$/, '');
+      const normalize = (sql: string) => sql.replace(/\s+/g, ' ').trim().replace(/;$/, '');
 
       expect(normalize(scriptRecordsSql!)).toBe(normalize(migrationRecordsSql!));
       expect(normalize(scriptOrdersSql!)).toBe(normalize(migrationOrdersSql!));

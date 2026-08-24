@@ -35,7 +35,10 @@ describe('KdsDispatcherService', () => {
         new KdsDispatcherService(
           mockPrisma as unknown as PrismaService,
           mockGateway as unknown as OrdersGateway,
-          configWith({ KDS_DISPATCH_CLAIM_LEASE_MS: 60_000, KDS_DISPATCH_SAFETY_NET_MS: 60_000 }) as any,
+          configWith({
+            KDS_DISPATCH_CLAIM_LEASE_MS: 60_000,
+            KDS_DISPATCH_SAFETY_NET_MS: 60_000,
+          }) as any,
         ),
     ).toThrow(/must be strictly less than/);
   });
@@ -43,7 +46,13 @@ describe('KdsDispatcherService', () => {
   describe('sweepDispatch', () => {
     it('claims a queued candidate, pushes over the gateway, and marks it pushed', async () => {
       mockPrisma.kdsDeliveryRecord.findMany.mockResolvedValue([
-        { id: 'kds-1', venueId: 'venue-1', orderId: 'ORD-1', pushAttemptCount: 0, order: { id: 'ORD-1', status: 'confirmed' } },
+        {
+          id: 'kds-1',
+          venueId: 'venue-1',
+          orderId: 'ORD-1',
+          pushAttemptCount: 0,
+          order: { id: 'ORD-1', status: 'confirmed' },
+        },
       ]);
       mockPrisma.kdsDeliveryRecord.updateMany.mockResolvedValueOnce({ count: 1 }); // claim
       mockPrisma.order.findUnique.mockResolvedValue({ id: 'ORD-1', items: [] });
@@ -51,13 +60,29 @@ describe('KdsDispatcherService', () => {
 
       const result = await service.sweepDispatch();
 
-      expect(mockGateway.sendOrderUpdate).toHaveBeenCalledWith('venue-1', { id: 'ORD-1', items: [] });
-      expect(result).toEqual({ eligible: 1, claimed: 1, pushed: 1, pushFailed: 0, markedCancelled: 0, exhausted: 0 });
+      expect(mockGateway.sendOrderUpdate).toHaveBeenCalledWith('venue-1', {
+        id: 'ORD-1',
+        items: [],
+      });
+      expect(result).toEqual({
+        eligible: 1,
+        claimed: 1,
+        pushed: 1,
+        pushFailed: 0,
+        markedCancelled: 0,
+        exhausted: 0,
+      });
     });
 
     it('marks a cancelled order live and never attempts a claim/push for it', async () => {
       mockPrisma.kdsDeliveryRecord.findMany.mockResolvedValue([
-        { id: 'kds-1', venueId: 'venue-1', orderId: 'ORD-1', pushAttemptCount: 0, order: { id: 'ORD-1', status: 'cancelled' } },
+        {
+          id: 'kds-1',
+          venueId: 'venue-1',
+          orderId: 'ORD-1',
+          pushAttemptCount: 0,
+          order: { id: 'ORD-1', status: 'cancelled' },
+        },
       ]);
       mockPrisma.kdsDeliveryRecord.updateMany.mockResolvedValueOnce({ count: 1 });
 
@@ -74,7 +99,13 @@ describe('KdsDispatcherService', () => {
 
     it('marks a record exhausted once its push-attempt budget is met, never claiming it', async () => {
       mockPrisma.kdsDeliveryRecord.findMany.mockResolvedValue([
-        { id: 'kds-1', venueId: 'venue-1', orderId: 'ORD-1', pushAttemptCount: 5, order: { id: 'ORD-1', status: 'confirmed' } },
+        {
+          id: 'kds-1',
+          venueId: 'venue-1',
+          orderId: 'ORD-1',
+          pushAttemptCount: 5,
+          order: { id: 'ORD-1', status: 'confirmed' },
+        },
       ]);
       mockPrisma.kdsDeliveryRecord.updateMany.mockResolvedValueOnce({ count: 1 });
 
@@ -87,7 +118,13 @@ describe('KdsDispatcherService', () => {
 
     it('a lost claim race (another sweeper won) is a safe no-op — no push, no error', async () => {
       mockPrisma.kdsDeliveryRecord.findMany.mockResolvedValue([
-        { id: 'kds-1', venueId: 'venue-1', orderId: 'ORD-1', pushAttemptCount: 0, order: { id: 'ORD-1', status: 'confirmed' } },
+        {
+          id: 'kds-1',
+          venueId: 'venue-1',
+          orderId: 'ORD-1',
+          pushAttemptCount: 0,
+          order: { id: 'ORD-1', status: 'confirmed' },
+        },
       ]);
       mockPrisma.kdsDeliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 }); // claim lost
 
@@ -100,7 +137,13 @@ describe('KdsDispatcherService', () => {
 
     it('a failure fetching the order for push is recorded and counted, never thrown out of the sweep', async () => {
       mockPrisma.kdsDeliveryRecord.findMany.mockResolvedValue([
-        { id: 'kds-1', venueId: 'venue-1', orderId: 'ORD-1', pushAttemptCount: 0, order: { id: 'ORD-1', status: 'confirmed' } },
+        {
+          id: 'kds-1',
+          venueId: 'venue-1',
+          orderId: 'ORD-1',
+          pushAttemptCount: 0,
+          order: { id: 'ORD-1', status: 'confirmed' },
+        },
       ]);
       mockPrisma.kdsDeliveryRecord.updateMany.mockResolvedValueOnce({ count: 1 }); // claim
       mockPrisma.order.findUnique.mockRejectedValue(new Error('db blip'));

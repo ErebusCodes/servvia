@@ -47,7 +47,11 @@ describe('Payment Observation (integration, real local Postgres)', () => {
     prisma = app.get(PrismaService);
 
     const org = await prisma.organization.create({
-      data: { name: `${TAG} org`, slug: `${TAG}-org-${RUN}`, billingEmail: `${TAG}-${RUN}@verdura.internal` },
+      data: {
+        name: `${TAG} org`,
+        slug: `${TAG}-org-${RUN}`,
+        billingEmail: `${TAG}-${RUN}@verdura.internal`,
+      },
     });
     organizationId = org.id;
     const venue = await prisma.venue.create({
@@ -201,7 +205,11 @@ describe('Payment Observation (integration, real local Postgres)', () => {
 
     it('a cross-organization order is not found (tenant isolation)', async () => {
       const otherOrg = await prisma.organization.create({
-        data: { name: `${TAG} other`, slug: `${TAG}-other-${Date.now()}`, billingEmail: `${TAG}-other@verdura.internal` },
+        data: {
+          name: `${TAG} other`,
+          slug: `${TAG}-other-${Date.now()}`,
+          billingEmail: `${TAG}-other@verdura.internal`,
+        },
       });
       const otherVenue = await prisma.venue.create({
         data: {
@@ -259,7 +267,12 @@ describe('Payment Observation (integration, real local Postgres)', () => {
       await request(app.getHttpServer())
         .post(`/api/admin/payment-observations/${view.body.id}/acknowledge`)
         .set('Authorization', `Bearer ${ownerToken}`)
-        .send({ note: 'reviewed', organizationId: 'forged-org', staffId: 'forged-staff', role: 'owner' })
+        .send({
+          note: 'reviewed',
+          organizationId: 'forged-org',
+          staffId: 'forged-staff',
+          role: 'owner',
+        })
         .expect(201)
         .expect((r) => expect(r.body.acknowledged).toBe(true));
     });
@@ -273,15 +286,25 @@ describe('Payment Observation (integration, real local Postgres)', () => {
       await inject(ownerToken, order.id, payload).expect(201);
       await inject(ownerToken, order.id, payload).expect(201); // same observationId+payload -- must not throw
 
-      const events = await prisma.paymentObservationEvent.findMany({ where: { orderId: order.id } });
+      const events = await prisma.paymentObservationEvent.findMany({
+        where: { orderId: order.id },
+      });
       expect(events).toHaveLength(1); // never duplicated
     });
 
     it('the same observationId with a different payload fails closed (409)', async () => {
       const order = await makeOrder();
       const observationId = `obs-dup-${Date.now()}`;
-      await inject(ownerToken, order.id, fixturePayload({ observationId, amountCents: 7000 })).expect(201);
-      await inject(ownerToken, order.id, fixturePayload({ observationId, amountCents: 8000 })).expect(409);
+      await inject(
+        ownerToken,
+        order.id,
+        fixturePayload({ observationId, amountCents: 7000 }),
+      ).expect(201);
+      await inject(
+        ownerToken,
+        order.id,
+        fixturePayload({ observationId, amountCents: 8000 }),
+      ).expect(409);
     });
   });
 
@@ -300,7 +323,9 @@ describe('Payment Observation (integration, real local Postgres)', () => {
       // impossible/undefined state, and never both applied.
       expect(['paid', 'declined', 'conflict']).toContain(proj!.state);
 
-      const events = await prisma.paymentObservationEvent.findMany({ where: { orderId: order.id } });
+      const events = await prisma.paymentObservationEvent.findMany({
+        where: { orderId: order.id },
+      });
       expect(events).toHaveLength(2);
       const appliedCount = events.filter((e) => e.applied).length;
       expect(appliedCount).toBe(1); // exactly one won the CAS
@@ -314,7 +339,9 @@ describe('Payment Observation (integration, real local Postgres)', () => {
           inject(ownerToken, order.id, fixturePayload({ state: 'pending' })),
         ]);
         expect([r1.status, r2.status]).toEqual([201, 201]);
-        const events = await prisma.paymentObservationEvent.findMany({ where: { orderId: order.id } });
+        const events = await prisma.paymentObservationEvent.findMany({
+          where: { orderId: order.id },
+        });
         expect(events.filter((e) => e.applied).length).toBe(2); // both "pending" self-transitions are legitimately allowed
       }
     });
@@ -326,9 +353,11 @@ describe('Payment Observation (integration, real local Postgres)', () => {
       const orderB = await makeOrder();
       const sharedReference = `IPS-shared-${Date.now()}`;
 
-      await inject(ownerToken, orderA.id, fixturePayload({ state: 'paid', nativeReference: sharedReference })).expect(
-        201,
-      );
+      await inject(
+        ownerToken,
+        orderA.id,
+        fixturePayload({ state: 'paid', nativeReference: sharedReference }),
+      ).expect(201);
       // The service itself does not special-case this; the DATABASE unique
       // constraint on PaymentObservation.nativeReference is the actual
       // enforcement mechanism -- proven by observing the underlying
@@ -346,9 +375,15 @@ describe('Payment Observation (integration, real local Postgres)', () => {
 
     it('an unverified amount is stored separately and never promoted to nativeAmountCents/state', async () => {
       const order = await makeOrder();
-      const { PaymentObservationService } = await import('../src/payment-observation/payment-observation.service');
+      const { PaymentObservationService } =
+        await import('../src/payment-observation/payment-observation.service');
       const service = app.get(PaymentObservationService);
-      await service.recordUnverifiedAmount(order.id, organizationId, 4321, 'table_amount_observation_unverified');
+      await service.recordUnverifiedAmount(
+        order.id,
+        organizationId,
+        4321,
+        'table_amount_observation_unverified',
+      );
 
       const proj = await prisma.paymentObservation.findUnique({ where: { orderId: order.id } });
       expect(proj?.unverifiedAmountCents).toBe(4321);

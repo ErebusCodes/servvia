@@ -28,7 +28,9 @@ describe('TabletDevicesAdminController', () => {
       listDevices: jest.fn(),
       revokeDevice: jest.fn(),
     };
-    controller = new TabletDevicesAdminController(mockTabletAuthService as unknown as TabletAuthService);
+    controller = new TabletDevicesAdminController(
+      mockTabletAuthService as unknown as TabletAuthService,
+    );
   });
 
   it('createEnrollment scopes to the caller organization and the route venueId, attributing to the real staff actor', async () => {
@@ -38,13 +40,22 @@ describe('TabletDevicesAdminController', () => {
       expiresAt: new Date('2026-01-01T00:00:00Z'),
     });
 
-    await controller.createEnrollment('venue-1', { label: 'Front counter' }, reqWithStaff(staffActor));
+    await controller.createEnrollment(
+      'venue-1',
+      { label: 'Front counter' },
+      reqWithStaff(staffActor),
+    );
 
-    expect(mockTabletAuthService.createEnrollment).toHaveBeenCalledWith('org-1', 'venue-1', 'Front counter', {
-      id: 'staff-1',
-      email: 'manager@verdura.co.nz',
-      role: StaffRole.manager,
-    });
+    expect(mockTabletAuthService.createEnrollment).toHaveBeenCalledWith(
+      'org-1',
+      'venue-1',
+      'Front counter',
+      {
+        id: 'staff-1',
+        email: 'manager@verdura.co.nz',
+        role: StaffRole.manager,
+      },
+    );
   });
 
   it('listDevices scopes to the caller organization and the route venueId only', async () => {
@@ -58,11 +69,16 @@ describe('TabletDevicesAdminController', () => {
 
     const result = await controller.revokeDevice('venue-1', 'device-1', reqWithStaff(staffActor));
 
-    expect(mockTabletAuthService.revokeDevice).toHaveBeenCalledWith('device-1', 'org-1', 'venue-1', {
-      id: 'staff-1',
-      email: 'manager@verdura.co.nz',
-      role: StaffRole.manager,
-    });
+    expect(mockTabletAuthService.revokeDevice).toHaveBeenCalledWith(
+      'device-1',
+      'org-1',
+      'venue-1',
+      {
+        id: 'staff-1',
+        email: 'manager@verdura.co.nz',
+        role: StaffRole.manager,
+      },
+    );
     expect(result).toEqual({ revoked: true });
   });
 });

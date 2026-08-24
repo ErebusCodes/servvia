@@ -139,7 +139,10 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
     });
     for (const table of tables) {
       const active = await prisma.order.findFirst({
-        where: { tableId: table.id, status: { in: ['pending', 'confirmed', 'preparing', 'ready'] } },
+        where: {
+          tableId: table.id,
+          status: { in: ['pending', 'confirmed', 'preparing', 'ready'] },
+        },
       });
       if (!active) return { id: table.id, tableNumber: table.tableNumber };
     }
@@ -150,7 +153,14 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
     return request(app.getHttpServer())
       .post('/api/admin/orders')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ venueId, tableId, serviceMode: 'dine_in', notes: `${TAG} order`, idempotencyKey, items });
+      .send({
+        venueId,
+        tableId,
+        serviceMode: 'dine_in',
+        notes: `${TAG} order`,
+        idempotencyKey,
+        items,
+      });
   }
 
   describe('kiosk menu response shape', () => {
@@ -169,7 +179,13 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
         required: boolean;
         minSelections: number;
         maxSelections: number;
-        options: Array<{ id: string; name: string; priceDeltaCents: number; isAvailable: boolean; sortOrder: number }>;
+        options: Array<{
+          id: string;
+          name: string;
+          priceDeltaCents: number;
+          isAvailable: boolean;
+          sortOrder: number;
+        }>;
       }>;
       expect(groups).toHaveLength(2);
 
@@ -192,7 +208,13 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
     it('THE $0.50 DEFECT REGRESSION: a real +$0.50 modifier persists at exactly $0.50 in Postgres, never silently at $0', async () => {
       const table = await freeTable();
       const res = await postStaffOrder(
-        [{ menuItemId: itemId, quantity: 1, selectedModifiers: [{ modifierGroupId: sauceGroupId, optionId: garlicOptionId }] }],
+        [
+          {
+            menuItemId: itemId,
+            quantity: 1,
+            selectedModifiers: [{ modifierGroupId: sauceGroupId, optionId: garlicOptionId }],
+          },
+        ],
         `${TAG}-defect-regression`,
         table.id,
       ).expect(201);
@@ -219,6 +241,45 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
           priceDeltaCents: 50,
         },
       ]);
+    });
+
+    it('a required-group selection and an optional-group selection both price correctly on the same item', async () => {
+      const table = await freeTable();
+      const res = await postStaffOrder(
+        [
+          {
+            menuItemId: itemId,
+            quantity: 1,
+            selectedModifiers: [
+              { modifierGroupId: sauceGroupId, optionId: garlicOptionId },
+              { modifierGroupId: extrasGroupId, optionId: pitaOptionId },
+            ],
+          },
+        ],
+        `${TAG}-multi-group`,
+        table.id,
+      ).expect(201);
+
+      // 7000 base + 50 (Toum Garlic Paste) + 150 (Extra Pita)
+      expect(res.body.subtotalCents).toBe(7200);
+
+      const dbOrder = await prisma.order.findUniqueOrThrow({
+        where: { id: res.body.id },
+        include: { items: true },
+      });
+      expect(dbOrder.items[0].unitPriceCents).toBe(7200);
+      const mods = dbOrder.items[0].selectedModifiers as Array<{
+        modifierGroupId: string;
+        optionId: string;
+        optionName: string;
+        priceDeltaCents: number;
+      }>;
+      expect(mods).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ optionId: garlicOptionId, priceDeltaCents: 50 }),
+          expect.objectContaining({ optionId: pitaOptionId, priceDeltaCents: 150 }),
+        ]),
+      );
     });
 
     it('rejects a missing required group', async () => {
@@ -284,7 +345,13 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
     it('rejects the legacy name-based shape — ids are mandatory on this path', async () => {
       const table = await freeTable();
       await postStaffOrder(
-        [{ menuItemId: itemId, quantity: 1, selectedModifiers: [{ name: 'Toum Garlic Paste', priceDeltaCents: 50 }] }],
+        [
+          {
+            menuItemId: itemId,
+            quantity: 1,
+            selectedModifiers: [{ name: 'Toum Garlic Paste', priceDeltaCents: 50 }],
+          },
+        ],
         `${TAG}-legacy-shape`,
         table.id,
       ).expect(400);
@@ -337,7 +404,13 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
       const idempotencyKey = `${TAG}-replay-after-price-change`;
 
       const first = await postStaffOrder(
-        [{ menuItemId: itemId, quantity: 1, selectedModifiers: [{ modifierGroupId: sauceGroupId, optionId: garlicOptionId }] }],
+        [
+          {
+            menuItemId: itemId,
+            quantity: 1,
+            selectedModifiers: [{ modifierGroupId: sauceGroupId, optionId: garlicOptionId }],
+          },
+        ],
         idempotencyKey,
         table.id,
       ).expect(201);
@@ -345,11 +418,21 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
 
       // Change the option's price via the real authoring API.
       const current = await prisma.menuItem.findUniqueOrThrow({ where: { id: itemId } });
-      const updatedGroups = (current.modifierGroups as Array<{ id: string; options: Array<{ id: string; priceDeltaCents: number; [k: string]: unknown }>; [k: string]: unknown }>).map(
-        (g) =>
-          g.id === sauceGroupId
-            ? { ...g, options: g.options.map((o) => (o.id === garlicOptionId ? { ...o, priceDeltaCents: 500 } : o)) }
-            : g,
+      const updatedGroups = (
+        current.modifierGroups as Array<{
+          id: string;
+          options: Array<{ id: string; priceDeltaCents: number; [k: string]: unknown }>;
+          [k: string]: unknown;
+        }>
+      ).map((g) =>
+        g.id === sauceGroupId
+          ? {
+              ...g,
+              options: g.options.map((o) =>
+                o.id === garlicOptionId ? { ...o, priceDeltaCents: 500 } : o,
+              ),
+            }
+          : g,
       );
       await request(app.getHttpServer())
         .patch(`/api/admin/menu/items/${itemId}`)
@@ -359,7 +442,13 @@ describe('Menu modifier integrity (integration, real local Postgres) — Story 1
 
       // Replay the exact same request (same idempotency key, same cart shape).
       const replay = await postStaffOrder(
-        [{ menuItemId: itemId, quantity: 1, selectedModifiers: [{ modifierGroupId: sauceGroupId, optionId: garlicOptionId }] }],
+        [
+          {
+            menuItemId: itemId,
+            quantity: 1,
+            selectedModifiers: [{ modifierGroupId: sauceGroupId, optionId: garlicOptionId }],
+          },
+        ],
         idempotencyKey,
         table.id,
       ).expect(201);

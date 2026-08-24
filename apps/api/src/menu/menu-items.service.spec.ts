@@ -356,7 +356,7 @@ describe('MenuItemsService', () => {
       await expect(service.remove(ITEM_ID, ORG_ID)).resolves.toBeUndefined();
       expect(mockPrisma.menuItem.updateMany).toHaveBeenCalledWith({
         where: { id: ITEM_ID, organizationId: ORG_ID, deletedAt: null },
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
         data: { deletedAt: expect.any(Date) },
       });
     });

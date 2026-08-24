@@ -32,4 +32,19 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // supertest's Response#body is typed `any` by design (an HTTP JSON body is
+    // runtime-unknown at the type level), so every `response.body.foo` assertion
+    // in our e2e/integration specs trips the no-unsafe-* family. That's a property
+    // of the test library's types, not a real bug in these tests — production
+    // code (src/**) stays under the full recommendedTypeChecked rules above.
+    files: ['test/**/*.ts', '**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+    },
+  },
 );

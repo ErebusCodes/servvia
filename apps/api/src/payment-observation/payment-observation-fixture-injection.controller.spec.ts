@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { ForbiddenException } from '@nestjs/common';
 import { PaymentObservationFixtureInjectionController } from './payment-observation-fixture-injection.controller';
 

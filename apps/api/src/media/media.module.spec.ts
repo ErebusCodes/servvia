@@ -28,9 +28,9 @@ describe('resolveStorageProvider', () => {
     expect(
       resolveStorageProvider(undefined, undefined, undefined, undefined, undefined, local),
     ).toBe(local);
-    expect(
-      resolveStorageProvider('local', undefined, undefined, undefined, undefined, local),
-    ).toBe(local);
+    expect(resolveStorageProvider('local', undefined, undefined, undefined, undefined, local)).toBe(
+      local,
+    );
   });
 
   it('never performs GCP credential lookup for the local provider (constructs no GcsStorageProvider)', () => {

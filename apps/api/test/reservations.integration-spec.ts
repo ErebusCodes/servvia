@@ -71,7 +71,8 @@ describe('Reservations API (integration, real local Postgres)', () => {
       `/api/reservations/venues/${venueId}/availability?date=2026-09-01&time=19:00`,
     );
     csrfToken = extractCsrfToken(primer.headers['set-cookie'] as unknown as string[]) ?? '';
-    if (!csrfToken) throw new Error('Failed to obtain a CSRF token for the integration test setup.');
+    if (!csrfToken)
+      throw new Error('Failed to obtain a CSRF token for the integration test setup.');
   });
 
   afterAll(async () => {
@@ -81,7 +82,9 @@ describe('Reservations API (integration, real local Postgres)', () => {
 
   afterEach(async () => {
     // Keep the shared test venue/slot clean between tests.
-    await prisma.reservation.deleteMany({ where: { guestEmail: { contains: '@phase3-integration.test' } } });
+    await prisma.reservation.deleteMany({
+      where: { guestEmail: { contains: '@phase3-integration.test' } },
+    });
   });
 
   const DATE = '2026-09-15';
@@ -219,7 +222,9 @@ describe('Reservations API (integration, real local Postgres)', () => {
 
   it('8. rejects a nonexistent venue', async () => {
     await request(app.getHttpServer())
-      .get(`/api/reservations/venues/00000000-0000-0000-0000-000000000000/availability?date=${DATE}&time=${TIME}`)
+      .get(
+        `/api/reservations/venues/00000000-0000-0000-0000-000000000000/availability?date=${DATE}&time=${TIME}`,
+      )
       .expect(404);
 
     await request(app.getHttpServer())

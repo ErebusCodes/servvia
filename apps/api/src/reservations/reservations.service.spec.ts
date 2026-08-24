@@ -312,10 +312,10 @@ describe('ReservationsService', () => {
       expect(mockPrisma.reservation.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'res-uuid' },
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
           data: expect.objectContaining({
             status: 'confirmed',
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
             confirmedAt: expect.any(Date),
           }),
         }),
@@ -334,10 +334,9 @@ describe('ReservationsService', () => {
 
       expect(mockPrisma.reservation.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           data: expect.objectContaining({
             status: 'cancelled',
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
             cancelledAt: expect.any(Date),
             cancelledBy: staffId,
           }),
@@ -354,7 +353,6 @@ describe('ReservationsService', () => {
 
       expect(mockPrisma.reservation.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           data: expect.not.objectContaining({ confirmedAt: expect.anything() }),
         }),
       );

@@ -453,7 +453,10 @@ export class OrdersService {
     // commercial identity of the request, not an incidental field.
     if (existingOrder.source !== candidate.expectedSource) return false;
 
-    if (candidate.serviceMode !== undefined && candidate.serviceMode !== existingOrder.serviceMode) {
+    if (
+      candidate.serviceMode !== undefined &&
+      candidate.serviceMode !== existingOrder.serviceMode
+    ) {
       return false;
     }
 

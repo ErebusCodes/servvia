@@ -56,7 +56,11 @@ export class TabletOrdersController {
     @Query('activeOnly') activeOnly?: string,
   ): Promise<Order[]> {
     const scopedVenueId = resolveVenueScope(req.user, undefined);
-    return this.ordersService.findAll(req.user.organizationId, scopedVenueId, activeOnly === 'true');
+    return this.ordersService.findAll(
+      req.user.organizationId,
+      scopedVenueId,
+      activeOnly === 'true',
+    );
   }
 
   @Post('orders')

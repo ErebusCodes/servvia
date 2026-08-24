@@ -63,7 +63,7 @@ describe('buildIdealposOrderPayload', () => {
     expect(buildIdealposOrderPayload(input)).toEqual(buildIdealposOrderPayload(input));
   });
 
-  it('rejects with unmapped_table when a dine-in order\'s table has no posTableCode — never guesses from tableNumber', () => {
+  it("rejects with unmapped_table when a dine-in order's table has no posTableCode — never guesses from tableNumber", () => {
     try {
       buildIdealposOrderPayload(baseInput({ serviceMode: 'dine_in', tableCode: null }));
       fail('expected IdealposMappingError');

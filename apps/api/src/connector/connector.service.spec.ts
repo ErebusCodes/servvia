@@ -1,7 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';

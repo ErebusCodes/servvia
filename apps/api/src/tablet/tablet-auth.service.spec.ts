@@ -13,7 +13,6 @@ import { AuditLogService } from '../audit/audit.service';
  * well-justified spot, instead of scattering `as` casts across every call
  * site. */
 function firstCallArg(mockFn: jest.Mock): Record<string, unknown> {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return
   return mockFn.mock.calls[0][0];
 }
 
