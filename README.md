@@ -380,14 +380,24 @@ All scripts are executed from the workspace root unless otherwise noted:
 
 ### 6.2 Application URLs
 
+This is the locked, permanent local service/port map — see
+`scripts/dev-lock.mjs`'s `CANONICAL_PORTS`, the single source of truth every
+port below is generated from. Do not change these port assignments without
+an explicit new decision; see that file's own doc comment.
+
 | Surface | Local URL | Notes |
 |---|---|---|
 | Customer Frontend | `http://localhost:5173` | Booking engine, menu, landing pages |
-| Self-Order Kiosk | `http://localhost:5174` | POS/kiosk ordering |
-| Kitchen Display (KDS) | `http://localhost:5175` | Development-only KDS view |
-| Admin Dashboard | `http://localhost:5176` | Menu and operations management |
-| Order Tablet | `http://localhost:5177` | Staff tablet ordering |
+| Window Display | `http://localhost:5174` | Promotional display / in-venue self-order kiosk |
+| Kitchen Display (KDS) | `http://localhost:5175` | Development-only KDS view. Local admin/owner PIN: `108` |
+| Order Tablet | `http://localhost:5176` | Staff/customer in-venue ordering (device PIN stage). Local admin/owner PIN: `108` |
+| Admin Console | `http://localhost:5177` | Menu and operations management. Local admin/owner PIN: `108` |
 | NestJS API | `http://localhost:3000` | REST & WebSocket server |
+
+Order Tablet device enrollment is a separate stage from the admin/owner PIN
+above — see `apps/order-tablet/README.md`. Production must always be
+configured with a real, non-default PIN; `108` is rejected outright in
+production (`NODE_ENV=production`) regardless of configuration.
 
 ---
 

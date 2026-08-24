@@ -29,7 +29,7 @@
     "dev:window-display": "npm run dev --workspace=apps/window-display",
     "dev:admin-console": "npm run dev --workspace=apps/admin-console",
     "dev:kitchen-display": "cross-env VITE_APP_MODE=kds npm run dev --workspace=apps/admin-console -- --port 5175",
-    "dev:order-tablet": "cross-env VITE_APP_MODE=tablet npm run dev --workspace=apps/admin-console -- --port 5177",
+    "dev:order-tablet": "cross-env VITE_APP_MODE=tablet npm run dev --workspace=apps/admin-console -- --port 5176",
     "build:api": "npm run build --workspace=apps/api",
     "build:customer-website": "npm run build --workspace=apps/customer-website",
     "build:window-display": "npm run build --workspace=apps/window-display",

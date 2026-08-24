@@ -3,6 +3,7 @@ node_modules/
 **/.DS_Store
 test-results/
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 .env
 .env.*
 !**/.env.example

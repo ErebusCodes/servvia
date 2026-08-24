@@ -12,11 +12,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
 import {
+  CANONICAL_PORTS,
   clearState,
   describePortOwner,
   formatRunningStack,
@@ -26,6 +28,8 @@ import {
   verifySupervisor,
   writeState,
 } from './dev-lock.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function tempStatePath() {
   const dir = mkdtempSync(join(tmpdir(), 'verdura-dev-lock-test-'));
@@ -291,4 +295,78 @@ test('dev:status — a real verified supervisor is reported as running with its 
   } finally {
     child.kill('SIGKILL');
   }
+});
+
+// ── Locked service/port map (2026-08-24 decision) ───────────────────────────
+//
+// These tests deliberately do NOT just assert CANONICAL_PORTS' own literal
+// values against themselves -- that would only prove the map agrees with
+// itself, and drift would go undetected the moment any ONE of the several
+// places a port is actually configured (a vite.config.ts, a package.json
+// --port flag) changed without the others. Every test below instead reads
+// the real source files that actually configure each port and cross-checks
+// them against CANONICAL_PORTS, so this suite fails the moment any of them
+// disagree -- which is exactly the class of bug found and fixed alongside
+// these tests (CANONICAL_PORTS previously had 'admin-console' and
+// 'window-display' swapped relative to their real vite.config.ts ports).
+
+const LOCKED_PORT_MAP = {
+  api: 3000,
+  'customer-website': 5173,
+  'window-display': 5174,
+  'kitchen-display': 5175,
+  'order-tablet': 5176,
+  'admin-console': 5177,
+};
+
+test('CANONICAL_PORTS matches the locked service/port map exactly', () => {
+  assert.deepEqual(CANONICAL_PORTS, LOCKED_PORT_MAP);
+});
+
+test('CANONICAL_PORTS has no duplicate port numbers', () => {
+  const ports = Object.values(CANONICAL_PORTS);
+  assert.equal(new Set(ports).size, ports.length, `duplicate ports found: ${ports.join(', ')}`);
+});
+
+function extractVitePort(relativeConfigPath) {
+  const content = readFileSync(join(ROOT, relativeConfigPath), 'utf8');
+  const match = content.match(/port:\s*(\d+)/);
+  assert.ok(match, `no "port: <number>" found in ${relativeConfigPath}`);
+  return Number(match[1]);
+}
+
+function extractDevScriptPort(scriptName) {
+  const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+  const script = pkg.scripts[scriptName];
+  assert.ok(script, `package.json has no "${scriptName}" script`);
+  const match = script.match(/--port\s+(\d+)/);
+  assert.ok(match, `"${scriptName}" script has no --port flag: ${script}`);
+  return Number(match[1]);
+}
+
+test('window-display/vite.config.ts port matches CANONICAL_PORTS', () => {
+  assert.equal(extractVitePort('apps/window-display/vite.config.ts'), CANONICAL_PORTS['window-display']);
+});
+
+test("admin-console/vite.config.ts base port (plain 'npm run dev:admin-console', no VITE_APP_MODE) matches CANONICAL_PORTS", () => {
+  assert.equal(extractVitePort('apps/admin-console/vite.config.ts'), CANONICAL_PORTS['admin-console']);
+});
+
+test("package.json's dev:kitchen-display --port override matches CANONICAL_PORTS", () => {
+  assert.equal(extractDevScriptPort('dev:kitchen-display'), CANONICAL_PORTS['kitchen-display']);
+});
+
+test("package.json's dev:order-tablet --port override matches CANONICAL_PORTS", () => {
+  assert.equal(extractDevScriptPort('dev:order-tablet'), CANONICAL_PORTS['order-tablet']);
+});
+
+test('apps/api/.env.example default PORT matches CANONICAL_PORTS', () => {
+  const content = readFileSync(join(ROOT, 'apps/api/.env.example'), 'utf8');
+  const match = content.match(/^PORT=(\d+)/m);
+  assert.ok(match, 'apps/api/.env.example has no PORT= line');
+  assert.equal(Number(match[1]), CANONICAL_PORTS.api);
+});
+
+test('customer-website/vite.config.js port matches CANONICAL_PORTS', () => {
+  assert.equal(extractVitePort('apps/customer-website/vite.config.js'), CANONICAL_PORTS['customer-website']);
 });

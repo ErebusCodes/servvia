@@ -215,7 +215,7 @@ function validateKdsVenuePinConfigured(dbVenueId, backendEnv) {
     fail(
       `KDS_VENUE_PINS in apps/api/.env has no entry for the local database's actual venue id — ` +
       `Kitchen Display (${'http://localhost:5175/'}) and the Order Tablet's PIN stage ` +
-      `(${'http://localhost:5177/'}) will both silently reject every PIN, including "108".\n\n` +
+      `(${'http://localhost:5176/'}) will both silently reject every PIN, including "108".\n\n` +
       `Database venue id:\n  ${dbVenueId}\n\n` +
       `Configured KDS_VENUE_PINS:\n  ${raw}\n\n` +
       `Fix apps/api/.env so its key exactly matches the database's venue id, e.g.:\n` +

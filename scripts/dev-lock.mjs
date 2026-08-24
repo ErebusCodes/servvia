@@ -36,20 +36,28 @@ export const STATE_PATH = process.env.VERDURA_DEV_STATE_PATH || join(tmpdir(), '
 // makes a stale/reused PID distinguishable from a real Verdura supervisor.
 export const SUPERVISOR_MARKER = 'scripts/dev.mjs';
 
-// The complete, canonical set of fixed ports one Verdura dev stack binds.
-// Order matches scripts/dev.mjs's own SERVICES array / package.json's
-// dev:* scripts — see this repo's root package.json for where each of
-// these literal port numbers is actually configured (vite.config.*
-// defaults for customer-website/admin-console/window-display; explicit
-// --port flags for kitchen-display/order-tablet; apps/api/.env's PORT for
-// the API).
+// The complete, canonical set of fixed ports one Verdura dev stack binds --
+// the single source of truth every other port reference in this repo
+// (package.json's dev:* scripts, each app's vite.config.ts, scripts/dev.mjs's
+// own printed messages, and README.md's setup table) must match. Verified
+// against a real running stack (2026-08-24) after this map was found to
+// have 'admin-console' and 'window-display' swapped relative to their
+// actual vite.config.ts ports -- a real, silent drift bug: the port
+// *numbers* were still correct here (nothing was ever actually
+// double-bound), but the *labels* attached to 5174/5176 were backwards, so
+// `npm run dev:status`/`dev:stop`'s human-readable output named the wrong
+// app for those two ports. Fixed alongside the intentional, user-directed
+// admin-console/order-tablet swap below — see vite.config.ts
+// (window-display, admin-console) and package.json's
+// dev:kitchen-display/dev:order-tablet scripts for where each literal port
+// number is actually configured; apps/api/.env's PORT for the API.
 export const CANONICAL_PORTS = {
   api: 3000,
   'customer-website': 5173,
-  'admin-console': 5174,
+  'window-display': 5174,
   'kitchen-display': 5175,
-  'window-display': 5176,
-  'order-tablet': 5177,
+  'order-tablet': 5176,
+  'admin-console': 5177,
 };
 
 // Each takes an optional explicit path, defaulting to the real, shared

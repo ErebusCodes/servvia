@@ -6,7 +6,14 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      port: 5176,
+      // Base/default admin-console mode only. Kitchen Display (VITE_APP_MODE=kds)
+      // and Order Tablet (VITE_APP_MODE=tablet) override this via explicit
+      // --port flags in package.json's dev:kitchen-display/dev:order-tablet
+      // scripts (5175/5176) -- this default is what plain `npm run
+      // dev:admin-console` (no VITE_APP_MODE) binds to. Final locked port
+      // map: see scripts/dev-lock.mjs's CANONICAL_PORTS, the single source
+      // of truth every other port reference in this repo must match.
+      port: 5177,
       strictPort: true,
       proxy: {
         '/api': {

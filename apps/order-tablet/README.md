@@ -12,7 +12,7 @@ The staff/customer in-venue ordering surface: table and seat selection, menu and
 
 ```bash
 # from the repository root
-npm run dev:order-tablet     # VITE_APP_MODE=tablet, port 5177
+npm run dev:order-tablet     # VITE_APP_MODE=tablet, port 5176
 npm run build:order-tablet
 ```
 
