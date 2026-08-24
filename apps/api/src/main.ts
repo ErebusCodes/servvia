@@ -47,6 +47,7 @@ async function bootstrap() {
   try {
     assertSecretNotInsecureDefault(process.env.JWT_ACCESS_SECRET, 'JWT_ACCESS_SECRET');
     assertSecretNotInsecureDefault(process.env.JWT_REFRESH_SECRET, 'JWT_REFRESH_SECRET');
+    assertSecretNotInsecureDefault(process.env.INTERNAL_SERVICE_TOKEN, 'INTERNAL_SERVICE_TOKEN');
   } catch (error) {
     console.error('========================================================================');
     console.error(`FATAL ERROR: ${error instanceof Error ? error.message : String(error)}`);

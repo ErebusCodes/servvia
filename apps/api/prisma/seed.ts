@@ -1,6 +1,7 @@
 import { PrismaClient, StaffRole } from '@prisma/client';
 import tableConfig from '../../../shared/table-config.json';
 import * as argon2 from 'argon2';
+import { assertSecretNotInsecureDefault } from '../src/auth/utils/insecure-default-secret.util';
 
 const prisma = new PrismaClient();
 
@@ -15,6 +16,7 @@ const { LOCAL_VENUE_ID, LOCAL_ORG_SLUG, LOCAL_VENUE_SLUG } =
 async function main() {
   const seedPassword = process.env.SEED_OWNER_PASSWORD;
   if (!seedPassword) throw new Error('SEED_OWNER_PASSWORD env var is required');
+  assertSecretNotInsecureDefault(seedPassword, 'SEED_OWNER_PASSWORD');
 
   const billingEmail = process.env.SEED_BILLING_EMAIL ?? 'admin@verdura.co.nz';
   const ownerEmail = (process.env.SEED_OWNER_EMAIL ?? 'owner@verdura.co.nz').toLowerCase();

@@ -1,5 +1,18 @@
 name: verdura
 
+# DEVELOPMENT ONLY. Every `${VAR:-default}` below (JWT_ACCESS_SECRET,
+# JWT_REFRESH_SECRET, INTERNAL_SERVICE_TOKEN, SEED_OWNER_PASSWORD,
+# ADMIN_CONSOLE_PIN, POSTGRES_PASSWORD, etc.) falls back to a checked-in,
+# publicly-readable value the moment the real env var isn't set — that is
+# fine for a disposable local stack, never for anything reachable from the
+# internet. The API itself refuses to boot in production
+# (NODE_ENV=production) if JWT_ACCESS_SECRET/JWT_REFRESH_SECRET/
+# INTERNAL_SERVICE_TOKEN still hold their checked-in default value (see
+# apps/api/src/auth/utils/insecure-default-secret.util.ts), and `npm run
+# db:seed` refuses to run with the default SEED_OWNER_PASSWORD — but that
+# fail-closed check only fires for those specific variables; there is no
+# separate production compose/deployment manifest yet (see
+# _bmad-output for the tracked gap). Do not deploy this file as-is.
 services:
   postgres:
     image: postgres:16-alpine
@@ -120,7 +133,7 @@ services:
         WORKSPACE: apps/admin-console
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
-    ports: ['5176:80']
+    ports: ['5177:80']  # must match CANONICAL_PORTS['admin-console'] in scripts/dev-lock.mjs
     depends_on: [api]
 
   # Formerly "tablet" (tablet-frontend, an empty/abandoned scaffold — see
@@ -137,7 +150,7 @@ services:
         VITE_APP_MODE: tablet
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
-    ports: ['5177:80']
+    ports: ['5176:80']  # must match CANONICAL_PORTS['order-tablet'] in scripts/dev-lock.mjs
     depends_on: [api]
 
 volumes:

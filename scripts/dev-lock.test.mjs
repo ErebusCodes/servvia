@@ -370,3 +370,32 @@ test('apps/api/.env.example default PORT matches CANONICAL_PORTS', () => {
 test('customer-website/vite.config.js port matches CANONICAL_PORTS', () => {
   assert.equal(extractVitePort('apps/customer-website/vite.config.js'), CANONICAL_PORTS['customer-website']);
 });
+
+// docker-compose.yml is a separate deployment configuration surface that
+// none of the dev-tooling checks above touch — it was found to have
+// 'admin-console' and 'order-tablet' silently inverted relative to
+// CANONICAL_PORTS even after the 2026-08-24 dev-side fix landed (the fix
+// only touched dev tooling, not deploy config). Extracts each service's
+// host-side published port (the left side of "HOST:CONTAINER" in its
+// `ports:` mapping) directly from the compose file and cross-checks it,
+// the same way the vite.config.ts/package.json checks above do, so this
+// specific class of drift can never again go undetected.
+function extractComposeHostPort(serviceName) {
+  const content = readFileSync(join(ROOT, 'docker-compose.yml'), 'utf8');
+  const serviceHeaderRe = new RegExp(`^  ${serviceName}:\\s*$`, 'm');
+  const headerMatch = serviceHeaderRe.exec(content);
+  assert.ok(headerMatch, `docker-compose.yml has no top-level "${serviceName}:" service`);
+  const afterHeader = content.slice(headerMatch.index + headerMatch[0].length);
+  // Stop at the next top-level (2-space-indented) service key, or EOF.
+  const nextServiceMatch = /\n  \S.*:\s*$/m.exec(afterHeader);
+  const serviceBlock = nextServiceMatch ? afterHeader.slice(0, nextServiceMatch.index) : afterHeader;
+  const portsMatch = serviceBlock.match(/ports:\s*\[\s*'(\d+):\d+'\s*\]/);
+  assert.ok(portsMatch, `docker-compose.yml "${serviceName}" service has no "ports: ['<host>:<container>']" mapping`);
+  return Number(portsMatch[1]);
+}
+
+for (const service of ['customer-website', 'window-display', 'kitchen-display', 'admin-console', 'order-tablet']) {
+  test(`docker-compose.yml "${service}" published port matches CANONICAL_PORTS`, () => {
+    assert.equal(extractComposeHostPort(service), CANONICAL_PORTS[service]);
+  });
+}

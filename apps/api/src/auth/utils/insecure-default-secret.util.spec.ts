@@ -1,4 +1,7 @@
-import { assertSecretNotInsecureDefault, InsecureDefaultSecretError } from './insecure-default-secret.util';
+import {
+  assertSecretNotInsecureDefault,
+  InsecureDefaultSecretError,
+} from './insecure-default-secret.util';
 
 describe('assertSecretNotInsecureDefault', () => {
   const originalNodeEnv = process.env.NODE_ENV;
@@ -34,10 +37,40 @@ describe('assertSecretNotInsecureDefault', () => {
     ).toThrow(InsecureDefaultSecretError);
   });
 
+  it('refuses to start in production with the checked-in docker-compose.yml INTERNAL_SERVICE_TOKEN default', () => {
+    process.env.NODE_ENV = 'production';
+    expect(() =>
+      assertSecretNotInsecureDefault(
+        'local-docker-service-token-change-me',
+        'INTERNAL_SERVICE_TOKEN',
+      ),
+    ).toThrow(InsecureDefaultSecretError);
+  });
+
+  it('refuses to start in production with the checked-in .env.example INTERNAL_SERVICE_TOKEN default', () => {
+    process.env.NODE_ENV = 'production';
+    expect(() =>
+      assertSecretNotInsecureDefault(
+        'change-me-internal-service-token-32chars',
+        'INTERNAL_SERVICE_TOKEN',
+      ),
+    ).toThrow(InsecureDefaultSecretError);
+  });
+
+  it('refuses to seed in production with the checked-in SEED_OWNER_PASSWORD default (shared by .env.example and docker-compose.yml)', () => {
+    process.env.NODE_ENV = 'production';
+    expect(() =>
+      assertSecretNotInsecureDefault('change-me-in-production', 'SEED_OWNER_PASSWORD'),
+    ).toThrow(InsecureDefaultSecretError);
+  });
+
   it('allows a genuinely distinct production secret through unchanged', () => {
     process.env.NODE_ENV = 'production';
     expect(() =>
-      assertSecretNotInsecureDefault('a-real-32-character-minimum-secret-value', 'JWT_ACCESS_SECRET'),
+      assertSecretNotInsecureDefault(
+        'a-real-32-character-minimum-secret-value',
+        'JWT_ACCESS_SECRET',
+      ),
     ).not.toThrow();
   });
 
