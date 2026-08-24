@@ -76,7 +76,7 @@ function TextInput({ value, onChange, type = 'text', placeholder, hasError }) {
   );
 }
 
-function FieldLabel({ label, required }) {
+function FieldLabel({ label, required = false }) {
   return (
     <label className="font-body text-[10px] tracking-[0.2em] text-muted-foreground uppercase flex items-center gap-1.5">
       {label}
@@ -86,7 +86,7 @@ function FieldLabel({ label, required }) {
 }
 
 export default function Step1Details({ reservation, update, onNext }) {
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState({ date: '', time: '', name: '', email: '', phone: '' });
   const [availability, setAvailability] = useState(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [availabilityError, setAvailabilityError] = useState('');

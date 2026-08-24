@@ -86,7 +86,7 @@ function getDrinkImage(name, fallbackKey = 'cocktail') {
 
 // ─── SUB-COMPONENTS ────────────────────────────────────────────────────────
 
-function SectionHeading({ title, subtitle }) {
+function SectionHeading({ title, subtitle = null }) {
   return (
     <div className="flex items-center gap-4 mb-6 mt-10">
       <div className="h-px flex-1 bg-border/20" />
@@ -108,7 +108,7 @@ function Badge({ label }) {
 }
 
 // LIST items
-function DrinkRow({ item, badge }) {
+function DrinkRow({ item }) {
   return (
     <div className="group flex items-start justify-between gap-4 py-3.5 border-b border-border/15 hover:border-border/30 transition-all">
       <div className="flex-1 min-w-0">

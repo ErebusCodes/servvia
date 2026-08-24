@@ -1,6 +1,6 @@
 import { CalendarDays, Clock, Users, ChevronRight } from 'lucide-react';
 
-export default function ReservationSummary({ reservation, menuTotal, step, goTo, mobile }) {
+export default function ReservationSummary({ reservation, menuTotal, step, goTo, mobile = false }) {
   const { date, time, guests, occasion, name } = reservation;
 
   if (mobile) {
@@ -76,7 +76,7 @@ export default function ReservationSummary({ reservation, menuTotal, step, goTo,
   );
 }
 
-function Row({ label, value, icon }) {
+function Row({ label, value, icon = null }) {
   return (
     <div className="flex items-start justify-between gap-2">
       <span className="font-body text-[10px] tracking-[0.15em] text-muted-foreground uppercase flex items-center gap-1">{icon}{label}</span>
