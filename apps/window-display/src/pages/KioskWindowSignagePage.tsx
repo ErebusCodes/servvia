@@ -97,39 +97,6 @@ function itemPhoto(item: PublishedItem | undefined, revision: string) {
   return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(revision)}`;
 }
 
-function DietaryTags({ item }: { item?: PublishedItem }) {
-  if (!item?.nutritionalDetails?.tags?.length) return null;
-  return (
-    <div style={{ display: 'flex', gap: 12, marginTop: 30 }}>
-      {item.nutritionalDetails.tags.map(tag => {
-        const isShort = tag.length <= 2;
-        const displayTag = tag.toLowerCase().includes('spicy') && !tag.includes('🔥') ? `🔥 ${tag}` : tag;
-        return (
-          <span
-            key={tag}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: 48,
-              minWidth: isShort ? 48 : undefined,
-              padding: '0 18px',
-              borderRadius: 999,
-              border: '1.5px solid rgba(198,161,82,.5)',
-              color: 'var(--gold-bright)',
-              font: "700 19px/1 'Inter'",
-              letterSpacing: '.04em',
-              gap: 8
-            }}
-          >
-            {displayTag}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
 function renderTitleWithServing(title: string) {
   const alternateName = title.match(/^(.+?)\s*(\[[^\]]+\])\s*$/);
   if (alternateName) {
@@ -1040,5 +1007,3 @@ export const KioskWindowSignagePage: React.FC = () => {
     </KioskFullscreenShell>
   );
 };
-
-const photoLayer: React.CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' };

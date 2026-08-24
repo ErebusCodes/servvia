@@ -6,13 +6,10 @@ import { KdsPage } from './pages/KdsPage';
 import { KdsPinGate } from './components/KdsPinGate';
 import { useKioskStore } from './store/kiosk.store';
 
-// @ts-ignore - JSX pages imported from customer-frontend
+// JSX pages imported from customer-frontend
 import Menu from '@/pages/Menu';
-// @ts-ignore
 import BookTable from '@/pages/BookTable';
-// @ts-ignore
 import About from '@/pages/About';
-// @ts-ignore
 import Contact from '@/pages/Contact';
 
 export function App() {
