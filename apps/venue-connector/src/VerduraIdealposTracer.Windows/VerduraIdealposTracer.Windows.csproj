@@ -34,6 +34,16 @@
       this project uses no WinForms UI). This project doesn't render any
       WPF UI either; UseWPF is set purely to pull in the same targeting
       pack that ships the UI Automation client assemblies.
+
+      With UseWPF set, that targeting pack already puts UIAutomationClient/
+      UIAutomationTypes on the framework reference list implicitly — the
+      explicit <Reference> items this project previously also declared for
+      them (removed here) became a redundant, differently-versioned second
+      reference to the same assemblies, which is exactly what the real
+      build's own MSB3243 "no way to resolve conflict... choosing
+      arbitrarily" warning was reporting. Build succeeded either way (0
+      errors), but a build that's still choosing between two duplicate
+      references "arbitrarily" isn't a clean one to standardize on.
     -->
     <UseWPF>true</UseWPF>
     <RootNamespace>VerduraIdealposTracer.Windows</RootNamespace>
@@ -41,12 +51,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\VerduraIdealposTracer.Core\VerduraIdealposTracer.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Part of the Windows Desktop SDK's UI Automation client surface. -->
-    <Reference Include="UIAutomationClient" />
-    <Reference Include="UIAutomationTypes" />
   </ItemGroup>
 
 </Project>
