@@ -46,7 +46,10 @@ interface ParsedTableRow {
   seats: number;
 }
 
-function parseTablesExport(raw: string): { rows: ParsedTableRow[]; skipped: { line: string; reason: string }[] } {
+function parseTablesExport(raw: string): {
+  rows: ParsedTableRow[];
+  skipped: { line: string; reason: string }[];
+} {
   const lines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
   const rows: ParsedTableRow[] = [];
   const skipped: { line: string; reason: string }[] = [];
@@ -67,7 +70,12 @@ function parseTablesExport(raw: string): { rows: ParsedTableRow[]; skipped: { li
     const seats = Number(tokens[tokens.length - 1]);
     const caption = tokens.slice(3, tokens.length - 1).join(' ');
 
-    if (!Number.isInteger(code) || !Number.isInteger(type) || !Number.isInteger(index) || !Number.isInteger(seats)) {
+    if (
+      !Number.isInteger(code) ||
+      !Number.isInteger(type) ||
+      !Number.isInteger(index) ||
+      !Number.isInteger(seats)
+    ) {
       skipped.push({ line, reason: 'non-integer Code/Type/Index/Seats' });
       continue;
     }
@@ -107,7 +115,11 @@ async function main() {
       },
       update: { posTableCode: row.caption, capacity: row.seats },
     });
-    results.push({ tableNumber: table.tableNumber, capacity: table.capacity, posTableCode: table.posTableCode ?? '' });
+    results.push({
+      tableNumber: table.tableNumber,
+      capacity: table.capacity,
+      posTableCode: table.posTableCode ?? '',
+    });
   }
 
   console.log(
