@@ -21,6 +21,7 @@
 // api-origin defaults to http://127.0.0.1:3000.
 
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,6 +110,39 @@ const server = http.createServer((req, res) => {
   } else {
     serveStatic(req, res);
   }
+});
+
+// Plain http.request()-based proxying (above) only handles regular
+// request/response cycles — it does NOT forward the WebSocket handshake
+// (the `Upgrade: websocket` header triggers Node's separate 'upgrade'
+// event, never 'request'). Without this handler, any real-time
+// Socket.IO connection through this deployed proxy would silently never
+// connect at all — the Order Tablet's live order-status updates depend
+// on this working, not just plain GET/POST calls. Standard dependency-free
+// technique: open a raw TCP connection to the API, replay the client's
+// original handshake bytes verbatim, then pipe both directions.
+server.on('upgrade', (req, clientSocket, head) => {
+  if (!PROXY_PREFIXES.some((prefix) => req.url.startsWith(prefix))) {
+    clientSocket.destroy();
+    return;
+  }
+  const upstreamSocket = net.connect(apiOrigin.port, apiOrigin.hostname, () => {
+    const headerLines = [`${req.method} ${req.url} HTTP/1.1`];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      const name = req.rawHeaders[i];
+      const value = name.toLowerCase() === 'host' ? apiOrigin.host : req.rawHeaders[i + 1];
+      headerLines.push(`${name}: ${value}`);
+    }
+    upstreamSocket.write(headerLines.join('\r\n') + '\r\n\r\n');
+    if (head && head.length) upstreamSocket.write(head);
+    upstreamSocket.pipe(clientSocket);
+    clientSocket.pipe(upstreamSocket);
+  });
+  upstreamSocket.on('error', (err) => {
+    console.error('[proxy] websocket upstream error:', err.message);
+    clientSocket.destroy();
+  });
+  clientSocket.on('error', () => upstreamSocket.destroy());
 });
 
 server.listen(port, '0.0.0.0', () => {
