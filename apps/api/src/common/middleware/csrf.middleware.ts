@@ -35,8 +35,21 @@ export class CsrfMiddleware implements NestMiddleware {
       // yet) was rejected with 403 "Invalid or missing CSRF token", not a
       // wrong-PIN error. Reproduced directly against a running API before
       // this fix; see the story's Dev Agent Record.
+      // /api/connector/enroll is the Venue Connector's device-facing
+      // bootstrap-token redemption — same class as /api/tablet/enroll
+      // (DL-081's precedent): a fresh device has no session and therefore
+      // no CSRF cookie/token yet, so the same bypass applies for the same
+      // reason. Without this, no real Connector could ever complete
+      // enrollment in production (reproduced directly: a real device-side
+      // POST with no prior session, exactly as a real Connector process
+      // performs it, was rejected 403 here before this fix).
       const path = req.path || req.url || '';
-      if (path.includes('/auth/') || path.endsWith('/auth') || path === '/api/tablet/enroll') {
+      if (
+        path.includes('/auth/') ||
+        path.endsWith('/auth') ||
+        path === '/api/tablet/enroll' ||
+        path === '/api/connector/enroll'
+      ) {
         return next();
       }
 

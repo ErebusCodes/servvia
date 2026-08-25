@@ -29,6 +29,18 @@ describe('CsrfMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
+  it('bypasses CSRF for the Venue Connector device enrollment endpoint (fresh device, no session yet)', () => {
+    const next = jest.fn();
+    middleware.use(makeReq({ path: '/api/connector/enroll' }), makeRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('bypasses CSRF for the Order Tablet device enrollment endpoint (fresh device, no session yet)', () => {
+    const next = jest.fn();
+    middleware.use(makeReq({ path: '/api/tablet/enroll' }), makeRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it('still enforces CSRF for a normal cookie-authenticated mutating request without a token', () => {
     const next = jest.fn();
     expect(() =>
