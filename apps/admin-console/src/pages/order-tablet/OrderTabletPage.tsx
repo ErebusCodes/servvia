@@ -64,6 +64,67 @@ const TERMINAL_POS_SYNC_STATES = new Set([
   'unsupported',
 ]);
 
+// Real defect closed here (error-path/silent-failure audit, 2026-08-26):
+// `orderIdempotencyKey` (React state) is the ONLY thing that lets a retried
+// submission collapse onto the original order instead of creating a real
+// duplicate (OrdersService.resolveIdempotentOutcome, orders.service.ts) --
+// but dine-in's own safety net for a lost app/tab (re-selecting the table
+// rehydrates from the real backend order, see handleSelectTable) has no
+// takeaway equivalent: a takeaway order has no table to look up. If the
+// tablet's HTTP POST reaches the API and commits, but the response never
+// reaches the client (venue LAN blip, tab reload, standalone device
+// restart) and staff then reload/restart and re-enter + resubmit the same
+// takeaway cart, the in-memory idempotencyKey is gone and a genuinely new
+// idempotencyKey is generated -- creating a second real Order, a second
+// POSSyncRecord, and a second ConnectorCommand with a DIFFERENT
+// externalOrderId, which IdealposBridge's own externalOrderId-based dedup
+// (see IdealposOrderSubmissionService.cs) cannot catch, because they are
+// two legitimately distinct Verdura orders. This marker closes that gap the
+// same way IdealposBridgeClient treats its own request timeout -- an
+// outcome that cannot be proven is never silently discarded or silently
+// treated as safe to retry blind; it blocks further submission until a
+// human confirms the real state (KDS/recent orders), never auto-resolved.
+const PENDING_SUBMISSION_STORAGE_KEY = 'verdura-order-tablet-pending-submission-v1';
+
+interface PendingSubmissionMarker {
+  context: string;
+  submittedAt: string;
+}
+
+function readPendingSubmissionMarker(): PendingSubmissionMarker | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_SUBMISSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingSubmissionMarker>;
+    if (typeof parsed.context !== 'string' || typeof parsed.submittedAt !== 'string') return null;
+    return { context: parsed.context, submittedAt: parsed.submittedAt };
+  } catch {
+    // Storage unavailable/corrupt (private browsing, quota, malformed JSON
+    // from a previous build) -- fail closed would mean blocking every
+    // submission forever with no way out, which is worse than the gap this
+    // exists to close. Treat as "nothing pending" rather than wedging the
+    // tablet permanently.
+    return null;
+  }
+}
+
+function writePendingSubmissionMarker(context: string): void {
+  try {
+    const marker: PendingSubmissionMarker = { context, submittedAt: new Date().toISOString() };
+    sessionStorage.setItem(PENDING_SUBMISSION_STORAGE_KEY, JSON.stringify(marker));
+  } catch {
+    // Best-effort only -- see readPendingSubmissionMarker's doc comment.
+  }
+}
+
+function clearPendingSubmissionMarker(): void {
+  try {
+    sessionStorage.removeItem(PENDING_SUBMISSION_STORAGE_KEY);
+  } catch {
+    // Best-effort only.
+  }
+}
+
 // ─────────────────────────────────── Types ──────────────────────────────────
 
 // Story 15-3: a cart line's modifiers always carry the real, stable
@@ -255,6 +316,14 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   const [createdTakeawayReference, setCreatedTakeawayReference] = useState<string | null>(null);
   const [orderActionError, setOrderActionError] = useState<string | null>(null);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
+
+  // See PENDING_SUBMISSION_STORAGE_KEY's doc comment. Read once, lazily, at
+  // mount -- this is the ONLY way a reload/restart mid-submission can be
+  // detected at all, since every other piece of this component's state
+  // starts blank on every mount.
+  const [pendingSubmission, setPendingSubmission] = useState<PendingSubmissionMarker | null>(
+    () => readPendingSubmissionMarker(),
+  );
 
   // ── Idealpos reconciliation (Story 15-5) ──
   // Truthful, polled view of this order's POSSyncRecord. `null` while
@@ -718,6 +787,20 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // the backend-persisted order on success, or null on failure (with
   // orderActionError set honestly — never a fabricated fallback order).
   async function submitOrderToKitchen(): Promise<LiveOrder | null> {
+    // See PENDING_SUBMISSION_STORAGE_KEY's doc comment: a previous
+    // submission attempt's outcome was never definitively resolved (a
+    // response was never received, possibly because the app reloaded/
+    // restarted mid-flight). Submitting again could create a real,
+    // undetectable duplicate order/KOT for takeaway (no table to hydrate
+    // from and recover the truth, unlike dine-in). Blocked until a human
+    // clears it after checking the real state.
+    if (pendingSubmission) {
+      setOrderActionError(
+        `A previous order submission (${pendingSubmission.context}) never received a confirmed response — check Kitchen Display / recent orders before sending anything new from this device.`,
+      );
+      return null;
+    }
+
     // Story 15-13: dine-in still requires a real backend table; takeaway
     // never resolves or sends one — no table is ever fabricated.
     let realTable: RealTable | undefined;
@@ -733,6 +816,8 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
 
     setIsSubmittingOrder(true);
     setOrderActionError(null);
+    const submissionContext = serviceMode === 'dine_in' ? `Table ${table?.tableNumber ?? '?'}` : 'Takeaway';
+    writePendingSubmissionMarker(submissionContext);
     try {
       // Restricted/customer-context ordering (an unelevated standalone
       // device) must never reach /api/admin/orders — that endpoint's
@@ -766,6 +851,11 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
       });
+      // A definite HTTP response was received (success or a real error) —
+      // no longer ambiguous, regardless of res.ok. Only a thrown exception
+      // below (network failure, no response at all) leaves the marker set.
+      clearPendingSubmissionMarker();
+      setPendingSubmission(null);
       if (!res.ok) {
         if (res.status === 409 && serviceMode === 'dine_in') {
           // A 409 here can mean this table already has a durable active
@@ -1667,6 +1757,31 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         </div>
       )}
 
+      {/* ══ Unresolved-submission block (see PENDING_SUBMISSION_STORAGE_KEY) ══ */}
+      {pendingSubmission && (
+        <div
+          data-testid="pending-submission-banner"
+          style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', background: 'var(--color-danger-bg)', borderBottom: '1px solid var(--color-danger-border)', color: 'var(--color-danger)', fontSize: '12.5px' }}
+        >
+          <span style={{ fontWeight: 700 }}>⚠ Unconfirmed submission</span>
+          <span style={{ flex: 1 }}>
+            A previous submission ({pendingSubmission.context}, {new Date(pendingSubmission.submittedAt).toLocaleTimeString()}) never received a
+            confirmed response from the server — it may or may not have reached the kitchen. Check Kitchen Display / recent orders for this
+            table/reference before sending anything new. New submissions are blocked from this device until this is cleared.
+          </span>
+          <button
+            onClick={() => {
+              clearPendingSubmissionMarker();
+              setPendingSubmission(null);
+              setOrderActionError(null);
+            }}
+            style={{ border: '1px solid var(--color-danger-border)', background: 'var(--color-surface)', color: 'var(--color-danger)', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}
+          >
+            I've verified — clear
+          </button>
+        </div>
+      )}
+
       {/* ══════════ SCREEN · FLOOR PLAN ══════════ */}
       {screen === 'floor' && (
         <div data-screen-label="A · Floor plan" style={{ flex: '1', display: 'flex', minHeight: '0' }}>
@@ -2044,7 +2159,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                   // on the shared order-status/dispatch screen below. No
                   // payment step exists before or after this.
                   (() => {
-                    const disabledNow = cartEmpty || taxConfigUnavailable || !unsent || isSubmittingOrder;
+                    const disabledNow = cartEmpty || taxConfigUnavailable || !unsent || isSubmittingOrder || !!pendingSubmission;
                     return (
                       <button onClick={() => void handleSendToKitchen()} disabled={disabledNow} style={{ flex: '1', height: '46px', border: 'none', borderRadius: '8px', background: disabledNow ? 'var(--color-surface-3)' : 'var(--color-primary)', color: disabledNow ? 'var(--color-text-tertiary)' : '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: '600', cursor: disabledNow ? 'default' : 'pointer', boxShadow: 'var(--shadow-xs)' }}>
                         {taxConfigUnavailable ? 'Totals unavailable' : isSubmittingOrder ? 'Sending…' : !unsent ? 'Sent ✓' : 'Send to Kitchen'}
@@ -2310,13 +2425,13 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                 <div style={{ flex: '1' }}></div>
                 <button
                   onClick={() => void handleGuestSendToKitchen()}
-                  disabled={isSubmittingOrder || taxConfigUnavailable || cartEmpty}
+                  disabled={isSubmittingOrder || taxConfigUnavailable || cartEmpty || !!pendingSubmission}
                   style={{
                     height: '54px',
                     border: 'none',
                     borderRadius: '8px',
-                    background: (isSubmittingOrder || taxConfigUnavailable || cartEmpty) ? 'var(--color-surface-3)' : 'var(--color-primary)',
-                    color: (isSubmittingOrder || taxConfigUnavailable || cartEmpty) ? 'var(--color-text-tertiary)' : '#fff',
+                    background: (isSubmittingOrder || taxConfigUnavailable || cartEmpty || !!pendingSubmission) ? 'var(--color-surface-3)' : 'var(--color-primary)',
+                    color: (isSubmittingOrder || taxConfigUnavailable || cartEmpty || !!pendingSubmission) ? 'var(--color-text-tertiary)' : '#fff',
                     fontFamily: 'inherit',
                     fontSize: '14.5px',
                     fontWeight: '600',

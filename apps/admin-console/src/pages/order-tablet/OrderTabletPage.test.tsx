@@ -264,12 +264,19 @@ beforeEach(() => {
   seedReservationStore();
   resetTabletDeviceAuth();
   useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true });
+  // The pending-submission marker (see PENDING_SUBMISSION_STORAGE_KEY in
+  // OrderTabletPage.tsx) is real, persisted sessionStorage — without this,
+  // one test's simulated dropped-response leaves the next test's fresh
+  // render permanently blocked from submitting, since jsdom's sessionStorage
+  // is shared process-wide across tests in this file.
+  sessionStorage.clear();
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   resetTabletDeviceAuth();
+  sessionStorage.clear();
 });
 
 describe('OrderTabletPage — Story 15-4 provisional billing', () => {
@@ -932,6 +939,123 @@ describe('OrderTabletPage — Story 15-13 dine-in and takeaway service mode', ()
     expect(screen.getByText('Takeaway order')).toBeInTheDocument();
     expect(screen.queryByText(/Order Status/)).not.toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /Send to kitchen/i })).toBeInTheDocument();
+  });
+});
+
+// Error-path/silent-failure audit (2026-08-26): a dropped response (network
+// failure/timeout after the server may already have received the request)
+// is genuinely ambiguous — unlike dine-in (which can hydrate the true state
+// by re-selecting the table), a reloaded/restarted takeaway order has no
+// resource to recover the truth from. See PENDING_SUBMISSION_STORAGE_KEY's
+// doc comment in OrderTabletPage.tsx for the full defect this closes: a
+// staff "just reload and resubmit" after a dropped response could otherwise
+// create a real duplicate Order -> duplicate POSSyncRecord -> duplicate
+// ConnectorCommand (different externalOrderId) -> a real duplicate native
+// KOT, since IdealposBridge's own dedup is keyed on externalOrderId and two
+// distinct Verdura orders are, by definition, two distinct externalOrderIds.
+describe('OrderTabletPage — unresolved-submission safety net (ambiguous network failure)', () => {
+  it('a dropped response (fetch throws) blocks further submission, and survives a simulated reload', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/tax-config')) return new Response(JSON.stringify(NZ_SUPPORTED_TAX_CONFIG), { status: 200 });
+      if (url.includes('/tables') && !url.includes('orders')) {
+        return new Response(JSON.stringify([{ id: 'real-table-1', tableNumber: '1', name: null, capacity: 4 }]), { status: 200 });
+      }
+      if (url.includes('/api/admin/orders') && init?.method === 'POST') {
+        throw new TypeError('Failed to fetch'); // simulates a genuine network-level failure — no response at all
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = renderTablet();
+
+    await startTakeawayOrder();
+    await addTestItemToCart();
+    fireEvent.click(await screen.findByRole('button', { name: /Send to kitchen/i }));
+
+    // The dropped response is surfaced as an ordinary error on this first
+    // attempt (the network layer's own message) -- but unlike an ordinary
+    // failure, it must ALSO durably record that the outcome is unknown, not
+    // just retryable. That durable record (not this first error message) is
+    // what the rest of this test verifies.
+    await waitFor(() => expect(screen.getByText(/Failed to fetch/i)).toBeInTheDocument());
+    expect(sessionStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeTruthy();
+
+    // Simulate the app reloading (all React state is lost; sessionStorage is not).
+    unmount();
+    renderTablet();
+
+    // The banner is visible on a fresh mount purely from sessionStorage —
+    // no order/table selection needed to discover it.
+    expect(await screen.findByTestId('pending-submission-banner')).toBeInTheDocument();
+    expect(within(screen.getByTestId('pending-submission-banner')).getByText(/Takeaway/)).toBeInTheDocument();
+
+    // Starting a fresh takeaway order and trying to send it is refused
+    // client-side (button disabled) rather than silently sent.
+    fireEvent.click(await screen.findByRole('button', { name: /^Takeaway$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Start takeaway order$/i }));
+    await addTestItemToCart();
+    const sendButton = await screen.findByRole('button', { name: /Send to kitchen/i });
+    expect(sendButton).toBeDisabled();
+  });
+
+  it('"I\'ve verified — clear" removes the block and allows a normal submission afterward', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/tax-config')) return new Response(JSON.stringify(NZ_SUPPORTED_TAX_CONFIG), { status: 200 });
+      if (url.includes('/tables') && !url.includes('orders')) {
+        return new Response(JSON.stringify([{ id: 'real-table-1', tableNumber: '1', name: null, capacity: 4 }]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.setItem(
+      'verdura-order-tablet-pending-submission-v1',
+      JSON.stringify({ context: 'Takeaway', submittedAt: new Date().toISOString() }),
+    );
+    renderTablet();
+
+    const clearButton = await screen.findByRole('button', { name: /I've verified — clear/i });
+    fireEvent.click(clearButton);
+
+    expect(screen.queryByTestId('pending-submission-banner')).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeNull();
+  });
+
+  it('a normal successful submission never leaves a pending-submission marker behind', async () => {
+    installFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+    renderTablet();
+
+    await startTakeawayOrder();
+    await addTestItemToCart();
+    fireEvent.click(await screen.findByRole('button', { name: /Send to kitchen/i }));
+
+    await waitFor(() => expect(screen.getByText(/Order Status/)).toBeInTheDocument());
+    expect(sessionStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeNull();
+  });
+
+  it('a definite server error response (not a network failure) also clears the marker -- only a truly ambiguous outcome blocks retries', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/tax-config')) return new Response(JSON.stringify(NZ_SUPPORTED_TAX_CONFIG), { status: 200 });
+      if (url.includes('/tables') && !url.includes('orders')) {
+        return new Response(JSON.stringify([{ id: 'real-table-1', tableNumber: '1', name: null, capacity: 4 }]), { status: 200 });
+      }
+      if (url.includes('/api/admin/orders') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderTablet();
+
+    await startTakeawayOrder();
+    await addTestItemToCart();
+    fireEvent.click(await screen.findByRole('button', { name: /Send to kitchen/i }));
+
+    await waitFor(() => expect(screen.getByText(/boom/i)).toBeInTheDocument());
+    expect(sessionStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeNull();
+    expect(screen.queryByTestId('pending-submission-banner')).not.toBeInTheDocument();
   });
 });
 
