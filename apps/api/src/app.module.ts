@@ -43,11 +43,18 @@ export const configValidationSchema = Joi.object({
   JWT_ACCESS_EXPIRY: Joi.string().default('15m'),
   JWT_REFRESH_EXPIRY: Joi.string().default('7d'),
   INTERNAL_SERVICE_TOKEN: Joi.string().min(32).required(),
-  STRIPE_SECRET_KEY: Joi.string().when('NODE_ENV', {
-    is: 'production',
-    then: Joi.string().min(20).required(),
-    otherwise: Joi.string().optional().allow(''),
-  }),
+  // Not every production venue uses kiosk/Stripe Terminal payments (e.g.
+  // DUNEDIN's IdealPOS-integrated Order Tablet chain has no Stripe
+  // involvement at all). Requiring this at boot for every NODE_ENV=production
+  // deployment would block venues that never touch the kiosk/Stripe
+  // endpoints from starting at all. The actual security guarantee — that
+  // createConnectionToken/createPaymentIntent refuse to run without a real
+  // key — is already enforced independently at call time by
+  // OrdersService.requireStripeKey(), which throws ServiceUnavailableException
+  // whenever the key is absent, regardless of what booted. So this only
+  // needs to be a well-formed key *if provided*, never a blanket boot
+  // requirement.
+  STRIPE_SECRET_KEY: Joi.string().min(20).optional().allow(''),
   // KDS device auth — venue-scoped PIN exchange (MVP-001): optional; absence
   // means the KDS PIN-exchange endpoint fails closed (rejects every request)
   // rather than granting access.
