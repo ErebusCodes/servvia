@@ -1,5 +1,13 @@
 # Table 19 controlled live-validation checklist
 
+**Superseded by `dl-107-dunedin-live-certification-runbook.md`**, written
+the same session as this file's own 2026-08-26 revision below to give the
+physical-presence session one single, complete, DUNEDIN-specific procedure
+(this file was still Table-19-specific and pre-dated two real defect fixes
+DL-107 documents). This file is kept for its historical addenda and the
+Bridge SQL-evidence template steps 6–10 still reference — use DL-107 as
+the authoritative procedure for the actual live session.
+
 **Status: prepared, NOT executed.** This checklist exists so that a
 separately-approved session can run the one controlled Table 19 order and
 KOT print with a clear, pre-agreed procedure — it does not authorise that
