@@ -191,7 +191,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   const tabletDeviceAuth = useTabletDeviceAuthStore();
   const staffElevated = standalone && isStaffElevated(tabletDeviceAuth);
   const restrictedOrdersEndpoint = standalone && !staffElevated;
-  const { data: orders = [] } = useLiveOrders({ restrictedEndpoint: restrictedOrdersEndpoint });
+  const { data: orders = [], isRealtimeConnected } = useLiveOrders({ restrictedEndpoint: restrictedOrdersEndpoint });
 
   // Deliberately reads the resolved* fields, not categories/items — those
   // belong to MenuManagementPage's unresolved admin/menu/* fetch, and the
@@ -1614,9 +1614,9 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
             <button onClick={() => setMode('guest')} style={{ border: 'none', cursor: 'pointer', padding: '6px 16px', borderRadius: '6px', fontFamily: 'inherit', fontSize: '12.5px', fontWeight: '500', background: seg(!isStaff).bg, color: seg(!isStaff).color, boxShadow: seg(!isStaff).shadow }}>Guest mode</button>
           </div>
           <div style={{ flex: '1' }}></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '999px', background: 'var(--color-success)', display: 'inline-block' }}></span>
-            Kitchen open · avg <b style={{ color: 'var(--color-text)', fontWeight: '600' }}>14 min</b>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--color-text-secondary)' }} title={isRealtimeConnected ? 'Live order updates connected' : 'Live order updates unavailable — order/table status may be stale. Refreshing every 15s.'}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '999px', background: isRealtimeConnected ? 'var(--color-success)' : 'var(--color-warning)', display: 'inline-block' }}></span>
+            {isRealtimeConnected ? 'Live' : 'Reconnecting — status may be stale'}
           </div>
           {staffElevated ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '12px', borderLeft: '1px solid var(--color-border)' }}>

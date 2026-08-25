@@ -11,9 +11,10 @@ vi.mock('socket.io-client', () => ({
   }),
 }));
 
+const useLiveOrdersMock = vi.fn(() => ({ data: [], isRealtimeConnected: true }));
 vi.mock('../../shared/orders', async () => {
   const actual = await vi.importActual<typeof import('../../shared/orders')>('../../shared/orders');
-  return { ...actual, useLiveOrders: () => ({ data: [], isRealtimeConnected: true }) };
+  return { ...actual, useLiveOrders: () => useLiveOrdersMock() };
 });
 
 const { useMenuStore } = await import('../../store/menu.store');
@@ -262,6 +263,7 @@ beforeEach(() => {
   seedMenuStore();
   seedReservationStore();
   resetTabletDeviceAuth();
+  useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true });
 });
 
 afterEach(() => {
@@ -1059,5 +1061,29 @@ describe('OrderTabletPage — menu-card sorting and images', () => {
 
     await waitFor(() => expect(within(card).getByText('VERDURA KITCHEN')).toBeInTheDocument());
     expect(within(card).queryByRole('img', { name: 'Fresh Garden Salad' })).not.toBeInTheDocument();
+  });
+});
+
+describe('OrderTabletPage — live-connection status is truthful, not fabricated', () => {
+  // Regression guard: the standalone header used to show a hardcoded
+  // "Kitchen open · avg 14 min" green dot regardless of real socket state —
+  // exactly the fabricated-success pattern this codebase otherwise forbids.
+  // It must now reflect useLiveOrders()'s real isRealtimeConnected signal.
+  it('shows Live when the realtime socket is connected', async () => {
+    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true });
+    installStandaloneFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+    renderStandaloneTablet();
+
+    expect(await screen.findByText('Live')).toBeInTheDocument();
+    expect(screen.queryByText(/Kitchen open/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a Reconnecting warning, not a fake success state, when the realtime socket is down', async () => {
+    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: false });
+    installStandaloneFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+    renderStandaloneTablet();
+
+    expect(await screen.findByText(/Reconnecting/i)).toBeInTheDocument();
+    expect(screen.queryByText('Live')).not.toBeInTheDocument();
   });
 });

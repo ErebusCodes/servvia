@@ -263,6 +263,12 @@ export function useLiveOrders(options?: { restrictedEndpoint?: boolean }) {
     // reflects the real fetch outcome, so consumers can show an honest
     // loading/error/retry state instead of fabricated orders.
     retry: 1,
+    // Safety net for a WebSocket that never connects at all (proxy/firewall
+    // misconfiguration) or stalls without firing 'disconnect': without this,
+    // a client stuck in isRealtimeConnected=false has no path back to fresh
+    // data short of a manual page reload. Once connected, the socket's own
+    // 'connect'/'orderUpdate' handlers are authoritative and this is disabled.
+    refetchInterval: isRealtimeConnected ? false : 15000,
   });
 
   useEffect(() => {
