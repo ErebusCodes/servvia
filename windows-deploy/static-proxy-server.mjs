@@ -127,6 +127,7 @@ server.on('upgrade', (req, clientSocket, head) => {
     return;
   }
   const upstreamSocket = net.connect(apiOrigin.port, apiOrigin.hostname, () => {
+    upstreamSocket.setTimeout(0); // connected: hand off to the piped streams below, not this timeout
     const headerLines = [`${req.method} ${req.url} HTTP/1.1`];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
       const name = req.rawHeaders[i];
@@ -138,11 +139,23 @@ server.on('upgrade', (req, clientSocket, head) => {
     upstreamSocket.pipe(clientSocket);
     clientSocket.pipe(upstreamSocket);
   });
+  // Without this, a firewall/host that silently drops the SYN (rather than
+  // refusing, which fires 'error' immediately) never fires connect's
+  // callback or 'error' — the client's WS handshake would hang open with no
+  // response until its own client-side timeout, with nothing logged here to
+  // diagnose it. 5s matches this proxy's plain-HTTP path's implicit
+  // expectations for an API on the same LAN.
+  upstreamSocket.setTimeout(5000, () => {
+    console.error('[proxy] websocket upstream connect timed out:', apiOrigin.origin);
+    upstreamSocket.destroy();
+    clientSocket.destroy();
+  });
   upstreamSocket.on('error', (err) => {
     console.error('[proxy] websocket upstream error:', err.message);
     clientSocket.destroy();
   });
   clientSocket.on('error', () => upstreamSocket.destroy());
+  clientSocket.on('close', () => upstreamSocket.destroy());
 });
 
 server.listen(port, '0.0.0.0', () => {

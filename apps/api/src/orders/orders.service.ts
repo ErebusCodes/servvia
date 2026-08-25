@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
@@ -32,6 +33,7 @@ import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
+import { ConnectorCommandService } from '../connector/connector-command.service';
 
 /**
  * Snapshot shape matches `docs/domain-model.md`'s `SelectedModifier` — for
@@ -73,10 +75,13 @@ export class OrdersService {
   private static readonly IDEMPOTENCY_CONSTRAINT_NAME = 'Order_venueId_idempotencyKey_key';
   private static readonly PAYMENT_REF_CONSTRAINT_NAME = 'Order_paymentProviderTransactionId_key';
 
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ordersGateway: OrdersGateway,
     private readonly auditLogService: AuditLogService,
+    private readonly connectorCommandService: ConnectorCommandService,
   ) {}
 
   async create(dto: CreateOrderDto): Promise<Order> {
@@ -848,7 +853,7 @@ export class OrdersService {
   ): Promise<Order> {
     const order = await this.prisma.order.findFirst({
       where: { id, venue: { organizationId }, ...(venueId ? { venueId } : {}) },
-      include: { venue: true },
+      include: { venue: true, posSyncRecord: true },
     });
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -864,6 +869,19 @@ export class OrdersService {
           `Invalid order status transition from ${oldStatus} to ${newStatus}`,
         );
       }
+    }
+
+    // Real gap this closes: cancelling an Order used to only ever touch
+    // Order.status. The POSSyncRecord/ConnectorCommand created alongside it
+    // (in the same transaction as order creation — see persistOrder) had no
+    // idea the order was cancelled and kept being dispatched/delivered on its
+    // own schedule, so a "cancelled" order could still reach IdealposBridge
+    // and print a real native KOT. Must run BEFORE the Order.status write so
+    // a crash between the two steps never leaves Order=cancelled with the
+    // dispatch-stop attempt silently skipped.
+    let posDispatchStopped: boolean | null = null;
+    if (newStatus === OrderStatus.cancelled && oldStatus !== OrderStatus.cancelled) {
+      posDispatchStopped = await this.attemptCancelPosDispatch(order, organizationId, actor);
     }
 
     const updateData: Prisma.OrderUpdateInput = { status: newStatus };
@@ -896,13 +914,111 @@ export class OrdersService {
       resource: 'order',
       resourceId: order.id,
       before: { status: oldStatus },
-      after: { status: newStatus },
+      after: {
+        status: newStatus,
+        ...(posDispatchStopped !== null ? { posDispatchStopped } : {}),
+      },
     });
 
     // Notify KDS / Admin dashboards via WebSockets
     this.ordersGateway.sendOrderUpdate(order.venueId, updatedOrder);
 
     return updatedOrder;
+  }
+
+  /**
+   * Best-effort attempt to stop an order's IdealPOS dispatch when it's
+   * cancelled. Returns true only if dispatch was genuinely stopped (nothing
+   * will ever reach IdealposBridge for this order); false means dispatch had
+   * already progressed past the point this side can safely halt it (the
+   * connector already committed to delivering it, or it already reached the
+   * Bridge) — never silently reports true in that case. Never throws: a
+   * failure here must not block staff from recording the cancellation
+   * itself, but is logged loudly and written into the record staff already
+   * sees on the Order Tablet's status panel.
+   */
+  private async attemptCancelPosDispatch(
+    order: Order & {
+      posSyncRecord: {
+        id: string;
+        status: POSSyncStatus;
+        connectorSubmitCommandId: string | null;
+      } | null;
+    },
+    organizationId: string,
+    actor: { id: string; email: string; role: StaffRole },
+  ): Promise<boolean> {
+    const record = order.posSyncRecord;
+    if (!record) return true; // nothing was ever created to dispatch
+
+    try {
+      if (record.status === POSSyncStatus.not_synced) {
+        const result = await this.prisma.pOSSyncRecord.updateMany({
+          where: { id: record.id, status: POSSyncStatus.not_synced },
+          data: { status: POSSyncStatus.cancelled },
+        });
+        // count === 0 means sweepDispatch's own CAS won the race in the
+        // instant between our read and this write — it is already in
+        // flight and must be treated exactly like the queued_for_connector
+        // "already accepted" case below (log + return false), not retried.
+        if (result.count === 1) return true;
+      }
+
+      if (record.status === POSSyncStatus.queued_for_connector && record.connectorSubmitCommandId) {
+        try {
+          await this.connectorCommandService.cancel(
+            record.connectorSubmitCommandId,
+            organizationId,
+            order.venueId,
+            actor.id,
+            actor.email,
+            actor.role,
+          );
+          // Cancel succeeded: the ConnectorCommand was still pending/claimed
+          // (never accepted by the connector) and is now terminally
+          // cancelled — safe to mark the POSSyncRecord the same way. Ignore
+          // a 0-row race against sweepReconcile picking up a terminal report
+          // in the same instant; that report is more authoritative than us.
+          await this.prisma.pOSSyncRecord.updateMany({
+            where: { id: record.id, status: POSSyncStatus.queued_for_connector },
+            data: { status: POSSyncStatus.cancelled },
+          });
+          return true;
+        } catch {
+          // ConnectorCommandService.cancel throws NotFoundException once the
+          // command reached `accepted` (or any later terminal state) — the
+          // connector already durably committed to delivering it, so this
+          // side can no longer stop it in software.
+        }
+      }
+
+      // Unstoppable: already queued_for_connector-but-accepted (handled
+      // above), submitted_awaiting_confirmation, synced, failed,
+      // not_applicable, unsupported, or already cancelled. Make this
+      // visible on the same panel staff already watch instead of silently
+      // leaving a "cancelled" order that may still print a real KOT.
+      this.logger.error(
+        `Order ${order.id} (venue ${order.venueId}) was cancelled but its POS dispatch (status=${record.status}) could not be stopped — it may already reach or have reached IdealPOS. Verify directly with the kitchen/till.`,
+      );
+      await this.prisma.pOSSyncRecord
+        .update({
+          where: { id: record.id },
+          data: {
+            errorMessage: `Order was cancelled in Verdura, but POS dispatch (status was "${record.status}") could not be stopped in time — verify directly with IdealPOS/kitchen.`,
+          },
+        })
+        .catch((err: unknown) => {
+          this.logger.error(
+            `Failed to write cancellation warning onto POSSyncRecord ${record.id} for order ${order.id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+      return false;
+    } catch (err) {
+      this.logger.error(
+        `attemptCancelPosDispatch threw unexpectedly for order ${order.id} (venue ${order.venueId}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
   }
 
   async createConnectionToken(): Promise<{ secret: string }> {

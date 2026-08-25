@@ -57,6 +57,12 @@ enum POSSyncStatus {
   failed // a real adapter attempted submission and Idealpos rejected it, or attempts were exhausted
   not_applicable // posAdapterType is `none` (NullAdapter) — POS sync was never attempted by design
   unsupported // posAdapterType is a real type, but no adapter implementation exists yet — POS sync was never attempted because no adapter could run it
+  // OrdersService.updateStatus set this order to `cancelled` while its
+  // dispatch was still stoppable (not_synced, or queued_for_connector with
+  // the underlying ConnectorCommand still pending/claimed — never once it
+  // reached ConnectorCommandStatus.accepted). Distinct from `failed`: this
+  // was a deliberate staff cancellation, not an error.
+  cancelled
 }
 
 enum ReservationStatus {

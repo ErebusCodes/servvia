@@ -5,9 +5,15 @@ import { OrdersGateway } from './orders.gateway';
 import { KdsDispatcherService } from './kds-dispatcher.service';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
+import { ConnectorModule } from '../connector/connector.module';
 
 @Module({
-  imports: [AuditModule, AuthModule],
+  // ConnectorModule (not PosSyncModule) is imported here deliberately: it
+  // exports ConnectorCommandService with no dependency back on OrdersModule,
+  // so OrdersService can attempt to stop an in-flight IdealPOS dispatch on
+  // order cancellation (see updateStatus) without a circular module edge —
+  // PosSyncModule already imports OrdersModule the other way for OrdersGateway.
+  imports: [AuditModule, AuthModule, ConnectorModule],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersGateway, KdsDispatcherService],
   // OrdersGateway exported so IdealposOrderDispatcherService (pos-sync

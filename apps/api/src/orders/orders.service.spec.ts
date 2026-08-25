@@ -10,9 +10,10 @@ import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
+import { ConnectorCommandService } from '../connector/connector-command.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
-import { OrderSource, OrderStatus, ServiceMode, StaffRole } from '@prisma/client';
+import { OrderSource, OrderStatus, POSSyncStatus, ServiceMode, StaffRole } from '@prisma/client';
 
 const mockPrisma: any = {
   venue: { findUnique: jest.fn() },
@@ -28,7 +29,7 @@ const mockPrisma: any = {
     update: jest.fn(),
   },
   orderItem: { create: jest.fn() },
-  pOSSyncRecord: { create: jest.fn() },
+  pOSSyncRecord: { create: jest.fn(), updateMany: jest.fn(), update: jest.fn() },
   printer: { findMany: jest.fn() },
   printerJob: { create: jest.fn() },
   kdsDeliveryRecord: { create: jest.fn() },
@@ -60,6 +61,10 @@ const mockAuditLog = {
   logAuthEvent: jest.fn(),
 };
 
+const mockConnectorCommandService = {
+  cancel: jest.fn(),
+};
+
 const orgId = 'org-uuid';
 const venueId = 'venue-uuid';
 
@@ -73,6 +78,7 @@ describe('OrdersService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: OrdersGateway, useValue: mockGateway },
         { provide: AuditLogService, useValue: mockAuditLog },
+        { provide: ConnectorCommandService, useValue: mockConnectorCommandService },
       ],
     }).compile();
 
@@ -512,6 +518,141 @@ describe('OrdersService', () => {
       await expect(
         service.updateStatus('order-uuid', orgId, { status: OrderStatus.preparing }, staffActor),
       ).rejects.toThrow(ConflictException);
+    });
+
+    // Regression coverage for a real defect: cancelling an Order used to
+    // only ever write Order.status, leaving its POSSyncRecord/
+    // ConnectorCommand free to keep dispatching to IdealposBridge on its own
+    // schedule — a "cancelled" order could still reach IdealPOS and print a
+    // real native KOT. See attemptCancelPosDispatch in orders.service.ts.
+    describe('cancellation stops POS dispatch (or truthfully reports it could not)', () => {
+      it('cancels a not_synced POSSyncRecord outright — nothing was ever dispatched', async () => {
+        mockPrisma.order.findFirst.mockResolvedValue({
+          ...mockOrder,
+          posSyncRecord: {
+            id: 'sync-1',
+            status: POSSyncStatus.not_synced,
+            connectorSubmitCommandId: null,
+          },
+        });
+        mockPrisma.pOSSyncRecord.updateMany.mockResolvedValue({ count: 1 });
+        mockPrisma.order.update.mockResolvedValue({ ...mockOrder, status: OrderStatus.cancelled });
+
+        await service.updateStatus(
+          'order-uuid',
+          orgId,
+          { status: OrderStatus.cancelled },
+          staffActor,
+        );
+
+        expect(mockPrisma.pOSSyncRecord.updateMany).toHaveBeenCalledWith({
+          where: { id: 'sync-1', status: POSSyncStatus.not_synced },
+          data: { status: POSSyncStatus.cancelled },
+        });
+        expect(mockConnectorCommandService.cancel).not.toHaveBeenCalled();
+        expect(mockPrisma.pOSSyncRecord.update).not.toHaveBeenCalled();
+      });
+
+      it('cancels the underlying ConnectorCommand when still queued_for_connector and not yet accepted', async () => {
+        mockPrisma.order.findFirst.mockResolvedValue({
+          ...mockOrder,
+          posSyncRecord: {
+            id: 'sync-1',
+            status: POSSyncStatus.queued_for_connector,
+            connectorSubmitCommandId: 'cmd-1',
+          },
+        });
+        mockConnectorCommandService.cancel.mockResolvedValue(undefined);
+        mockPrisma.pOSSyncRecord.updateMany.mockResolvedValue({ count: 1 });
+        mockPrisma.order.update.mockResolvedValue({ ...mockOrder, status: OrderStatus.cancelled });
+
+        await service.updateStatus(
+          'order-uuid',
+          orgId,
+          { status: OrderStatus.cancelled },
+          staffActor,
+        );
+
+        expect(mockConnectorCommandService.cancel).toHaveBeenCalledWith(
+          'cmd-1',
+          orgId,
+          venueId,
+          staffActor.id,
+          staffActor.email,
+          staffActor.role,
+        );
+        expect(mockPrisma.pOSSyncRecord.updateMany).toHaveBeenCalledWith({
+          where: { id: 'sync-1', status: POSSyncStatus.queued_for_connector },
+          data: { status: POSSyncStatus.cancelled },
+        });
+        expect(mockPrisma.pOSSyncRecord.update).not.toHaveBeenCalled();
+      });
+
+      it('never fabricates a stopped dispatch once the connector already accepted the command — order still cancels, but the record is truthfully warned', async () => {
+        mockPrisma.order.findFirst.mockResolvedValue({
+          ...mockOrder,
+          posSyncRecord: {
+            id: 'sync-1',
+            status: POSSyncStatus.queued_for_connector,
+            connectorSubmitCommandId: 'cmd-1',
+          },
+        });
+        mockConnectorCommandService.cancel.mockRejectedValue(
+          new NotFoundException(
+            'Command is not currently accepted by this connector installation, or is no longer reportable',
+          ),
+        );
+        mockPrisma.pOSSyncRecord.update.mockResolvedValue({});
+        mockPrisma.order.update.mockResolvedValue({ ...mockOrder, status: OrderStatus.cancelled });
+
+        const result = await service.updateStatus(
+          'order-uuid',
+          orgId,
+          { status: OrderStatus.cancelled },
+          staffActor,
+        );
+
+        // The order-level status transition must still succeed (staff needs
+        // to be able to record the business fact of cancellation) — but the
+        // POSSyncRecord itself is never marked cancelled here (it may still
+        // be genuinely in flight / already delivered), and it is never
+        // silently left looking untouched either.
+        expect(result.status).toBe(OrderStatus.cancelled);
+        expect(mockPrisma.pOSSyncRecord.updateMany).not.toHaveBeenCalledWith(
+          expect.objectContaining({ data: { status: POSSyncStatus.cancelled } }),
+        );
+        expect(mockPrisma.pOSSyncRecord.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'sync-1' },
+            data: expect.objectContaining({
+              errorMessage: expect.stringContaining('could not be stopped'),
+            }),
+          }),
+        );
+      });
+
+      it('does not attempt to stop dispatch a second time when an already-cancelled order is re-cancelled', async () => {
+        mockPrisma.order.findFirst.mockResolvedValue({
+          ...mockOrder,
+          status: OrderStatus.cancelled,
+          posSyncRecord: {
+            id: 'sync-1',
+            status: POSSyncStatus.cancelled,
+            connectorSubmitCommandId: null,
+          },
+        });
+        mockPrisma.order.update.mockResolvedValue({ ...mockOrder, status: OrderStatus.cancelled });
+
+        await service.updateStatus(
+          'order-uuid',
+          orgId,
+          { status: OrderStatus.cancelled },
+          staffActor,
+        );
+
+        expect(mockPrisma.pOSSyncRecord.updateMany).not.toHaveBeenCalled();
+        expect(mockConnectorCommandService.cancel).not.toHaveBeenCalled();
+      });
     });
   });
 
