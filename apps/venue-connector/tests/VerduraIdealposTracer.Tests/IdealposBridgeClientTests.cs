@@ -100,6 +100,49 @@ public sealed class IdealposBridgeClientTests
         Assert.Equal(true, result.Duplicate);
     }
 
+    [Theory]
+    [InlineData("failed")]
+    [InlineData("rejected")]
+    [InlineData("uncertain")]
+    public async Task Response200Duplicate_WithTerminalNegativeStatus_ClassifiedAsRejected_NeverFalseAccepted(string bridgeStatus)
+    {
+        // Reproduces a real defect: a first delivery attempt fails at Bridge
+        // (e.g. InsertOrders() throws -> Bridge records status=failed, HTTP
+        // 502 -> connector classifies as UnreachableOrFailed -> transient
+        // retry). The retry carries the SAME externalOrderId, so Bridge's
+        // own idempotency store short-circuits to its idempotent-replay path
+        // (200, duplicate:true) and echoes the ORIGINAL terminal-negative
+        // status verbatim -- IdealPOS never actually processed this order,
+        // and never will via this externalOrderId. Classifying this as
+        // Accepted would report a false "succeeded" outcome to Verdura.
+        var (client, _) = Build((_, _) => Task.FromResult(JsonResponse(HttpStatusCode.OK,
+            $$"""{"duplicate":true,"status":"{{bridgeStatus}}","lastError":"IdealPOS DB timeout"}""")));
+
+        var result = await client.SubmitOrderAsync(SampleRequest(), CancellationToken.None);
+
+        Assert.Equal(BridgeSubmitOutcome.Rejected, result.Outcome);
+        Assert.Equal(200, result.HttpStatusCode);
+        Assert.Contains(bridgeStatus, result.SanitizedDetail);
+        Assert.Contains("IdealPOS DB timeout", result.SanitizedDetail);
+    }
+
+    [Theory]
+    [InlineData("submitted_to_idealpos")]
+    [InlineData("pending_idealpos_processing")]
+    [InlineData("processed")]
+    [InlineData("assigned_to_table")]
+    [InlineData("paid")]
+    [InlineData("closed")]
+    public async Task Response200Duplicate_WithRealProgressStatus_StillClassifiedAsAccepted(string bridgeStatus)
+    {
+        var (client, _) = Build((_, _) => Task.FromResult(JsonResponse(HttpStatusCode.OK,
+            $$"""{"duplicate":true,"status":"{{bridgeStatus}}"}""")));
+
+        var result = await client.SubmitOrderAsync(SampleRequest(), CancellationToken.None);
+
+        Assert.Equal(BridgeSubmitOutcome.Accepted, result.Outcome);
+    }
+
     [Fact]
     public async Task Response400UnknownTable_ClassifiedAsRejected_NeverAccepted()
     {

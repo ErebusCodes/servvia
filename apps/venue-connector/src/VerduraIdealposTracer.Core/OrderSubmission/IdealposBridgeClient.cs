@@ -20,10 +20,10 @@ public sealed record BridgeOrderRequest(string ExternalOrderId, string Table, Li
 
 public enum BridgeSubmitOutcome
 {
-    /// <summary>IdealposBridge returned 2xx to POST /api/orders (201 first submission, or 200 duplicate replay). NOT evidence of native IdealPOS consumption, a KOT, or kitchen receipt.</summary>
+    /// <summary>IdealposBridge returned 2xx to POST /api/orders (201 first submission, or 200 duplicate replay whose embedded <c>status</c> is not one of Bridge's own terminal-negative values). NOT evidence of native IdealPOS consumption, a KOT, or kitchen receipt.</summary>
     Accepted,
 
-    /// <summary>IdealposBridge returned a definite rejection (400 — unknown table/product or malformed request). A real response was received and it was negative; never retried automatically by this client.</summary>
+    /// <summary>IdealposBridge returned a definite rejection: either HTTP 400 (unknown table/product or malformed request), or HTTP 200 with <c>duplicate:true</c> whose embedded <c>status</c> is Bridge's own "failed"/"rejected"/"uncertain" (a prior attempt for this externalOrderId already ran to a terminal negative outcome — Bridge's own idempotency store will keep returning this exact same verdict for every future retry, so this is unambiguous and non-retryable). A real response was received and it was negative; never retried automatically by this client.</summary>
     Rejected,
 
     /// <summary>The connector could not reach the bridge (connection refused/DNS/TLS), or the bridge returned a non-2xx/non-400 response (5xx, 401, unexpected status). A definite response (or definite absence of one) was obtained — safe to retry with the same externalOrderId.</summary>
@@ -113,6 +113,33 @@ public sealed class IdealposBridgeClient(HttpClient httpClient, string apiKey, T
 
             if (status is 200 or 201)
             {
+                // A 200/201 alone is NOT proof Bridge is handing this order
+                // to IdealPOS: a 200 "duplicate" replay echoes whatever
+                // OrderRecord.Status Bridge already had on file for this
+                // externalOrderId (see IdealposBridge's OrderService.SubmitOrder
+                // idempotency fast path and OrdersEndpoint's ToResponseBody) —
+                // and Bridge's own idempotency store means that status can
+                // legitimately be "failed" (InsertOrders() threw on the
+                // original attempt), "rejected", or "uncertain" (the
+                // lifecycle watcher gave up). Every future retry with the
+                // same externalOrderId will keep replaying that identical
+                // terminal record — IdealPOS will never actually process it.
+                // Blindly treating any 2xx as Accepted here would report a
+                // false "succeeded" back to Verdura for an order that in
+                // truth never reached IdealPOS. Only a status this bridge
+                // considers a genuine terminal-negative outcome changes the
+                // classification; an absent/unrecognized status (e.g. a
+                // fresh 201, or an older Bridge build not yet sending
+                // `status`) keeps the prior status-code-only behaviour.
+                var bridgeStatus = TryParseStatus(body);
+                if (bridgeStatus is "failed" or "rejected" or "uncertain")
+                {
+                    var lastError = TryParseLastError(body);
+                    return new BridgeSubmitResult(BridgeSubmitOutcome.Rejected, TryParseDuplicateFlag(body),
+                        Sanitize($"Bridge's own record for this order is already terminal (status={bridgeStatus})" +
+                                 (string.IsNullOrWhiteSpace(lastError) ? "; IdealPOS never processed it." : $": {lastError}")),
+                        status);
+                }
                 return new BridgeSubmitResult(BridgeSubmitOutcome.Accepted, TryParseDuplicateFlag(body), null, status);
             }
 
@@ -148,6 +175,45 @@ public sealed class IdealposBridgeClient(HttpClient httpClient, string apiKey, T
             // "no extra evidence available", never as a parse failure that
             // changes the outcome (the HTTP status code alone is the
             // evidence for Accepted/Rejected/UnreachableOrFailed).
+            return null;
+        }
+    }
+
+    /// <summary>The order-record <c>status</c> field Bridge's OrdersEndpoint.ToResponseBody
+    /// always includes (IdealposBridge's OrderStatusExtensions.ToWireString — snake_case,
+    /// e.g. "failed", "submitted_to_idealpos"). Null if absent/unparsable — callers must
+    /// treat that as "no evidence of a terminal-negative status", never as a failure.</summary>
+    private static string? TryParseStatus(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String
+                ? status.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Bridge's order-record shape carries the native failure detail in
+    /// <c>lastError</c> (OrderRecord.LastError) — distinct from the validation-failure
+    /// shape's <c>errors</c>/<c>detail</c> fields parsed by TryExtractErrorSummary below.</summary>
+    private static string? TryParseLastError(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("lastError", out var lastError) && lastError.ValueKind == JsonValueKind.String
+                ? lastError.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
             return null;
         }
     }
