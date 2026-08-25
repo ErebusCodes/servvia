@@ -20,7 +20,7 @@ be chosen at the time (§4 step 1), not assumed in advance.
 A full error-path/silent-failure audit was run across the production chain
 (Order Tablet → proxy/WebSocket → Verdura API → PostgreSQL → POSSyncRecord/
 ConnectorCommand → Venue Connector → IdealposBridge → IdealPOS → native
-KOT). Two real defects were found and fixed, tested, and are on `main`:
+KOT). Five real defects were found and fixed, tested, and are on `main`:
 
 1. **False-success on a Bridge duplicate-replay of a terminal-negative
    record** (`apps/venue-connector/src/VerduraIdealposTracer.Core/
@@ -52,6 +52,40 @@ KOT). Two real defects were found and fixed, tested, and are on `main`:
    silently is never stuck showing confidently-wrong state with no path
    back to fresh data short of a manual reload. Full admin-console suite
    129/129 green, `tsc --noEmit` clean.
+3. **A dropped submission response could produce a genuine duplicate
+   takeaway order/KOT after a reload** (`apps/admin-console/src/pages/
+   order-tablet/OrderTabletPage.tsx`). Dine-in already recovers safely from
+   a lost response by re-selecting the table (which hydrates from the real
+   backend order) — takeaway has no such resource. A network blip/tab
+   reload followed by staff re-entering and resubmitting the same cart
+   would mint a fresh `orderIdempotencyKey`, creating a genuinely distinct
+   `Order` → `POSSyncRecord` → `ConnectorCommand` with a different
+   `externalOrderId`, which Bridge's own `externalOrderId`-keyed dedupe
+   cannot catch. **Fixed**: a `sessionStorage`-backed pending-submission
+   marker, written before the POST and cleared only on a definite HTTP
+   response; while set it survives a reload and blocks further submission
+   from that device until a human clears it after checking Kitchen
+   Display/recent orders.
+4. **Cancelling an Order never stopped its POS dispatch**
+   (`apps/api/src/orders/orders.service.ts`). `updateStatus` only ever
+   wrote `Order.status` — the `POSSyncRecord`/`ConnectorCommand` created
+   alongside the order kept dispatching to IdealposBridge on its own
+   schedule regardless, so a "cancelled" order could still reach IdealPOS
+   and print a real native KOT. **Fixed**: `attemptCancelPosDispatch` now
+   runs before the `Order.status` write — cancels a `not_synced`
+   `POSSyncRecord` outright, cancels the underlying `ConnectorCommand` when
+   still `queued_for_connector` and not yet accepted, and — once dispatch
+   has progressed past the point this side can safely halt it — never
+   silently claims success: logs loudly and writes a truthful
+   `errorMessage` onto the same `POSSyncRecord` staff already watch.
+5. **The production static+proxy server's WebSocket path had no connect
+   timeout and never cleaned up the upstream socket on client disconnect**
+   (`windows-deploy/static-proxy-server.mjs`) — a silently-dropped SYN
+   could hang a handshake indefinitely with nothing logged, and a
+   disconnected client's upstream socket leaked. Both fixed, with a real-
+   handshake regression test now wired into CI (previously zero automated
+   execution existed for this file at all, alongside the same gap in
+   `scripts/dev-lock.test.mjs`).
 
 Everything else independently reviewed this session (see the session
 transcript for full file:line detail) was already correctly hardened and
@@ -371,6 +405,32 @@ still exactly 1:
    (`IdealposBridgeClientTests.cs`, `Response200Duplicate_
    WithTerminalNegativeStatus_ClassifiedAsRejected_NeverFalseAccepted`)
    as the proof for this specific defect instead of forcing it live.
+
+### Step 9b — Cancellation-stops-dispatch drill (exercises §0.4's fix)
+
+On a **separate**, disposable follow-up order (repeat steps 1–3 on the
+same or another free table) — never cancel the order you are still
+verifying in steps 4–8:
+
+1. Place the order, and the instant it shows `POSSyncRecord` status
+   `not_synced` or `queued_for_connector` (before it reaches
+   `submitted_awaiting_confirmation`), cancel it from the Order Tablet/
+   Admin Console.
+2. If cancelled while still `not_synced`: confirm `POSSyncRecord.status`
+   becomes `cancelled` and no `ConnectorCommand` is ever created for it
+   (query per step 5 — expect zero rows).
+3. If cancelled while `queued_for_connector` and the underlying
+   `ConnectorCommand` had not yet reached `accepted`: confirm the command
+   is cancelled and `POSSyncRecord.status` becomes `cancelled` — no Bridge
+   submission, no KOT.
+4. If the cancellation lands too late (the command already reached
+   `accepted` by the time it was attempted): confirm the API response/
+   Order Tablet panel truthfully reports dispatch could **not** be
+   stopped (`POSSyncRecord.errorMessage` set, staff-visible) rather than
+   silently claiming the cancellation fully stopped it — and if a native
+   KOT does print in this case, that is expected, not a defect (the order
+   had already committed to delivery); void it through IdealPOS's own UI
+   like any other test order.
 
 ### Step 10 — Connector interruption/recovery drill
 
