@@ -255,3 +255,211 @@ directory.** Any future Bridge/Venue Connector build or self-test work
 must use a separate, isolated Windows working directory, created only
 after separate explicit human approval — see the October critical-path
 matrix's own corrected Gate A plan for the full requirement.
+
+---
+
+## Revision 2026-08-26 — updated state, expanded procedure (still prepared, NOT executed)
+
+This revision does not retract anything above (the 2026-08-21 addendums
+remain valid history of what was true then). It (a) records what has
+changed since, (b) adds interruption/recovery and final-integrity steps the
+original 16-step procedure did not cover, and (c) states precisely what
+still blocks execution today. **This checklist is still prepared, not
+executed — no step below has been run against real IdealPOS.**
+
+### What has changed since 2026-08-21
+
+- A separate, isolated working directory now exists on `DESKTOP-SOKKOQ7`
+  for the new stack (distinct from the protected legacy Desktop checkout,
+  per that addendum's own requirement) — `VerduraPostgreSQL`, `VerduraAPI`,
+  and `VerduraConnector` are installed there as Windows services and are
+  confirmed running: `VerduraAPI` is stable (root-caused, not
+  worked around — see `dl-106-dunedin-session-pause-checkpoint.md` §4),
+  and `VerduraConnector` is server-confirmed **active** (enrolled,
+  authenticated, `lastSeenAt` advancing on every poll, restart-recovery
+  already proven once). `VerduraOrderTablet` is registered but its Windows
+  service has not yet been started.
+- 18 of the 19 real DUNEDIN dine-in tables (Table 10 excluded — 0 seats in
+  the live IdealPOS data) now have real `Table.posTableCode` values in
+  Verdura's own database, imported verbatim from IdealPOS's own
+  `IPSTransaction..TableMapSetups.Caption` column via
+  `apps/api/prisma/scripts/import-idealpos-tables.ts` (commit `c76ba9e`) —
+  **never hand-typed**. That commit's own evidence confirms Captions "1"
+  through "19" are populated correctly in that table (the *other*,
+  wrong-database copy in `POSServer..TableMapSetups` is blank — see that
+  script's own doc comment for the two-tables trap). Table 19's
+  `posTableCode` is therefore the real, imported, verbatim IdealPOS
+  Caption — **re-run `SELECT tableNumber, posTableCode FROM "Table" WHERE
+  venueId = '<venue-id>' AND tableNumber = '19'` immediately before the
+  live session to confirm the value directly, rather than trusting this
+  paragraph** (data can drift between this being written and the session
+  running).
+- IdealposBridge (`VerduraIdealposBridge`) now exists as a real, buildable
+  checkout on the Mac (`/Users/sarwarkhan/Documents/IdealposBridge`), but
+  **has still never been deployed, built, or run on `DESKTOP-SOKKOQ7`**.
+  Its `App.config` there has a blank `Bridge:ApiKey` and blank
+  `Idealpos:TableAssignmentStrategy` — both still need to be set from a
+  real, generated API key (matching whatever the Venue Connector is
+  configured to send) before the Bridge can start at all.
+- `windows-deploy/static-proxy-server.mjs` (the process that serves the
+  built Order Tablet frontend and proxies `/api`+WebSocket traffic to
+  `VerduraAPI`) has had two real defects found and fixed since this
+  checklist was last updated: WebSocket upgrades were never proxied at all
+  (commit `cc3f0c9` — silently broke every live-status-update path this
+  checklist's steps 6–13 depend on watching), and POS-sync status
+  transitions were not broadcast over the existing order-update socket
+  (commit `06199e7`). Both are fixed and unit/integration-tested on the
+  Mac; **neither fix has been observed running against the real proxy
+  process on `DESKTOP-SOKKOQ7` yet** — step 5b below adds that
+  observation explicitly, since it was previously implicit and unverified.
+
+### Still blocking execution today (as of 2026-08-26)
+
+1. IdealposBridge is not built or deployed on `DESKTOP-SOKKOQ7` at all —
+   Gate A-equivalent prerequisite, unmet.
+2. `IdealposBridge\App.config`'s `Bridge:ApiKey` is blank — the Bridge
+   cannot authenticate the Connector's requests until a real key is
+   generated and set on both sides.
+3. `Idealpos:TableAssignmentStrategy` is undetermined — blocked on the
+   Bridge's own `OrderValidator`/`GetTables()` Caption-vs-`ItemIndex`
+   question recorded in `dl-106-dunedin-session-pause-checkpoint.md` §5.
+   Now that real Captions are confirmed populated ("1".."19") in the
+   database the Bridge's `IpsConnection` actually targets, the
+   Caption-matching path this Bridge already implements should work
+   without a code change — **but this has never been observed against
+   real IdealPOS and must be confirmed, not assumed, in step 6 below.**
+4. `VerduraOrderTablet`'s Windows service is registered but not started.
+5. This session has no live SSH/agent access to `DESKTOP-SOKKOQ7` (no key
+   loaded in the local agent, no resolvable hostname/IP recorded) — a
+   human must either load the key and share a reachable address, or
+   perform the remaining Windows-side setup (items 1–4 above) directly at
+   the machine.
+
+None of items 1–5 can be resolved by more code changes in this repository
+— they are real-world setup/access actions on the target Windows host.
+
+### Explicit PLU/MenuItem verification (expands step 3)
+
+Before step 4, for **every** menu item used in the test:
+
+- Query Verdura for the item's `posProductCode`:
+  `SELECT id, title, "posProductCode" FROM "MenuItem" WHERE id = '<menuItemId>'`.
+- Confirm that exact `posProductCode` was set by a human via the
+  IdealPOS-catalog importer or manual admin edit — **never a guessed or
+  inferred value** (grep the admin audit log for who set it and when if
+  unsure). If it is null or looks fabricated, stop — do not proceed with
+  an unverified PLU; `IdealposMappingError`'s own deterministic-failure
+  path exists specifically to keep an order with no verified PLU from
+  ever reaching Bridge, and this step is the human-side mirror of that
+  guarantee.
+- Record the exact `posProductCode` value(s) here alongside the
+  `menuItemId`s step 3 already asks for.
+
+### Step 5b — confirm live-status delivery works before relying on it
+
+Immediately after step 5 (and before steps 6–13, which all depend on
+watching truthful, real-time status), confirm on the real Order Tablet UI:
+the header's connection indicator shows "Live" (not "Reconnecting"), and
+the order's PosSyncStatus panel visibly advances through its real states
+(queued → dispatched → submitted-awaiting-confirmation, or a truthful
+failure) rather than staying frozen on its initial state. If it does not
+advance within a few seconds of real backend activity, stop and diagnose
+the proxy/WebSocket path (`static-proxy-server.mjs`, commits `cc3f0c9`/
+`06199e7` above) before continuing — do not proceed on the assumption that
+"no visible update" means "nothing happened."
+
+### New steps 17–20 — interruption/recovery and final integrity (run only after 1–16 succeed cleanly once)
+
+These are additional, separate live tests using the SAME already-validated
+Table 19 order flow — each one is its own isolated attempt with its own
+fresh `orderIdempotencyKey`, run only after steps 1–16 have already proven
+the clean-path end to end at least once. Abort per step 16's rule if any
+of these produces more than one native KOT, the wrong table, or a payment
+trace.
+
+17. **Connector interruption/recovery — lease reclaim, not duplicate
+    delivery.** Start a fresh Table 19 test order. The instant the Order
+    Tablet shows the order queued for the connector (POSSyncRecord
+    `queued_for_connector`, before it reaches `submitted_awaiting_confirmation`),
+    stop the `VerduraConnector` Windows service. Confirm: the
+    `ConnectorCommand` row's lease expires and (per
+    `apps/api/src/connector/connector-command.service.ts`'s `poll()`)
+    becomes reclaimable, never silently abandoned. Restart the service.
+    Confirm exactly one `idealpos.submit_order.v1` command is ultimately
+    delivered to IdealPOS (query `ConnectorCommand` for this order's
+    `sourceRecordId` — if the stop happened before Bridge ever received
+    the first attempt, expect exactly one row overall; if it happened
+    after Bridge already received it but before the report landed, expect
+    the sweep's `unknown` → recovery path from
+    `IdealposOrderDispatcherService.processUnknownCandidate`, which relies
+    on IdealposBridge's own `externalOrderId`-keyed dedup to guarantee the
+    *native* order/KOT is still singular even if two `ConnectorCommand`
+    rows exist). Verify exactly one native KOT prints, exactly once.
+18. **Bridge/IdealPOS unavailable — clean failure, no false success.**
+    Start a fresh Table 19 test order. Before the Connector's HTTP call to
+    Bridge can succeed, either stop the `IdealposBridge` process or block
+    its port briefly (least invasive: stop the process — do not touch
+    IdealPOS's own services). Confirm the Connector reports
+    `bridge_unreachable_or_failed` (never a false `bridge_accepted`), the
+    `POSSyncRecord` schedules a retry (`not_synced` with a future
+    `nextRetryAt`, per `IdealposOrderDispatcherService`'s DL-092 backoff),
+    and the Order Tablet UI visibly shows a retrying/failed state — never
+    a silent "sent" appearance. Restart Bridge. Confirm the next automatic
+    retry succeeds, exactly one `ConnectorCommand` ends `succeeded`, and
+    exactly one native KOT prints.
+19. **Timeout-ambiguous case, if it can be safely provoked.** If Bridge can
+    be made to accept the HTTP request but delay its response past the
+    Connector's own client timeout (e.g. a deliberately slow test
+    endpoint, not real IdealPOS latency), confirm the Connector reports
+    the command as unresolved (never a fabricated terminal outcome — see
+    `BridgeSubmissionAmbiguousException`'s own contract), the record
+    reaches `unknown` after the protocol's report window, and the later
+    automatic recovery (step 17's mechanism) still produces exactly one
+    native KOT. Skip this step if it cannot be provoked safely without
+    touching real IdealPOS internals — do not simulate it against
+    production IdealPOS itself.
+20. **Final consolidated DB integrity check.** For every order created
+    during this entire session (steps 1–19), confirm a fully consistent
+    terminal state across every table before sign-off:
+    - Exactly one `Order` row per real submission attempt (never more than
+      the number of times `Send to Kitchen` was genuinely pressed or a
+      controlled API-level replay was performed).
+    - Every `POSSyncRecord` for those orders is in a terminal state
+      (`submitted_awaiting_confirmation`, `synced`, or `failed` with a
+      truthful `errorMessage`) — none left indefinitely `not_synced` or
+      `queued_for_connector` with no `nextRetryAt` and no recent
+      `lastAttemptAt`.
+    - Every `ConnectorCommand` correlated to those orders
+      (`sourceAggregateType = 'Order'`) is terminal (`succeeded`,
+      `failed`, `expired`, or `cancelled`) — none left `unknown` or
+      `accepted` past its own recovery window.
+    - `KdsDeliveryRecord` and (if applicable) `PrinterJob` rows for those
+      orders are consistent with what was physically observed (no row
+      claiming `pushed`/`delivered` for a ticket that was never actually
+      seen on a screen or printer, and vice versa).
+    - Void every test order through native IdealPOS UI (step 15) and
+      confirm Table 19 shows free in both Verdura and IdealPOS afterward.
+    Any row that does not fit these terminal, consistent shapes is itself
+    a finding — do not sign off with an unexplained non-terminal row.
+
+### Rollback/recovery instructions (explicit)
+
+- **Wrong table or wrong items on the native IdealPOS ticket:** stop
+  immediately (step 16). Do not attempt to correct it via a second live
+  submission. Void through IdealPOS UI only (step 15's method), then
+  escalate — this indicates a mapping defect (Caption/`ItemIndex` or PLU),
+  not a one-off fluke, and must be root-caused before any further live
+  attempt.
+- **Apparent duplicate KOT:** stop immediately. Do not void anything until
+  the duplicate is documented (photograph both tickets if possible) —
+  this is exactly the failure class this entire audit exists to prevent,
+  and the physical evidence is needed to root-cause it. Escalate before
+  any further live action of any kind.
+- **Any payment/EFTPOS trace:** stop immediately, escalate to whoever owns
+  the EFTPOS terminal/merchant account before doing anything else — this
+  is a financial-system concern, not just a software defect.
+- **Order stuck non-terminal with no visible recovery path on the Order
+  Tablet:** do not resubmit live. Use step 20's DB queries to determine
+  the real state, and — if genuinely stuck past every automatic retry/
+  recovery window this audit has verified — treat it as a new defect to
+  fix in code, not a one-off to work around by hand in this session.
