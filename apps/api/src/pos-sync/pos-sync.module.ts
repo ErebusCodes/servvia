@@ -7,6 +7,7 @@ import { IdealposOrderDispatcherService } from './idealpos-order-dispatcher.serv
 import { AuthModule } from '../auth/auth.module';
 import { QueueModule } from '../queue/queue.module';
 import { ConnectorModule } from '../connector/connector.module';
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
   // Story 9-3: QueueModule is imported so PosSyncDispatcherService can
@@ -14,7 +15,11 @@ import { ConnectorModule } from '../connector/connector.module';
   // ConnectorModule is imported (its exported ConnectorCommandService)
   // so IdealposOrderDispatcherService can create real delivery commands
   // through the existing connector protocol rather than a second one.
-  imports: [AuthModule, QueueModule, ConnectorModule],
+  // OrdersModule is imported (its exported OrdersGateway) so
+  // IdealposOrderDispatcherService can push real-time order.posSyncStatus
+  // transitions to staff over the same WebSocket rooms order creation/
+  // kitchen-status updates already use, instead of a second mechanism.
+  imports: [AuthModule, QueueModule, ConnectorModule, OrdersModule],
   controllers: [PosSyncController, PosSyncRecordsController],
   providers: [PosSyncRecordsService, PosSyncDispatcherService, IdealposOrderDispatcherService],
 })

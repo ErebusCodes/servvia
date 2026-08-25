@@ -10,6 +10,10 @@ import { AuthModule } from '../auth/auth.module';
   imports: [AuditModule, AuthModule],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersGateway, KdsDispatcherService],
-  exports: [OrdersService],
+  // OrdersGateway exported so IdealposOrderDispatcherService (pos-sync
+  // module) can push real-time order.posSyncStatus transitions to the same
+  // venue:{id}:orders/kds rooms this gateway already broadcasts order
+  // creation/kitchen-status updates to, instead of a second WS mechanism.
+  exports: [OrdersService, OrdersGateway],
 })
 export class OrdersModule {}

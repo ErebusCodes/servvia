@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ConnectorCommand, ConnectorCommandStatus, POSSyncStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
+import { OrdersGateway } from '../orders/orders.gateway';
 import { buildIdealposOrderPayload, IdealposMappingError } from './idealpos-order-payload-mapper';
 import {
   IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE,
@@ -116,6 +117,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
   constructor(
     private readonly prisma: PrismaService,
     private readonly connectorCommandService: ConnectorCommandService,
+    private readonly ordersGateway: OrdersGateway,
     config: ConfigService,
   ) {
     this.sweepIntervalMs = config.get<number>('IDEALPOS_DISPATCH_SWEEP_INTERVAL_MS', 5000);
@@ -145,6 +147,35 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       'IDEALPOS_UNKNOWN_RECOVERY_GRACE_MS',
       10 * 60_000,
     );
+  }
+
+  /**
+   * Pushes the order's current posSyncStatus (and full posSyncRecord detail
+   * — attemptCount, nextRetryAt, errorMessage) to the same
+   * venue:{id}:orders/kds rooms OrdersService.broadcastOrder/updateStatus
+   * already use, over the existing OrdersGateway — no second WS mechanism.
+   * Called after every winning (count > 0) POSSyncRecord status
+   * compare-and-swap below, so staff watching the Order Tablet see each
+   * real transition (queued -> delivered -> synced/failed/retrying) as it
+   * happens, not just the order's initial creation. Best-effort: a
+   * broadcast failure must never fail or roll back the sweep tick that
+   * triggered it — the next tick's own CAS-gated re-read of Order (via
+   * REST) is still truthful even if one push is missed.
+   */
+  private async broadcastPosSyncUpdate(orderId: string, venueId: string): Promise<void> {
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        include: { items: true, table: true, posSyncRecord: true },
+      });
+      if (order) this.ordersGateway.sendOrderUpdate(venueId, order);
+    } catch (err: unknown) {
+      this.logger.warn(
+        `Failed to broadcast posSyncStatus update for orderId=${orderId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**
@@ -266,6 +297,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
         },
       });
       result.ineligible++;
+      await this.broadcastPosSyncUpdate(orderId, venueId);
       return;
     }
 
@@ -310,6 +342,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
           this.logger.warn(
             `posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} ineligible for IdealPOS submission: ${message}`,
           );
+          await this.broadcastPosSyncUpdate(orderId, venueId);
         }
         return;
       }
@@ -362,6 +395,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       this.logger.log(
         `dispatched posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} connectorCommandId=${command.id}`,
       );
+      await this.broadcastPosSyncUpdate(orderId, venueId);
     }
     // count === 0: another instance already moved this row out of
     // not_synced between our SELECT and this write. The ConnectorCommand
@@ -470,7 +504,10 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
           responsePayload: (command.resultPayload as Prisma.InputJsonValue | null) ?? undefined,
         },
       });
-      if (updated.count > 0) result.confirmed++;
+      if (updated.count > 0) {
+        result.confirmed++;
+        await this.broadcastPosSyncUpdate(candidate.orderId, candidate.venueId);
+      }
       return;
     }
 
@@ -486,7 +523,10 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
           responsePayload: (command.resultPayload as Prisma.InputJsonValue | null) ?? undefined,
         },
       });
-      if (updated.count > 0) result.failed++;
+      if (updated.count > 0) {
+        result.failed++;
+        await this.broadcastPosSyncUpdate(candidate.orderId, candidate.venueId);
+      }
       return;
     }
 
@@ -507,7 +547,10 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
           responsePayload: (command.resultPayload as Prisma.InputJsonValue | null) ?? undefined,
         },
       });
-      if (updated.count > 0) result.failed++;
+      if (updated.count > 0) {
+        result.failed++;
+        await this.broadcastPosSyncUpdate(candidate.orderId, candidate.venueId);
+      }
       return;
     }
 
@@ -546,6 +589,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
           this.logger.error(
             `posSyncRecordId=${id} venueId=${candidate.venueId} orderId=${candidate.orderId} exhausted transient-retry budget (${attemptCount} attempts) — requires manual review`,
           );
+          await this.broadcastPosSyncUpdate(candidate.orderId, candidate.venueId);
         }
         return;
       }
@@ -567,6 +611,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
         this.logger.warn(
           `posSyncRecordId=${id} venueId=${candidate.venueId} orderId=${candidate.orderId} transient delivery failure, retry scheduled at ${nextRetryAt.toISOString()} (attempt ${attemptCount}/${this.maxDispatchAttempts})`,
         );
+        await this.broadcastPosSyncUpdate(candidate.orderId, candidate.venueId);
       }
       return;
     }
@@ -655,6 +700,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
         this.logger.error(
           `posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} exhausted unknown-recovery budget (${attemptCount} attempts) — native IdealPOS outcome remains UNPROVEN, requires manual review`,
         );
+        await this.broadcastPosSyncUpdate(orderId, venueId);
       }
       return;
     }
@@ -701,6 +747,7 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       this.logger.warn(
         `posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} recovering stale unknown connector command (was ${command.id}, now ${recoveryCommand.id}) after ${this.unknownRecoveryGraceMs}ms grace, same externalOrderId=${orderId}`,
       );
+      await this.broadcastPosSyncUpdate(orderId, venueId);
     }
   }
 }

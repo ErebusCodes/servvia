@@ -9,6 +9,36 @@ import { useTabletDeviceAuthStore, activeTabletToken } from '../store/tabletDevi
 export type LiveOrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
 
 /**
+ * Mirrors apps/api/prisma/schema.prisma's POSSyncStatus enum exactly — this
+ * is the truthful IdealPOS-delivery lifecycle, entirely separate from
+ * LiveOrderStatus (kitchen-facing pending/confirmed/preparing/ready/...).
+ * Never infer "sent to kitchen"/"done" from LiveOrderStatus alone: a
+ * 'confirmed' kitchen status says nothing about whether IdealPOS actually
+ * received the order — check posSyncStatus for that.
+ */
+export type LiveOrderPosSyncStatus =
+  | 'not_synced'
+  | 'queued_for_connector'
+  | 'submitted_awaiting_confirmation'
+  | 'synced'
+  | 'failed'
+  | 'not_applicable'
+  | 'unsupported';
+
+/** Mirrors the subset of POSSyncRecord this order's staff-facing status
+ * indicator needs — attemptCount/nextRetryAt distinguish "never attempted"
+ * from "temporarily failing, will retry" (both otherwise look like
+ * posSyncStatus 'not_synced'). Absent entirely for an order whose
+ * posSyncRecord row hasn't loaded on this response (older cached data);
+ * treat that the same as "no detail available yet", not as a failure. */
+export interface LiveOrderPosSyncRecord {
+  status: LiveOrderPosSyncStatus;
+  attemptCount: number;
+  nextRetryAt: string | null;
+  errorMessage: string | null;
+}
+
+/**
  * Matches `docs/domain-model.md`'s `SelectedModifier` and the persisted
  * `OrderItem.selectedModifiers` snapshot shape (Story 15-3). `modifierGroupId`/
  * `optionId` are `null` only for an order placed through the legacy,
@@ -47,6 +77,11 @@ export interface LiveOrder {
   /** Non-null only when serviceMode is 'takeaway'. */
   takeawayReference: string | null;
   status: LiveOrderStatus;
+  /** Direct scalar on Order — always present, coarse-grained. */
+  posSyncStatus: LiveOrderPosSyncStatus;
+  /** Richer detail (attemptCount/nextRetryAt/errorMessage) — may be absent
+   * on stale cached data; prefer posSyncStatus above when this is null. */
+  posSyncRecord?: LiveOrderPosSyncRecord | null;
   source: string;
   subtotalCents: number;
   taxCents: number;

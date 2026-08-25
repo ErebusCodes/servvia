@@ -818,7 +818,12 @@ export class OrdersService {
           ? { status: { in: [OrderStatus.confirmed, OrderStatus.preparing, OrderStatus.ready] } }
           : {}),
       },
-      include: { items: true, table: true },
+      // posSyncRecord included so staff-facing responses (and this data's
+      // WS counterpart, IdealposOrderDispatcherService.broadcastPosSyncUpdate)
+      // carry attemptCount/nextRetryAt/errorMessage detail, not just the
+      // coarse Order.posSyncStatus scalar -- needed to distinguish "never
+      // attempted" from "retrying" from "permanently failed" in the UI.
+      include: { items: true, table: true, posSyncRecord: true },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -826,7 +831,7 @@ export class OrdersService {
   async findOne(id: string, organizationId: string, venueId?: string): Promise<Order> {
     const order = await this.prisma.order.findFirst({
       where: { id, venue: { organizationId }, ...(venueId ? { venueId } : {}) },
-      include: { items: true, table: true },
+      include: { items: true, table: true, posSyncRecord: true },
     });
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -877,7 +882,7 @@ export class OrdersService {
     const updatedOrder = await this.prisma.order.update({
       where: { id },
       data: updateData,
-      include: { items: true, table: true },
+      include: { items: true, table: true, posSyncRecord: true },
     });
 
     // Audit log state transition
@@ -1803,7 +1808,7 @@ export class OrdersService {
   private async broadcastOrder(orderId: string, venueId: string): Promise<void> {
     const orderWithItems = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true },
+      include: { items: true, posSyncRecord: true },
     });
     this.ordersGateway.sendOrderUpdate(venueId, orderWithItems);
   }

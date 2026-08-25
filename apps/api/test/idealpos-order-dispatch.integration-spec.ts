@@ -24,6 +24,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { IdealposOrderDispatcherService } from '../src/pos-sync/idealpos-order-dispatcher.service';
 import { IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE } from '../src/pos-sync/idealpos-order-dispatch.constants';
 import { ConnectorCommandService } from '../src/connector/connector-command.service';
+import { OrdersGateway } from '../src/orders/orders.gateway';
 
 describe('IdealPOS connector delivery (integration, real local Postgres)', () => {
   let app: INestApplication;
@@ -851,6 +852,7 @@ describe('IdealPOS connector delivery (integration, real local Postgres)', () =>
       const restartedDispatcher = new IdealposOrderDispatcherService(
         prisma,
         commandService,
+        app.get(OrdersGateway),
         config,
       );
       const result = await restartedDispatcher.sweepReconcile();

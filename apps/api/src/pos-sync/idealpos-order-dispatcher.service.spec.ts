@@ -4,6 +4,7 @@ import { ConnectorCommandStatus, POSSyncStatus } from '@prisma/client';
 import { IdealposOrderDispatcherService } from './idealpos-order-dispatcher.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
+import { OrdersGateway } from '../orders/orders.gateway';
 import { IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE } from './idealpos-order-dispatch.constants';
 
 const mockPrisma: any = {
@@ -24,6 +25,10 @@ const mockPrisma: any = {
 
 const mockConnectorCommandService: any = {
   createCommand: jest.fn(),
+};
+
+const mockOrdersGateway: any = {
+  sendOrderUpdate: jest.fn(),
 };
 
 function dispatchCandidate(overrides: Record<string, unknown> = {}) {
@@ -64,6 +69,7 @@ describe('IdealposOrderDispatcherService', () => {
         IdealposOrderDispatcherService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConnectorCommandService, useValue: mockConnectorCommandService },
+        { provide: OrdersGateway, useValue: mockOrdersGateway },
         { provide: ConfigService, useValue: { get: (_key: string, def?: unknown) => def } },
       ],
     }).compile();
@@ -82,9 +88,15 @@ describe('IdealposOrderDispatcherService', () => {
       expect(mockConnectorCommandService.createCommand).not.toHaveBeenCalled();
     });
 
-    it('dispatches a fully-mapped, modifier-free order: creates a ConnectorCommand and marks the record queued_for_connector', async () => {
+    it('dispatches a fully-mapped, modifier-free order: creates a ConnectorCommand and marks the record queued_for_connector, and broadcasts the new status over the existing OrdersGateway', async () => {
       mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
+      // First call: payload-building fetch. Second call: broadcastPosSyncUpdate's
+      // own re-fetch after the winning status CAS, proving the real-time push
+      // reflects the post-dispatch state, not a stale pre-dispatch snapshot.
       mockPrisma.order.findUnique.mockResolvedValueOnce(mappedOrder());
+      mockPrisma.order.findUnique.mockResolvedValueOnce(
+        mappedOrder({ posSyncRecord: { status: POSSyncStatus.queued_for_connector } }),
+      );
 
       const result = await service.sweepDispatch();
 
@@ -111,6 +123,13 @@ describe('IdealposOrderDispatcherService', () => {
           nextRetryAt: null,
         }),
       });
+      expect(mockOrdersGateway.sendOrderUpdate).toHaveBeenCalledWith(
+        'venue-1',
+        expect.objectContaining({
+          id: 'order-1',
+          posSyncRecord: expect.objectContaining({ status: POSSyncStatus.queued_for_connector }),
+        }),
+      );
     });
 
     it('a retry attempt (attemptCount > 0) uses an attempt-qualified idempotency key, never the original one', async () => {
@@ -130,20 +149,24 @@ describe('IdealposOrderDispatcherService', () => {
       );
     });
 
-    it('never sends a modifier-bearing order to the connector — marks it failed with a diagnostic reason instead', async () => {
+    it('never sends a modifier-bearing order to the connector — marks it failed with a diagnostic reason instead, and broadcasts the failure', async () => {
       mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
-      mockPrisma.order.findUnique.mockResolvedValueOnce(
-        mappedOrder({
-          items: [
-            {
-              menuItemId: 'item-1',
-              menuItemTitle: 'Mixed Grill',
-              quantity: 1,
-              selectedModifiers: [{ optionId: 'opt-1' }],
-            },
-          ],
-        }),
-      );
+      const orderWithModifier = mappedOrder({
+        items: [
+          {
+            menuItemId: 'item-1',
+            menuItemTitle: 'Mixed Grill',
+            quantity: 1,
+            selectedModifiers: [{ optionId: 'opt-1' }],
+          },
+        ],
+      });
+      mockPrisma.order.findUnique.mockResolvedValueOnce(orderWithModifier);
+      // broadcastPosSyncUpdate's own post-failure re-fetch.
+      mockPrisma.order.findUnique.mockResolvedValueOnce({
+        ...orderWithModifier,
+        posSyncRecord: { status: POSSyncStatus.failed },
+      });
 
       const result = await service.sweepDispatch();
 
@@ -156,6 +179,15 @@ describe('IdealposOrderDispatcherService', () => {
           errorMessage: expect.stringContaining('unsupported_modifiers'),
         }),
       });
+      // Staff watching the Order Tablet must be pushed the failure too, not
+      // just a successful dispatch — never silently stuck showing a stale
+      // "submitting" state.
+      expect(mockOrdersGateway.sendOrderUpdate).toHaveBeenCalledWith(
+        'venue-1',
+        expect.objectContaining({
+          posSyncRecord: expect.objectContaining({ status: POSSyncStatus.failed }),
+        }),
+      );
     });
 
     it('fails closed on an unmapped table — never guesses, never dispatches', async () => {
@@ -555,9 +587,15 @@ describe('IdealposOrderDispatcherService', () => {
       });
 
       it('mapping changes after the original attempt do not alter the recovery payload', async () => {
-        // mockPrisma.menuItem/table lookups are never even called by this
-        // path — asserting that directly proves current mappings cannot
+        // mockPrisma.menuItem lookup is never called by the recovery path
+        // itself — asserting that directly proves current mappings cannot
         // leak into a recovery payload, regardless of what they say now.
+        // order.findUnique IS called once (order.findUnique below resolves
+        // undefined since no mockResolvedValueOnce is queued for it here),
+        // but only by broadcastPosSyncUpdate's post-recovery WebSocket
+        // push — a separate concern from payload construction, which never
+        // reads the order at all for this path (the recovery payload is
+        // reused byte-for-byte from the original command, see below).
         mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([reconcileCandidate()]);
         mockPrisma.connectorCommand.findUnique.mockResolvedValueOnce(unknownCommand());
         mockPrisma.menuItem.findMany.mockResolvedValueOnce([
@@ -566,7 +604,7 @@ describe('IdealposOrderDispatcherService', () => {
 
         await service.sweepReconcile();
 
-        expect(mockPrisma.order.findUnique).not.toHaveBeenCalled();
+        expect(mockPrisma.order.findUnique).toHaveBeenCalledTimes(1);
         expect(mockPrisma.menuItem.findMany).not.toHaveBeenCalled();
         expect(mockConnectorCommandService.createCommand).toHaveBeenCalledWith(
           expect.objectContaining({
