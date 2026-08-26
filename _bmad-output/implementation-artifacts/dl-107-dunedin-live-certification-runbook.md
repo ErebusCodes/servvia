@@ -206,7 +206,78 @@ documents is the one actually running anything:
 IdealposBridge`, matching the canonical Bridge repo's own deployment
 expectation — no discrepancy there.
 
-## 1c. Known latent defect — NOT fixed this session, tracked separately
+## 1c. §1b correction + Window Display `/menu` outage root cause (2026-08-26, later same day)
+
+**§1b's claim that `Desktop\verdura_MVP` is "confirmed not used by any
+running service, leave it alone" is now out of date — correct as of the
+original 1b investigation, false by the time of this entry.** Re-verified
+directly via SSH (`DESKTOP-SOKKOQ7`, no longer blocked — see below): both
+`Documents\VerduraServer` and `Desktop\verdura_MVP` were at `main`
+`0a7c286`, clean, in sync with `origin/main`. The Window Display dev server
+(port 5174) was actually running from `Desktop\verdura_MVP` (confirmed via
+its listening process's full command line and parent chain: `npm run dev
+--workspace=apps/window-display` (PID 12008) → `cmd.exe` (51880) → `node
+.../Desktop/verdura_MVP/node_modules/vite/bin/vite.js` (44376)) — almost
+certainly a leftover terminal from before `Documents\VerduraServer` became
+canonical, never migrated.
+
+**Symptom:** `http://localhost:5174/menu` showed "The menu is temporarily
+unavailable. Please try again shortly." on Windows only (Mac unaffected).
+
+**Root cause (proven via `curl` against both the direct API and the Vite
+proxy, and via `KioskController.getVenueMenu`'s source):**
+`apps/window-display/.env`'s `VITE_VENUE_ID` — in both Windows copies — was
+still the **local-dev seed default** (`10000000-0000-4000-8000-000000000001`),
+which does not exist in Windows' production `verdura_production` database.
+`GET /api/kiosk/venues/10000000-0000-4000-8000-000000000001/menu` →
+`404 {"message":"Venue not found"}` (via `requireActiveVenue`'s
+`prisma.venue.findFirst`) → `menuClient.js`'s `getAuthoritativeMenu()`
+throws → `Menu.jsx`'s catch block renders the generic unavailable message.
+Not Prisma, not Postgres connectivity, not Vite proxy/CORS, not stale
+build, not menu-availability filtering — the direct-API and proxied
+requests returned byte-identical 404s, ruling out a proxy-layer cause.
+
+The real DUNEDIN venue is **`Verdura Dunedin`**, id
+`04841b10-1474-4f8c-962f-1ccea7eb3b81` (org `63cc2d26-7dbd-46b5-b55d-
+c414a1fe3cd4`). Confirmed via read-only Prisma query: 825 `MenuItem` rows,
+all under 1 `Category` ("Imported from IdealPOS (pending review)" —
+`isActive: true`), **0 currently `isAvailable: true`** — this is the
+category's own stated pending-review curation state, not a bug, and was
+deliberately left untouched.
+
+**Fix applied (runtime/environment only, no application source changed):**
+1. Corrected `VITE_VENUE_ID` to `04841b10-1474-4f8c-962f-1ccea7eb3b81` in
+   `apps/window-display/.env` in **both** Windows copies (`Documents\
+   VerduraServer`, which had no `.env` at all — created one — and
+   `Desktop\verdura_MVP`, whose wrong value was corrected in place, so it
+   can't silently reintroduce this if reused by accident again).
+2. Killed the Window Display dev server that was running from
+   `Desktop\verdura_MVP` (PIDs 12008/51880/44376) and restarted it from the
+   canonical `Documents\VerduraServer` (`npm run dev
+   --workspace=apps/window-display -- --host 0.0.0.0 --port 5174`, detached
+   via `Win32_Process.Create` so it survives the SSH session, not tied to
+   any of the four NSSM-managed production services in §1b).
+3. Verified: `GET /api/kiosk/venues/04841b10.../menu` → `200` with
+   `categories: 1, menuItems: 825`, identical via direct API (`:3000`) and
+   the Vite proxy (`:5174`); the old seed venue id still correctly 404s
+   (confirms the fix is specific, not accidentally permissive);
+   `http://localhost:5174/menu` → `200`. No IdealPOS catalog data, PLUs, or
+   `isAvailable` flags were modified; no order or KOT was submitted.
+4. **Not independently re-verified with a live Windows browser session**
+   (no interactive browser access from this session) — the HTTP-level proof
+   above covers the exact request `getAuthoritativeMenu()` issues and its
+   full response shape, which is sufficient to confirm the error path is no
+   longer reachable, but actual on-screen rendering (categories/items
+   painting correctly, no other console errors) should still get a quick
+   human eyeball pass.
+
+Windows SSH access (`DESKTOP-SOKKOQ7`, port 49222, key
+`~/.ssh/verdura_windows_ed25519`) is now working, superseding the "no
+working SSH/RDP path" blocker recorded earlier this session — future
+sessions should re-verify it's still authorized rather than assuming it's
+permanently open.
+
+## 1d. Known latent defect — NOT fixed this session, tracked separately
 
 Live DUNEDIN's `Venue.posAdapterType = 'local_agent'`, not `'api'`. Two
 code paths key specifically off `=== 'api'`:
