@@ -175,30 +175,89 @@ executed until it exists.
 
 ---
 
+## 1b. Corrected Windows deployment topology (2026-08-26)
+
+Direct inspection this session found **three** distinct Verdura-related
+directories on `DESKTOP-SOKKOQ7` — do not assume the one named in older
+documents is the one actually running anything:
+
+- `C:\Users\Posmate\Desktop\verdura_MVP` — a real but **very stale**
+  (`9033692`) git clone, with a stray untracked nested `verdura_MVP\`
+  directory. **Confirmed not used by any running service.** Leave it alone.
+- `C:\Users\Posmate\Documents\VerduraServer` — **the actual deployment
+  source.** Confirmed via each service's own NSSM config
+  (`AppDirectory`/`AppParameters`) that this backs `VerduraAPI`,
+  `VerduraOrderTablet` (serves `apps\admin-console\dist` on 5176), and
+  `VerduraAdminConsole` (serves `apps\admin-console\dist-admin` on 5177 —
+  a manually-built, non-standard output directory: `cd apps\admin-console
+  && npx vite build --outDir dist-admin`, no `VITE_APP_MODE`, same
+  `VITE_VENUE_ID` as the tablet build). This is the git repo to update.
+- `C:\Users\Posmate\Documents\VerduraOrderTabletConnector` — the
+  Connector's deployment. **Not a git repository** — a raw publish-output
+  copy. Updating it requires rebuilding
+  `apps\venue-connector\src\VerduraIdealposTracer.Cli\
+  VerduraIdealposTracer.Cli.csproj` (`dotnet publish -c Release -r win-x64
+  --self-contained false`, run from `VerduraServer` once it's current) and
+  copying the new `bin\Release\net8.0-windows\win-x64\publish\` output
+  into this directory's own matching path — a plain `git pull` here does
+  nothing, there is no `.git` to pull.
+
+`VerduraIdealposBridgeSvc` runs from `C:\Users\Posmate\Documents\
+IdealposBridge`, matching the canonical Bridge repo's own deployment
+expectation — no discrepancy there.
+
+## 1c. Known latent defect — NOT fixed this session, tracked separately
+
+Live DUNEDIN's `Venue.posAdapterType = 'local_agent'`, not `'api'`. Two
+code paths key specifically off `=== 'api'`:
+`orders.service.ts`'s PrinterJob-suppression check (meant to stop Verdura
+printing its own KOT alongside IdealPOS's), and the legacy
+`PosSyncDispatcherService`'s exclusion filter (meant to stop it competing
+with `IdealposOrderDispatcherService` for the same `POSSyncRecord` rows —
+see that file's own doc comment for the exact hijack mechanism this
+guards against). Confirmed **currently inert** for DUNEDIN specifically:
+zero `Printer` rows exist for this venue, and `POS_SYNC_DISPATCH_ENABLED`
+is unset in production — re-confirm both are still true before relying on
+this. This is a real defect (the `'api'`-only checks should almost
+certainly also cover `'local_agent'`, or the venue was seeded with the
+wrong adapter type) that should be fixed in a dedicated follow-up task —
+not attempted here to avoid scope creep on a live venue mid-deployment.
+
+---
+
 ## 2. Preconditions (verify ALL before step 1)
 
 Re-verify every item below against the live host at session start — do
 not trust this document's own dates.
 
-1. **Code state.** `main` includes all five of §0's fixes (commit messages:
-   "Fix Connector misreporting Bridge's terminal-negative duplicate replay
-   as success", "Order Tablet: replace fabricated 'Kitchen open' status
-   with real socket state", "Persist order-submission outcome across
-   reload to prevent duplicate takeaway KOTs", "Stop POS dispatch on order
-   cancellation; harden WS proxy timeouts; run root-script tests in CI")
-   and everything back through DL-106's checkpoint. `git log --oneline -8`
-   on the deployment machine should show all of these; if it doesn't,
-   deploy them first (see §3).
+1. **Code state — RECONCILED 2026-08-26.** `C:\Users\Posmate\Documents\
+   VerduraServer` (the real deployment source — see the corrected topology
+   note below) was fast-forwarded from `06199e7` to `4b9d2d5` (all nine
+   commits back through the `isPortFree` CI fix), the `possync_cancelled_
+   status` migration was applied via `prisma migrate deploy`, and
+   `VerduraAPI`/`VerduraOrderTablet`/`VerduraAdminConsole`/`VerduraConnector`
+   were all rebuilt and restarted from this source — verified healthy
+   post-restart (§0.1 below). **Re-verify `git -C
+   C:\Users\Posmate\Documents\VerduraServer rev-parse HEAD` still shows
+   `4b9d2d5` (or a later commit with its own verified CI+deployment
+   evidence) before trusting this line — it will drift the moment
+   `main` moves again.**
 2. **Services running on `DESKTOP-SOKKOQ7`** (`nssm status <name>` or
-   Services.msc): `VerduraPostgreSQL`, `VerduraAPI`, `VerduraConnector`
-   all `Running`. `VerduraOrderTablet` `Running` and reachable from the
-   venue LAN (DL-106 §3/§7 left this registered-but-not-started — start it
-   and confirm before proceeding). IdealposBridge running as its own
-   process/service, with `Bridge:ApiKey` set to a real, non-empty value
-   and `Idealpos:TableAssignmentStrategy` set to a real, harness-confirmed
-   value (`Idealpos:TableAssignmentConfirmed=true`) in its `App.config` —
-   DL-106 §7 left both blocked; **do not run §4 with either unset or
-   unconfirmed.**
+   Services.msc): `VerduraPostgreSQL`, `VerduraAPI`, `VerduraConnector`,
+   `VerduraOrderTablet`, `VerduraAdminConsole` all `Running` — confirmed
+   2026-08-26, including LAN reachability (Windows Firewall rules for
+   5176/5177 both present and enabled) and a real WebSocket-upgrade
+   handshake (101 Switching Protocols) through both proxies, not just a
+   plain HTTP check. IdealposBridge running as its own service, with
+   `Bridge:ApiKey` set to a real, non-empty value (confirmed to match the
+   Connector's configured key) and `Idealpos:TableAssignmentStrategy=
+   NoHint` set in its `App.config` — DL-106 §7's "blocked" status for these
+   two is **superseded**; both are populated. `Idealpos:
+   TableAssignmentConfirmed=false` **remains genuinely unresolved** — the
+   Bridge's own `/api/health` self-reports this every time
+   (`tableAssignmentConfirmed: false`, with a `reasons` entry warning
+   orders may get stuck at `processed` without advancing to
+   `assigned_to_table`) — **do not run §4 without resolving this first.**
 3. **Connector enrolled and polling.** `GET /venues/{venueId}/connector/
    installations` (bearer staff/admin token) shows `status: "active"` and
    `lastSeenAt` advancing within the last poll interval.
