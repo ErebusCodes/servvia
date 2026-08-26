@@ -189,10 +189,22 @@ const PROBE_HOSTS = ['127.0.0.1', '::1', '0.0.0.0', '::'];
  * An address family this host can't bind at all (e.g. no IPv6 configured)
  * is never treated as "occupied" — only a real EADDRINUSE on any candidate
  * makes this false.
+ *
+ * Probed sequentially, not via Promise.all — found by a real CI failure
+ * (Linux runner, ubuntu-latest) that never reproduced on macOS: Linux
+ * defaults `IPV6_V6ONLY` to false, so a `::` bind is dual-stack and also
+ * claims the `0.0.0.0` address space for the same port; probing `::` and
+ * `0.0.0.0` concurrently could race each other into a spurious EADDRINUSE
+ * against each other's own tester socket, with nothing external ever
+ * listening. macOS defaults the other way (IPV6_V6ONLY true), which is
+ * exactly why this was invisible locally. Awaiting each probe's own close
+ * before starting the next removes the overlap entirely.
  */
 export async function isPortFree(port) {
-  const results = await Promise.all(PROBE_HOSTS.map(host => probeBind(port, host)));
-  return !results.includes('occupied');
+  for (const host of PROBE_HOSTS) {
+    if ((await probeBind(port, host)) === 'occupied') return false;
+  }
+  return true;
 }
 
 /**
