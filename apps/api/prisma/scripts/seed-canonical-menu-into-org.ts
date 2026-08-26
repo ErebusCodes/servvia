@@ -216,8 +216,13 @@ async function main() {
   );
 
   if (APPLY) {
+    // Scoped to the canonical categories themselves (catMap's real ids), not
+    // a title match against the whole org — a title-only check would also
+    // count any unrelated row (e.g. an imported IdealPOS product) that
+    // happens to share a name with a canonical item, over-reporting a
+    // problem that doesn't exist.
     const finalCount = await prisma.menuItem.count({
-      where: { organizationId, title: { in: SEED_ITEMS.map((i) => i.title) }, deletedAt: null },
+      where: { organizationId, categoryId: { in: Object.values(catMap) }, deletedAt: null },
     });
     console.log(
       `Canonical menu items now present in DB for this org: ${finalCount} (expected ${CANONICAL_MENU_ITEM_COUNT}).`,
