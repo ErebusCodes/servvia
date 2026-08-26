@@ -11,7 +11,7 @@ vi.mock('socket.io-client', () => ({
   }),
 }));
 
-const useLiveOrdersMock = vi.fn(() => ({ data: [], isRealtimeConnected: true }));
+const useLiveOrdersMock = vi.fn(() => ({ data: [], isRealtimeConnected: true, ordersDataIsAuthoritative: true }));
 vi.mock('../../shared/orders', async () => {
   const actual = await vi.importActual<typeof import('../../shared/orders')>('../../shared/orders');
   return { ...actual, useLiveOrders: () => useLiveOrdersMock() };
@@ -263,7 +263,7 @@ beforeEach(() => {
   seedMenuStore();
   seedReservationStore();
   resetTabletDeviceAuth();
-  useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true });
+  useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true, ordersDataIsAuthoritative: true });
   // The pending-submission marker (see PENDING_SUBMISSION_STORAGE_KEY in
   // OrderTabletPage.tsx) is real, persisted sessionStorage — without this,
   // one test's simulated dropped-response leaves the next test's fresh
@@ -1194,7 +1194,7 @@ describe('OrderTabletPage — live-connection status is truthful, not fabricated
   // exactly the fabricated-success pattern this codebase otherwise forbids.
   // It must now reflect useLiveOrders()'s real isRealtimeConnected signal.
   it('shows Live when the realtime socket is connected', async () => {
-    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true });
+    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true, ordersDataIsAuthoritative: true });
     installStandaloneFetchMock(NZ_SUPPORTED_TAX_CONFIG);
     renderStandaloneTablet();
 
@@ -1203,11 +1203,65 @@ describe('OrderTabletPage — live-connection status is truthful, not fabricated
   });
 
   it('shows a Reconnecting warning, not a fake success state, when the realtime socket is down', async () => {
-    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: false });
+    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: false, ordersDataIsAuthoritative: true });
     installStandaloneFetchMock(NZ_SUPPORTED_TAX_CONFIG);
     renderStandaloneTablet();
 
     expect(await screen.findByText(/Reconnecting/i)).toBeInTheDocument();
     expect(screen.queryByText('Live')).not.toBeInTheDocument();
+  });
+});
+
+// Regression coverage for the 2026-08-26/27 DUNEDIN incident: a real staff
+// submission produced zero backend Order/POSSyncRecord/ConnectorCommand
+// rows and zero Bridge traffic, yet the tablet showed "This table already
+// has an order being prepared." for a stale order (ORD-601017) that no
+// longer existed server-side. Root cause: the duplicate-order guard in
+// handleSendToKitchen/handleGuestSendToKitchen trusted `orders` (React
+// Query cache) unconditionally, even once its background refetch had
+// started failing (session expiry) and the data was no longer current. See
+// orders.test.ts's "ordersDataIsAuthoritative" suite for the underlying
+// freshness-vs-failure signal this reads.
+describe('OrderTabletPage — stale order-cache / auth-expiry safety (2026-08-26/27 DUNEDIN incident)', () => {
+  // Deliberately an EMPTY cache (no order for any table, matching the real
+  // incident's actual backend state) — proves the block is a hard gate on
+  // trust itself, not a side effect of a coincidentally-matching cached
+  // order. The pre-existing duplicate-order guard below this new check is
+  // untouched by this fix (same lines, now merely gated behind it) and is
+  // not re-tested here.
+  it('blocks Send to Kitchen with an explicit unverifiable-state message, and sends no POST, when the orders dataset is not authoritative', async () => {
+    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true, ordersDataIsAuthoritative: false });
+    const { calls } = installFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+    renderTablet();
+
+    await selectTableAndStartOrder();
+    await addTestItemToCart();
+
+    const sendButton = await screen.findByRole('button', { name: /Send to kitchen/i });
+    fireEvent.click(sendButton);
+
+    expect(
+      await screen.findByText(/Can't verify this table's order status right now/i),
+    ).toBeInTheDocument();
+    // The exact incident's false claim must never be shown when the data
+    // backing it is unverified.
+    expect(screen.queryByText('This table already has an order being prepared.')).not.toBeInTheDocument();
+    expect(calls.some((c) => c.url.includes('/api/admin/orders') && c.init?.method === 'POST')).toBe(false);
+  });
+
+  it('submits normally when the orders dataset is authoritative and the table has no active order — the untrusted-state guard never blocks the healthy path', async () => {
+    useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true, ordersDataIsAuthoritative: true });
+    const { calls } = installFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+    renderTablet();
+
+    await selectTableAndStartOrder();
+    await addTestItemToCart();
+
+    const sendButton = await screen.findByRole('button', { name: /Send to kitchen/i });
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(calls.some((c) => c.url.includes('/api/admin/orders') && c.init?.method === 'POST')).toBe(true);
+    });
   });
 });

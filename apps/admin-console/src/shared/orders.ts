@@ -4,7 +4,13 @@ import { io } from 'socket.io-client';
 import { compareMenuItemsAlphabetically } from './menu/menuData';
 import { useAuthStore } from '../store/auth.store';
 import { useKdsDeviceAuthStore } from '../store/kdsDeviceAuth.store';
-import { useTabletDeviceAuthStore, activeTabletToken } from '../store/tabletDeviceAuth.store';
+import {
+  useTabletDeviceAuthStore,
+  activeTabletToken,
+  isManagerSteppedUp,
+  isStaffElevated,
+  isDeviceEnrolled,
+} from '../store/tabletDeviceAuth.store';
 
 export type LiveOrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'completed' | 'cancelled';
 
@@ -173,6 +179,43 @@ export function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * Mirrors api.ts's axios response interceptor ("An expired/invalid session
+ * must not linger client-side") for the Order Tablet's hand-rolled fetch()
+ * calls (useLiveOrders, fetchPosSyncStatus, fetchPrintJobsStatus,
+ * submitOrderToKitchen), which never went through that axios instance and
+ * so never benefited from it — the exact gap behind the 2026-08-26/27
+ * DUNEDIN incident: a 401 on the orders query left a stale cached "active
+ * order" in place indefinitely instead of clearing the dead session, and
+ * the duplicate-order guard kept trusting it.
+ *
+ * Clears whichever auth layer is actually active, mirroring
+ * getAuthToken()'s own precedence (staff > tablet elevation/device > KDS)
+ * — never guesses; a caller with no active layer is a no-op.
+ */
+export function clearAuthOnUnauthorized(): void {
+  if (useAuthStore.getState().accessToken) {
+    useAuthStore.getState().clearAuth();
+    return;
+  }
+  const tabletState = useTabletDeviceAuthStore.getState();
+  if (isManagerSteppedUp(tabletState)) {
+    tabletState.clearManagerStepUp();
+    return;
+  }
+  if (isStaffElevated(tabletState)) {
+    tabletState.clearStaffElevation();
+    return;
+  }
+  if (isDeviceEnrolled(tabletState)) {
+    tabletState.clearDevice();
+    return;
+  }
+  if (useKdsDeviceAuthStore.getState().accessToken) {
+    useKdsDeviceAuthStore.getState().clear();
+  }
+}
+
 export const ORDERS_API_BASE = API_BASE;
 
 function dishFor(value: string): AdminOrder['dish'] {
@@ -256,7 +299,10 @@ export function useLiveOrders(options?: { restrictedEndpoint?: boolean }) {
       const response = await fetch(`${API_BASE}${path}?venueId=${DEFAULT_VENUE_ID}`, {
         headers: authHeaders(),
       });
-      if (!response.ok) throw new Error(`Failed to load orders (${response.status})`);
+      if (!response.ok) {
+        if (response.status === 401) clearAuthOnUnauthorized();
+        throw new Error(`Failed to load orders (${response.status})`);
+      }
       return response.json() as Promise<LiveOrder[]>;
     },
     // No fake fallback on failure: query.data stays undefined and isError
@@ -270,6 +316,19 @@ export function useLiveOrders(options?: { restrictedEndpoint?: boolean }) {
     // 'connect'/'orderUpdate' handlers are authoritative and this is disabled.
     refetchInterval: isRealtimeConnected ? false : 15000,
   });
+
+  // 2026-08-26/27 DUNEDIN incident: once background refetches started
+  // failing (session expiry), the last successful `data` lingered forever
+  // — React Query's default behavior — and callers (getActiveOrderForTable,
+  // the createdOrderRef resync effect) kept treating it as current truth,
+  // producing a false "table already has an order" claim with no real
+  // backend order behind it. True exactly when the most recent settled
+  // fetch was a success, not a failure — no invented TTL, just React
+  // Query's own dataUpdatedAt/errorUpdatedAt timestamps compared directly.
+  // Flips back to true for free the moment a subsequent fetch succeeds
+  // (e.g. after re-authenticating), satisfying "stale state clears after a
+  // successful refresh" with no extra invalidation logic needed.
+  const ordersDataIsAuthoritative = query.dataUpdatedAt > 0 && query.errorUpdatedAt <= query.dataUpdatedAt;
 
   useEffect(() => {
     const socket = io(API_BASE || undefined, {
@@ -296,7 +355,7 @@ export function useLiveOrders(options?: { restrictedEndpoint?: boolean }) {
     };
   }, [queryClient, restrictedEndpoint]);
 
-  return { ...query, isRealtimeConnected };
+  return { ...query, isRealtimeConnected, ordersDataIsAuthoritative };
 }
 
 export function useLiveOrderStatusMutation() {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useLiveOrders, LiveOrder, DEFAULT_VENUE_ID, authHeaders, liveOrdersQueryKey } from '../../shared/orders';
+import { useLiveOrders, LiveOrder, DEFAULT_VENUE_ID, authHeaders, liveOrdersQueryKey, clearAuthOnUnauthorized } from '../../shared/orders';
 import { TABLES, TABLE_LAYOUTS, mapX, mapY, mapW, mapH } from '../../shared/tables';
 import { useMenuStore, MenuItem, ModifierGroup } from '../../store/menu.store';
 import { sortMenuItemsAlphabetically } from '../../shared/menu/menuData';
@@ -252,7 +252,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   const tabletDeviceAuth = useTabletDeviceAuthStore();
   const staffElevated = standalone && isStaffElevated(tabletDeviceAuth);
   const restrictedOrdersEndpoint = standalone && !staffElevated;
-  const { data: orders = [], isRealtimeConnected } = useLiveOrders({ restrictedEndpoint: restrictedOrdersEndpoint });
+  const { data: orders = [], isRealtimeConnected, ordersDataIsAuthoritative } = useLiveOrders({ restrictedEndpoint: restrictedOrdersEndpoint });
 
   // Deliberately reads the resolved* fields, not categories/items — those
   // belong to MenuManagementPage's unresolved admin/menu/* fetch, and the
@@ -957,6 +957,11 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         headers: authHeaders(),
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          clearAuthOnUnauthorized();
+          setPosSyncLoadError('Your session has expired — please sign in again.');
+          return;
+        }
         setPosSyncLoadError(`Could not load Idealpos reconciliation status (${res.status})`);
         return;
       }
@@ -977,6 +982,11 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         headers: authHeaders(),
       });
       if (!res.ok) {
+        if (res.status === 401) {
+          clearAuthOnUnauthorized();
+          setPrintJobsLoadError('Your session has expired — please sign in again.');
+          return;
+        }
         setPrintJobsLoadError(`Could not load kitchen ticket status (${res.status})`);
         return;
       }
@@ -1050,6 +1060,12 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // result can never be displayed for the table actually being viewed.
   useEffect(() => {
     if (screen !== 'pay') return;
+    // 2026-08-26/27 DUNEDIN incident: this resync must not act on `orders`
+    // data of unknown freshness — see handleSendToKitchen's matching guard
+    // and useLiveOrders' ordersDataIsAuthoritative doc comment. Leaves
+    // createdOrderRef exactly as it is (neither adopts nor clears it) while
+    // untrustworthy, rather than resyncing to data that may be stale.
+    if (!ordersDataIsAuthoritative) return;
     // Story 15-13: this resync is a table-lookup mechanism — takeaway has
     // no table to look up by, so createdOrderRef (already set directly by
     // submitOrderToKitchen on success) is left exactly as it is. A raw page
@@ -1065,7 +1081,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
       setCreatedOrderRef(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, tableId, serviceMode, orders]);
+  }, [screen, tableId, serviceMode, orders, ordersDataIsAuthoritative]);
 
   // 2026-08-20: the single primary staff action on the cart screen. Merges
   // what were previously two separate steps ("Send to kitchen" then a
@@ -1076,6 +1092,22 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // branch below). Guest/restricted-mode ordering is untouched -- it still
   // reaches `screen === 'pay'` via its own separate `Place order` button.
   const handleSendToKitchen = async () => {
+    // 2026-08-26/27 DUNEDIN incident: this duplicate-order guard used to
+    // trust `orders` (React Query cache) unconditionally. Once background
+    // refetches started failing (session expiry), the last-known cached
+    // data lingered forever, and this guard kept blocking submission with
+    // a false "table already has an order" claim for an order that no
+    // longer existed on the backend — never calling submitOrderToKitchen()
+    // at all, so nothing about the failure was ever visible server-side.
+    // A cached active order may only block a new submission when the
+    // orders dataset is currently authoritative (see useLiveOrders).
+    if (!ordersDataIsAuthoritative) {
+      setOrderActionError(
+        "Can't verify this table's order status right now — your session may have expired. Refresh or sign in again before sending.",
+      );
+      return;
+    }
+
     // Story 15-13: the one-active-order-per-table guard is a dine-in-only
     // concept — takeaway has no table to collide on, and every takeaway
     // submission is inherently a fresh new order.
@@ -1106,6 +1138,14 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // Idealpos/EFTPOS -- see the "Review Order" screen's informational note
   // and DL-087.
   const handleGuestSendToKitchen = async () => {
+    // See handleSendToKitchen's matching guard for the incident this closes.
+    if (!ordersDataIsAuthoritative) {
+      setOrderActionError(
+        "Can't verify this table's order status right now — your session may have expired. Refresh or sign in again before sending.",
+      );
+      return;
+    }
+
     if (serviceMode === 'dine_in') {
       const tableNumber = tableId ? tableId.slice(1) : '';
       const activeOrder = getActiveOrderForTable(tableNumber);
