@@ -198,11 +198,12 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
-      # No automated test suite exists for this app (no "test" script in
-      # its package.json) — not something this workflow invents; recorded
-      # honestly rather than skipped silently. See deferred-work.md.
       - run: npm run lint:customer-website
       - run: npm run typecheck --workspace=apps/customer-website
+      # Only shared/menu/menuClient.js's normalizePublicMenu() has coverage
+      # so far (node --test, no framework) — not a full app test suite, but
+      # real regression coverage, not nothing.
+      - run: npm test --workspace=apps/customer-website
       - run: npm run build:customer-website
 
   window-display:
