@@ -268,23 +268,48 @@ not trust this document's own dates.
    `resolvedTableNumber === '19'` — it does not generalise to an
    arbitrary chosen table despite this runbook's own "DUNEDIN's own real
    table, chosen at the time" framing above. Two options, pick one and
-   record which before proceeding:
-   - **(a)** DUNEDIN has a real, disposable Table 19 (confirm via
-     `GET /venues/{venueId}/tables` that a `Table` row exists with
-     `tableNumber = '19'`, seats > 0, and is actually free/disposable on
-     the day) — set `TABLE19_LIVE_TEST_ENABLED=true` and
-     `TABLE19_LIVE_TEST_VENUE_ID=<DUNEDIN venue id>` in the real API
-     environment, confirm `NODE_ENV` is not `production` there (if it is,
-     the guard is unconditionally inert — escalate, do not bypass), and
-     use Table 19 for §4.
-   - **(b)** Table 19 is unsuitable (occupied, doesn't exist, wrong
-     seat count) — the guard must be extended to accept the actually-
-     chosen table number before this runbook can safely proceed with a
-     different table, or the double-submission protection in step 5
-     of §4 must be performed with extra manual care (a human confirms the
-     table is free immediately before and does not click twice) with the
-     guard left disabled. Record explicitly which was chosen; do not
-     silently fall back to (b) without recording it.
+   record which before proceeding — **RESOLVED 2026-08-26: option (a) is
+   confirmed structurally unreachable for DUNEDIN, use (b).**
+   - ~~(a) Set `TABLE19_LIVE_TEST_ENABLED=true`...~~ **Dead for this venue,
+     not just "escalate and reconsider."** `assertTable19ValidationModeAllows`/
+     `isTable19ValidationModeActiveForVenue` (`orders.service.ts`) hard-
+     disable whenever `NODE_ENV === 'production'`, checked *before* the
+     enable flag, deliberately mirroring
+     `PaymentObservationFixtureInjectionController.assertNonProduction()`'s
+     identical, established, codebase-wide pattern: any fixture/synthetic-
+     validation surface must be categorically unreachable in production,
+     no override. DUNEDIN's API runs `NODE_ENV=production` (confirmed live).
+     **Do not weaken this gate** — it is not a bug, it is the same
+     deliberate defense-in-depth principle this project already applies
+     everywhere else a test-only code path exists next to a real one.
+   - **(b) — the actual path.** Perform the live order with ordinary
+     extra manual care instead of the automated guard: a human confirms
+     the chosen table is genuinely free immediately before submitting,
+     does not click Send twice, and step 9's retry/duplicate drills are
+     run as documented. No source change is required or appropriate.
+
+   **Related, resolved the same day: `VerduraIdealposHarness`
+   (`/Users/sarwarkhan/Documents/Idealpos Solutions/VerduraIdealposHarness`)
+   must NEVER be run against DUNEDIN, under any authorization, physical
+   presence included.** It calls Idealpos's own `LocalDataHelper.
+   InsertOrders()` directly — the identical native front door a real order
+   uses — bypassing every Verdura-side safety layer (API, POSSyncRecord,
+   Connector, Bridge) entirely, and its own README states this in its own
+   words: "Everything in this harness targets a disposable test database.
+   Nothing here is safe to point at a live restaurant's POS Server" / "Do
+   not point `App.config` at the live restaurant's SQL Server under any
+   circumstances." Its only documented cleanup is a direct `DELETE` against
+   `WebPendingOrder`/`PendingSales`/`PendingSaleLines`, explicitly captioned
+   "Only ever run this against the test database, never production" — there
+   is no safe way to undo a harness-created order against a live database.
+   The evidence this runbook actually needs (`PendingSales.Code` equals the
+   requested table) is already captured, safely, as part of the real test
+   itself: **§4 Step 7 item 2, below** — a real order through the real
+   production chain, verified with the same read-only SQL the harness's own
+   README documents (`docs/table12-preflight/evidence-queries.sql`), just
+   applied to a genuine order instead of a disposable-environment injection.
+   Set `Idealpos:TableAssignmentConfirmed=true` only after that step
+   succeeds — never from a harness run, and never before.
 5. **Menu/PLU curation done for at least the test items.** At least one
    real, human-verified `MenuItem` has a real, human-verified
    `posProductCode` matching a real DUNEDIN StockItems code — confirm via
