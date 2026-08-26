@@ -180,12 +180,15 @@ executed until it exists.
 Re-verify every item below against the live host at session start — do
 not trust this document's own dates.
 
-1. **Code state.** `main` includes this session's two fixes (commit
-   messages: "Fix Connector misreporting Bridge's terminal-negative
-   duplicate replay as success", "Order Tablet: replace fabricated
-   'Kitchen open' status with real socket state") and everything back
-   through DL-106's checkpoint. `git log --oneline -5` on the deployment
-   machine should show these; if it doesn't, deploy them first (see §3).
+1. **Code state.** `main` includes all five of §0's fixes (commit messages:
+   "Fix Connector misreporting Bridge's terminal-negative duplicate replay
+   as success", "Order Tablet: replace fabricated 'Kitchen open' status
+   with real socket state", "Persist order-submission outcome across
+   reload to prevent duplicate takeaway KOTs", "Stop POS dispatch on order
+   cancellation; harden WS proxy timeouts; run root-script tests in CI")
+   and everything back through DL-106's checkpoint. `git log --oneline -8`
+   on the deployment machine should show all of these; if it doesn't,
+   deploy them first (see §3).
 2. **Services running on `DESKTOP-SOKKOQ7`** (`nssm status <name>` or
    Services.msc): `VerduraPostgreSQL`, `VerduraAPI`, `VerduraConnector`
    all `Running`. `VerduraOrderTablet` `Running` and reachable from the
@@ -237,6 +240,24 @@ not trust this document's own dates.
    equivalent through the Connector) shows `OrderProcessingPathAvailable:
    true`. If it does not, stop before step 1 of §4 — do not attempt the
    live test against a known-unavailable IdealPOS.
+8. **Re-confirm the Bridge repo's live-data claims independently — do not
+   take commits `9639d14`/`a97bcfd` (`IdealposBridge` repo:
+   `ResolveTableIdentifier` Caption-blank fallback, and the `GetProducts()`/
+   `ProductExists()` direct-SQL rewrite) on faith.** Both commit messages
+   assert specific live findings (all 19 tables' `Caption` blank; 826
+   `dbo.StockItems` rows with `SentOnline=0`/`Availability=0`; 825 real
+   active products) as if freshly confirmed against `DESKTOP-SOKKOQ7`. A
+   same-session review (2026-08-26) could not establish that the agent
+   session which wrote them actually had live SSH/DB access at the time —
+   `ssh-add -l` showed no loaded identity and the hostname did not resolve,
+   both before and after that work, on the same machine. The *code* (both
+   are read-only `SELECT`s, parameterized where user input is involved,
+   and match the class of fix already independently verified for the
+   sibling `import-idealpos-tables.ts`/`c76ba9e` finding) is safe to run
+   either way — nothing here writes to IdealPOS. But do not skip re-running
+   the equivalent read-only queries (`SELECT DB_NAME()` alongside a fresh
+   `TableMapSetups`/`StockItems` check) at the start of this session purely
+   because these commit messages say it was already done.
 
 ---
 
