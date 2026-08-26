@@ -18,26 +18,29 @@ const API_BASE = import.meta.env?.VITE_API_URL || '';
 const VENUE_ID = import.meta.env?.VITE_VENUE_ID || '';
 
 /**
- * Fetches the live menu from the backend (same endpoint the kiosk ordering
- * flow uses: GET /api/kiosk/venues/:venueId/menu — public, venue-scoped,
- * includes any venue price/availability overrides). Throws on failure
- * rather than silently returning stale or fabricated data — callers decide
- * how to present a loading/error/empty state.
+ * Normalizes a raw `GET /api/kiosk/venues/:venueId/menu` response into the
+ * shape this app's menu/reservation UI renders — and, critically, is where
+ * this shared, public-facing customer surface diverges from the endpoint's
+ * other consumer.
+ *
+ * GET /api/kiosk/venues/:venueId/menu is also read by Order Tablet/Admin
+ * Console (apps/admin-console/src/store/menu.store.ts), which intentionally
+ * needs *every* item — including isAvailable:false ones — to render staff's
+ * "86'd" grayed-out cards, so the API itself returns the unfiltered set.
+ * This module's two callers (Menu.jsx and the reservation flow's
+ * Step3Menu) are the only genuinely public-facing consumers, so the
+ * available-only filter belongs here rather than in the shared endpoint.
+ * Without it, any not-yet-curated import (e.g. a raw IdealPOS product sync,
+ * seeded isAvailable:false pending review) would otherwise render straight
+ * to customers.
+ *
+ * Exported separately (pure, no fetch/import.meta.env) so it can be
+ * exercised directly by Node-based tooling/tests.
  */
-export async function getAuthoritativeMenu() {
-  if (!VENUE_ID) {
-    throw new Error(
-      'VITE_VENUE_ID is not configured — cannot load the live menu. See apps/customer-website/.env.example.'
-    );
-  }
+export function normalizePublicMenu({ categories, menuItems }) {
+  const publicItems = menuItems.filter(item => item.isAvailable !== false);
 
-  const response = await fetch(`${API_BASE}/api/kiosk/venues/${VENUE_ID}/menu`);
-  if (!response.ok) {
-    throw new Error(`Menu API request failed with status ${response.status}`);
-  }
-  const { categories, menuItems } = await response.json();
-
-  const normalizedItems = menuItems.map(item => ({
+  const normalizedItems = publicItems.map(item => ({
     id: item.id,
     name: item.title,
     description: item.description || '',
@@ -67,11 +70,38 @@ export async function getAuthoritativeMenu() {
       // canonical menu has never used this UI grouping feature.
       subs: [],
     }))
+    // A category with nothing publicly visible in it (e.g. an
+    // imported-but-not-yet-reviewed staging category) shouldn't render an
+    // empty section on the public menu.
+    .filter(category => category.itemCount > 0)
     .sort((a, b) => a.sort_order - b.sort_order);
 
   const sortedItems = sortMenuItemsAlphabetically(normalizedItems);
 
   return { categories: normalizedCategories, items: sortedItems };
+}
+
+/**
+ * Fetches the live menu from the backend (same endpoint the kiosk ordering
+ * flow uses: GET /api/kiosk/venues/:venueId/menu — public, venue-scoped,
+ * includes any venue price/availability overrides). Throws on failure
+ * rather than silently returning stale or fabricated data — callers decide
+ * how to present a loading/error/empty state.
+ */
+export async function getAuthoritativeMenu() {
+  if (!VENUE_ID) {
+    throw new Error(
+      'VITE_VENUE_ID is not configured — cannot load the live menu. See apps/customer-website/.env.example.'
+    );
+  }
+
+  const response = await fetch(`${API_BASE}/api/kiosk/venues/${VENUE_ID}/menu`);
+  if (!response.ok) {
+    throw new Error(`Menu API request failed with status ${response.status}`);
+  }
+  const payload = await response.json();
+
+  return normalizePublicMenu(payload);
 }
 
 const byItemName = compareMenuItemsAlphabetically;

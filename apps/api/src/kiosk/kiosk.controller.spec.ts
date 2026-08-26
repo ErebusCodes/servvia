@@ -137,4 +137,24 @@ describe('KioskController#getVenueMenu — imageUrl pass-through', () => {
 
     await expect(controller.getVenueMenu(venueId)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('returns isAvailable:false items too — this endpoint is intentionally unfiltered', async () => {
+    // Order Tablet/Admin Console (apps/admin-console/src/store/menu.store.ts)
+    // reads this same endpoint and needs every item, including unavailable
+    // ones, to render staff's grayed-out "86'd" cards. The public/customer
+    // surfaces (apps/customer-website/src/shared/menu/menuClient.js) do their
+    // own isAvailable filtering client-side instead — see
+    // normalizePublicMenu's own regression suite
+    // (menuClient.test.mjs) for that half of the contract. If this endpoint
+    // is ever changed to filter server-side, Order Tablet's unavailable-item
+    // display breaks.
+    mockPrisma.menuItem.findMany.mockResolvedValue([
+      { id: 'item-1', title: 'Not Yet Reviewed', priceCents: 0, isAvailable: false },
+    ]);
+
+    const result = await controller.getVenueMenu(venueId);
+
+    expect(result.menuItems).toHaveLength(1);
+    expect(result.menuItems[0].isAvailable).toBe(false);
+  });
 });
