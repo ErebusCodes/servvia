@@ -294,6 +294,80 @@ certainly also cover `'local_agent'`, or the venue was seeded with the
 wrong adapter type) that should be fixed in a dedicated follow-up task —
 not attempted here to avoid scope creep on a live venue mid-deployment.
 
+## 1e. First physical-presence attempt (2026-08-26/27): PLU-mapping gate found + resolved for one baseline item
+
+A full onsite preflight was run and came back completely clean — API/DB/
+Redis healthy, Bridge `sqlConnected`/`orderProcessingPathAvailable=true`,
+`IPS.exe` running, Connector heartbeat 4s fresh (via
+`ConnectorInstallation.lastSeenAt`, cross-checked against the DB's own
+`NOW()`), `TableAssignmentStrategy=NoHint`/`Confirmed=false`,
+`Printer rows=0`, `POS_SYNC_DISPATCH_ENABLED` unset, `posAdapterType=
+local_agent` — matching §1d exactly, still inert. Table 19 was reconfirmed
+free both by read-only SQL (zero `PendingSales` for `Code='19'`, zero
+active Verdura orders) and the operator's own live floor-plan screenshot.
+
+**The certification correctly stopped at the MenuItem/PLU gate — none of
+the 70 curated MenuItems had a `posProductCode`.** `buildIdealposOrderPayload`
+(`idealpos-order-payload-mapper.ts`) throws `unmapped_item` rather than
+guess one; that behavior is correct and was not weakened. Automated
+discovery (name matching, department analysis, `Condiment` flag,
+touchscreen-grid wiring) was attempted and explicitly abandoned as unsafe
+— the live POS's own data is not clean enough to infer a mapping from:
+even a *proven*, actually-sold-that-night standalone $35 item ("Grill
+Salmon", reconstructed from real `PendingSaleLines` rows) carries
+`Condiment=1`, so that flag alone is not diagnostic in this venue's data at
+all. Department/grid *names* also don't fully disambiguate on their own
+(e.g. a grid literally named "TRADITIONAL KEBABS" contains only unrelated
+"Sila..." wrap items).
+
+**Resolution:** rather than continue automated matching, the operator
+directly configured a real StockItem for this purpose and identified it
+live: **"Chicken Ballista Pizza"**, IdealPOS `StockItems.Code = "708"`
+(description `CHICKEN BALLISTA PIZZA`, department "Fresh From Oven" —
+matches the curated category name closely — `Discontinue=0`,
+`HasVariants=0`, `Indirect=0`, single clean "Fresh From Oven" touchscreen
+grid, `Visible=1`). Read-only DB confirmation matched the operator's report
+exactly. Verdura curated `MenuItem` id `6579ec87-6ae7-4205-ad0a-b02229e58ebc`
+(category "Fresh From The Oven", `isAvailable=true`) already existed with
+this exact title at `priceCents=2350` ($23.50) — the operator separately
+confirmed $23.50 is the intended Verdura display price (native price
+$23.00; per the established boundary, Verdura owns display price and
+IdealPOS owns final billing price — these are not required to match).
+
+**A structural gotcha, not a one-off:** Code 708 was already held by one of
+the 825 `import-idealpos-catalog.ts` staging rows (a duplicate, also
+titled "CHICKEN BALLISTA PIZZA", `isAvailable=false`) — expected, since
+that bulk import swept in essentially the whole live, non-discontinued
+catalog, so **any** real dish a curated item maps to will very likely
+already have an imported duplicate holding the same code. The
+`@@unique([organizationId, posProductCode])` constraint means only one row
+can hold it. With explicit operator authorization, the duplicate's
+`posProductCode` was cleared to `null` (verified before/after: title,
+category, `isAvailable=false`, `priceCents=0` all unchanged — only that one
+field touched), then the curated item's `posProductCode` was set to
+`"708"` via the new `apps/api/prisma/scripts/set-menu-item-pos-product-code.ts`
+(mirrors `MenuItemsService#update`'s own conflict-check + write, since no
+interactive staff JWT was available in this SSH session — prefer the real
+`PATCH /admin/menu/items/:id` endpoint when a staff session exists).
+**Expect this exact collision again for the next mapping** — resolve it
+the same way (clear the redundant import row's code first) rather than
+treating it as a surprise.
+
+**Validated without submitting anything:** `buildIdealposOrderPayload()`
+called directly (pure function, no HTTP/Bridge/IdealPOS interaction) with
+a synthetic dine-in order for this item on Table 19 → produced
+`{table:"19", items:[{productCode:"708", quantity:1}]}` — proves the
+mapper no longer rejects this item. Public menu re-verified via
+`normalizePublicMenu()` against the live API: still 10 categories/70
+items, "Chicken Ballista Pizza" present, no pending-review leak. Org
+totals unchanged (895 MenuItems; 825 with a `posProductCode`, net
+unchanged since one was cleared and one was set; imported staging category
+still exactly 825 rows, still all `isAvailable=false`).
+
+**This is one baseline-certification item, not proof the other 69 curated
+items are mapped.** No order was submitted and no KOT was triggered this
+session.
+
 ---
 
 ## 2. Preconditions (verify ALL before step 1)
@@ -381,13 +455,16 @@ not trust this document's own dates.
    applied to a genuine order instead of a disposable-environment injection.
    Set `Idealpos:TableAssignmentConfirmed=true` only after that step
    succeeds — never from a harness run, and never before.
-5. **Menu/PLU curation done for at least the test items.** At least one
-   real, human-verified `MenuItem` has a real, human-verified
-   `posProductCode` matching a real DUNEDIN StockItems code — confirm via
-   `GET /api/venues/{venueId}/menu` (or a direct read query) before
-   choosing test items in §4 step 2. Per DL-106 §6, the bulk 825-item
-   import left everything `isAvailable=false` with no curated
-   `posProductCode` — do not assume any arbitrary menu item is ready.
+5. **Menu/PLU curation done for at least the test items — SATISFIED as of
+   §1e (2026-08-26/27) for exactly one item.** `MenuItem` id
+   `6579ec87-6ae7-4205-ad0a-b02229e58ebc` ("Chicken Ballista Pizza",
+   category "Fresh From The Oven", `isAvailable=true`, `priceCents=2350`)
+   has `posProductCode="708"`, human-verified against live IdealPOS
+   `StockItems` (`CHICKEN BALLISTA PIZZA`, department "Fresh From Oven",
+   `Discontinue=0`) — re-verify this is still true (a reseed or reimport
+   could theoretically clear it) before relying on it in §4 step 2. Every
+   *other* curated item still has no `posProductCode` — do not assume any
+   other menu item is ready without repeating §1e's process.
 6. **Backups exist** for `C:\Users\Posmate\Documents\verduradb` (Postgres)
    and the Bridge's `state\bridge-state.sqlite`, taken immediately before
    this session, per the standing safety constraint.
