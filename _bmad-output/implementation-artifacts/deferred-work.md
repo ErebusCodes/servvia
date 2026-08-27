@@ -1,5 +1,37 @@
 # Deferred Work
 
+## Deferred from: Redis Docker/reboot outage incident response (2026-08-27)
+
+- **RESOLVED 2026-08-27: Redis/Docker reboot persistence.** A Windows
+  reboot left Docker's engine down and production Redis unreachable,
+  requiring manual SSH-driven recovery. Fixed with a permanent `Verdura
+  Redis Startup` Scheduled Task (`AtLogOn` for Posmate) running
+  `verduraBridge\VerduraServerOps\ensure-verdura-redis.ps1`, plus
+  `docker update --restart=no` on the two dev-only containers
+  (`verdura-postgres-1`, `verdura-local-postgres`) that had been
+  auto-starting alongside Redis. Verified end-to-end across a real,
+  controlled reboot. Full detail: `docs/windows-production-deployment.md`
+  §8.
+- **NOT resolved — tracked separately: the code-level hang defect.** The
+  reboot fix above makes the Redis-down window far shorter and fully
+  self-healing, but does not change what happens *during* that window:
+  `RateLimitGuard` (`apps/api/src/auth/guards/rate-limit.guard.ts`) awaits
+  `redis.eval()` on `REDIS_CLIENT`, which `redis.module.ts` configures
+  with `maxRetriesPerRequest: null` (correct for BullMQ, wrong for a
+  bounded per-request guard) — so a Redis outage still hangs every
+  guarded HTTP request (including the public menu) indefinitely rather
+  than failing fast. `HealthService`'s own `HEALTH_REDIS` client
+  (`health.module.ts`) has no bounded timeout either, relying on
+  ioredis's slow default retry ceiling instead of failing fast. Neither
+  has been changed. Needed: a bounded timeout/fail-fast strategy for
+  request-path Redis use (without weakening BullMQ's own
+  `maxRetriesPerRequest: null` requirement), an explicit documented
+  fail-open/fail-closed policy for rate limiting under a Redis outage, a
+  short bounded timeout on the health probe, and regression tests proving
+  neither the menu nor `/api/health` can hang when Redis is down. Owner:
+  backend. Priority: P1 (directly caused a real production outage
+  tonight; the reboot-persistence fix reduces likelihood, not impact).
+
 ## Deferred from: Windows runtime migration to `verduraBridge` (2026-08-27)
 
 - **RESOLVED 2026-08-27 (superseded same day): legacy Windows Verdura

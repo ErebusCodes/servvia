@@ -265,3 +265,122 @@ window.
 9 (service start) — expected to be short (filesystem move + two config
 edits) but has not been timed against the real data directory's size; time
 step 6 during a rehearsal/dry run before committing to a live window.
+
+## 8. Redis reboot persistence
+
+**Production Redis is Docker-backed, not a native Windows service.** It is
+this repo's own `docker-compose.yml` `redis` service (`redis:7-alpine`,
+`restart: unless-stopped`, `127.0.0.1:6379->6379`, named volume
+`verdura-redis`, healthcheck `redis-cli ping`). Docker Desktop's own
+Windows service (`com.docker.service`) is `StartMode: Manual` and, on this
+host, does not reliably bring the engine up by itself — confirmed
+2026-08-27: starting only that service left the daemon unreachable after
+90s, while launching `Docker Desktop.exe` in an interactive session
+succeeded within seconds. **Prior incident (2026-08-27):** a full Windows
+reboot left Docker's engine down; `VerduraAPI` stayed running throughout
+but every `RateLimitGuard`-guarded request (including the public menu) and
+`/api/health` hung indefinitely rather than failing fast, because the
+guard's Redis client is configured with `maxRetriesPerRequest: null` (a
+setting that's correct for BullMQ, not for a bounded per-request check —
+tracked as a separate source-level follow-up, not yet implemented). Once
+Redis was manually restored, the existing `VerduraAPI` process self-healed
+via ioredis's automatic reconnection — no API restart was needed. This
+section's mechanism exists so that manual recovery step is never required
+again.
+
+**Permanent mechanism: the `Verdura Redis Startup` Scheduled Task.**
+Triggered `AtLogOn` for `Posmate` (Interactive logon type, highest run
+level) — an `AtStartup`/System-context trigger was considered but rejected
+based on the `com.docker.service`-alone evidence above: Docker Desktop on
+this host needs an interactive session to finish initializing reliably, so
+`AtLogOn` is the proven mechanism, mirroring the Window Display task (§4).
+**This has a real consequence:** after a cold boot, Redis (and Window
+Display) do not come back until `Posmate` has an interactive logon —
+confirmed in practice to happen automatically via AnyDesk's own
+unattended-access auto-connect (verified during the 2026-08-27 reboot
+test, Explorer running in Session 1 within ~4 seconds of boot), but this
+is external to Windows itself (`AutoAdminLogon` is deliberately `0` /
+disabled — enabling it was considered and explicitly declined, since it
+would let anyone with console/KVM access bypass the Windows login screen
+entirely). NSSM-managed services (`VerduraAPI`, `VerduraOrderTablet`,
+`VerduraAdminConsole`, `VerduraConnector`, `VerduraPostgreSQL`) have no
+such dependency and start on boot regardless.
+
+The task runs one wrapper script:
+`C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\ensure-verdura-redis.ps1`
+(chosen over an inline task action because reliable quoting of paths
+containing spaces, e.g. `C:\Program Files\Docker\...`, inside a `cmd.exe
+/c "..."` action argument is fragile — confirmed the hard way during
+Window Display's own task setup). The script, idempotent and safe to
+re-run at any time:
+
+1. Probes `docker info`; if already reachable, skips straight to step 4.
+2. If not reachable and `Docker Desktop.exe` isn't already running,
+   launches it (`Start-Process`, non-blocking — safe here because the
+   *task itself* already runs in the correct interactive session via its
+   `AtLogOn` trigger, unlike a plain `Start-Process` over an SSH session).
+3. Polls `docker info` every 5s against a 300s wall-clock budget (tracked
+   via `Stopwatch`, not an assumed-per-iteration counter — an earlier
+   version undercounted elapsed time because individual `docker info`
+   calls can themselves block for a long time during a cold WSL2 boot;
+   observed during reboot testing: one real engine-ready wait took ~173s
+   of actual wall-clock time). Exits non-zero with a clear log message if
+   the budget is exceeded — it never hangs forever.
+4. Runs `docker compose -f
+   C:\Users\Posmate\Documents\verdura_MVP\docker-compose.yml up -d
+   redis` — the explicit `-f` path and the explicit `redis` service name
+   are both deliberate: this must never bring up the compose file's
+   `postgres` service (dev-only, see below) or, with `--profile host`,
+   the API/frontend containers, and never has.
+5. Waits (bounded, 60s) for the container's own healthcheck to report
+   `healthy`, then confirms `redis-cli ping` returns `PONG`.
+6. Logs every step with a timestamp to
+   `verduraBridge\VerduraServerOps\ensure-verdura-redis.log`; exits 0 only
+   on confirmed success.
+
+There is exactly one Redis-related Scheduled Task — no one-shot tasks were
+left behind from the incident-response session that first restored Redis
+manually.
+
+**Dev-only Docker containers do not auto-start.** Two containers
+(`verdura-postgres-1` — this same compose project's dev `postgres`
+service, host port 5434, database `verdura_dev`; and
+`verdura-local-postgres` — a separate `local-postgres` compose project,
+no host port exposed) both previously had `restart: unless-stopped` and
+auto-started alongside Redis whenever Docker's engine came back, which is
+what caused Docker to be blamed for "starting things it shouldn't" during
+the original incident response. Neither is referenced by production in
+any way — confirmed by inspecting `apps/api/.env`'s `DATABASE_URL`
+directly (`localhost:5432`, the native `VerduraPostgreSQL` Windows
+service, never `5434` or the local-postgres project) — so both were
+changed to `docker update --restart=no <container>` (2026-08-27). Their
+data (both Docker-managed named volumes, not bind mounts to any host
+path) was not touched, and neither container was deleted. **Verified
+across a real reboot:** both remained `Exited`, not restarted, while Redis
+came back healthy — confirming the policy change persists across a full
+Docker Desktop restart, not just a `docker update` in a live session.
+
+**Reboot-tested end-to-end (2026-08-27).** A full, controlled Windows
+reboot was performed. Post-reboot, with no manual SSH/AnyDesk launch of
+Docker or Redis: `Verdura Redis Startup` and `Verdura Window Display` both
+fired at logon; Docker's engine came up (~173s cold-boot wait, within
+budget); Redis came up healthy, `PING` = `PONG`; the two dev-only
+containers stayed `Exited`; `VerduraAPI`/`VerduraOrderTablet`/
+`VerduraAdminConsole`/`VerduraPostgreSQL`/`VerduraConnector` were all
+`Running` from their NSSM auto-start (unaffected by any of the above);
+`GET /api/health` returned `{"status":"ok","db":"ok","redis":"ok"}`; the
+public Window Display menu rendered all 10 curated categories with no
+"Imported from IdealPOS (pending review)" category and no unavailable
+staging items visible, verified against the live rendered page, not just
+the raw API response.
+
+**Known residual gap, not addressed by this section:** the underlying
+code-level defect that turned the original Redis outage into a *hang*
+instead of a fast, bounded degraded response (`RateLimitGuard`'s shared
+`REDIS_CLIENT`, and `HealthService`'s own untimed Redis probe) has not
+been fixed in source. This section makes the outage far less likely and
+fully self-healing without human intervention — it does not make
+`/api/health` or guarded requests fail fast during the (now much shorter)
+window before Redis comes back. See
+[`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
+for the tracked follow-up.
