@@ -1,5 +1,33 @@
 # Deferred Work
 
+## Session handoff snapshot (2026-08-27, end of session)
+
+Quick-orientation pointer for the next session — full detail lives in
+`docs/windows-production-deployment.md`, not duplicated here.
+
+- **Canonical Windows repo:** `C:\Users\Posmate\Documents\verdura_MVP`,
+  `HEAD` = `bf3511512baded0cca7b98460b4c2141b649aba3`, matching Mac `HEAD`
+  and GitHub `origin/main` exactly. Tracked tree clean.
+- **Production services (all healthy at session end):** `VerduraAPI`
+  (3000), `VerduraOrderTablet` (5176), `VerduraAdminConsole` (5177) — all
+  NSSM services running from `verdura_MVP`; `VerduraPostgreSQL` (5432,
+  native, untouched); Redis (Docker, 6379). Window Display (5174) runs via
+  the `Verdura Window Display` Scheduled Task (`AtLogOn`, exactly one
+  instance); Redis via the `Verdura Redis Startup` Scheduled Task
+  (`AtLogOn`, exactly one instance, wrapper script
+  `verduraBridge\VerduraServerOps\ensure-verdura-redis.ps1`) — see
+  `docs/windows-production-deployment.md` §4/§8. Both verified across a
+  real controlled reboot.
+- **Retired rollback checkout (do not delete yet):**
+  `C:\Users\Posmate\Documents\verduraBridge\VerduraServer.retired-<timestamp>`
+  — zero active references, see the dedicated deferred item below.
+- **Outstanding P1 (do not fix without explicit instruction to start):**
+  `RateLimitGuard`/health-probe Redis-outage hang — see the dedicated
+  entry below for exact required scope.
+- **IdealPOS/production-order safety:** no live order or KOT may be
+  submitted/triggered without explicit authorization in the session that
+  does it: this applies to every future session, not just this one.
+
 ## Deferred from: Redis Docker/reboot outage incident response (2026-08-27)
 
 - **RESOLVED 2026-08-27: Redis/Docker reboot persistence.** A Windows
