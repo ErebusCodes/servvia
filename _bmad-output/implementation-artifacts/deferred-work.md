@@ -1,5 +1,24 @@
 # Deferred Work
 
+## Deferred from: Windows runtime migration to `verduraBridge` (2026-08-27)
+
+- **Relocate legacy Windows Verdura clone from Desktop to Documents once the
+  directory-handle lock can be identified/released safely.** Currently at
+  `C:\Users\Posmate\Desktop\verdura_MVP`; desired eventual destination
+  `C:\Users\Posmate\Documents\verdura_MVP`. No production dependency exists;
+  no forced process termination or deletion permitted. See
+  `docs/windows-production-deployment.md` §5 for full status/rules.
+- **Migrate `VerduraPostgresBin` and `verduradb` into `verduraBridge`,
+  matching the rest of the Windows runtime layout.** Currently deferred at
+  `C:\Users\Posmate\Documents\VerduraPostgresBin` and
+  `C:\Users\Posmate\Documents\verduradb`. A combined maintenance plan has
+  been drafted (backup/validate, service shutdown, filesystem move with
+  count/size verification, service `binPath`/`pg-backup.ps1` path updates,
+  restart, connectivity/health verification, rollback plan) but is
+  **plan-only — not executed.** Requires an explicit approved maintenance
+  window; PostgreSQL must not be stopped and neither directory may be moved
+  before that approval. See `docs/windows-production-deployment.md` §2.
+
 ## Deferred from: Story 9-2 discovery-tracer independent review session (2026-08-16)
 
 Story 9-2 remains `blocked` (gate: `REAL_WINDOWS_CONNECTOR + REAL_IDEALPOS_UI_DISCOVERY evidence required`) — see the story file for the full outcome. Two items considered during its fresh independent review and deliberately not fixed, with reasoning recorded at the time (also in the story's own Dev Agent Record):

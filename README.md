@@ -401,6 +401,19 @@ production (`NODE_ENV=production`) regardless of configuration.
 
 ---
 
+## 6.3 Source of Truth and Production Deployment
+
+GitHub `main` is the single authoritative source of Verdura application
+code. Mac is the primary development environment; the Windows host
+(`DESKTOP-SOKKOQ7`) is the production/integration deployment target, not a
+second place to develop — its checkout must never diverge from `main`. See
+[`docs/source-of-truth-and-environments.md`](docs/source-of-truth-and-environments.md)
+for the full rule and the deployment verification gate, and
+[`docs/windows-production-deployment.md`](docs/windows-production-deployment.md)
+for the current physical layout of the Windows host.
+
+---
+
 ## 7. Contributing Guidelines
 
 We enforce rigorous code standards to ensure quality, security, and maintainability.

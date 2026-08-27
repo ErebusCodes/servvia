@@ -368,6 +368,43 @@ still exactly 825 rows, still all `isAvailable=false`).
 items are mapped.** No order was submitted and no KOT was triggered this
 session.
 
+## 1f. Deployment source relocated to `verduraBridge` (2026-08-27) — supersedes §1b/§1c paths
+
+**All application deployment directories named by path in §1b/§1c above
+have moved.** The deployment source is no longer directly under
+`C:\Users\Posmate\Documents\`; it is now under one root,
+`C:\Users\Posmate\Documents\verduraBridge\`:
+
+| Old path (§1b/§1c, historical) | Current verified path (2026-08-27) |
+| --- | --- |
+| `Documents\VerduraServer` | `Documents\verduraBridge\VerduraServer` |
+| `Documents\VerduraOrderTabletConnector` | `Documents\verduraBridge\VerduraOrderTabletConnector` |
+| `Documents\IdealposBridge` | `Documents\verduraBridge\verduraIdealposBridge` |
+| *(new)* | `Documents\verduraBridge\VerduraServerOps` |
+| *(new)* | `Documents\verduraBridge\verduradb-backups` |
+
+Verified 2026-08-27: `Documents\verduraBridge\VerduraServer` is a clean
+tracked working tree at `5383b23`, matching both `origin/main` and this
+Mac's own `HEAD` at the time — no drift. Full current layout, the
+deployment verification gate, and the Window Display persistent-launch
+workaround are documented in
+[`docs/windows-production-deployment.md`](../../docs/windows-production-deployment.md);
+treat that document, not §1b/§1c above, as the current authoritative
+layout reference. §1b/§1c are left unchanged as historical record of the
+investigation that found and fixed the Window Display outage — do not
+apply their paths to a fresh session.
+
+**`Desktop\verdura_MVP` (§1b/§1c's third directory) has still not been
+relocated.** It remains at `C:\Users\Posmate\Desktop\verdura_MVP`,
+confirmed present via direct filesystem check 2026-08-27, and has **not**
+moved to `Documents\verdura_MVP` or into `verduraBridge`. An attempted
+move failed because the top-level directory is held open by an
+unidentified process; no partial move occurred, nothing was deleted, and
+no process was force-killed. See
+[`docs/windows-production-deployment.md` §5](../../docs/windows-production-deployment.md#5-non-authoritative-desktop-clone-blocked-not-in-use)
+for full current status and the relocation rules, and
+[`deferred-work.md`](./deferred-work.md) for the tracked cleanup item.
+
 ---
 
 ## 2. Preconditions (verify ALL before step 1)
@@ -375,17 +412,18 @@ session.
 Re-verify every item below against the live host at session start — do
 not trust this document's own dates.
 
-1. **Code state — RECONCILED 2026-08-26.** `C:\Users\Posmate\Documents\
-   VerduraServer` (the real deployment source — see the corrected topology
-   note below) was fast-forwarded from `06199e7` to `4b9d2d5` (all nine
-   commits back through the `isPortFree` CI fix), the `possync_cancelled_
+1. **Code state — RECONCILED 2026-08-26, path migrated 2026-08-27 (see
+   §1f).** The deployment source was fast-forwarded from `06199e7` to
+   `4b9d2d5` (all nine commits back through the `isPortFree` CI fix) at its
+   then-current path (`Documents\VerduraServer`), the `possync_cancelled_
    status` migration was applied via `prisma migrate deploy`, and
    `VerduraAPI`/`VerduraOrderTablet`/`VerduraAdminConsole`/`VerduraConnector`
    were all rebuilt and restarted from this source — verified healthy
-   post-restart (§0.1 below). **Re-verify `git -C
-   C:\Users\Posmate\Documents\VerduraServer rev-parse HEAD` still shows
-   `4b9d2d5` (or a later commit with its own verified CI+deployment
-   evidence) before trusting this line — it will drift the moment
+   post-restart (§0.1 below). The deployment source now lives at
+   `C:\Users\Posmate\Documents\verduraBridge\VerduraServer` (§1f) — verified
+   2026-08-27 at `5383b23`, matching `origin/main`. **Re-verify with the
+   [deployment verification gate](../../docs/windows-production-deployment.md#3-deployment-verification-gate)
+   from that path before trusting this line — it will drift the moment
    `main` moves again.**
 2. **Services running on `DESKTOP-SOKKOQ7`** (`nssm status <name>` or
    Services.msc): `VerduraPostgreSQL`, `VerduraAPI`, `VerduraConnector`,
