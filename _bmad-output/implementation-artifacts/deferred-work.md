@@ -2,11 +2,11 @@
 
 ## Deferred from: Windows runtime migration to `verduraBridge` (2026-08-27)
 
-- **Relocate legacy Windows Verdura clone from Desktop to Documents once the
-  directory-handle lock can be identified/released safely.** Currently at
-  `C:\Users\Posmate\Desktop\verdura_MVP`; desired eventual destination
-  `C:\Users\Posmate\Documents\verdura_MVP`. No production dependency exists;
-  no forced process termination or deletion permitted. See
+- **RESOLVED 2026-08-27: legacy Windows Verdura clone relocated from
+  Desktop to Documents.** Now at `C:\Users\Posmate\Documents\verdura_MVP`
+  (previously `C:\Users\Posmate\Desktop\verdura_MVP`). It remains a
+  **legacy, non-authoritative clone** — not to be used for development or
+  production deployment; no production dependency was ever found. See
   `docs/windows-production-deployment.md` §5 for full status/rules.
 - **Migrate `VerduraPostgresBin` and `verduradb` into `verduraBridge`,
   matching the rest of the Windows runtime layout.** Currently deferred at

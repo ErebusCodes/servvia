@@ -45,7 +45,7 @@ deployment source (currently `verduraBridge\VerduraServer`). A second
 clone sitting on the same box that anyone could edit and which any service
 might accidentally be pointed at is exactly the failure mode this document
 exists to prevent — see the `Desktop\verdura_MVP` history in
-[`windows-production-deployment.md`](./windows-production-deployment.md#5-non-authoritative-desktop-clone-blocked-not-in-use)
+[`windows-production-deployment.md`](./windows-production-deployment.md#5-non-authoritative-legacy-clone-relocated-still-not-in-use)
 for a real example of how that happens by accident.
 
 ## 3. Deployment verification gate

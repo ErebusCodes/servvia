@@ -88,39 +88,40 @@ workaround, not a production service — the four NSSM-managed services
 `VerduraConnector`) plus `VerduraPostgreSQL` and the IdealposBridge service
 remain the actual production service set.
 
-## 5. Non-authoritative Desktop clone (blocked, not in use)
+## 5. Non-authoritative legacy clone (relocated, still not in use)
 
 A second, non-authoritative Verdura checkout exists on the same host:
 
-- **Path:** `C:\Users\Posmate\Desktop\verdura_MVP`
+- **Path:** `C:\Users\Posmate\Documents\verdura_MVP`
 - **Role:** legacy / non-authoritative clone
-- **Production dependency:** none found
+- **Production dependency:** none found — verified 2026-08-27 by inspecting
+  every `Verdura*` NSSM service's `AppDirectory`/`AppParameters`; all five
+  reference only `verduraBridge\...` paths, none reference this clone
 - **Git remote:** same Verdura GitHub repository
 - **Branch:** `main`
 - **Status:** stale checkout / non-production
 
-**Current filesystem state (verified 2026-08-27): this clone has not been
-moved.** It is still at `C:\Users\Posmate\Desktop\verdura_MVP`. It has
-**not** been moved to `C:\Users\Posmate\Documents\verdura_MVP`, and it has
-**not** been moved to
-`C:\Users\Posmate\Documents\verduraBridge\source\verdura_MVP-from-desktop-20260827`.
-An attempted directory-level move failed because the top-level directory
-node is held open by an unidentified process; no partial move occurred.
+**Relocated 2026-08-27.** This clone previously sat at
+`C:\Users\Posmate\Desktop\verdura_MVP` and an initial directory-level move
+attempt failed with `Access is denied`. Investigation (in-place rename of
+the actual directory succeeded; a disposable Desktop→Documents test
+directory moved cleanly; no reparse point, ACL DENY entry, or referencing
+process/service/scheduled task was ever found) never identified a
+persistent blocking cause, and a subsequent retry of the identical,
+non-forceful `Move-Item` succeeded outright — recursive item count
+(68,694 files / 7,282 directories) and total byte size (1,031,247,662
+bytes) matched exactly before and after, `.git`, `HEAD`
+(`0a7c2865e0d704fbaa1b1c57e455e529f571f1c9`), branch, `git status
+--short`, the nested untracked `verdura_MVP\verdura_MVP\` subtree, and the
+GitHub remote were all confirmed unchanged post-move.
 
 Rules while it remains in place:
 
 - Must not be used for production runtime or new development.
 - Must not be treated as a source of truth.
 - Any unique work found in it must be reconciled into GitHub before
-  eventual archival/relocation.
+  eventual archival.
 - Do not delete it.
-- Do not force-kill processes solely to force the move through.
-- Revisit relocation only after the handle holder is identified safely.
-
-The desired eventual destination is `C:\Users\Posmate\Documents\verdura_MVP`
-— that is a future cleanup step, not the current state. See
-[`deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
-for the tracked relocation item.
 
 This same clone previously caused a real incident (documented in
 [`dl-107-dunedin-live-certification-runbook.md` §1c`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md)):

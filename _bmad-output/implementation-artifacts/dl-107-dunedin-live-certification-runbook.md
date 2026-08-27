@@ -394,16 +394,19 @@ layout reference. §1b/§1c are left unchanged as historical record of the
 investigation that found and fixed the Window Display outage — do not
 apply their paths to a fresh session.
 
-**`Desktop\verdura_MVP` (§1b/§1c's third directory) has still not been
-relocated.** It remains at `C:\Users\Posmate\Desktop\verdura_MVP`,
-confirmed present via direct filesystem check 2026-08-27, and has **not**
-moved to `Documents\verdura_MVP` or into `verduraBridge`. An attempted
-move failed because the top-level directory is held open by an
-unidentified process; no partial move occurred, nothing was deleted, and
-no process was force-killed. See
-[`docs/windows-production-deployment.md` §5](../../docs/windows-production-deployment.md#5-non-authoritative-desktop-clone-blocked-not-in-use)
-for full current status and the relocation rules, and
-[`deferred-work.md`](./deferred-work.md) for the tracked cleanup item.
+**`Desktop\verdura_MVP` (§1b/§1c's third directory) has since been
+relocated (2026-08-27) to `C:\Users\Posmate\Documents\verdura_MVP`.** The
+first move attempt failed with `Access is denied`; a fresh diagnostic
+round found no reparse point, no ACL/DENY entry, and no
+process/service/scheduled task referencing the path, and a same-object
+in-place rename succeeded cleanly — a subsequent retry of the identical,
+non-forceful `Move-Item` then succeeded outright, with recursive item
+count, byte size, `.git`, `HEAD`, branch, `git status --short`, the
+nested untracked `verdura_MVP\verdura_MVP\` subtree, and the GitHub
+remote all confirmed unchanged. It remains a **legacy, non-authoritative
+clone** — not to be used for development or production deployment. See
+[`docs/windows-production-deployment.md` §5](../../docs/windows-production-deployment.md#5-non-authoritative-legacy-clone-relocated-still-not-in-use)
+for full current status and the relocation rules.
 
 ---
 
