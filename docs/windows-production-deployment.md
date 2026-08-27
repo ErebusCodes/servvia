@@ -49,10 +49,11 @@ C:\Users\Posmate\Documents\verduradb
 
 Both exist and are in active use by the running `VerduraPostgreSQL` service.
 Their migration into `verduraBridge\` is planned but **not executed** — see
+[§7](#7-postgresql-migration-maintenance-plan--draft-not-executed) below
+for the drafted maintenance plan and
 [`deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
-for the tracked item and the drafted maintenance plan referenced there.
-PostgreSQL must not be stopped and neither directory may be moved without
-explicit, separate approval for a maintenance window.
+for the tracked item. PostgreSQL must not be stopped and neither directory
+may be moved without explicit, separate approval for a maintenance window.
 
 ## 3. Deployment verification gate
 
@@ -139,3 +140,102 @@ not just a hygiene preference.
   investigation (§1b/§1c) that predates the `verduraBridge` migration.
 - [`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md) —
   the PostgreSQL migration plan and the Desktop-clone relocation item.
+
+## 7. PostgreSQL migration maintenance plan — DRAFT, NOT EXECUTED
+
+**Status: plan only. Do not execute any step below without explicit,
+separate approval for a maintenance window.** PostgreSQL must not be
+stopped and neither directory below may be moved until that approval is
+given.
+
+**Scope:** move
+`C:\Users\Posmate\Documents\VerduraPostgresBin` →
+`C:\Users\Posmate\Documents\verduraBridge\VerduraPostgresBin`, and
+`C:\Users\Posmate\Documents\verduradb` →
+`C:\Users\Posmate\Documents\verduraBridge\verduradb`.
+
+**Baseline (recorded 2026-08-27, re-verify freshly before any real
+attempt):**
+
+| Item | Value |
+| --- | --- |
+| PostgreSQL binary identity | `PostgreSQL 18.6` (`pg_ctl.exe --version` / `postgres.exe --version`, both under `VerduraPostgresBin\pgsql\bin\`) |
+| Service PathName (`VerduraPostgreSQL`) | `"C:\Users\Posmate\Documents\VerduraPostgresBin\pgsql\bin\pg_ctl.exe" runservice -N "VerduraPostgreSQL" -D "C:\Users\Posmate\Documents\verduradb" -w` |
+| Data directory (`-D`) | `C:\Users\Posmate\Documents\verduradb` |
+| `pg_isready` baseline | `localhost:5432 - accepting connections` |
+| `GET /api/health` baseline | `{"status":"ok","db":"ok","redis":"ok"}` |
+| `pg-backup.ps1` location | `C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\pg-backup.ps1` — its `$backupDir` already correctly points at `verduraBridge\verduradb-backups`; only its hardcoded `pg_dump.exe` path (`...\Documents\VerduraPostgresBin\pgsql\bin\pg_dump.exe`) needs updating to the new location |
+| Backup target database | `verdura_production`, via `pg_dump -h localhost -U verdura_admin -F c` |
+
+**Procedure (to run only during an approved maintenance window):**
+
+1. **Pre-migration backup + restore validation.** Run `pg-backup.ps1` to
+   produce a fresh dump into `verduraBridge\verduradb-backups\`. Restore
+   that dump into a scratch/throwaway database (not `verdura_production`)
+   with `pg_restore` and spot-check row counts against
+   `verdura_production` to prove the backup is actually restorable, not
+   just present.
+2. **Record current state** (binary identity, service `PathName`, `-D`
+   path, `pg_isready`, `GET /api/health`) — see baseline table above; this
+   step re-captures it fresh at execution time rather than trusting this
+   document's dates.
+3. **Check for active DB sessions/transactions** (`SELECT * FROM
+   pg_stat_activity WHERE datname = 'verdura_production' AND pid <>
+   pg_backend_pid();`) — confirm no live application traffic or long-running
+   transaction before shutdown; coordinate a quiet window with whoever owns
+   the live venue if any activity is found.
+4. **Clean PostgreSQL service shutdown** (`Stop-Service VerduraPostgreSQL`
+   or `pg_ctl stop -m fast` against the current data directory) — never a
+   forced kill as the first resort.
+5. **Confirm all `postgres.exe` processes have exited**
+   (`Get-Process postgres -ErrorAction SilentlyContinue` returns nothing)
+   before touching any file.
+6. **Move both directories** into `verduraBridge\` (`Move-Item`), then
+   **verify the move** — file/subdirectory counts and total size of the
+   source tree before the move must match the destination tree after
+   (e.g. `Get-ChildItem -Recurse | Measure-Object -Property Length -Sum`
+   compared before/after). No file content is read or altered — this is a
+   verification of completeness, not a data check.
+7. **Update the `VerduraPostgreSQL` service's `binPath`** (`sc.exe config
+   VerduraPostgreSQL binPath= ...`, or NSSM's equivalent if it's
+   NSSM-managed — confirm which before writing the command) to reference
+   the new binary path and the new `-D` data-directory path.
+8. **Update `pg-backup.ps1`** to reference the new `pg_dump.exe` path
+   under `verduraBridge\VerduraPostgresBin\pgsql\bin\` (its `$backupDir`
+   already needs no change — see baseline table).
+9. **Start PostgreSQL** (`Start-Service VerduraPostgreSQL`).
+10. **`pg_isready`** against the new binary — must again report `accepting
+    connections`.
+11. **Database connectivity check** — a real query against
+    `verdura_production` (e.g. `psql -c "SELECT 1"`) from the new binary
+    path.
+12. **`GET /api/health`** — must again report `"db":"ok"`, matching the
+    pre-migration baseline exactly.
+13. **Backup task test** — run the updated `pg-backup.ps1` once and confirm
+    a new dump lands in `verduraBridge\verduradb-backups\` with a
+    plausible size (not zero/truncated).
+14. **Service/runtime stale-path search** — grep NSSM configs, scheduled
+    tasks, and any script under `verduraBridge\` for the old
+    `Documents\VerduraPostgresBin` / `Documents\verduradb` path strings to
+    catch anything not already covered by steps 7–8.
+
+**Rollback plan (if any step 4–13 fails):** stop the service if running,
+move both directories back to their original `Documents\` locations,
+restore the service's original `binPath` (recorded in step 2), start the
+service, and re-run `pg_isready` + `GET /api/health` to confirm the
+pre-migration baseline is restored. No step in this plan modifies database
+contents — every step through 13 is shutdown/filesystem/service-config
+only, and no migration step in this plan is ever run while PostgreSQL is
+still running against the directories being moved.
+
+**Estimated affected services:** `VerduraPostgreSQL` directly; `VerduraAPI`
+transitively (loses its database during the outage window) and anything
+depending on `GET /api/health` reporting `db:ok`. `VerduraOrderTablet`,
+`VerduraAdminConsole`, `VerduraConnector`, and IdealposBridge do not
+connect to Postgres directly but will surface API errors for the same
+window.
+
+**Estimated required outage:** the interval between steps 4 (shutdown) and
+9 (service start) — expected to be short (filesystem move + two config
+edits) but has not been timed against the real data directory's size; time
+step 6 during a rehearsal/dry run before committing to a live window.

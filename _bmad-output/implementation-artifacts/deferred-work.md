@@ -17,7 +17,9 @@
   restart, connectivity/health verification, rollback plan) but is
   **plan-only — not executed.** Requires an explicit approved maintenance
   window; PostgreSQL must not be stopped and neither directory may be moved
-  before that approval. See `docs/windows-production-deployment.md` §2.
+  before that approval. Full plan: `docs/windows-production-deployment.md`
+  §7 (baseline recorded 2026-08-27: PostgreSQL 18.6, `pg_isready` and
+  `GET /api/health` both healthy).
 
 ## Deferred from: Story 9-2 discovery-tracer independent review session (2026-08-16)
 
