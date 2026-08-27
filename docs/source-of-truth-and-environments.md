@@ -41,12 +41,12 @@ be made directly on the Windows box because the venue is live and broken
 
 **No second editable production clone may be used.** Windows must have
 exactly one live, git-tracked checkout of the application acting as the
-deployment source (currently `verduraBridge\VerduraServer`). A second
-clone sitting on the same box that anyone could edit and which any service
-might accidentally be pointed at is exactly the failure mode this document
-exists to prevent — see the `Desktop\verdura_MVP` history in
-[`windows-production-deployment.md`](./windows-production-deployment.md#5-non-authoritative-legacy-clone-relocated-still-not-in-use)
-for a real example of how that happens by accident.
+deployment source (currently `C:\Users\Posmate\Documents\verdura_MVP`). A
+second clone sitting on the same box that anyone could edit and which any
+service might accidentally be pointed at is exactly the failure mode this
+document exists to prevent — see the consolidation history in
+[`windows-production-deployment.md`](./windows-production-deployment.md#5-application-checkout-consolidation-2026-08-27)
+for two real examples of how that happens by accident.
 
 ## 3. Deployment verification gate
 

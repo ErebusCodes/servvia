@@ -403,10 +403,48 @@ in-place rename succeeded cleanly — a subsequent retry of the identical,
 non-forceful `Move-Item` then succeeded outright, with recursive item
 count, byte size, `.git`, `HEAD`, branch, `git status --short`, the
 nested untracked `verdura_MVP\verdura_MVP\` subtree, and the GitHub
-remote all confirmed unchanged. It remains a **legacy, non-authoritative
-clone** — not to be used for development or production deployment. See
-[`docs/windows-production-deployment.md` §5](../../docs/windows-production-deployment.md#5-non-authoritative-legacy-clone-relocated-still-not-in-use)
-for full current status and the relocation rules.
+remote all confirmed unchanged.
+
+**Superseded later the same day (2026-08-27) — see §1h below.** At the
+time of the relocation above, this clone remained legacy/non-authoritative
+and `verduraBridge\VerduraServer` (§1f) was the active deployment source.
+That has since reversed: `verdura_MVP` was reconciled to current `main`
+and is now the sole active application checkout; `VerduraServer` was
+retired. Do not apply this paragraph's now-superseded "legacy, do not use"
+characterization — see §1h.
+
+## 1h. Application checkout consolidated onto `verdura_MVP`, `VerduraServer` retired (2026-08-27)
+
+Operator-directed consolidation, not a health-driven decision (both
+checkouts were fully synchronized with `origin/main` at the time). Full
+sequence: `verdura_MVP` fast-forward-merged from its stale `0a7c2865` to
+current `main` (no discarded work — tracked tree was already clean; the
+nested `verdura_MVP\verdura_MVP\local-postgres\` subtree preserved
+untouched throughout); `apps/api/.env` (which had been left pointing at
+the local dev database) and `apps/admin-console`/`apps/customer-website`
+`.env` (which had the dev-seed `VITE_VENUE_ID`) corrected from
+`VerduraServer`'s real production config; `prisma generate` run (the one
+missing step — the resulting build was clean, not a source regression);
+API/Admin-Console(`dist-admin`)/Order-Tablet(`dist`) builds green;
+108/108 targeted tests green. Only then were live services cut over:
+`VerduraAPI`, `VerduraOrderTablet`, and `VerduraAdminConsole` NSSM
+`AppDirectory`/`AppParameters` repointed to `verdura_MVP` (`VerduraAPI`
+required `Stop-Service -Force` first, since `VerduraOrderTablet`/
+`VerduraAdminConsole`/`VerduraConnector` are registered SCM dependents of
+it — all three were then started back up in order and verified). Window
+Display's Scheduled Task was recreated to launch from `verdura_MVP`
+(§4 note below) after an unmanaged process was found serving it directly
+from `verdura_MVP` mid-consolidation (harmless by that point, since
+`verdura_MVP` was already reconciled, but not a managed launch path).
+`VerduraServerOps`'s operational scripts (`build-admin*.ps1`,
+`register-*-service.ps1`, `write-api-env*.ps1`, etc. — 13 files) had
+their hardcoded `VerduraServer` path references updated to `verdura_MVP`
+so a future re-run of any of them doesn't reintroduce the old wiring.
+`VerduraServer` itself was audited (zero unique required content beyond
+what's now in `verdura_MVP\_preserved-from-VerduraServer\`) and renamed
+to `verduraBridge\VerduraServer.retired-<timestamp>\` rather than
+deleted, preserving a full rollback path. Full current status:
+[`docs/windows-production-deployment.md` §5](../../docs/windows-production-deployment.md#5-application-checkout-consolidation-2026-08-27).
 
 ---
 
@@ -415,19 +453,19 @@ for full current status and the relocation rules.
 Re-verify every item below against the live host at session start — do
 not trust this document's own dates.
 
-1. **Code state — RECONCILED 2026-08-26, path migrated 2026-08-27 (see
-   §1f).** The deployment source was fast-forwarded from `06199e7` to
-   `4b9d2d5` (all nine commits back through the `isPortFree` CI fix) at its
-   then-current path (`Documents\VerduraServer`), the `possync_cancelled_
-   status` migration was applied via `prisma migrate deploy`, and
-   `VerduraAPI`/`VerduraOrderTablet`/`VerduraAdminConsole`/`VerduraConnector`
-   were all rebuilt and restarted from this source — verified healthy
-   post-restart (§0.1 below). The deployment source now lives at
-   `C:\Users\Posmate\Documents\verduraBridge\VerduraServer` (§1f) — verified
-   2026-08-27 at `5383b23`, matching `origin/main`. **Re-verify with the
+1. **Code state — RECONCILED 2026-08-26, path migrated to `verduraBridge\
+   VerduraServer` 2026-08-27 (§1f), then consolidated onto `verdura_MVP`
+   the same day (§1h).** The deployment source's history: fast-forwarded
+   from `06199e7` to `4b9d2d5` at its then-current path
+   (`Documents\VerduraServer`), the `possync_cancelled_status` migration
+   applied via `prisma migrate deploy`, then migrated to `verduraBridge\
+   VerduraServer`, then — per §1h — the *application checkout itself* was
+   consolidated onto `C:\Users\Posmate\Documents\verdura_MVP`, which is
+   now the deployment source `VerduraAPI`/`VerduraOrderTablet`/
+   `VerduraAdminConsole`/`VerduraConnector` run from. **Re-verify with the
    [deployment verification gate](../../docs/windows-production-deployment.md#3-deployment-verification-gate)
-   from that path before trusting this line — it will drift the moment
-   `main` moves again.**
+   from `C:\Users\Posmate\Documents\verdura_MVP` before trusting this
+   line — it will drift the moment `main` moves again.**
 2. **Services running on `DESKTOP-SOKKOQ7`** (`nssm status <name>` or
    Services.msc): `VerduraPostgreSQL`, `VerduraAPI`, `VerduraConnector`,
    `VerduraOrderTablet`, `VerduraAdminConsole` all `Running` — confirmed

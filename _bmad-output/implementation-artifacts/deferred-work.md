@@ -2,12 +2,23 @@
 
 ## Deferred from: Windows runtime migration to `verduraBridge` (2026-08-27)
 
-- **RESOLVED 2026-08-27: legacy Windows Verdura clone relocated from
-  Desktop to Documents.** Now at `C:\Users\Posmate\Documents\verdura_MVP`
-  (previously `C:\Users\Posmate\Desktop\verdura_MVP`). It remains a
-  **legacy, non-authoritative clone** — not to be used for development or
-  production deployment; no production dependency was ever found. See
-  `docs/windows-production-deployment.md` §5 for full status/rules.
+- **RESOLVED 2026-08-27 (superseded same day): legacy Windows Verdura
+  clone relocated from Desktop to Documents.** Then, later the same day,
+  `C:\Users\Posmate\Documents\verdura_MVP` was reconciled to current
+  `main` and promoted to the sole active application checkout — see
+  `docs/windows-production-deployment.md` §5. This entry stays for
+  history only; do not re-apply its now-superseded "legacy, do not use"
+  characterization.
+- **Permanently delete the retired duplicate checkout once production has
+  run stably from `verdura_MVP`.** Currently preserved (not deleted) at
+  `C:\Users\Posmate\Documents\verduraBridge\VerduraServer.retired-<timestamp>`
+  as a rollback path — audited before retirement (zero unique required
+  content; historical debug/bootstrap scripts already preserved into
+  `verdura_MVP\_preserved-from-VerduraServer\`). No production reference
+  remains to it (confirmed via NSSM/scheduled-task/script/process scan).
+  Owner: whoever confirms `verdura_MVP` has been stable through at least
+  one full production day/reboot cycle. Priority: P3, no functionality
+  blocked on it.
 - **Migrate `VerduraPostgresBin` and `verduradb` into `verduraBridge`,
   matching the rest of the Windows runtime layout.** Currently deferred at
   `C:\Users\Posmate\Documents\VerduraPostgresBin` and

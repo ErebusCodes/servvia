@@ -11,31 +11,38 @@ must never be committed).
 
 ## 1. Current verified layout
 
-All application deployment sources live under one root,
-`C:\Users\Posmate\Documents\verduraBridge\`, migrated and verified
-2026-08-26/27:
+**The Windows application checkout is `C:\Users\Posmate\Documents\verdura_MVP`.**
+This is a deliberate, operator-directed consolidation (2026-08-27): the
+application source previously lived at
+`verduraBridge\VerduraServer` (migrated there 2026-08-26); it has since
+been cut over to `verdura_MVP` as the single, permanent application
+checkout, for operational-standardization reasons unrelated to either
+checkout's historical health. `verduraBridge\` remains the root for
+operational/integration components that are **not** the application
+source itself:
 
 ```
+C:\Users\Posmate\Documents\verdura_MVP\           # the git-tracked application
+                                                   # deployment source — backs
+                                                   # VerduraAPI, VerduraOrderTablet,
+                                                   # VerduraAdminConsole, Window Display
+
 C:\Users\Posmate\Documents\verduraBridge\
-  VerduraServer\                  # the git-tracked deployment source — backs
-                                   # VerduraAPI, VerduraOrderTablet,
-                                   # VerduraAdminConsole, Window Display
   VerduraServerOps\                # operational scripts/tooling for the host
   VerduraOrderTabletConnector\    # Connector deployment (publish-output copy,
                                    # not itself a git repo — rebuilt from
-                                   # VerduraServer and copied in)
+                                   # the application checkout and copied in)
   verduraIdealposBridge\          # IdealposBridge service deployment
   verduradb-backups\              # PostgreSQL backup output (pg-backup.ps1
                                    # target — machine-local, never committed)
+  VerduraServer.retired-<timestamp>\  # retired duplicate — see §5
 ```
 
-Each of the five directories above has been directly verified present on
-the host (2026-08-27). `VerduraServer` is the single git-tracked deployment
-source and is the directory the [deployment verification gate](#3-deployment-verification-gate)
-applies to.
-
-Additional non-application directories (e.g. `migration-state\`) may also
-exist under this root; they are outside the scope of this document.
+`verdura_MVP` is the single git-tracked deployment source and is the
+directory the [deployment verification gate](#3-deployment-verification-gate)
+applies to. Additional non-application directories (e.g. `migration-state\`
+under `verduraBridge\`) may also exist; they are outside the scope of this
+document.
 
 ## 2. Currently deferred (not yet migrated)
 
@@ -48,16 +55,17 @@ C:\Users\Posmate\Documents\verduradb
 ```
 
 Both exist and are in active use by the running `VerduraPostgreSQL` service.
-Their migration into `verduraBridge\` is planned but **not executed** — see
+Their migration is planned but **not executed** — see
 [§7](#7-postgresql-migration-maintenance-plan--draft-not-executed) below
 for the drafted maintenance plan and
 [`deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
 for the tracked item. PostgreSQL must not be stopped and neither directory
 may be moved without explicit, separate approval for a maintenance window.
+This is unaffected by the application-checkout consolidation in §1/§5.
 
 ## 3. Deployment verification gate
 
-Run from `C:\Users\Posmate\Documents\verduraBridge\VerduraServer`:
+Run from `C:\Users\Posmate\Documents\verdura_MVP`:
 
 ```powershell
 git fetch origin
@@ -71,66 +79,83 @@ exactly, and `git status --short` prints nothing for tracked files. This is
 a precondition to re-run at the start of every deployment session, not a
 one-time fact — see
 [`source-of-truth-and-environments.md` §3](./source-of-truth-and-environments.md#3-deployment-verification-gate)
-for the full rule and what counts as expected untracked state.
+for the full rule and what counts as expected untracked state (this
+checkout's own expected untracked entries: the nested `verdura_MVP\`
+subtree, see §5, and build output such as `apps/admin-console/dist-admin\`).
 
 ## 4. Window Display persistent launch
 
-The Window Display dev server (`apps/window-display`, port 5174) is
-currently launched via a one-shot **Scheduled Task** rather than a plain
-`Start-Process`. Reason: when Window Display is started with
-`Start-Process` over the Win32 OpenSSH session used for remote
-administration, the process dies the moment that SSH session ends — it is
-a child of the SSH-spawned process tree, not a true detached process. A
-Scheduled Task (run once, on demand) launches it outside that process
-tree, so it survives the SSH session closing. This is a known operational
-workaround, not a production service — the four NSSM-managed services
-(`VerduraAPI`, `VerduraOrderTablet`, `VerduraAdminConsole`,
-`VerduraConnector`) plus `VerduraPostgreSQL` and the IdealposBridge service
-remain the actual production service set.
+The Window Display dev server (`apps/window-display`, port 5174) runs via
+a **permanent Scheduled Task** named `Verdura Window Display`, triggered
+at logon for `Posmate` (Interactive logon type, highest run level), with
+`WorkingDirectory` set to `C:\Users\Posmate\Documents\verdura_MVP` and
+action `cmd.exe /c npm run dev --workspace=apps/window-display -- --host
+0.0.0.0 --port 5174`, stdout/stderr redirected to
+`verduraBridge\VerduraServerOps\window-display.out.log` /
+`.err.log`. Reason a Scheduled Task is required at all: launching Window
+Display via `Start-Process` over the Win32 OpenSSH session used for remote
+administration causes the process to die the moment that SSH session
+ends — it is a child of the SSH-spawned process tree, not a true detached
+process; a Scheduled Task launches it outside that process tree so it
+survives both the SSH session closing and, via its logon trigger, a host
+reboot.
 
-## 5. Non-authoritative legacy clone (relocated, still not in use)
+This is a known operational workaround, not an NSSM-managed service — the
+three NSSM-managed application services (`VerduraAPI`, `VerduraOrderTablet`,
+`VerduraAdminConsole`) plus `VerduraConnector`, `VerduraPostgreSQL`, and the
+IdealposBridge service remain the actual NSSM-managed production service
+set. There must be exactly one `Verdura Window Display` task; do not
+create a second one-shot or ad-hoc task — reuse/redeploy this one if the
+launch command ever needs to change.
 
-A second, non-authoritative Verdura checkout exists on the same host:
+## 5. Application-checkout consolidation (2026-08-27)
 
-- **Path:** `C:\Users\Posmate\Documents\verdura_MVP`
-- **Role:** legacy / non-authoritative clone
-- **Production dependency:** none found — verified 2026-08-27 by inspecting
-  every `Verdura*` NSSM service's `AppDirectory`/`AppParameters`; all five
-  reference only `verduraBridge\...` paths, none reference this clone
-- **Git remote:** same Verdura GitHub repository
-- **Branch:** `main`
-- **Status:** stale checkout / non-production
+**Current state: `verdura_MVP` is the sole active application checkout.**
+It was reconciled from a stale historical clone (previously at
+`C:\Users\Posmate\Desktop\verdura_MVP`, then relocated to
+`C:\Users\Posmate\Documents\verdura_MVP`) up to current `origin/main`
+before cutover — see git history of this document for the prior
+"non-authoritative legacy clone" designation and the full reconciliation
+record (fast-forward merge, corrected machine-local `.env`/`VITE_VENUE_ID`
+config copied from the prior checkout, clean build and 108/108 targeted
+tests, before any service was repointed).
 
-**Relocated 2026-08-27.** This clone previously sat at
-`C:\Users\Posmate\Desktop\verdura_MVP` and an initial directory-level move
-attempt failed with `Access is denied`. Investigation (in-place rename of
-the actual directory succeeded; a disposable Desktop→Documents test
-directory moved cleanly; no reparse point, ACL DENY entry, or referencing
-process/service/scheduled task was ever found) never identified a
-persistent blocking cause, and a subsequent retry of the identical,
-non-forceful `Move-Item` succeeded outright — recursive item count
-(68,694 files / 7,282 directories) and total byte size (1,031,247,662
-bytes) matched exactly before and after, `.git`, `HEAD`
-(`0a7c2865e0d704fbaa1b1c57e455e529f571f1c9`), branch, `git status
---short`, the nested untracked `verdura_MVP\verdura_MVP\` subtree, and the
-GitHub remote were all confirmed unchanged post-move.
+**Nested `verdura_MVP\verdura_MVP\` subtree — still preserved, still not
+production data.** This is a real, historical local-dev PostgreSQL data
+directory (`verdura_MVP\verdura_MVP\local-postgres\data\docker\` —
+confirmed via `PG_VERSION`/`pg_wal`/`base`/`global\pg_control`), a leftover
+from before the original Desktop→Documents relocation. It is untracked,
+unrelated to production (production Postgres is the separate native
+Windows service described in §2), and remains untouched pending a
+separate, deliberate review — do not delete or migrate it as a side
+effect of any other task.
 
-Rules while it remains in place:
+**Retired duplicate: `verduraBridge\VerduraServer.retired-<timestamp>\`.**
+The former application checkout was audited before cutover (git HEAD/
+status confirmed clean and identical to `verdura_MVP` post-reconciliation;
+every untracked file classified — debug/one-off production-bootstrap
+`.mjs` scripts and a stock-items export preserved into
+`verdura_MVP\_preserved-from-VerduraServer\` for reference, build output
+and dev-session logs confirmed disposable/reproducible) and then renamed
+(not deleted) to preserve a full rollback path. It is retired, not in any
+active NSSM/scheduled-task/script reference — confirmed by a full scan —
+and may be permanently deleted once production has run stably from
+`verdura_MVP` for a satisfactory period; do not recreate a `VerduraServer`
+checkout afterward.
 
-- Must not be used for production runtime or new development.
-- Must not be treated as a source of truth.
-- Any unique work found in it must be reconciled into GitHub before
-  eventual archival.
-- Do not delete it.
-
-This same clone previously caused a real incident (documented in
-[`dl-107-dunedin-live-certification-runbook.md` §1c`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md)):
-a Window Display dev server was found running from this Desktop clone
-instead of the canonical deployment source, serving a stale `VITE_VENUE_ID`
-and causing a production menu outage. This is the concrete example of why
-"no second editable production clone" is a rule in
-[`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md#2-the-rule),
-not just a hygiene preference.
+**Prior incidents this consolidation is downstream of:** this same
+checkout (prior to reconciliation) caused two real incidents — a stale
+`VITE_VENUE_ID` outage (documented in
+[`dl-107-dunedin-live-certification-runbook.md` §1c`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md)),
+and, separately, an unmanaged process serving the pre-reconciliation
+(stale) checkout's code exposed the "Imported from IdealPOS (pending
+review)" staging category on the public Window Display because that stale
+commit predated the `normalizePublicMenu()` `isAvailable` filter. Both are
+resolved as of this consolidation: `verdura_MVP` is now reconciled to
+current `main` (which contains the filter), machine-local config is
+corrected, and Window Display has exactly one managed launch path (§4).
+The underlying rule — "no second editable production clone" — is in
+[`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md#2-the-rule).
 
 ## 6. Related documents
 
@@ -138,9 +163,9 @@ not just a hygiene preference.
   environment roles and the rule this layout exists to satisfy.
 - [`../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md) —
   the live-order certification runbook, including the historical path-layout
-  investigation (§1b/§1c) that predates the `verduraBridge` migration.
+  investigations that predate this consolidation.
 - [`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md) —
-  the PostgreSQL migration plan and the Desktop-clone relocation item.
+  the PostgreSQL migration plan and other tracked deferred items.
 
 ## 7. PostgreSQL migration maintenance plan — DRAFT, NOT EXECUTED
 
