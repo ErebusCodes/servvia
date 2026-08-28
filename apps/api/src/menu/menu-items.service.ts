@@ -90,8 +90,12 @@ export class MenuItemsService {
         modifierGroups: this.normalizeModifierGroups(dto.modifierGroups),
         isSpicy: dto.isSpicy ?? false,
         isAvailable: dto.isAvailable ?? true,
+        isFeatured: dto.isFeatured ?? false,
         sortOrder: dto.sortOrder ?? 0,
         posProductCode: dto.posProductCode,
+        // Deliberately NOT defaulted to "all channels" — see
+        // CreateCategoryDto.visibleChannels for the same rationale.
+        visibleChannels: dto.visibleChannels ?? [],
       },
     });
   }
@@ -125,12 +129,18 @@ export class MenuItemsService {
     return this.prisma.menuItem.findMany({
       where: { organizationId, deletedAt: null },
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      // Menu Management POS identity panel needs this on every row of the
+      // admin list, not just single-item lookups — this is the same org's
+      // curated item set (dozens, not the 800+ candidate pool), so the
+      // extra join is cheap.
+      include: { posIdentity: true },
     });
   }
 
   async findOne(id: string, organizationId: string): Promise<MenuItem> {
     const item = await this.prisma.menuItem.findFirst({
       where: { id, organizationId, deletedAt: null },
+      include: { posIdentity: true },
     });
     if (!item) throw new NotFoundException('MenuItem not found');
     return item;
@@ -168,13 +178,16 @@ export class MenuItemsService {
             : undefined,
         isSpicy: dto.isSpicy,
         isAvailable: dto.isAvailable,
+        isFeatured: dto.isFeatured,
         sortOrder: dto.sortOrder,
         posProductCode: dto.posProductCode,
+        visibleChannels: dto.visibleChannels,
       },
     });
     if (count === 0) throw new NotFoundException('MenuItem not found');
     return this.prisma.menuItem.findFirst({
       where: { id, organizationId, deletedAt: null },
+      include: { posIdentity: true },
     }) as Promise<MenuItem>;
   }
 

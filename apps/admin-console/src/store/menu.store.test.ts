@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { MenuChannel } from './menu.store';
 
 const apiMock = {
   get: vi.fn(),
@@ -19,6 +20,7 @@ const backendCategory = {
   imageUrl: null,
   sortOrder: 0,
   isActive: true,
+  visibleChannels: ['order_tablet', 'customer_website', 'window_display'] as MenuChannel[],
 };
 
 const backendItem = {
@@ -33,6 +35,9 @@ const backendItem = {
   isSpicy: false,
   isAvailable: true,
   sortOrder: 0,
+  visibleChannels: ['order_tablet', 'customer_website', 'window_display'] as MenuChannel[],
+  isFeatured: false,
+  posIdentity: null,
 };
 
 function resetStore() {
@@ -105,6 +110,9 @@ describe('useMenuStore (backend-backed, Phase 2)', () => {
       isSpicy: false,
       isAvailable: true,
       sortOrder: 0,
+      visibleChannels: [] as MenuChannel[],
+      isFeatured: false,
+      posIdentity: null,
     };
 
     await useMenuStore.getState().setItems([draftItem]);
@@ -134,6 +142,9 @@ describe('useMenuStore (backend-backed, Phase 2)', () => {
           isSpicy: false,
           isAvailable: true,
           sortOrder: 0,
+          visibleChannels: [] as MenuChannel[],
+          isFeatured: false,
+          posIdentity: null,
         },
       ],
       loading: false,
@@ -167,6 +178,9 @@ describe('useMenuStore (backend-backed, Phase 2)', () => {
           isSpicy: false,
           isAvailable: true,
           sortOrder: 0,
+          visibleChannels: [] as MenuChannel[],
+          isFeatured: false,
+          posIdentity: null,
         },
       ],
       loading: false,

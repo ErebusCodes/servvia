@@ -107,6 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Table Management',   path: '/table-management', Icon: NI.Tables },
       { label: 'Orders',             path: '/orders',           Icon: NI.Orders, badge: '11' },
       { label: 'Menu Management',    path: '/menu-management',  Icon: NI.Menu },
+      { label: 'POS Catalog Review', path: '/pos-catalog-review', Icon: NI.POSSync },
     ],
   },
   {
@@ -147,6 +148,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/table-management': 'Table Management',
   '/orders':           'Orders',
   '/menu-management':  'Menu Management',
+  '/pos-catalog-review': 'POS Catalog Review',
   '/kitchen-display':  'Kitchen Display',
   '/kiosks':           'Kiosk Window',
   '/kiosk-window':     'Kiosk Window',
@@ -171,6 +173,7 @@ const PAGE_BREADCRUMBS: Record<string, string> = {
   '/table-management': 'Operations / Table Management',
   '/orders':           'Operations / Orders',
   '/menu-management':  'Operations / Menu',
+  '/pos-catalog-review': 'Operations / Menu / POS Catalog Review',
   '/kitchen-display':  'Service Channels / Kitchen Display',
   '/kiosks':           'Service Channels / Kiosk Window',
   '/kiosk-window':     'Service Channels / Kiosk Window',

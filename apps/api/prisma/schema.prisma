@@ -237,6 +237,7 @@ model Organization {
   staff                  Staff[]
   categories             Category[]
   menuItems              MenuItem[]
+  posProductIdentities   PosProductIdentity[]
   mediaAssets            MediaAsset[]
   auditLogs              AuditLog[]
   connectorEnrollments   ConnectorEnrollment[]
@@ -469,16 +470,35 @@ model Payment {
   reservation Reservation @relation(fields: [reservationId], references: [id])
 }
 
+// Which customer-facing/staff-facing surface a Category or MenuItem may
+// render on (Verdura Menu Management architecture, see
+// docs/decisions-log.md and _bmad-output/implementation-artifacts/ menu
+// management design). Deliberately a fixed, small set backed by a scalar
+// Postgres enum array (see MenuItem.visibleChannels doc comment for why
+// this is not a join table or a Json field) — extend this enum, not a
+// side table, when a new channel is added.
+enum MenuChannel {
+  order_tablet
+  customer_website
+  window_display
+}
+
 model Category {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   organizationId String
   name           String
   description    String?
   imageUrl       String?
-  sortOrder      Int      @default(0)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  sortOrder      Int           @default(0)
+  isActive       Boolean       @default(true)
+  // Deny-by-default (empty array): a freshly created/imported category is
+  // invisible on every channel until a human explicitly publishes it —
+  // never accidentally visible by omission. See MenuItem.visibleChannels
+  // for the full rationale; both fields are always evaluated together by
+  // the shared channel resolver.
+  visibleChannels MenuChannel[] @default([])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
   createdById    String
 
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -487,7 +507,7 @@ model Category {
 }
 
 model MenuItem {
-  id                 String    @id @default(uuid())
+  id                 String        @id @default(uuid())
   organizationId     String
   categoryId         String
   subCategory        String?
@@ -497,10 +517,24 @@ model MenuItem {
   imageThumbnailUrl  String?
   priceCents         Int
   nutritionalDetails Json
-  isSpicy            Boolean   @default(false)
-  isAvailable        Boolean   @default(true)
-  sortOrder          Int       @default(0)
-  modifierGroups     Json      @default("[]")
+  isSpicy            Boolean       @default(false)
+  isAvailable        Boolean       @default(true)
+  // Promoted from the ad hoc nutritionalDetails.isFeatured JSON convention
+  // (Menu Management architecture) to a real, typed, admin-editable column.
+  isFeatured         Boolean       @default(false)
+  sortOrder          Int           @default(0)
+  modifierGroups     Json          @default("[]")
+  // Deny-by-default (empty array), same rationale as Category.visibleChannels.
+  // Evaluated together with the item's own Category.visibleChannels by the
+  // shared channel resolver (apps/api/src/menu/channel-menu-resolver.ts) —
+  // an item is only visible on a channel if BOTH it and its category are.
+  visibleChannels    MenuChannel[] @default([])
+  // DEPRECATED — superseded by the posIdentity relation (PosProductIdentity
+  // model, Menu Management architecture). Retained, unchanged, only until
+  // every reader of this column (chiefly the IdealPOS payload mapper) has
+  // cut over to `posIdentity.nativeCode`; do not add new consumers of this
+  // field. See PosProductIdentity's own doc comment for the replacement.
+  //
   // The exact native POS product/stock-item code this menu item maps to
   // (for IdealPOS via VerduraIdealposBridge: the `code` field of GET
   // /api/products, confirmed by direct source read of
@@ -510,8 +544,8 @@ model MenuItem {
   // own id or title; the bridge does no name-based product matching, only
   // an exact code match against IdealPOS's own live product list.
   posProductCode     String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
   createdById        String
   deletedAt          DateTime?
 
@@ -520,7 +554,14 @@ model MenuItem {
   createdBy      Staff                   @relation(fields: [createdById], references: [id])
   venueOverrides MenuItemVenueOverride[]
   orderItems     OrderItem[]
+  posIdentity    PosProductIdentity?
 
+  // DEPRECATED, retained alongside posProductCode above until Phase E of
+  // the Menu Management migration drops this column entirely — see
+  // PosProductIdentity's own @@unique([organizationId, sourceSystem,
+  // nativeCode]) for its structural replacement, which does not require a
+  // MenuItem row to exist at all in order to hold a candidate code.
+  //
   // Prevents two menu items in the same organization from being configured
   // to the same native product code by mistake. Postgres unique indexes
   // permit unlimited NULLs, so this never constrains unmapped items. Not
@@ -546,6 +587,119 @@ model MenuItemVenueOverride {
   venue    Venue    @relation(fields: [venueId], references: [id])
 
   @@unique([menuItemId, venueId])
+}
+
+// Menu Management architecture: the source-of-truth POS product identity,
+// deliberately NOT a MenuItem row. Supersedes the old pattern where the
+// entire live IdealPOS catalog was mirrored into "Imported from IdealPOS
+// (pending review)" MenuItem rows in order to make PLU codes discoverable
+// — that made every candidate code compete with curated items for
+// MenuItem.posProductCode's uniqueness constraint, forcing a manual
+// "clear the staging row, then set the curated row" transfer for every
+// single mapping. A PosProductIdentity row can hold a nativeCode
+// indefinitely without ever being a MenuItem, so linking becomes one
+// guarded update (menuItemId: null -> <id>) instead of two.
+enum PosSourceSystem {
+  idealpos
+}
+
+// Evidence-tier lifecycle status, same discipline as POSSyncStatus above:
+// only claims what has actually been established for this candidate.
+enum PosSourceLifecycleStatus {
+  // Synced from the POS catalog, not yet linked to any MenuItem. Replaces
+  // the old "Imported from IdealPOS (pending review)" Category-name hack —
+  // this is now a real, typed status, not a string match.
+  pending_review
+  // Linked to a MenuItem and currently treated as genuinely sellable.
+  active
+  // Linked, but staff have deliberately paused this pairing without
+  // unlinking it (e.g. temporarily 86'd at the source).
+  hidden
+  // Linked; available evidence suggests this is not currently sellable.
+  // Advisory only — never auto-set from an unproven signal.
+  unavailable
+  // A previously-synced nativeCode no longer appeared in the most recent
+  // sync pass.
+  source_missing
+  // Reserved for a future venue/signal where a real POS-side inactive flag
+  // is trustworthy. Never populated from IdealPOS StockItems.Discontinue
+  // at this venue — confirmed 100% false across the entire live catalog
+  // (826/826 rows), i.e. proven non-diagnostic, not merely unused.
+  source_inactive
+}
+
+// Advisory confidence tier for sorting the admin review queue — never a
+// gate. A candidate's lifecycleStatus stays pending_review regardless of
+// tier until a human explicitly links it; nothing becomes customer-visible
+// from this classification alone. See classifyPosCandidate in
+// apps/api/src/pos-sync/classify-pos-candidate.ts for the decision table
+// this was derived from, grounded in this venue's real IdealPOS evidence
+// (TouchscreenGridDetails placement, Department 41 "Verdura Takeaway"
+// duplicate-detection).
+enum PosCandidateConfidenceTier {
+  high_confidence_active
+  likely_active
+  ambiguous
+  takeaway_duplicate
+  // Reserved: no evidence-backed automated detector for "this is
+  // packaging/a modifier, not a standalone dish" existed at classifier
+  // design time (StockItems.Condiment was tested and found non-diagnostic
+  // at this venue — 793/826 rows flagged true, including 8 of 9 known-good
+  // real dine-in items). Never populated by v1.
+  operational_non_menu
+  // Reserved: same caveat — no trustworthy live inactive/discontinued
+  // signal was found at this venue (see source_inactive above).
+  inactive
+}
+
+model PosProductIdentity {
+  id             String          @id @default(uuid())
+  organizationId String
+  sourceSystem   PosSourceSystem @default(idealpos)
+  // StockItems.Code, verbatim, never derived from a title or id.
+  nativeCode     String
+  // StockItems.Description snapshot at last sync, kept purely for
+  // human-readable drift detection (see descriptionDriftDetectedAt) — not
+  // rendered to customers anywhere; MenuItem.title is Verdura's own.
+  nativeDescription String
+
+  lifecycleStatus PosSourceLifecycleStatus    @default(pending_review)
+  confidenceTier  PosCandidateConfidenceTier?
+  // Raw classifier signal snapshot at last (re)classification — e.g.
+  // { hasAnyGridPlacement, hasVisibleGridPlacement, departmentCode,
+  // isDepartment41, hasDepartment41TwinSameDescription, twinNativeCode }.
+  // Kept for audit/debugging, never parsed by the resolver.
+  evidence Json @default("{}")
+
+  // IdealPOS's own live sale price (StockItemsValue, Type=1/"Price",
+  // Level=1) as of the last sync. Populated for every candidate but never
+  // consumed to set MenuItem.priceCents automatically — Verdura's own
+  // priceCents remains authoritative for what customers are charged
+  // (confirmed policy). This exists solely to power an admin-visible price
+  // drift warning once linked (real drift already found live: Pesto
+  // Chicken Pizza and Spicy Mediterranean Pizza both $23.50 in Verdura vs
+  // $23.00 in IdealPOS at sync time).
+  priceCentsFromPos Int?
+  priceLastSyncedAt DateTime?
+
+  lastSyncedAt               DateTime?
+  descriptionDriftDetectedAt DateTime?
+
+  // Null while still an unlinked candidate. Once set, this row and its
+  // linked MenuItem are the sole source of the native code that reaches
+  // the IdealPOS payload mapper — see MenuItem.posIdentity.
+  menuItemId String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  menuItem     MenuItem?    @relation(fields: [menuItemId], references: [id])
+
+  // The direct structural replacement for MenuItem's old
+  // @@unique([organizationId, posProductCode]) collision: uniqueness lives
+  // on the identity row itself, never on two competing MenuItem rows.
+  @@unique([organizationId, sourceSystem, nativeCode])
+  @@index([organizationId, lifecycleStatus, confidenceTier])
 }
 
 // Story: GCS canonical media (2026-08-17). A MediaAsset row is the

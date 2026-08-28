@@ -6,6 +6,7 @@ import {
   IsInt,
   IsObject,
   IsArray,
+  IsEnum,
   IsUUID,
   Matches,
   Min,
@@ -14,6 +15,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MenuChannel } from '@prisma/client';
 import { IMAGE_URL_PATTERN, IMAGE_URL_MESSAGE } from './image-url.pattern';
 import { ModifierGroupDto } from './modifier-group.dto';
 
@@ -72,11 +74,28 @@ export class CreateMenuItemDto {
   @Min(0)
   sortOrder?: number;
 
-  // Exact native POS product/stock-item code (for IdealPOS: the `code`
-  // field of GET /api/products) — never derived from this item's id or
-  // title; the bridge does no name-based product matching.
+  // DEPRECATED — superseded by the PosCatalog link workflow
+  // (POST /admin/pos-catalog/candidates/:id/link). Retained only until
+  // Phase E of the Menu Management migration drops this column; Admin
+  // Console's UI no longer presents a free-text control for it. Exact
+  // native POS product/stock-item code (for IdealPOS: the `code` field of
+  // GET /api/products) — never derived from this item's id or title; the
+  // bridge does no name-based product matching.
   @IsOptional()
   @IsString()
   @MaxLength(200)
   posProductCode?: string;
+
+  // Menu Management: which customer/staff-facing surfaces this item may
+  // render on. Deliberately omitted-by-default, matching
+  // Category.visibleChannels' own deny-by-default rationale — a freshly
+  // created item stays invisible everywhere until explicitly published.
+  @IsOptional()
+  @IsArray()
+  @IsEnum(MenuChannel, { each: true })
+  visibleChannels?: MenuChannel[];
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
 }

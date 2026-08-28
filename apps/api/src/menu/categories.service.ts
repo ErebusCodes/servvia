@@ -23,6 +23,11 @@ export class CategoriesService {
         imageUrl: dto.imageUrl,
         sortOrder: dto.sortOrder ?? 0,
         isActive: dto.isActive ?? true,
+        // Deliberately NOT defaulted to "all channels" — an omitted
+        // visibleChannels on create leaves the schema's own deny-by-default
+        // `@default([])` in effect, matching the deploy-invisible-first
+        // principle described on CreateCategoryDto.visibleChannels.
+        visibleChannels: dto.visibleChannels ?? [],
       },
     });
   }
@@ -55,6 +60,10 @@ export class CategoriesService {
           imageUrl: dto.imageUrl,
           sortOrder: dto.sortOrder,
           isActive: dto.isActive,
+          // undefined (not provided in this PATCH) leaves the existing
+          // visibleChannels untouched — Prisma ignores an undefined field
+          // on update, same convention as every other optional field here.
+          visibleChannels: dto.visibleChannels,
         },
       });
     } catch (e) {

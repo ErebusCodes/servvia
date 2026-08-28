@@ -6,6 +6,7 @@ import {
   IsInt,
   IsObject,
   IsArray,
+  IsEnum,
   IsUUID,
   Matches,
   Min,
@@ -14,6 +15,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MenuChannel } from '@prisma/client';
 import { IMAGE_URL_PATTERN, IMAGE_URL_MESSAGE } from './image-url.pattern';
 import { ModifierGroupDto } from './modifier-group.dto';
 
@@ -76,9 +78,22 @@ export class UpdateMenuItemDto {
   @Min(0)
   sortOrder?: number;
 
-  // See CreateMenuItemDto.posProductCode.
+  // See CreateMenuItemDto.posProductCode — DEPRECATED, retained until
+  // Phase E; Admin Console no longer presents a free-text control for it.
   @IsOptional()
   @IsString()
   @MaxLength(200)
   posProductCode?: string;
+
+  // See CreateMenuItemDto.visibleChannels. `undefined` (omitted from this
+  // PATCH) must leave the stored value untouched — see
+  // MenuItemsService#update's explicit undefined-passthrough handling.
+  @IsOptional()
+  @IsArray()
+  @IsEnum(MenuChannel, { each: true })
+  visibleChannels?: MenuChannel[];
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
 }

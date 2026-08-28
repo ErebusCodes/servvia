@@ -1,4 +1,15 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, Matches, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  IsArray,
+  IsEnum,
+  Matches,
+  Min,
+} from 'class-validator';
+import { MenuChannel } from '@prisma/client';
 import { IMAGE_URL_PATTERN, IMAGE_URL_MESSAGE } from './image-url.pattern';
 
 export class UpdateCategoryDto {
@@ -23,4 +34,12 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // See CreateCategoryDto.visibleChannels. `undefined` (field omitted from
+  // this PATCH) must leave the stored value untouched — see
+  // CategoriesService#update's explicit undefined-passthrough handling.
+  @IsOptional()
+  @IsArray()
+  @IsEnum(MenuChannel, { each: true })
+  visibleChannels?: MenuChannel[];
 }

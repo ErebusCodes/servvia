@@ -17,6 +17,56 @@ export interface CategorySub {
   name: string;
 }
 
+// Menu Management: which customer/staff-facing surfaces a Category or
+// MenuItem may render on. Mirrors the backend Prisma `MenuChannel` enum
+// exactly (order_tablet | customer_website | window_display) — never
+// invent a UI-only casing/value here, since these strings round-trip
+// straight to the API.
+export type MenuChannel = 'order_tablet' | 'customer_website' | 'window_display';
+
+export const ALL_MENU_CHANNELS: MenuChannel[] = [
+  'order_tablet',
+  'customer_website',
+  'window_display',
+];
+
+export const MENU_CHANNEL_LABELS: Record<MenuChannel, string> = {
+  order_tablet: 'Order Tablet',
+  customer_website: 'Customer Website',
+  window_display: 'Window Display',
+};
+
+/**
+ * Read-only POS source identity for a linked MenuItem (Menu Management
+ * architecture) — never editable as free text in this UI. The only way a
+ * MenuItem gains or changes one of these is the guarded link/unlink
+ * workflow on the POS Catalog Review page
+ * (`apps/admin-console/src/pages/menu/PosCatalogReviewPage.tsx`).
+ */
+export interface PosIdentity {
+  id: string;
+  nativeCode: string;
+  nativeDescription: string;
+  lifecycleStatus:
+    | 'pending_review'
+    | 'active'
+    | 'hidden'
+    | 'unavailable'
+    | 'source_missing'
+    | 'source_inactive';
+  confidenceTier:
+    | 'high_confidence_active'
+    | 'likely_active'
+    | 'ambiguous'
+    | 'takeaway_duplicate'
+    | 'operational_non_menu'
+    | 'inactive'
+    | null;
+  priceCentsFromPos: number | null;
+  lastSyncedAt: string | null;
+  descriptionDriftDetectedAt: string | null;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -25,6 +75,7 @@ export interface Category {
   sortOrder: number;
   isActive: boolean;
   subs: CategorySub[];
+  visibleChannels: MenuChannel[];
 }
 
 export interface NutritionalDetails {
@@ -81,6 +132,15 @@ export interface MenuItem {
   isAvailable: boolean;
   sortOrder: number;
   preparationTime?: number;
+  visibleChannels: MenuChannel[];
+  // Promoted from the old nutritionalDetails.isFeatured JSON convention to
+  // a real column — see MenuItem.isFeatured's own schema doc comment. This
+  // UI reads/writes only this field going forward; it never writes
+  // nutritionalDetails.isFeatured again (Phase E migrates old data).
+  isFeatured: boolean;
+  // Read-only — see the PosIdentity interface's own doc comment. Null
+  // means this item has no linked POS candidate yet.
+  posIdentity: PosIdentity | null;
 }
 
 // ── Backend row shapes (Prisma models, as returned by admin/menu/*) ─────────
@@ -92,6 +152,18 @@ interface BackendCategory {
   imageUrl: string | null;
   sortOrder: number;
   isActive: boolean;
+  visibleChannels: MenuChannel[] | null;
+}
+
+interface BackendPosIdentity {
+  id: string;
+  nativeCode: string;
+  nativeDescription: string;
+  lifecycleStatus: PosIdentity['lifecycleStatus'];
+  confidenceTier: PosIdentity['confidenceTier'];
+  priceCentsFromPos: number | null;
+  lastSyncedAt: string | null;
+  descriptionDriftDetectedAt: string | null;
 }
 
 interface BackendMenuItem {
@@ -107,6 +179,9 @@ interface BackendMenuItem {
   isSpicy: boolean;
   isAvailable: boolean;
   sortOrder: number;
+  visibleChannels: MenuChannel[] | null;
+  isFeatured: boolean | null;
+  posIdentity: BackendPosIdentity | null;
 }
 
 function priceToCents(price: string): number {
@@ -126,6 +201,7 @@ function toStoreCategory(c: BackendCategory): Category {
     // MenuItem.subCategory, a free-text grouping label) — the canonical menu
     // has never used this UI grouping feature, so it's always empty here.
     subs: [],
+    visibleChannels: c.visibleChannels ?? [],
   };
 }
 
@@ -143,7 +219,27 @@ function toStoreItem(i: BackendMenuItem): MenuItem {
     isSpicy: i.isSpicy,
     isAvailable: i.isAvailable,
     sortOrder: i.sortOrder,
+    visibleChannels: i.visibleChannels ?? [],
+    isFeatured: i.isFeatured ?? false,
+    posIdentity: i.posIdentity
+      ? {
+          id: i.posIdentity.id,
+          nativeCode: i.posIdentity.nativeCode,
+          nativeDescription: i.posIdentity.nativeDescription,
+          lifecycleStatus: i.posIdentity.lifecycleStatus,
+          confidenceTier: i.posIdentity.confidenceTier,
+          priceCentsFromPos: i.posIdentity.priceCentsFromPos,
+          lastSyncedAt: i.posIdentity.lastSyncedAt,
+          descriptionDriftDetectedAt: i.posIdentity.descriptionDriftDetectedAt,
+        }
+      : null,
   };
+}
+
+function sameChannels(a: MenuChannel[], b: MenuChannel[]): boolean {
+  if (a.length !== b.length) return false;
+  const setB = new Set(b);
+  return a.every((c) => setB.has(c));
 }
 
 function diffCategoryPatch(before: Category, after: Category): Record<string, unknown> {
@@ -153,6 +249,9 @@ function diffCategoryPatch(before: Category, after: Category): Record<string, un
   if (before.imageUrl !== after.imageUrl) patch.imageUrl = after.imageUrl;
   if (before.sortOrder !== after.sortOrder) patch.sortOrder = after.sortOrder;
   if (before.isActive !== after.isActive) patch.isActive = after.isActive;
+  if (!sameChannels(before.visibleChannels, after.visibleChannels)) {
+    patch.visibleChannels = after.visibleChannels;
+  }
   return patch;
 }
 
@@ -173,6 +272,13 @@ function diffItemPatch(before: MenuItem, after: MenuItem): Record<string, unknow
   if (JSON.stringify(before.modifierGroups ?? []) !== JSON.stringify(after.modifierGroups ?? [])) {
     patch.modifierGroups = after.modifierGroups;
   }
+  if (!sameChannels(before.visibleChannels, after.visibleChannels)) {
+    patch.visibleChannels = after.visibleChannels;
+  }
+  if (before.isFeatured !== after.isFeatured) patch.isFeatured = after.isFeatured;
+  // posIdentity is deliberately never part of this diff/patch — it is
+  // read-only here, managed exclusively by the guarded link/unlink
+  // workflow on the POS Catalog Review page, never by a generic item save.
   return patch;
 }
 
@@ -299,6 +405,7 @@ export const useMenuStore = create<MenuStoreState>((set, get) => ({
             imageUrl: category.imageUrl,
             sortOrder: category.sortOrder,
             isActive: category.isActive,
+            visibleChannels: category.visibleChannels,
           });
           resolved.push(toStoreCategory(data));
           continue;
@@ -348,6 +455,8 @@ export const useMenuStore = create<MenuStoreState>((set, get) => ({
             isSpicy: item.isSpicy,
             isAvailable: item.isAvailable,
             sortOrder: item.sortOrder,
+            visibleChannels: item.visibleChannels,
+            isFeatured: item.isFeatured,
           });
           resolved.push(toStoreItem(data));
           continue;

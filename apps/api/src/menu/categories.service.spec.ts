@@ -60,6 +60,7 @@ describe('CategoriesService', () => {
           imageUrl: undefined,
           sortOrder: 0,
           isActive: true,
+          visibleChannels: [],
         },
       });
     });

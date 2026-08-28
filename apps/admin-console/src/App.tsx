@@ -9,6 +9,7 @@ import { VenueSettingsPage } from './pages/Venue/VenueSettingsPage';
 import { TableManagementPage } from './pages/settings/TableManagementPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { MenuManagementPage } from './pages/menu/MenuManagementPage';
+import { PosCatalogReviewPage } from './pages/menu/PosCatalogReviewPage';
 import { ReservationsPage } from './pages/reservations/ReservationsPage';
 import { KitchenDisplayPage } from './pages/kitchen/KitchenDisplayPage';
 import { KioskWindowManagementPage } from './pages/kiosk/KioskWindowManagementPage';
@@ -85,6 +86,7 @@ function AdminPortalApp() {
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/kitchen-display" element={<KitchenDisplayPage />} />
             <Route path="/menu-management" element={<MenuManagementPage />} />
+            <Route path="/pos-catalog-review" element={<PosCatalogReviewPage />} />
 
             <Route path="/kiosk-window" element={<KioskWindowManagementPage />} />
             <Route path="/order-tablet" element={<OrderTabletPage />} />

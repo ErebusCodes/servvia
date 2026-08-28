@@ -77,7 +77,10 @@ describe('MenuItemsService', () => {
           modifierGroups: [],
           isSpicy: false,
           isAvailable: true,
+          isFeatured: false,
           sortOrder: 0,
+          posProductCode: undefined,
+          visibleChannels: [],
         },
       });
     });
@@ -140,6 +143,7 @@ describe('MenuItemsService', () => {
       expect(mockPrisma.menuItem.findMany).toHaveBeenCalledWith({
         where: { organizationId: ORG_ID, deletedAt: null },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        include: { posIdentity: true },
       });
     });
   });
@@ -151,6 +155,7 @@ describe('MenuItemsService', () => {
       expect(result.id).toBe(ITEM_ID);
       expect(mockPrisma.menuItem.findFirst).toHaveBeenCalledWith({
         where: { id: ITEM_ID, organizationId: ORG_ID, deletedAt: null },
+        include: { posIdentity: true },
       });
     });
 

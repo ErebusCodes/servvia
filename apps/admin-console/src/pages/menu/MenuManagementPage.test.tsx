@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 const apiMock = { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() };
 vi.mock('../../lib/api', () => ({ api: apiMock }));
@@ -50,6 +51,17 @@ function seedStore() {
 
 function makeFile(name = 'tiramisu.jpg'): File {
   return new File([new Uint8Array(1024)], name, { type: 'image/jpeg' });
+}
+
+// The ItemDrawer's POS identity panel navigates to the POS Catalog Review
+// page via useNavigate(), which requires a Router ancestor — MenuManagementPage
+// itself is normally rendered inside App.tsx's <BrowserRouter>.
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <MenuManagementPage />
+    </MemoryRouter>,
+  );
 }
 
 /** Resolves once `resolve()` is called externally — lets a test control
@@ -110,7 +122,7 @@ describe('MenuManagementPage — new-image upload flow', () => {
         }),
     );
 
-    render(<MenuManagementPage />);
+    renderPage();
 
     fireEvent.click(await screen.findByRole('button', { name: /add item/i }));
 
@@ -172,7 +184,7 @@ describe('MenuManagementPage — new-image upload flow', () => {
       mediaAsset: { id: 'asset-2', status: 'approved', visibility: 'public', objectKey: '', mimeType: '', sizeBytes: 0, checksum: '' },
     });
 
-    render(<MenuManagementPage />);
+    renderPage();
 
     fireEvent.click((await screen.findAllByRole('button', { name: /edit item/i }))[0]);
     const fileInput = await screen.findByLabelText(/choose item image/i);
@@ -190,7 +202,7 @@ describe('MenuManagementPage — new-image upload flow', () => {
       new Error('publish_failed: signed-url query string leaked in a real bug would appear here'),
     );
 
-    render(<MenuManagementPage />);
+    renderPage();
     fireEvent.click((await screen.findAllByRole('button', { name: /edit item/i }))[0]);
     const fileInput = await screen.findByLabelText(/choose item image/i);
     const urlInput = screen.getByLabelText(/item image url/i) as HTMLInputElement;
@@ -222,7 +234,7 @@ describe('MenuManagementPage — new-image upload flow', () => {
     });
     vi.mocked(associateMenuItem).mockRejectedValue(new Error('network error'));
 
-    render(<MenuManagementPage />);
+    renderPage();
     fireEvent.click((await screen.findAllByRole('button', { name: /edit item/i }))[0]);
     const fileInput = await screen.findByLabelText(/choose item image/i);
     const urlInput = screen.getByLabelText(/item image url/i) as HTMLInputElement;
@@ -250,7 +262,7 @@ describe('MenuManagementPage — new-image upload flow', () => {
       }),
     );
 
-    render(<MenuManagementPage />);
+    renderPage();
     fireEvent.click((await screen.findAllByRole('button', { name: /edit item/i }))[0]);
     const fileInput = await screen.findByLabelText(/choose item image/i);
     const urlInput = screen.getByLabelText(/item image url/i) as HTMLInputElement;
@@ -291,7 +303,7 @@ describe('MenuManagementPage — new-image upload flow', () => {
         }),
     );
 
-    render(<MenuManagementPage />);
+    renderPage();
     fireEvent.click((await screen.findAllByRole('button', { name: /edit item/i }))[0]);
     const fileInput = await screen.findByLabelText(/choose item image/i);
     const urlInput = screen.getByLabelText(/item image url/i) as HTMLInputElement;
@@ -321,7 +333,7 @@ describe('MenuManagementPage — new-image upload flow', () => {
   });
 
   it('exposes an accessible, keyboard-reachable file picker and status region', async () => {
-    render(<MenuManagementPage />);
+    renderPage();
     fireEvent.click(await screen.findByRole('button', { name: /add item/i }));
 
     const fileInput = screen.getByLabelText(/choose item image/i);

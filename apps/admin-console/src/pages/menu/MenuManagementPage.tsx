@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
-import { useMenuStore } from '../../store/menu.store';
+import { useNavigate } from 'react-router-dom';
+import {
+  useMenuStore,
+  ALL_MENU_CHANNELS,
+  MENU_CHANNEL_LABELS,
+  type Category,
+  type MenuChannel,
+  type MenuItem,
+  type ModifierGroup,
+  type ModifierOption,
+  type NutritionalDetails,
+  type PosIdentity,
+} from '../../store/menu.store';
 import { resolveVenueId } from '../../store/reservation.store';
 import {
   archiveAsset,
@@ -11,71 +23,14 @@ import {
 } from '../../lib/mediaAssets';
 
 // ─────────────────────────────────── Types ──────────────────────────────────
-
-interface CategorySub {
-  id: string;
-  name: string;
-}
-
-interface Category {
-  id: string;
-  name: string;
-  description: string | null;
-  imageUrl: string | null;
-  sortOrder: number;
-  isActive: boolean;
-  subs: CategorySub[];
-}
-
-interface NutritionalDetails {
-  calories?: number;
-  protein?: number;
-  carbs?: number;
-  fat?: number;
-  fiber?: number;
-  tags?: string[];
-  allergens?: string[];
-  isFeatured?: boolean;
-  ingredients?: string[];
-}
-
-// Story 15-3: real, authoritative modifier authoring — mirrors
-// menu.store.ts's exported ModifierGroup/ModifierOption exactly (and, in
-// turn, docs/domain-model.md and apps/api/src/menu/dto/modifier-group.dto.ts).
-// `id` is omitted only for a group/option an author is actively building
-// that has never been saved yet — the server assigns one on create.
-interface ModifierOption {
-  id?: string;
-  name: string;
-  priceDeltaCents: number;
-  isAvailable: boolean;
-  sortOrder: number;
-}
-
-interface ModifierGroup {
-  id?: string;
-  name: string;
-  required: boolean;
-  minSelections: number;
-  maxSelections: number;
-  options: ModifierOption[];
-}
-
-interface MenuItem {
-  id: string;
-  categoryId: string;
-  subCategory: string | null;
-  title: string;
-  description: string;
-  imageUrl: string | null;
-  price: string;
-  nutritionalDetails: NutritionalDetails;
-  modifierGroups: ModifierGroup[];
-  isSpicy: boolean;
-  isAvailable: boolean;
-  sortOrder: number;
-  preparationTime?: number;
-}
+//
+// Category/MenuItem/ModifierGroup/ModifierOption/NutritionalDetails/
+// CategorySub/MenuChannel/PosIdentity all come from menu.store.ts now — this
+// page used to keep a parallel, hand-maintained copy of every one of these
+// shapes, which is exactly what let this page's local MenuItem silently
+// drift out of sync with the store's real MenuItem the moment the backend
+// gained visibleChannels/isFeatured/posIdentity (see the Menu Management
+// architecture). One definition, imported here, cannot drift again.
 
 interface Toast {
   id: string;
@@ -126,6 +81,9 @@ const ITEM_DEFAULTS = {
   preparationTime: '10',
   modifierGroups: [] as ModifierGroup[],
   titleError: false,
+  // Deny-by-default, matching the backend's own default — a brand-new item
+  // is invisible on every channel until a human explicitly publishes it.
+  visibleChannels: [] as MenuChannel[],
 };
 type ItemDraft = typeof ITEM_DEFAULTS;
 
@@ -136,6 +94,7 @@ const CAT_DEFAULTS = {
   isActive: true,
   sortOrder: 0,
   nameError: false,
+  visibleChannels: [] as MenuChannel[],
 };
 type CatDraft = typeof CAT_DEFAULTS;
 
@@ -187,6 +146,15 @@ function formatMenuPrice(raw: string): string {
   });
 }
 
+// Mirrors menu.store.ts's own priceToCents exactly — used only for the
+// price-drift comparison against PosProductIdentity.priceCentsFromPos in
+// the POS identity panel below, never to build a save payload (the store
+// owns that conversion).
+function priceToCentsForDrift(price: string): number {
+  const n = parseFloat(String(price).replace(/[^0-9.]/g, ''));
+  return Math.round((isNaN(n) ? 0 : n) * 100);
+}
+
 function getInitial(name: string): string {
   return (name.trim()[0] ?? '?').toUpperCase();
 }
@@ -224,7 +192,11 @@ interface ItemCardProps {
 function ItemCard({ item, selected, onToggleSel, onEdit, onDelete, onToggleAvail }: ItemCardProps) {
   const swatch = item.imageUrl ? `url(${item.imageUrl})` : swatchFor(item.id);
   const tags = item.nutritionalDetails?.tags ?? [];
-  const isFeatured = item.nutritionalDetails?.isFeatured ?? false;
+  const isFeatured = item.isFeatured;
+  const channelCount = item.visibleChannels?.length ?? 0;
+  const priceDrift =
+    item.posIdentity?.priceCentsFromPos != null &&
+    item.posIdentity.priceCentsFromPos !== Math.round(parseFloat(item.price || '0') * 100);
 
   return (
     <div
@@ -306,6 +278,54 @@ function ItemCard({ item, selected, onToggleSel, onEdit, onDelete, onToggleAvail
             ))}
           </div>
         )}
+        {/* AVAILABLE vs VISIBLE: two independent concepts, never one
+            overloaded toggle — see the "Available"/Toggle button in the
+            footer below for the ordering-availability half of this. This
+            row is the VISIBLE half: which channels can even show this
+            item, regardless of stock. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            className="font-semibold px-1.5 py-0.5 rounded tracking-wide"
+            style={{
+              fontSize: 10,
+              background: channelCount === 0 ? '#fef2f2' : '#eff6ff',
+              color: channelCount === 0 ? '#b91c1c' : '#1d4ed8',
+              border: `1px solid ${channelCount === 0 ? '#fecaca' : '#bfdbfe'}`,
+            }}
+            title={
+              channelCount === 0
+                ? 'Hidden from every channel — not visible on Order Tablet, Customer Website, or Window Display'
+                : item.visibleChannels.map(c => MENU_CHANNEL_LABELS[c]).join(', ')
+            }
+          >
+            {channelCount === 0 ? 'Hidden from all channels' : `Visible on ${channelCount} of 3 channels`}
+          </span>
+          {item.posIdentity ? (
+            <span
+              className="font-semibold px-1.5 py-0.5 rounded tracking-wide"
+              style={{
+                fontSize: 10,
+                background: priceDrift || item.posIdentity.lifecycleStatus === 'source_missing' || item.posIdentity.lifecycleStatus === 'source_inactive' ? '#fffbeb' : '#f0fdf4',
+                color: priceDrift || item.posIdentity.lifecycleStatus === 'source_missing' || item.posIdentity.lifecycleStatus === 'source_inactive' ? '#b45309' : '#15803d',
+                border: `1px solid ${priceDrift || item.posIdentity.lifecycleStatus === 'source_missing' || item.posIdentity.lifecycleStatus === 'source_inactive' ? '#fde68a' : '#86efac'}`,
+              }}
+              title={`IdealPOS ${item.posIdentity.nativeCode} — ${item.posIdentity.nativeDescription}`}
+            >
+              POS {item.posIdentity.nativeCode}
+              {item.posIdentity.lifecycleStatus === 'source_missing' && ' · source missing'}
+              {item.posIdentity.lifecycleStatus === 'source_inactive' && ' · source inactive'}
+              {priceDrift && ' · price drift'}
+            </span>
+          ) : (
+            <span
+              className="font-semibold px-1.5 py-0.5 rounded tracking-wide"
+              style={{ fontSize: 10, background: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb' }}
+              title="No IdealPOS product linked — link one on the POS Catalog Review page before this item can reach the kitchen via Order Tablet"
+            >
+              No POS link
+            </span>
+          )}
+        </div>
         {/* Footer */}
         <div className="mt-auto pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
           <button
@@ -356,6 +376,10 @@ interface ItemDrawerProps {
   onClose: () => void;
   isEdit: boolean;
   editId: string | null;
+  // Read-only — see PosIdentity's own doc comment. Null for a new/unlinked
+  // item. The only way to change this is the guarded link/unlink workflow
+  // on the POS Catalog Review page, never a field in this drawer.
+  linkedPosIdentity: PosIdentity | null;
 }
 
 // Truthful, user-facing label for every stage of the upload → finalize →
@@ -379,7 +403,8 @@ const UPLOAD_BUSY_STAGES: UploadStage[] = [
   'publishing',
 ];
 
-function ItemDrawer({ categories, draft, setDraft, onSave, onClose, isEdit, editId }: ItemDrawerProps) {
+function ItemDrawer({ categories, draft, setDraft, onSave, onClose, isEdit, editId, linkedPosIdentity }: ItemDrawerProps) {
+  const navigate = useNavigate();
   const [ingInput, setIngInput] = useState('');
   const [imageStage, setImageStage] = useState<UploadStage>('idle');
   const [imageError, setImageError] = useState<string | null>(null);
@@ -755,7 +780,13 @@ function ItemDrawer({ categories, draft, setDraft, onSave, onClose, isEdit, edit
 
           <div className="h-px bg-gray-100" />
 
-          {/* Toggles */}
+          {/* AVAILABLE — can customers/staff order it right now. Kept as
+              its own toggle, deliberately separate from the VISIBLE
+              channel checklist below: an item can be visible+available,
+              visible+unavailable (86'd but still shown, dimmed), or hidden
+              from a channel regardless of its availability. Overloading
+              one control to mean both was the exact trap this Menu
+              Management architecture pass was built to avoid. */}
           <div className="flex flex-col gap-2.5">
             {[
               { key: 'isAvailable' as const, label: 'Available', sub: 'Unavailable items are dimmed & non-orderable on the menu' },
@@ -770,6 +801,154 @@ function ItemDrawer({ categories, draft, setDraft, onSave, onClose, isEdit, edit
                 </span>
               </button>
             ))}
+          </div>
+
+          <div className="h-px bg-gray-100" />
+
+          {/* VISIBLE — which surfaces can show this item at all, regardless
+              of AVAILABLE above. Deny-by-default: an item with none of
+              these checked is hidden from every channel, full stop. */}
+          <div>
+            <label className={lc}>
+              Channels
+              <span className="ml-1.5 font-normal text-gray-400 normal-case">
+                {draft.visibleChannels.length === 0
+                  ? '— hidden from all channels'
+                  : `— visible on ${draft.visibleChannels.length} of ${ALL_MENU_CHANNELS.length}`}
+              </span>
+            </label>
+            <div className="flex flex-col gap-2">
+              {ALL_MENU_CHANNELS.map((channel) => {
+                const checked = draft.visibleChannels.includes(channel);
+                return (
+                  <button
+                    key={channel}
+                    type="button"
+                    onClick={() =>
+                      setDraft((d) => ({
+                        ...d,
+                        visibleChannels: checked
+                          ? d.visibleChannels.filter((c) => c !== channel)
+                          : [...d.visibleChannels, channel],
+                      }))
+                    }
+                    className="flex items-center gap-3 px-3.5 py-2.5 border border-gray-200 rounded-lg bg-white cursor-pointer text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <Toggle
+                      checked={checked}
+                      onChange={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          visibleChannels: checked
+                            ? d.visibleChannels.filter((c) => c !== channel)
+                            : [...d.visibleChannels, channel],
+                        }))
+                      }
+                      ariaLabel={MENU_CHANNEL_LABELS[channel]}
+                    />
+                    <span className="text-[13.5px] font-medium text-gray-900">{MENU_CHANNEL_LABELS[channel]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="h-px bg-gray-100" />
+
+          {/* POS IDENTITY — read-only. The only way to change this is the
+              guarded link/unlink workflow on the POS Catalog Review page;
+              this drawer never exposes a free-text native-code field. */}
+          <div>
+            <label className={lc}>POS identity</label>
+            {linkedPosIdentity ? (
+              <div className="border border-gray-200 rounded-lg p-3.5 flex flex-col gap-2 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-semibold text-gray-900">Source: IdealPOS</span>
+                  <span
+                    className="font-semibold px-1.5 py-0.5 rounded text-[10.5px]"
+                    style={{
+                      background: linkedPosIdentity.lifecycleStatus === 'active' ? '#f0fdf4' : '#fffbeb',
+                      color: linkedPosIdentity.lifecycleStatus === 'active' ? '#15803d' : '#b45309',
+                      border: `1px solid ${linkedPosIdentity.lifecycleStatus === 'active' ? '#86efac' : '#fde68a'}`,
+                    }}
+                  >
+                    {linkedPosIdentity.lifecycleStatus.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="text-[12.5px] text-gray-700">
+                  <span className="font-mono font-semibold">{linkedPosIdentity.nativeCode}</span>
+                  {' — '}
+                  {linkedPosIdentity.nativeDescription}
+                </div>
+                {linkedPosIdentity.confidenceTier && (
+                  <div className="text-[11px] text-gray-500">
+                    Confidence: {linkedPosIdentity.confidenceTier.replace(/_/g, ' ')}
+                  </div>
+                )}
+                <div className="text-[11px] text-gray-500">
+                  Verdura price: {formatMenuPrice(draft.priceInput)} · IdealPOS price:{' '}
+                  {linkedPosIdentity.priceCentsFromPos != null
+                    ? `$${(linkedPosIdentity.priceCentsFromPos / 100).toFixed(2)}`
+                    : 'unknown'}
+                </div>
+                {linkedPosIdentity.priceCentsFromPos != null &&
+                  linkedPosIdentity.priceCentsFromPos !== priceToCentsForDrift(draft.priceInput) && (
+                    <div
+                      className="text-[11.5px] font-semibold px-2.5 py-1.5 rounded"
+                      style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}
+                    >
+                      Price differs from IdealPOS: Verdura {formatMenuPrice(draft.priceInput)} / IdealPOS $
+                      {(linkedPosIdentity.priceCentsFromPos / 100).toFixed(2)}
+                    </div>
+                  )}
+                {linkedPosIdentity.descriptionDriftDetectedAt && (
+                  <div
+                    className="text-[11.5px] font-semibold px-2.5 py-1.5 rounded"
+                    style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}
+                  >
+                    IdealPOS's product description has changed since this was linked — re-check on the POS Catalog Review page.
+                  </div>
+                )}
+                {(linkedPosIdentity.lifecycleStatus === 'source_missing' ||
+                  linkedPosIdentity.lifecycleStatus === 'source_inactive') && (
+                  <div
+                    className="text-[11.5px] font-semibold px-2.5 py-1.5 rounded"
+                    style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }}
+                  >
+                    {linkedPosIdentity.lifecycleStatus === 'source_missing'
+                      ? 'This IdealPOS product no longer appears in the live catalog. Ordering must fail closed for this item — do not treat it as normal.'
+                      : 'IdealPOS reports this product as inactive. Ordering must fail closed for this item — do not treat it as normal.'}
+                  </div>
+                )}
+                <div className="text-[10.5px] text-gray-400">
+                  Last synced:{' '}
+                  {linkedPosIdentity.lastSyncedAt
+                    ? new Date(linkedPosIdentity.lastSyncedAt).toLocaleString()
+                    : 'never'}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/pos-catalog-review')}
+                  className="self-start text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 bg-transparent border-none cursor-pointer p-0 mt-1"
+                >
+                  Manage POS link →
+                </button>
+              </div>
+            ) : (
+              <div className="border border-gray-200 border-dashed rounded-lg p-3.5 flex flex-col gap-2 bg-gray-50">
+                <span className="text-[12.5px] text-gray-500">
+                  No IdealPOS product linked. This item cannot reach the kitchen via Order Tablet until it's linked to
+                  a POS candidate.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigate('/pos-catalog-review')}
+                  className="self-start text-[12px] font-semibold text-emerald-700 hover:text-emerald-800 bg-transparent border-none cursor-pointer p-0"
+                >
+                  Link a POS candidate →
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="h-px bg-gray-100" />
@@ -1012,6 +1191,57 @@ function CategoryDrawer({ draft, setDraft, onSave, onClose, isEdit }: CatDrawerP
               <span className="block text-[11.5px] text-gray-400">Hidden categories won't appear on the public menu</span>
             </span>
           </button>
+
+          {/* VISIBLE — which channels this category (and therefore every
+              item in it) can render on at all. Deny-by-default: a new
+              category has none checked until explicitly published. An
+              item's own visibleChannels is further intersected with this
+              by the channel resolver — hiding a category hides everything
+              in it regardless of each item's own setting. */}
+          <div>
+            <label className={lc}>
+              Channels
+              <span className="ml-1.5 font-normal text-gray-400 normal-case">
+                {draft.visibleChannels.length === 0
+                  ? '— hidden from all channels'
+                  : `— visible on ${draft.visibleChannels.length} of ${ALL_MENU_CHANNELS.length}`}
+              </span>
+            </label>
+            <div className="flex flex-col gap-2">
+              {ALL_MENU_CHANNELS.map((channel) => {
+                const checked = draft.visibleChannels.includes(channel);
+                return (
+                  <button
+                    key={channel}
+                    type="button"
+                    onClick={() =>
+                      setDraft((d) => ({
+                        ...d,
+                        visibleChannels: checked
+                          ? d.visibleChannels.filter((c) => c !== channel)
+                          : [...d.visibleChannels, channel],
+                      }))
+                    }
+                    className="flex items-center gap-3 px-3.5 py-2.5 border border-gray-200 rounded-lg bg-white cursor-pointer text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <Toggle
+                      checked={checked}
+                      onChange={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          visibleChannels: checked
+                            ? d.visibleChannels.filter((c) => c !== channel)
+                            : [...d.visibleChannels, channel],
+                        }))
+                      }
+                      ariaLabel={MENU_CHANNEL_LABELS[channel]}
+                    />
+                    <span className="text-[13.5px] font-medium text-gray-900">{MENU_CHANNEL_LABELS[channel]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <div className="flex-none px-[22px] py-3.5 border-t border-gray-200 flex justify-end gap-2.5">
@@ -1238,7 +1468,10 @@ export function MenuManagementPage() {
       imageUrl: item.imageUrl ?? '',
       tags: nd.tags ?? [],
       allergens: nd.allergens ?? [],
-      isFeatured: nd.isFeatured ?? false,
+      // Reads the real MenuItem.isFeatured column, not the old
+      // nutritionalDetails.isFeatured JSON convention — see saveItem()
+      // below for the write side of this same migration.
+      isFeatured: item.isFeatured ?? false,
       isAvailable: item.isAvailable,
       ingredients: nd.ingredients ?? [],
       calories: nd.calories != null ? String(nd.calories) : '',
@@ -1249,6 +1482,7 @@ export function MenuManagementPage() {
       preparationTime: item.preparationTime != null ? String(item.preparationTime) : '10',
       modifierGroups: item.modifierGroups ?? [],
       titleError: false,
+      visibleChannels: item.visibleChannels ?? [],
     });
     setItemDrawer({ open: true, editId: item.id });
   };
@@ -1258,7 +1492,10 @@ export function MenuManagementPage() {
     const nd: NutritionalDetails = {
       tags: itemDraft.tags,
       allergens: itemDraft.allergens,
-      isFeatured: itemDraft.isFeatured,
+      // isFeatured deliberately NOT written here — it now lives on the
+      // real MenuItem.isFeatured column (see `fields` below). Never write
+      // nutritionalDetails.isFeatured again; Phase E migrates any
+      // pre-existing occurrences of the old convention.
       ingredients: itemDraft.ingredients,
       ...(itemDraft.calories ? { calories: Number(itemDraft.calories) } : {}),
       ...(itemDraft.protein  ? { protein:  Number(itemDraft.protein)  } : {}),
@@ -1274,16 +1511,21 @@ export function MenuManagementPage() {
       price: itemDraft.priceInput.trim() || '0',
       imageUrl: itemDraft.imageUrl.trim() || null,
       isAvailable: itemDraft.isAvailable,
+      isFeatured: itemDraft.isFeatured,
       nutritionalDetails: nd,
       preparationTime: Number(itemDraft.preparationTime) || 10,
       modifierGroups: itemDraft.modifierGroups,
+      visibleChannels: itemDraft.visibleChannels,
     };
 
     if (itemDrawer.editId) {
       persistItems(items.map(i => i.id === itemDrawer.editId ? { ...i, ...fields } : i));
       addToast('Item saved');
     } else {
-      const newItem: MenuItem = { id: uid(), isSpicy: false, sortOrder: items.length, ...fields };
+      // posIdentity is never set here — a brand-new item has no POS
+      // mapping until an operator explicitly links it on the POS Catalog
+      // Review page (never inferred from title/category matching).
+      const newItem: MenuItem = { id: uid(), isSpicy: false, sortOrder: items.length, posIdentity: null, ...fields };
       persistItems([...items, newItem]);
       addToast('Item added');
     }
@@ -1309,7 +1551,7 @@ export function MenuManagementPage() {
   };
 
   const openEditCat = (cat: Category) => {
-    setCatDraft({ name: cat.name, description: cat.description ?? '', imageUrl: cat.imageUrl ?? '', isActive: cat.isActive, sortOrder: cat.sortOrder, nameError: false });
+    setCatDraft({ name: cat.name, description: cat.description ?? '', imageUrl: cat.imageUrl ?? '', isActive: cat.isActive, sortOrder: cat.sortOrder, nameError: false, visibleChannels: cat.visibleChannels ?? [] });
     setCatDrawer({ open: true, editId: cat.id });
   };
 
@@ -1321,6 +1563,7 @@ export function MenuManagementPage() {
       imageUrl: catDraft.imageUrl.trim() || null,
       isActive: catDraft.isActive,
       sortOrder: catDraft.sortOrder,
+      visibleChannels: catDraft.visibleChannels,
     };
 
     if (catDrawer.editId) {
@@ -1571,6 +1814,7 @@ export function MenuManagementPage() {
           onClose={() => setItemDrawer({ open: false, editId: null })}
           isEdit={!!itemDrawer.editId}
           editId={itemDrawer.editId}
+          linkedPosIdentity={items.find(i => i.id === itemDrawer.editId)?.posIdentity ?? null}
         />
       )}
 

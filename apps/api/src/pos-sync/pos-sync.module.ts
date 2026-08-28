@@ -4,6 +4,8 @@ import { PosSyncRecordsController } from './pos-sync-records.controller';
 import { PosSyncRecordsService } from './pos-sync-records.service';
 import { PosSyncDispatcherService } from './pos-sync-dispatcher.service';
 import { IdealposOrderDispatcherService } from './idealpos-order-dispatcher.service';
+import { PosCatalogController } from './pos-catalog.controller';
+import { PosCatalogService } from './pos-catalog.service';
 import { AuthModule } from '../auth/auth.module';
 import { QueueModule } from '../queue/queue.module';
 import { ConnectorModule } from '../connector/connector.module';
@@ -20,7 +22,12 @@ import { OrdersModule } from '../orders/orders.module';
   // transitions to staff over the same WebSocket rooms order creation/
   // kitchen-status updates already use, instead of a second mechanism.
   imports: [AuthModule, QueueModule, ConnectorModule, OrdersModule],
-  controllers: [PosSyncController, PosSyncRecordsController],
-  providers: [PosSyncRecordsService, PosSyncDispatcherService, IdealposOrderDispatcherService],
+  controllers: [PosSyncController, PosSyncRecordsController, PosCatalogController],
+  providers: [
+    PosSyncRecordsService,
+    PosSyncDispatcherService,
+    IdealposOrderDispatcherService,
+    PosCatalogService,
+  ],
 })
 export class PosSyncModule {}
