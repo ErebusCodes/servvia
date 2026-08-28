@@ -1,109 +1,142 @@
 # Source of Truth and Environments
 
 **Status:** Normative — governs how code moves between environments
-**Effective:** 2026-08-27
+**Effective:** 2026-08-28
 
-This document defines which environment owns which kind of state, and the
-verification gate that must pass before any Windows deployment is
-considered production-correct. See
-[`windows-production-deployment.md`](./windows-production-deployment.md)
-for the physical layout of the Windows host itself.
+This document defines the roles of environments, secure access rules, the standing session protocol, and safety constraints that govern all work in the Verdura repository.
 
-## 1. Roles
+Future implementation sessions (including those by AI coding assistants like Claude) should begin by reading and following this operating procedure. Do not rely on conversational memory when repository documentation provides the current operating policy.
 
-| Environment | Role |
-| --- | --- |
-| **GitHub `main`** | The single authoritative source of Verdura application code. If Windows or Mac disagrees with it, `main` wins. |
-| **Mac** | Primary development environment. All feature work, review, and merges to `main` originate here. |
-| **Windows (`DESKTOP-SOKKOQ7`)** | Production/integration deployment environment. Runs the live services against the real DUNEDIN IdealPOS installation. It is a *deployment target*, not a second place to develop. |
+See [`windows-production-deployment.md`](./windows-production-deployment.md) for the physical layout and service configurations of the Windows host.
 
-## 2. The rule
+---
 
-**Windows source must not diverge from GitHub.** The Windows checkout is
-expected, at all times, to be a clean working tree at a commit that exists
-on `origin/main`. A commit made or amended only on Windows and never pushed
-is not real — it exists nowhere else and will be lost the next time the
-Windows repo is force-synced or the host is rebuilt.
+## 1. Environment Roles and Source of Truth
 
-**Emergency Windows-side source fixes must be reconciled back into GitHub
-immediately** — same day, not "when convenient." If a fix genuinely has to
-be made directly on the Windows box because the venue is live and broken
-(e.g. mid-service), the sequence is:
+GitHub is the single authoritative source of truth for tracked code, while other environments serve specific operational roles.
 
-1. Make the minimal fix directly in the Windows checkout.
-2. Restart only the affected service(s) and confirm the venue is unblocked.
-3. Within the same session, commit that exact change, push it to a branch,
-   open a PR, and merge it to `main` — do not silently let Windows and
-   GitHub disagree.
-4. Re-run the [deployment verification gate](#3-deployment-verification-gate)
-   once the merge lands, to confirm Windows now matches the merged commit
-   exactly (not just "contains an equivalent fix").
+| Environment / Role | Classification | Purpose & Constraints |
+| --- | --- | --- |
+| **GitHub `main`** | Authoritative Tracked Source | The single authoritative source of truth for all tracked Verdura application code. If any local checkout disagrees with it, `main` wins. |
+| **Windows (`DESKTOP-SOKKOQ7`)** | Primary Production-Facing Work/Integration Surface | The primary surface for production-facing implementation, deployment, IdealPOS/connector/bridge validation, service configuration, and live integration work. It is **not** the source of truth; all changes here must be committed, pushed, and verified against GitHub. |
+| **Mac** | Synchronized Development & Review Environment | A local development and review environment. All offline feature work, review, and sync validations occur here. |
 
-**No second editable production clone may be used.** Windows must have
-exactly one live, git-tracked checkout of the application acting as the
-deployment source (currently `C:\Users\Posmate\Documents\verdura_MVP`). A
-second clone sitting on the same box that anyone could edit and which any
-service might accidentally be pointed at is exactly the failure mode this
-document exists to prevent — see the consolidation history in
-[`windows-production-deployment.md`](./windows-production-deployment.md#5-application-checkout-consolidation-2026-08-27)
-for two real examples of how that happens by accident.
+---
 
-## 3. Deployment verification gate
+## 2. Secure Windows Access (SSH)
 
-Before treating any Windows deployment as production-correct, run this
-from the deployment source directory on the Windows host:
+SSH is the preferred secure mechanism for remote Windows access, command execution, and cross-system verification/synchronization.
 
-```powershell
-git fetch origin
-git status --short
-git rev-parse HEAD
-git rev-parse origin/main
-```
+### Connection Parameters
+*   **Host IP:** `47.72.154.80`
+*   **Port:** `49222`
+*   **Windows User:** `Posmate`
+*   **Access Credentials:** Authentication is managed via authorized SSH key files (e.g., `~/.ssh/verdura_windows_ed25519` generic pattern).
 
-**Pass condition:** `git rev-parse HEAD` must equal `git rev-parse
-origin/main` exactly, and `git status --short` must print nothing (a
-clean tracked working tree). Untracked files are expected and do not fail
-this gate — see §4. A tracked-file modification, or `HEAD` not equal to
-`origin/main`, means: stop, do not treat the deployment as verified, and
-resolve the drift (fast-forward, or reconcile per §2) before doing
-anything else.
+> [!IMPORTANT]
+> **Credential & Key Security:**
+> Do NOT commit SSH private keys, private key files, passwords, or host-specific credentials to the repository. If referencing local paths, do so only generically.
 
-This gate is a **precondition**, not a one-time fact — re-run it at the
-start of every deployment session and every certification/runbook
-procedure that touches the Windows host (e.g. DL-107's own precondition
-checklist), rather than trusting a previous session's recorded commit
-hash.
+---
 
-## 4. What is expected environment-specific state (never committed)
+## 3. Session Protocol (Standard Operating Procedure)
 
-The following are expected to differ between Mac, GitHub, and Windows, and
-must never be committed to the repository:
+Every implementation session must strictly adhere to the following sequence to prevent code drift and protect the production environment.
 
-- machine-local runtime configuration (`.env` files, NSSM service
-  arguments, port bindings for this specific host);
-- credentials, API keys, and enrollment tokens (e.g. the Bridge API key,
-  the Connector's enrollment credential, the owner token used by
-  operational scripts);
-- logs (stdout/stderr redirection targets, application log files);
-- database files and PostgreSQL data directories;
-- database backups/dumps;
-- Windows service registration state (NSSM configuration itself lives in
-  the Windows service registry, not in the repository);
-- Connector enrollment/installation identity.
+### 3.1 Session Start
+1.  **Windows Verification:** Log into the Windows host via SSH and run:
+    ```powershell
+    git fetch origin
+    git status --short
+    git rev-parse HEAD
+    git rev-parse origin/main
+    ```
+2.  **Clean Tree Check:** The Windows working tree must be clean (no modified tracked files) unless the session is explicitly continuing known, documented work.
+3.  **Synchronization Check:** Windows `HEAD` must equal `origin/main` before any new tracked work begins.
+4.  **Checkout Verification:** Verify that you are working in the canonical Windows application checkout directory:
+    `C:\Users\Posmate\Documents\verdura_MVP`
+    Do not use retired, stale, or backup checkouts (e.g., legacy `VerduraServer` checkouts).
 
-A `git status --short` on the Windows deployment showing untracked debug
-scripts, log files, or a build-output directory is normal and does not
-indicate drift, provided none of them are *tracked* files with local
-modifications. The gate in §3 checks for exactly that distinction.
+### 3.2 During Work
+1.  **Production-Facing Work:** Make production-facing changes on Windows when they require interaction with the actual Windows host, IdealPOS, connector, or bridge environment.
+2.  **Environment Isolation:** Keep all machine-local secrets and configurations out of Git (see §5).
+3.  **Local Testing:** Run targeted tests first, followed by broader deterministic quality gates.
+4.  **Production Safety:** Strictly follow the live-production-sensitive safety rules (see §4).
 
-## 5. Related documents
+### 3.3 Before Push
+1.  **Review Differences:** Run `git diff` and examine all modified files.
+2.  **Secrets Audit:** Confirm that no machine-local configurations, private keys, `.env` files, or secrets are staged.
+3.  **Quality Gates:** Run required tests and build steps to ensure there are no compilation or runtime regressions.
+4.  **Commit:** Commit your changes with a clear, descriptive commit message.
+5.  **Push:** Push all committed work to GitHub `main`.
 
-- [`windows-production-deployment.md`](./windows-production-deployment.md) —
-  current physical layout of the Windows host, per-service configuration
-  summary, and the deferred PostgreSQL migration plan.
-- [`../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md) —
-  the live-order certification runbook; its own precondition checklist
-  applies this document's verification gate.
-- [`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md) —
-  tracks outstanding deferred items, including the PostgreSQL
-  binaries/data migration.
+### 3.4 After Push
+1.  **CI Validation:** Wait for the CI pipeline to run and verify that it passes. Do not treat a pushed commit as approved until required CI status is green.
+2.  **Windows Sync:** Update the active Windows runtime/deployment only from the approved GitHub commit.
+
+### 3.5 Mac Synchronization
+1.  **Clean Tree Check:** Verify that the Mac working tree is clean.
+2.  **Fetch Updates:** Run `git fetch origin`.
+3.  **Fast-Forward:** Fast-forward the Mac checkout to the approved `origin/main`.
+4.  **Conflict Resolution:** Do not overwrite independent Mac work. If drift or divergence exists, stop and reconcile deliberately.
+
+### 3.6 Session Close
+Before ending the session, verify and satisfy all of the following conditions:
+*   The Windows tracked working tree is clean.
+*   The Windows `HEAD` matches `origin/main`.
+*   The Mac `HEAD` matches `origin/main`.
+*   There are no unpushed tracked commits on either machine.
+*   There are no unintended tracked modifications.
+*   The CI status is green for the final commit.
+*   Production health is verified (e.g., check `/api/health`) if production services were touched.
+*   Any deferred work is recorded in the task tracker or decision log.
+
+**Final Invariant Check:**
+Ensure that:
+$$\text{Windows HEAD} == \text{origin/main} == \text{Mac HEAD}$$
+
+---
+
+## 4. Production-Safety Standing Rules
+
+All operations on production-facing environments must respect these safety boundaries to prevent data corruption or service disruption.
+
+> [!WARNING]
+> Do not weaken or bypass any of the following safety rules under any circumstances:
+> 
+> *   **Catalog Read-Only:** Live DUNEDIN IdealPOS catalog/menu data is read-only from automation.
+> *   **Product Protection:** Do not modify `StockItems`, `PLUs`, tables, or existing products without explicit approved task scope.
+> *   **No Harness Against Live:** Never run `VerduraIdealposHarness` against live DUNEDIN.
+> *   **Order/KOT Authorizations:** No live order or Kitchen Order Ticket (KOT) generation is permitted without explicit immediate authorization and physical observation.
+> *   **No Legacy POS Conflict:** Do not enable competing legacy POS dispatch paths.
+> *   **Secret Exposure:** Do not expose secrets or check them into source control.
+> *   **No Database Migrations:** Do not migrate PostgreSQL paths or schemas unless explicitly approved.
+
+---
+
+## 5. What Must Never Be Committed
+
+The following files and states are machine-local and must never be checked into Git:
+*   Production `.env` files (machine-local environment configuration)
+*   Credentials, secrets, API keys, and enrollment tokens
+*   SSH private keys and key files
+*   Machine-local runtime state (such as temporary files, process IDs)
+*   Generated production log files (`*.log`)
+*   Local database data directories (e.g., native PostgreSQL or Docker volumes)
+*   Docker volumes, states, or ephemeral database volumes
+*   Other host-specific operational states
+
+---
+
+## 6. Checkout Ambiguity Prevention
+
+To prevent confusion and ensure code consistency:
+*   `C:\Users\Posmate\Documents\verdura_MVP` is the single, canonical Windows application checkout.
+*   Retired or backup copies of the checkout must never be used as active development or production sources.
+*   If another checkout is discovered on the Windows host, it must be classified, documented, and reconciled before use.
+
+---
+
+## 7. Claude Standing Instruction
+
+Future implementation sessions should begin by reading and following this operating procedure. Do not rely on conversational memory when repository documentation provides the current operating policy.

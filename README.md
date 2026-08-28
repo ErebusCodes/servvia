@@ -403,14 +403,9 @@ production (`NODE_ENV=production`) regardless of configuration.
 
 ## 6.3 Source of Truth and Production Deployment
 
-GitHub `main` is the single authoritative source of Verdura application
-code. Mac is the primary development environment; the Windows host
-(`DESKTOP-SOKKOQ7`) is the production/integration deployment target, not a
-second place to develop — its checkout must never diverge from `main`. See
-[`docs/source-of-truth-and-environments.md`](docs/source-of-truth-and-environments.md)
-for the full rule and the deployment verification gate, and
-[`docs/windows-production-deployment.md`](docs/windows-production-deployment.md)
-for the current physical layout of the Windows host.
+GitHub `main` is the authoritative tracked source of truth for all Verdura application code. The Mac environment is the synchronized development/review environment, and the Windows host (`DESKTOP-SOKKOQ7`) acts as the primary production-facing work/integration surface, which must never diverge from `main`.
+
+A standing session protocol (SOP) governs all implementation, secure SSH access, synchronization, safety constraints, and session-close verification invariants. See the canonical environment governance document [`docs/source-of-truth-and-environments.md`](docs/source-of-truth-and-environments.md) for the full operating policy and session protocol, and [`docs/windows-production-deployment.md`](docs/windows-production-deployment.md) for the current physical layout and service settings on the Windows host.
 
 ---
 
