@@ -609,6 +609,95 @@ ambiguous without a physical-presence check, per the pattern above.
     schema change, no cascading effect (§1i confirmed no other runtime
     path reads a staging row's `posProductCode`).
 
+## 1j. First controlled PLU mapping batch applied (2026-08-28) — 4/70 curated items now mapped
+
+Executed the §1i first-safe-batch (Tiramisu/578, Iskender Grill
+Chicken/20, Dolma/165) under explicit human authorization, one mapping at
+a time, using the new `apps/api/prisma/scripts/apply-plu-mapping.ts` /
+`src/pos-sync/apply-plu-mapping.ts` (§1i's 12-step procedure realized as
+code — see "New utility script" below). No IdealPOS StockItem, PLU,
+product, or table was modified; no order submitted; no KOT triggered; no
+harness run; `posAdapterType` left at `local_agent`, `Printer` rows still
+0, `POS_SYNC_DISPATCH_ENABLED` still unset.
+
+Source-of-truth re-verified before any write: Mac/GitHub/Windows all at
+`a911c97fffec161b31d75faa50696e308b1c5799`, CI green, Windows tracked tree
+clean. Services re-verified healthy without restarting anything:
+`VerduraAPI`/`VerduraConnector`/`VerduraPostgreSQL` Running/Automatic,
+`VerduraIdealposBridgeSvc` Running/Automatic (same PID as §1i, no
+crash/restart since), Redis (Docker) healthy, Bridge `/api/health`
+unchanged (`sqlConnected`/`orderProcessingPathAvailable=true`,
+`tableAssignmentStrategy=NoHint`/`Confirmed=false`, untouched). Each
+target code re-verified live via `GET /api/products` immediately before
+writing: 578→`TIRAMISU`, 20→`Iskender - Grill Chicken`,
+165→`Dolma` — all three still present, `available=true`, identical to
+§1i's evidence.
+
+**Per-mapping before/after (all three, applied in this order):**
+
+| Item | PLU | Curated MenuItem id | Staging owner id | Before (curated → staging) | After (curated → staging) |
+|---|---|---|---|---|---|
+| Tiramisu | 578 | `1f3ff9cf-26bc-44db-b63c-33da1a4be9cd` | `1b077e42-52d5-46f9-bbda-ef0ad4777450` | `null` → `"578"` | `"578"` → `null` |
+| Iskender Grill Chicken | 20 | `3b887430-13e0-45de-812f-2fab067a3834` | `3bc57433-d1c3-4186-a459-3f5ed56723eb` | `null` → `"20"` | `"20"` → `null` |
+| Dolma | 165 | `4c2688a9-ca8e-474b-8a04-58c316473af0` | `4fd722e8-8a9b-4a9b-9040-082fa244b555` | `null` → `"165"` | `"165"` → `null` |
+
+For every mapping: dry-run first (printed the exact intended
+before→after, no write), then `--apply` in one DB transaction, then
+immediately re-read both rows to confirm — title/price/category/
+availability unchanged on both rows in every case, only `posProductCode`
+moved. All three staging rows remain present, still in the "Imported from
+IdealPOS (pending review)" category, still `isAvailable: false` — never
+deleted. No third `MenuItem` in the org ever held any of the three codes
+during or after the change (`@@unique([organizationId, posProductCode])`
+re-checked healthy for each).
+
+**Validated per mapping** with a direct `buildIdealposOrderPayload()` call
+(pure function, no HTTP/DB) against a synthetic dine-in order on table
+"19" — all three produced a valid `{table, items:[{productCode, quantity}]}`
+payload with no error.
+
+**Public menu re-verified** via the raw `GET /api/kiosk/venues/{id}/menu`
+data `normalizePublicMenu()` filters (same endpoint Order Tablet/Admin
+Console use, unfiltered): `menuItems` total still 895, staging category
+still exactly 825 rows with **0** `isAvailable: true` (so
+`normalizePublicMenu()`'s `isAvailable !== false` filter still excludes
+every one of them), staging rows with a null `posProductCode` now **4**
+(the pre-existing Ballista Pizza one plus these three), curated count
+still exactly 70 with **4** now mapped.
+
+**Final mapping count (re-run via the same read-only inventory query as
+§1i):** 70 curated total, **4 mapped**, 66 unmapped. Mapped set: Chicken
+Ballista Pizza→708 (§1e), Tiramisu→578, Iskender Grill Chicken→20,
+Dolma→165.
+
+**Rollback (not needed — all three succeeded cleanly):** for any one
+mapping, re-run `apply-plu-mapping.ts --apply` with `CURATED_MENU_ITEM_ID`
+and `STAGING_MENU_ITEM_ID` swapped and `POS_PRODUCT_CODE` unchanged would
+NOT work directly (the script assumes curated-null→staging-owns-code); the
+literal rollback is a one-line `prisma.menuItem.update` per row restoring
+the exact before-state values in the table above, guarded the same way
+(id + expected-current-value in the `where`, never a blind write).
+
+**New utility script — `apps/api/prisma/scripts/apply-plu-mapping.ts`,
+logic in `apps/api/src/pos-sync/apply-plu-mapping.ts`:** clears a staging
+row's `posProductCode` and assigns it to a curated row in one transaction
+(the missing half `set-menu-item-pos-product-code.ts` doesn't cover, since
+that script can only ever *set* a non-empty code, never clear one).
+Dry-run by default, explicit `--apply` required, fail-closed on any of six
+preconditions (same org, curated currently unmapped, staging currently
+holds the exact code, staging is genuinely the import-staging category,
+staging is `isAvailable: false`, staging title matches an
+operator-supplied expected value, and no third row already holds the
+code) — refuses with a clear message rather than guessing on any
+mismatch. Unlike the sibling scripts in `prisma/scripts/` (none of which
+have tests, since Jest's `rootDir` is `src/` and structurally cannot see
+that directory), the actual precondition/transaction logic lives in
+`src/pos-sync/apply-plu-mapping.ts` specifically so it's covered by
+`apply-plu-mapping.spec.ts` (10 cases: every precondition failure path,
+the happy path, and "never writes when preconditions fail") —
+`prisma/scripts/apply-plu-mapping.ts` is a thin CLI wrapper around it.
+Lint and `tsc --noEmit` clean.
+
 ---
 
 ## 2. Preconditions (verify ALL before step 1)
@@ -698,15 +787,18 @@ not trust this document's own dates.
    Set `Idealpos:TableAssignmentConfirmed=true` only after that step
    succeeds — never from a harness run, and never before.
 5. **Menu/PLU curation done for at least the test items — SATISFIED as of
-   §1e (2026-08-26/27) for exactly one item.** `MenuItem` id
+   §1j (2026-08-28) for four items.** `MenuItem` id
    `6579ec87-6ae7-4205-ad0a-b02229e58ebc` ("Chicken Ballista Pizza",
    category "Fresh From The Oven", `isAvailable=true`, `priceCents=2350`)
    has `posProductCode="708"`, human-verified against live IdealPOS
    `StockItems` (`CHICKEN BALLISTA PIZZA`, department "Fresh From Oven",
    `Discontinue=0`) — re-verify this is still true (a reseed or reimport
-   could theoretically clear it) before relying on it in §4 step 2. Every
-   *other* curated item still has no `posProductCode` — do not assume any
-   other menu item is ready without repeating §1e's process.
+   could theoretically clear it) before relying on it in §4 step 2. §1j
+   added three more via explicit human authorization: Tiramisu→578,
+   Iskender Grill Chicken→20, Dolma→165 — see §1j for each one's evidence.
+   Every *other* curated item (66 of 70) still has no `posProductCode` —
+   do not assume any other menu item is ready without repeating §1i's
+   12-step process.
 6. **Backups exist** for `C:\Users\Posmate\Documents\verduradb` (Postgres)
    and the Bridge's `state\bridge-state.sqlite`, taken immediately before
    this session, per the standing safety constraint.
