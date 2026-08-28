@@ -1,23 +1,45 @@
 # Deferred Work
 
-## Session handoff snapshot (2026-08-27, end of session)
+## Session handoff snapshot (2026-08-28, end of session — DL-107 second PLU batch)
 
 Quick-orientation pointer for the next session — full detail lives in
-`docs/windows-production-deployment.md`, not duplicated here.
+`docs/windows-production-deployment.md` and
+`_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md`
+§1l, not duplicated here.
 
 - **Canonical Windows repo:** `C:\Users\Posmate\Documents\verdura_MVP`,
-  `HEAD` = `bf3511512baded0cca7b98460b4c2141b649aba3`, matching Mac `HEAD`
-  and GitHub `origin/main` exactly. Tracked tree clean.
+  `HEAD` = `d5a40fbe2f32f98c4e21da2e59296aa6560acbcc`, matching Mac `HEAD`
+  and GitHub `origin/main` exactly. Tracked tree clean. CI green.
+- **PLU mapping coverage: 9/70 curated items mapped, 61 unmapped** (DL-107
+  §1j/§1l). Next three ready-to-apply candidates (deferred, not yet
+  applied, human sign-off still required per mapping):
+  Halloumi Loaf→705, Greek Eggplant & Lamb Moussaka→673, Mighty Angus Beef
+  Burger→679. Falafel Plate/667 stays excluded pending human resolution of
+  the 667 ("FALAFEL SALAD") vs 761 ("FALAFEL SALAD/ PLATE") content
+  mismatch — see runbook §1k.
+- **Live Bridge/IdealPOS-SQL credential access was blocked by the
+  tool-permission classifier this session** for both the Bridge `ApiKey`
+  (authenticated `GET /api/health`/`/api/products`) and the IdealPOS SQL
+  vault password — any attempt to read or transmit either was refused.
+  Preconditions for §1l's batch were instead satisfied from same-day
+  secondary evidence (service status, logs, §1k's own fresh live check)
+  under explicit operator direction. **The next session doing further PLU
+  work or live Bridge verification will likely need a different approved
+  access method** (e.g. the operator supplying the credential directly, or
+  a permission rule change) rather than assuming the same workaround path
+  is available.
 - **Production services (all healthy at session end):** `VerduraAPI`
-  (3000), `VerduraOrderTablet` (5176), `VerduraAdminConsole` (5177) — all
-  NSSM services running from `verdura_MVP`; `VerduraPostgreSQL` (5432,
-  native, untouched); Redis (Docker, 6379). Window Display (5174) runs via
-  the `Verdura Window Display` Scheduled Task (`AtLogOn`, exactly one
-  instance); Redis via the `Verdura Redis Startup` Scheduled Task
-  (`AtLogOn`, exactly one instance, wrapper script
-  `verduraBridge\VerduraServerOps\ensure-verdura-redis.ps1`) — see
-  `docs/windows-production-deployment.md` §4/§8. Both verified across a
-  real controlled reboot.
+  (3000), `VerduraConnector`, `VerduraIdealposBridgeSvc`,
+  `VerduraPostgreSQL` (5432) all `SERVICE_RUNNING`; Redis (Docker, 6379)
+  healthy; `VerduraOrderTablet` (5176)/`VerduraAdminConsole` (5177)/Window
+  Display (5174) unchanged from prior session's verified state.
+- **`TableAssignmentStrategy=NoHint` / `TableAssignmentConfirmed=false`
+  remain unresolved** — no live table-assignment discovery was performed
+  this session (explicitly out of scope). Still blocks §4 of the DL-107
+  runbook (the live-order certification procedure).
+- **No real KOT transport and no live end-to-end order certification
+  exist yet** — unchanged from prior sessions; nothing this session
+  changed that status either way.
 - **Retired rollback checkout (do not delete yet):**
   `C:\Users\Posmate\Documents\verduraBridge\VerduraServer.retired-<timestamp>`
   — zero active references, see the dedicated deferred item below.
