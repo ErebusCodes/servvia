@@ -446,6 +446,169 @@ to `verduraBridge\VerduraServer.retired-<timestamp>\` rather than
 deleted, preserving a full rollback path. Full current status:
 [`docs/windows-production-deployment.md` §5](../../docs/windows-production-deployment.md#5-application-checkout-consolidation-2026-08-27).
 
+## 1i. Read-only discovery session (2026-08-28): Bridge restored, PLU-mapping architecture traced, first safe batch drafted
+
+Two-phase, strictly read-only session (no PLU/StockItem/table/product write,
+no order, no KOT, no harness run against live DUNEDIN). Confirmed Mac/
+GitHub/Windows all at `91cf1ec764bea0a40b76bc6c5d94591773cf550c`, CI green.
+
+**Phase 1 — Bridge restore.** `VerduraIdealposBridgeSvc` was `Stopped`/
+`Manual`; executable path confirmed correct (not stale); started, health
+verified (`sqlConnected=true`, `assembliesLoaded=true`, `ipsExeRunning=true`,
+`orderProcessingPathAvailable=true`), `StartMode` set to `Automatic` only
+after health was proven. Live-verified via `GET /api/products` (825
+StockItems) and `GET /api/tables` (29 tables) — no `POST /api/orders` call
+made. Re-derived the menu-mapping baseline directly against Postgres (not
+via `report-missing-pos-mappings.ts` — see below): 70 curated items, 1
+mapped (Chicken Ballista Pizza → 708), 69 unmapped, all 69 candidate codes
+collision-blocked by an `import-idealpos-catalog.ts` staging row already
+holding them.
+
+**Phase 2 — Architecture trace + mapping-contract trace.**
+
+- **Adapter type.** Confirmed §1d's finding still holds and traced both
+  code paths named there to their exact lines:
+  `orders.service.ts`'s `venue.posAdapterType === POSAdapterType.api`
+  PrinterJob-suppression check, and `pos-sync-dispatcher.service.ts`'s
+  `adapterType: { not: POSAdapterType.api }` exclusion filter. **New
+  finding:** `IdealposOrderDispatcherService.sweepDispatch()` — the
+  dispatcher that actually reaches the real Bridge — has **no
+  adapterType filter at all** in its candidate query; it claims any
+  `POSSyncRecord` with `status: not_synced` regardless of adapter type,
+  and its periodic timer runs unconditionally (no enable flag, unlike
+  `PosSyncDispatcherService`). So `local_agent` vs `api` currently makes
+  **no difference to whether an order actually reaches IdealPOS** — only
+  to the two `=== 'api'`-only checks above, both still confirmed inert
+  for DUNEDIN (`Printer` rows = 0, `POS_SYNC_DISPATCH_ENABLED` unset,
+  re-verified this session). `report-missing-pos-mappings.ts`'s
+  `posAdapterType: 'api'` filter is consistent with the codebase's own
+  stated convention (`api` = "the real Idealpos Bridge integration", per
+  `orders.service.ts`'s own comments) — **not proven stale**, so left
+  unmodified. The open question from §1d — widen the two `'api'`-only
+  checks to also cover `local_agent`, or correct DUNEDIN's
+  `posAdapterType` to `api` — is still unresolved and still requires a
+  human decision; do not change `posAdapterType` or those checks without
+  that decision.
+- **Payment observation.** `payment-observation.service.ts#getForOrder`'s
+  `observation_unsupported` default is unconditional — no
+  `posAdapterType` check anywhere in that file. It is the honest default
+  for **every** venue today (no ingestion path exists for any adapter
+  type yet), not an `api`-specific gate. The `schema.prisma` comment
+  implying `posAdapterType != api` is the trigger is stale/aspirational.
+- **Mapping contract.** `MenuItem.posProductCode` is the literal
+  `StockItems.Code` value (confirmed via `IdealposBridge/Orders/
+  OrderService.cs` and `OrderValidator.cs`: payload `productCode` is
+  validated against `p.Code`, no ID/PLU indirection). Fail-closed by
+  construction: `buildIdealposOrderPayload()` throws a typed
+  `IdealposMappingError('unmapped_item', …)` before any HTTP call for a
+  null `posProductCode`; `OrderValidator.cs` independently rejects any
+  `productCode` absent from IdealPOS's own current product list. No
+  fallback name-based lookup exists anywhere (`menuItemTitle` is used
+  only in human-readable error text). **Residual risk, not mitigated by
+  any validator:** a *wrong-but-existent* code is accepted and submitted
+  successfully — nothing catches a semantically incorrect mapping. This
+  is exactly why every mapping needs human confirmation before
+  assignment, not just "does this code exist."
+- **Staging collisions.** All 825 `import-idealpos-catalog.ts` staging
+  rows carry a real `posProductCode` (`@@unique([organizationId,
+  posProductCode])`, organization-scoped, not venue-scoped) by design —
+  a verbatim mirror of live StockItems, deliberately `isAvailable: false`
+  pending human curation (see that script's own header comment). No code
+  path reads a staging row's `posProductCode` for anything at runtime,
+  and neither Admin Console nor Order Tablet reference `posProductCode`
+  at all (`grep` returned zero hits in both) — clearing it is
+  functionally inert except freeing the unique constraint. **This is
+  the same precedent §1e already established for 708**, now confirmed
+  general: staging row `3b822e87-23fd-49d5-ae11-53f2b3596904` ("CHICKEN
+  BALLISTA PIZZA") still exists, `isAvailable: false`, with
+  `posProductCode: null` — proof the clear-not-delete pattern was used
+  and is durable.
+- **Deeper candidate validation surfaced real near-duplicate risk** that
+  fuzzy name-matching alone missed, directly bearing out §1e's warning
+  that automated matching against this venue's live data is unsafe
+  without a human check. Read-only `dbo.StockItems` queries (via
+  `sqlcmd`, no write) found sibling/near-duplicate active StockItems for
+  half of the six highest fuzzy-score candidates:
+  - `ZA'ATAR LOAF` (787) has a near-duplicate `ZAATAR LOAF` (704,
+    apostrophe-only difference) — **cannot tell apart from names alone**.
+  - `FALAFEL SALAD/ PLATE` (761) has a near-duplicate `FALAFEL SALAD`
+    (667, differs only by "/ PLATE") among 12 similarly-named Falafel
+    items.
+  - `SILA LOADED ON - CHIPS` (22) is one of 8 similarly-named "Sila
+    Loaded…" chips/pasta items differentiated by protein (beef steak,
+    beyond meat) — the curated item's generic name doesn't specify
+    protein, so the correct code can't be determined from naming alone.
+  - `TIRAMISU` (578), `Dolma` (165), and `Iskender - Grill Chicken` (20)
+    had no exact-name duplicates (`Iskender` has 3 sibling codes for
+    other proteins — Lamb/Chicken/Mix — but the match to 20 itself is an
+    exact literal match, not inferred). `Condiment=1` on all six is
+    confirmed non-diagnostic in this venue's data, exactly as §1e found
+    for "Grill Salmon" — do not treat it as a red flag on its own.
+  - Department names (`Departments` table) partially corroborate two of
+    the three surviving candidates (Tiramisu→"Desserts",
+    Iskender→"MAINS", both matching their curated category) but not the
+    third (Dolma→"Sides" vs curated "Small Plates") — consistent with
+    §1e's finding that department/grid names don't reliably disambiguate
+    on their own; treated as weak corroborating signal only, never
+    sufficient alone.
+  - `buildIdealposOrderPayload()` called directly (pure function, no
+    HTTP/DB) for Tiramisu/578, Iskender Grill Chicken/20, and Dolma/165
+    against a synthetic dine-in order on table "19" — all three produced
+    a valid payload with no error, matching §1e's own validation method.
+
+**First safe batch drafted from the above (not yet applied — needs human
+sign-off):**
+
+| # | Verdura item | MenuItem ID | PLU | Staging collision owner (id) |
+|---|---|---|---|---|
+| 1 | Tiramisu | `1f3ff9cf-26bc-44db-b63c-33da1a4be9cd` | 578 | `1b077e42-52d5-46f9-bbda-ef0ad4777450` |
+| 2 | Iskender Grill Chicken | `3b887430-13e0-45de-812f-2fab067a3834` | 20 | `3bc57433-d1c3-4186-a459-3f5ed56723eb` |
+| 3 | Dolma | `4c2688a9-ca8e-474b-8a04-58c316473af0` | 165 | `4fd722e8-8a9b-4a9b-9040-082fa244b555` |
+
+`Za'atar Loaf`/787, `Falafel Plate`/761, and `Loaded On Chips`/22 —
+despite scoring highest on fuzzy name similarity in the read-only Phase 1
+discovery pass — are **not** in this batch: each has a live near-duplicate
+or protein-variant sibling that makes the correct code genuinely
+ambiguous without a physical-presence check, per the pattern above.
+
+### Generalized per-mapping procedure (supersedes doing this ad hoc; applies to this batch and every future one)
+
+1. Read live StockItem via `GET /api/products` (or direct `dbo.StockItems`
+   read-only SQL) — confirm it still exists, is not discontinued, and
+   check for near-duplicate/sibling descriptions before trusting a name
+   match (§1i's Za'atar/Falafel/Sila findings above).
+2. Confirm the curated target `MenuItem` — id, current
+   `posProductCode` (must be null), category.
+3. Confirm the staging collision owner — id, title, confirm
+   `isAvailable: false` (never touch a row that isn't the staging
+   category).
+4. **Human confirms product identity** — this is the step nothing in
+   code can substitute for; §1e and §1i both found the live data alone
+   insufficient.
+5. Capture before-state (both rows' full field values) for rollback.
+6. Clear only the staging row's `posProductCode` (`null`) — via
+   `apps/api/prisma/scripts/set-menu-item-pos-product-code.ts` (extend
+   it or use an equivalent narrow, dry-run-by-default write) or the
+   admin `PATCH /admin/menu/items/:id` endpoint when a staff session
+   exists. Title/price/category/availability untouched.
+7. Assign the same code to the curated row via
+   `set-menu-item-pos-product-code.ts --apply` (dry-run first) or the
+   same admin endpoint.
+8. Leave the staging row preserved, still `isAvailable: false` — never
+   delete it.
+9. Re-verify: no other `MenuItem` in the org holds that code
+   (`@@unique([organizationId, posProductCode])` already enforces this;
+   confirm the write didn't error), and re-run the mapping count.
+10. Re-verify the public menu (`normalizePublicMenu()` against the live
+    API) still shows only the 70 curated items — no staging-row leak.
+11. Validate with `buildIdealposOrderPayload()` directly against a
+    synthetic order (no HTTP call) — do **not** submit a live order or
+    trigger a KOT unless that step is separately, explicitly authorized.
+12. Rollback: restore both rows' `posProductCode` to their captured
+    before-state values via the same script — reverses cleanly, no
+    schema change, no cascading effect (§1i confirmed no other runtime
+    path reads a staging row's `posProductCode`).
+
 ---
 
 ## 2. Preconditions (verify ALL before step 1)
