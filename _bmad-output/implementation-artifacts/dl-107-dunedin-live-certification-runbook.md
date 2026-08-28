@@ -698,6 +698,103 @@ the happy path, and "never writes when preconditions fail") —
 `prisma/scripts/apply-plu-mapping.ts` is a thin CLI wrapper around it.
 Lint and `tsc --noEmit` clean.
 
+## 1k. Second-batch approval review (2026-08-28, read-only) — dine-in/takeaway rule proven, 9 candidates evaluated, 5 recommended
+
+Strictly read-only session: no DB write, no IdealPOS mutation, no order, no
+KOT, no harness run. Re-verified before starting: Mac/GitHub/Windows all
+matched (one unrelated concurrent docs commit landed mid-review from a
+separate session sharing this checkout — merged in cleanly, no file
+overlap with anything here), CI green, all services and Bridge health
+unchanged from §1j.
+
+**Dine-in/takeaway rule — now proven on 25 pairs, not the 1 (§1i) or 8
+(§1j) previously cited.** Department 41 is named "Verdura Takeaway"
+(`dbo.Departments`). Beyond the 9 second-batch candidate pairs themselves,
+15 independently-sampled pairs (Fries, White Rice, Flavoured Rice, Grilled
+Halloumi Cheese, Bread and Dips ×3, Hummus ×3, Arabic Tabbouleh, Hummus
+Beiruty — spanning departments 17/18/19/20/24/25/28/30/34/39 on the
+non-41 side) all show the same shape: identical description, one row in a
+normal department, one in 41. **Nuance, not an exception to the
+direction:** the mapping is sometimes many-to-one, not strictly 1:1 — e.g.
+three different non-41 "Fries" rows (departments 20/25/39, presumably one
+per dine-in menu section) all pair to the single takeaway code 811. This
+doesn't weaken the rule (41 = takeaway is still unbroken across all 25
+pairs) but means "the" dine-in code isn't always uniquely determined in
+general — only checked safe here because each of the 9 candidates below
+has exactly one non-41 twin, not several.
+
+**One real exception found, not a false positive but a content
+mismatch:** 8 of the 9 candidate pairs have a dept-41 twin with an
+**identical** description (department is the only difference). The 9th,
+Falafel Plate, does not: 667 "FALAFEL SALAD" (dept 31) vs. 761 "FALAFEL
+SALAD/ PLATE" (dept 41) — the takeaway row's description adds real content
+("/PLATE") the dine-in row's doesn't have. Since the curated item is
+titled "Falafel Plate", the takeaway-side name is arguably the closer
+textual match, inverting the usual rule. Do not resolve this from names
+alone — see the per-item table below.
+
+**Rule verdict: PROVEN for the "41 = takeaway duplicate" direction (zero
+counterexamples across 25 pairs); PARTIALLY reliable as a mapping
+shortcut specifically because of the many-to-one nuance and the Falafel
+content-mismatch case — always independently check for description
+differences beyond department before trusting "pick the non-41 code."**
+
+**Per-candidate re-verification (fresh, this session) — all 9 passed DB
+preconditions (curated unmapped, staging owns exact code, staging in the
+import-staging category and unavailable, same org, no third owner), a
+`--dry-run` (exact expected A/B change only), and a direct
+`buildIdealposOrderPayload()` call (`productCode` matched the proposed PLU
+exactly, no error):**
+
+| Item | PLU | Live description | Department | Takeaway twin | Sibling risk | Classification |
+|---|---|---|---|---|---|---|
+| Chicken Avocado Salad | 663 | CHICKEN AVOCADO SALAD | 31 Salad | 757, identical | 1 distinct sibling (Avocado Halloumi) | APPROVABLE |
+| Garlic & Cheese Pide | 701 | GARLIC CHEESE PIDE | 33 Fresh From Oven | 784, identical | 2 distinct siblings (Garlic Pide, Cheese Pide — different dishes, disambiguating names) | APPROVABLE |
+| Halloumi Loaf | 705 | HALLOUMI LOAF | 33 Fresh From Oven | 788, identical | ~15 "Halloumi"-named rows in the catalog, none sharing "LOAF" | APPROVABLE |
+| Pesto Chicken Pizza | 710 | PESTO CHICKEN PIZZA | 33 Fresh From Oven | 793, identical | none | APPROVABLE |
+| Spicy Mediterranean Pizza | 712 | SPICY MEDITERRANEAN PIZZA | 33 Fresh From Oven | 795, identical | 3 distinct siblings (Spicy Aioli ×2, Spicy Wings, Spicy Muhammara Loaf) | APPROVABLE |
+| Greek Eggplant & Lamb Moussaka | 673 | GREEK EGGPLANT LAMB MOUSSAKA | 30 Large Appetite | 767, identical | none | APPROVABLE |
+| Mighty Angus Beef Burger | 679 | MIGHTY ANGUS BEEF BURGER | 30 Large Appetite | 772, identical | 1 unrelated sibling (Beef Burger - kids) | APPROVABLE |
+| Za'atar Loaf | 704 | ZAATAR LOAF | 33 Fresh From Oven | 787 "ZA'ATAR LOAF" (apostrophe only), identical in substance | none | APPROVABLE |
+| Falafel Plate | 667 | FALAFEL SALAD | 31 Salad | 761 "FALAFEL SALAD/ PLATE", **content differs** | large Falafel family (12 rows), but 667/761 are the only exact-ish name matches | PROBABLE — HUMAN CONFIRMATION REQUIRED |
+
+**Recommended second batch (5 of the 8 APPROVABLE, capped per instruction
+— not all 8):** Pesto Chicken Pizza/710, Za'atar Loaf/704, Chicken Avocado
+Salad/663, Spicy Mediterranean Pizza/712, Garlic & Cheese Pide/701 — the
+five with an exact department-name-to-curated-category echo ("Fresh From
+Oven"/"Salad" vs. curated "Fresh From The Oven"/"Salads") and the least
+surrounding-family noise. Deferred to a later batch, not rejected:
+Halloumi Loaf/705 (busiest surrounding family, though the exact-name match
+itself is clean), Greek Eggplant & Lamb Moussaka/673 and Mighty Angus Beef
+Burger/679 (department name only approximately, not exactly, echoes the
+curated category). Excluded: Falafel Plate/667 (PROBABLE, not APPROVABLE
+— needs a human to confirm 667 vs. 761 against the real dish, not just the
+department rule) and Kebab Skewer/16 (out of scope for this batch per
+instruction).
+
+**Utility review:** no safety defect found in `apply-plu-mapping.ts`/
+`src/pos-sync/apply-plu-mapping.ts` — every precondition in §1j's list is
+still enforced, the transaction is atomic (Prisma's interactive
+`$transaction` callback rolls back entirely on any thrown error, including
+either guarded `updateMany`'s count-!==-1 check), and no partial-write
+path exists. Minor, non-blocking observation: the concurrent-modification
+guard (the count-!==-1 throw inside the transaction) has no dedicated unit
+test — the mock `updateMany` always returns `count: 1`, so that branch is
+exercised only by code inspection, not a test. Not a defect; the guard
+itself is sound and doesn't warrant a redesign. Rollback is still not a
+first-class operation on the utility itself (confirmed again this
+session, not just carried over from §1j) — `planPluMapping`'s own
+preconditions assume the "curated null, staging owns code" starting
+orientation and will refuse to run in reverse. This remains **acceptable**
+for the next batch: before-state is fully captured per item above, and a
+rollback is a simple two-row guarded `updateMany` (id + expected-current-
+value in the `where`, same pattern the utility already uses), not an
+untested or unsafe operation — just not push-button. No change made to
+the utility this session.
+
+Nothing in this section has been applied. All 9 curated items above still
+have `posProductCode: null`.
+
 ---
 
 ## 2. Preconditions (verify ALL before step 1)
