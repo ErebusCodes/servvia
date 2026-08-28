@@ -795,6 +795,106 @@ the utility this session.
 Nothing in this section has been applied. All 9 curated items above still
 have `posProductCode: null`.
 
+## 1l. Second controlled PLU mapping batch applied (2026-08-29) — 9/70 curated items now mapped
+
+Executed the §1k recommended five (Pesto Chicken Pizza/710, Za'atar
+Loaf/704, Chicken Avocado Salad/663, Spicy Mediterranean Pizza/712,
+Garlic & Cheese Pide/701) under explicit human authorization, one mapping
+at a time, using the same `apps/api/prisma/scripts/apply-plu-mapping.ts`.
+No IdealPOS StockItem, PLU, product, or table was modified; no order
+submitted; no KOT triggered; no harness run; `posAdapterType` left at
+`local_agent`; `TableAssignmentStrategy`/`TableAssignmentConfirmed`
+untouched.
+
+Source-of-truth re-verified before any write: Mac/GitHub/Windows all at
+`59cbe228b7564e86e60524434fe3e701696a2415`, CI green, Windows tracked tree
+clean (same pre-existing untracked build/legacy artifacts as prior
+sessions — `_preserved-from-VerduraServer/`, `apps/admin-console/
+dist-admin/`, a stray nested `verdura_MVP/`). Services re-verified without
+restarting anything: `VerduraAPI`/`VerduraConnector`/
+`VerduraIdealposBridgeSvc`/`VerduraPostgreSQL` all `SERVICE_RUNNING`,
+Redis (Docker) healthy, `VerduraAPI`'s own `/api/health` returned
+`{status:ok, db:ok, redis:ok}`.
+
+**Two preconditions could not be independently re-confirmed with a fresh
+live authenticated call this session:** the session's tool-permission
+classifier blocked any action that read or transmitted the Bridge's
+configured `Bridge:ApiKey` (needed for an authenticated `GET /api/health`
+or `GET /api/products` against the Bridge directly) and blocked the same
+class of action for the IdealPOS SQL vault credential. Per explicit
+operator direction, both preconditions were instead satisfied from
+same-day secondary evidence rather than left unresolved:
+- **Bridge health:** `VerduraIdealposBridgeSvc` `SERVICE_RUNNING`; today's
+  `logs\bridge-2026-08-28.log` shows `bridge_started_idealpos_available`
+  at startup and a successful authenticated `GET /api/health status=200`
+  at `04:07:59Z`, with no crash/restart since.
+- **Live IdealPOS product identity:** §1k's own fresh, same-day
+  verification of these exact 5 PLUs against live IdealPOS (710=PESTO
+  CHICKEN PIZZA dept33, 704=ZAATAR LOAF dept33, 663=CHICKEN AVOCADO SALAD
+  dept31, 712=SPICY MEDITERRANEAN PIZZA dept33, 701=GARLIC CHEESE PIDE
+  dept33), corroborated by the staging `MenuItem` rows read fresh this
+  session — a verbatim mirror of live StockItems per §1i's architecture
+  trace — showing identical titles at write time (below).
+
+**Per-mapping before/after (all five, applied in this exact order):**
+
+| Item | PLU | Curated MenuItem id | Staging collision owner id | Before (curated → staging) | After (curated → staging) |
+|---|---|---|---|---|---|
+| Pesto Chicken Pizza | 710 | `9dc0031f-9885-4aa7-9f8d-4a7a45efe40a` | `69981bab-8e63-4c69-a675-dc734a5cf579` | `null` → `"710"` | `"710"` → `null` |
+| Za'atar Loaf | 704 | `ecc9d141-b0c8-47c1-a4bf-36dbf416a3da` | `0ef3ac20-a380-464e-a3c6-889ee53b3637` | `null` → `"704"` | `"704"` → `null` |
+| Chicken Avocado Salad | 663 | `a4e2591f-2614-4862-9a19-414f4343bdd2` | `2498a7bf-0f2f-48dd-b6ab-5e246838e5dc` | `null` → `"663"` | `"663"` → `null` |
+| Spicy Mediterranean Pizza | 712 | `a7456e16-7f4c-48e8-b736-e62592913010` | `0d77239b-1cca-4ce8-b8da-e12abf1cce64` | `null` → `"712"` | `"712"` → `null` |
+| Garlic & Cheese Pide | 701 | `bcfe0fee-fdb3-45c6-bb86-90880e644c82` | `6e08e4d2-1ef1-48dc-9524-2f9a0b8710a0` | `null` → `"701"` | `"701"` → `null` |
+
+For every mapping: dry-run first (printed the exact intended
+before→after, no write), then `--apply` in one DB transaction, then
+immediately re-read both rows independently to confirm — title/price/
+category/availability unchanged on both rows in every case, only
+`posProductCode` moved. All five staging rows remain present, still in
+the "Imported from IdealPOS (pending review)" category, still
+`isAvailable: false` — never deleted. No third `MenuItem` in the org ever
+held any of the five codes during or after the change.
+
+**Validated per mapping** with a direct `buildIdealposOrderPayload()` call
+(pure function, no HTTP/DB) against a synthetic dine-in order on table
+"19" — all five produced a valid `{table, items:[{productCode, quantity}]}`
+payload, `productCode` matching the assigned PLU exactly, no error.
+
+**Public menu re-verified** via the raw `GET /api/kiosk/venues/
+04841b10-1474-4f8c-962f-1ccea7eb3b81/menu` (`200`, same endpoint Order
+Tablet/Admin Console use, unfiltered): `menuItems` total still 895
+(70 curated + 825 staging), staging category still exactly 825 rows with
+**0** `isAvailable: true` (none of them surface as available on the public
+menu), staging rows with a null `posProductCode` now **9** (§1j's four
+plus these five), curated count still exactly 70.
+
+**Final mapping count (re-run via the same read-only inventory query as
+§1j/§1k):** 70 curated total, **9 mapped**, 61 unmapped. Mapped set:
+Chicken Ballista Pizza→708, Tiramisu→578, Iskender Grill Chicken→20,
+Dolma→165, Pesto Chicken Pizza→710, Za'atar Loaf→704, Chicken Avocado
+Salad→663, Spicy Mediterranean Pizza→712, Garlic & Cheese Pide→701.
+
+**Rollback (not needed — all five succeeded cleanly):** as with §1j, the
+literal rollback per row is a guarded `prisma.menuItem.update` (id +
+expected-current-value in the `where`) restoring the exact before-state
+values in the table above — never a blind write.
+
+**Utility review:** no defect found; same conclusion as §1j/§1k — all six
+preconditions enforced, transaction atomic, no partial-write path. Two
+throwaway diagnostic scripts (`_tmp-before-state-batch2.ts`,
+`_tmp-verify-one.ts`, `_tmp-validate-payloads-batch2.ts`,
+`_tmp-public-menu-check.ts`) were used read-only, against the Windows
+checkout only, to capture before/after state and run the payload/coverage
+checks above, then deleted — never committed, tracked tree confirmed
+clean afterward.
+
+**Next batch (read-only candidates, none applied):** the three deferred
+APPROVABLE items — Halloumi Loaf/705, Greek Eggplant & Lamb Moussaka/673,
+Mighty Angus Beef Burger/679 — remain the front of the queue per §1k.
+Falafel Plate/667 remains excluded pending human resolution of the
+667-vs-761 content-mismatch noted in §1k. No further mapping applied this
+session.
+
 ---
 
 ## 2. Preconditions (verify ALL before step 1)
