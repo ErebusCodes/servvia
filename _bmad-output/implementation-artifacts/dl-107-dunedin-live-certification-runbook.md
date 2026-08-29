@@ -895,6 +895,127 @@ Falafel Plate/667 remains excluded pending human resolution of the
 667-vs-761 content-mismatch noted in §1k. No further mapping applied this
 session.
 
+## 1m. Menu Management architecture (2026-08-28/29) — supersedes the manual PLU-mapping workflow above; Phase E1 production-migration preflight complete, read-only
+
+The manual, one-mapping-at-a-time workflow in §1e–§1l (`apply-plu-mapping.ts`,
+staging-`MenuItem` collision transfer) was always intended as a stopgap —
+§1i's own "New utility script" note flagged that every future mapping
+would repeat the same clear-staging-then-set-curated dance. A separate,
+larger initiative (tracked in Git history, not narrated line-by-line
+here — see commits `c2617d9` "Phase B backend/domain + Phase C Admin
+Console UI" and `c7c28f2` "Phase D — migrate all customer-facing
+channels") replaced that architecture entirely:
+
+- **`PosProductIdentity`** — a new model that is never a `MenuItem` row,
+  eliminating the staging-collision problem structurally (a candidate can
+  hold a native code indefinitely without competing with
+  `MenuItem.posProductCode`'s uniqueness constraint).
+- **`MenuChannel`/`visibleChannels`** on `Category`/`MenuItem` — explicit,
+  deny-by-default channel visibility, replacing the implicit
+  "staging category name string match" convention.
+- **`resolveChannelMenu()`** — the single shared backend resolver every
+  channel (`order_tablet`/`customer_website`/`window_display`) now calls,
+  closing the confirmed pre-existing leak where window-display's `/order`
+  route rendered all ~825 unreviewed staging rows, dimmed but visible.
+- **`resolve-native-product-code.ts`** — the dual-read precedence for the
+  migration window: an active linked `PosProductIdentity` wins; any other
+  linked lifecycle status fails closed (never falls back); the legacy
+  `MenuItem.posProductCode` (this section's own 9 mappings) is used only
+  when nothing is linked yet.
+
+All of this landed on `main`/`origin/main` as **additive-only, code +
+local/test-DB-migration only** — production was never touched by Phases
+B/C/D. Windows remains, deliberately, at `733c40b` (2 commits behind
+`origin/main`) until the migration below is explicitly approved and run.
+
+### Phase E1 preflight findings (2026-08-29, strictly read-only against production)
+
+Re-verified fresh, not assumed:
+
+- **Schema state**: none of the new schema objects exist in production yet
+  (`MenuChannel`/`PosSourceLifecycleStatus`/`PosCandidateConfidenceTier`/
+  `PosSourceSystem` enums absent; `MenuItem.visibleChannels`/`isFeatured`
+  absent; `Category.visibleChannels` absent; `PosProductIdentity` table
+  absent) — exactly the expected pre-migration state, no discrepancy.
+- **Data counts**: 1 organization, 1 venue, 11 categories (10 curated + 1
+  staging), 895 `MenuItem` rows (70 curated + 825 staging), 9/70 curated
+  items mapped via the legacy column, 0 `OrderItem` rows reference any
+  staging `MenuItem` (the critical FK-safety precondition for a future,
+  separately-authorized staging cleanup), 0 items use the legacy
+  `nutritionalDetails.isFeatured` JSON convention (nothing to migrate for
+  Featured).
+- **All 9 trusted mappings re-verified by exact ID** (not fuzzy title
+  match — several staging titles differ in wording from their curated
+  counterpart, e.g. staging `"Iskender - Grill Chicken"` vs curated
+  `"Iskender Grill Chicken"`, staging `"GARLIC CHEESE PIDE"` vs curated
+  `"Garlic & Cheese Pide"`): every staging collision-owner row confirmed
+  still present, in the staging category, `isAvailable: false`,
+  `posProductCode: null`, exactly as left by §1j/§1l. Zero drift.
+- **Migration SQL classified statement-by-statement**: 4 `CREATE TYPE`, 2
+  `ALTER TABLE ... ADD COLUMN` (constant defaults, both tables tiny —
+  11/895 rows — so no meaningful lock risk even at production scale), 1
+  `CREATE TABLE`, 3 `CREATE INDEX` (on a brand-new empty table, so no
+  concurrent-index concern), 2 `ADD CONSTRAINT` (FK, on the same empty
+  table). **Zero destructive or data-changing statements.**
+  Old-app/new-schema compatibility confirmed by source inspection: the
+  currently-deployed `733c40b` `KioskController` (and every other
+  production query path) uses only typed Prisma Client calls, never
+  `SELECT *`/raw introspection — Prisma Client always issues an explicit,
+  generation-time column list, so the old, un-regenerated client cannot
+  see or be affected by new columns/tables appearing in Postgres. This is
+  the standard basis on which additive Prisma migrations are considered
+  safe to apply ahead of an application deploy, not a repo-specific
+  workaround.
+- **IdealPOS catalog sync preflight** (read-only against the live SQL
+  Server, respecting the confirmed exclusion scope — Sila legacy/pre-
+  rebrand departments, TA-* other-takeaway departments, DoorDash/Uber Eats,
+  drinks, plus the standard modifier/operational departments): 826 total
+  `StockItems`, 485 excluded by department scope, **341 candidates** would
+  enter `PosProductIdentity` as `pending_review` — none auto-published,
+  none auto-linked beyond the 9 already-trusted mappings. Tier breakdown:
+  159 `high_confidence_active` (on a visible grid button), 104 `ambiguous`
+  (no visible grid placement — not treated as exclusion evidence, per the
+  Chicken-Avocado-Salad/Iskender precedent), 58 `takeaway_duplicate`
+  (department 41 with an identical-description twin), 20 `ambiguous`
+  (department 41, no matching twin — the Falafel-667/761 shape).
+- **Price drift** (live IdealPOS price vs current Verdura price, all 9
+  trusted mappings): **6 of 9 drift**. Largest: Dolma — Verdura $10.00 vs
+  IdealPOS $5.00 (100% over). Others: Chicken Ballista Pizza, Pesto
+  Chicken Pizza, Spicy Mediterranean Pizza all $0.50 over; Tiramisu and
+  Iskender Grill Chicken both $1.00 over. Za'atar Loaf, Chicken Avocado
+  Salad, and Garlic & Cheese Pide match exactly. Per the approved policy
+  (IdealPOS transaction price authoritative, Verdura shows a drift
+  warning), **no price was changed** — this is launch-risk evidence for
+  the operator to review, not a migration action.
+- **Backup**: an existing automated daily job
+  (`verduraBridge\VerduraServerOps\pg-backup.ps1`, via `pg_dump -F c`)
+  already produces dated dumps into
+  `verduraBridge\verduradb-backups\`, 14-day retention, freshest at
+  preflight time ~9 hours old (`verdura_production_20260829-030002.dump`).
+  A proven restore-verification script already exists in the same
+  directory (`test-restore4.ps1` — restores into a scratch
+  `verdura_restore_test` database, diffs row counts against
+  `count-check.sql`, drops the scratch DB) but was **not executed** this
+  session (creating/dropping even a scratch database is a write action,
+  out of scope for a read-only preflight) — Phase E2 should re-run it
+  immediately before migrating, plus take one fresh on-demand dump rather
+  than relying solely on the nightly one.
+- **Dry-run proof, against local/test Postgres** (never production; no
+  PGDATA copied — production's own read-only counts above were used to
+  shape the scope, local dev's own real 70-curated-item structure was
+  used as the production-shaped execution target): all three new
+  migration scripts (`backfill-channel-visibility.ts`,
+  `migrate-featured-state.ts`, `link-known-mappings.ts`) dry-run and
+  applied cleanly, proven idempotent (a second run finds nothing left to
+  change), and proven to never touch a synthetic staging fixture planted
+  specifically to test the exclusion boundary. `resolveNativeProductCode`
+  confirmed to resolve the exact expected native code for all 9 newly
+  self-linked items post-migration.
+
+**No production write occurred during Phase E1.** Full findings, exact
+commands, and the executable Phase E2 sequence are in the new section
+below.
+
 ---
 
 ## 2. Preconditions (verify ALL before step 1)
@@ -1334,3 +1455,147 @@ further live steps until the cause is understood.
   direct DB mutation.
 - Restore Postgres/`bridge-state.sqlite` from the §2.6 backups only if a
   genuine corruption/incident occurs — not as a routine step.
+
+---
+
+## 5. PHASE E2 — MENU MANAGEMENT PRODUCTION MIGRATION (NOT YET AUTHORIZED — DO NOT RUN)
+
+Prepared by the Phase E1 preflight (§1m). This section is a **runbook**,
+not an authorization — every WRITE/DESTRUCTIVE step below requires
+explicit, separate operator approval at the point marked, in the session
+that actually executes it. Re-verify §1m's evidence is still current
+before running any of this — do not trust dates.
+
+Legend: **[READ-ONLY]** no state change. **[WRITE, ADDITIVE]** changes
+state but adds/updates only, nothing deleted, fully reversible.
+**[DESTRUCTIVE]** — none in this section; see §5.11.
+
+### 5.1 Precheck **[READ-ONLY]**
+
+1. Mac: `git fetch origin main && git rev-parse HEAD origin/main` — must match. If concurrent work landed, inspect and preserve it; use the real current `main`, never reset it.
+2. Windows: `cd C:\Users\Posmate\Documents\verdura_MVP && git fetch origin main && git rev-parse HEAD origin/main && git status --short` — confirm exactly how far behind and that the tracked tree is clean (the 3 known untracked artifacts are expected and harmless).
+3. Health baseline: repeat §1m's health checks (API `/api/health`, all 4 core NSSM services, Redis, ports 5174/5176/5177) — must all be healthy before proceeding. Do not restart anything that is already healthy.
+4. CI green on the exact commit about to be deployed.
+
+**STOP if:** Mac HEAD ≠ origin/main, Windows tracked tree is dirty, any service is unhealthy, or CI is not green.
+
+### 5.2 Fresh backup **[READ-ONLY invocation, WRITE result — a new file only, nothing existing is modified]**
+
+```
+powershell -File "C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\pg-backup.ps1"
+```
+Expected output: a new `verdura_production_<timestamp>.dump` in `verduraBridge\verduradb-backups\`. Then verify restorability using the existing proven pattern (`test-restore4.ps1`'s approach — restore into a scratch `verdura_restore_test` DB, diff counts via `count-check.sql` against production, drop the scratch DB). Record the exact dump filename used as this migration's rollback point.
+
+**STOP if:** the dump command fails, the dump file is implausibly small (< 100KB given current data volume), or the restore-verification counts don't match production.
+
+### 5.3 Additive schema migration **[WRITE, ADDITIVE]**
+
+On Windows, from `C:\Users\Posmate\Documents\verdura_MVP\apps\api`:
+```
+npx prisma migrate deploy
+```
+This applies exactly the migration classified in §1m (4 `CREATE TYPE`, 2 additive `ALTER TABLE ADD COLUMN`, 1 `CREATE TABLE`, 3 `CREATE INDEX`, 2 `ADD CONSTRAINT`). The currently-running `733c40b` API process may keep running through this step — it never queries the new columns/tables (see §1m's old-app-compatibility finding) — but do not rely on that as a reason to skip health-checking afterward.
+
+Verify: re-run §1m's schema-state check script — all objects should now report present. Confirm the still-running old API's `/api/health` is unaffected.
+
+**STOP if:** the migration errors, or the old API starts erroring/degrading after the migration lands.
+
+### 5.4 Guarded curated-channel backfill **[WRITE, ADDITIVE]**
+
+```
+ORG_ID=<production-org-id> npx ts-node prisma/scripts/backfill-channel-visibility.ts --dry-run
+```
+Expected: exactly 10 categories and 70 items in scope, staging (825 items, 1 category) confirmed excluded from the target set in the output. Compare this dry-run's exact numbers against §1m's recorded counts before proceeding — if they differ, STOP and reconcile (data may have changed since preflight).
+
+If the dry-run matches expectations:
+```
+ORG_ID=<production-org-id> npx ts-node prisma/scripts/backfill-channel-visibility.ts --apply
+```
+Then re-run the same script with `--dry-run` again — it must report 0 categories/0 items needing update (idempotency proof), and a direct query must show the staging category/items still at `visibleChannels: []`.
+
+**STOP if:** the dry-run's before-counts don't match §1m, the script's own internal safety check trips (`SAFETY VIOLATION: staging category/item present in target set`), or the post-apply staging check shows anything other than `[]`.
+
+### 5.5 Featured-state migration **[WRITE, ADDITIVE]**
+
+```
+ORG_ID=<production-org-id> npx ts-node prisma/scripts/migrate-featured-state.ts --dry-run
+```
+§1m found 0 legacy-featured items in production — expect "Found 0 item(s)". If a genuinely different (larger) number appears, STOP and investigate before applying; do not assume the preflight number is still accurate without re-checking. Otherwise this step is a no-op and may be skipped or run for completeness (`--apply` is harmless either way when 0 candidates exist).
+
+### 5.6 PosProductIdentity sync **[WRITE, ADDITIVE]**
+
+Run the read-only SQL export (§1m's documented query, in `sync-pos-catalog.ts`'s own doc comment) against the live IdealPOS DB, save the output, then:
+```
+ORG_ID=<production-org-id> STOCKITEMS_EXPORT_PATH=<path> npx ts-node prisma/scripts/sync-pos-catalog.ts --dry-run
+```
+Expect ~341 candidates (re-verify against a fresh export — §1m's count is a point-in-time snapshot), all landing as `pending_review`. Confirm the dry-run summary shows 0 unexpected creates beyond the candidate count, then:
+```
+ORG_ID=<production-org-id> STOCKITEMS_EXPORT_PATH=<path> npx ts-node prisma/scripts/sync-pos-catalog.ts --apply
+```
+Verify: `PosProductIdentity` row count matches the dry-run; every row's `lifecycleStatus = 'pending_review'` and `menuItemId IS NULL` (nothing published/linked yet, per this script's own design). **No IdealPOS write occurs at any point in this step** — the SQL export itself is a separate, already-authorized read-only step, not part of this script's own execution.
+
+**STOP if:** the candidate count is wildly different from ~341 (investigate before trusting either number), or any newly-created row has a non-`pending_review` status or a non-null `menuItemId`.
+
+### 5.7 Link the 9 trusted mappings **[WRITE, ADDITIVE]**
+
+```
+ORG_ID=<production-org-id> npx ts-node prisma/scripts/link-known-mappings.ts --dry-run
+```
+Expect exactly 9 "would link" lines, one per §1m's trusted list, each candidate either freshly created by §5.6's sync or found already-existing with a matching `nativeCode`. If any line reads `SAFETY VIOLATION` or `SKIP ... already linked to a different MenuItem`, STOP — do not proceed with `--apply` until reconciled.
+```
+ORG_ID=<production-org-id> npx ts-node prisma/scripts/link-known-mappings.ts --apply
+```
+Verify: all 9 curated `MenuItem` rows now have a linked `PosProductIdentity` with `lifecycleStatus: 'active'`; re-run with `--dry-run` — must report all 9 as `SKIP ... already linked` (idempotency proof); confirm `resolveNativeProductCode` (or a direct call, as done in §1m's dry-run proof) returns the exact same 9 native codes as the legacy column did.
+
+### 5.8 Data assertions **[READ-ONLY]**
+
+Re-run §1m's data-count script. Expected deltas from the §1m baseline: `PosProductIdentity` count ≈ 341 + 9 = 350 (9 active, ~341 pending_review); curated categories/items now carry `visibleChannels` = all three; staging category/items still `visibleChannels: []`, still `isAvailable: false`, still present (825 rows, 0 deleted); `OrderItem` count referencing staging still 0 (nothing should have changed this). Any other delta is unexpected — STOP and investigate.
+
+### 5.9 Fast-forward Windows, build, deploy **[WRITE — application code, no data]**
+
+Only after §5.3–§5.8 are all verified:
+```
+cd C:\Users\Posmate\Documents\verdura_MVP
+git fetch origin main
+git merge --ff-only origin/main
+npm run build --workspace=apps/api
+```
+Restart **only** `VerduraAPI` (the service whose code actually changed) — leave `VerduraConnector`/`VerduraIdealposBridgeSvc`/`VerduraPostgreSQL` untouched, they don't need it. Rebuild and redeploy Admin Console/Order Tablet/Customer Website/Window Display per the existing documented build scripts (`build-admin.ps1`/`build-tablet.ps1`, and whichever equivalent exists for customer-website/window-display — confirm before assuming one does).
+
+**STOP if:** any build fails, or `VerduraAPI` fails to restart cleanly.
+
+### 5.10 Post-deploy verification **[READ-ONLY]**
+
+1. `GET /api/health` — healthy.
+2. `GET /api/menu/venues/:venueId/channel/order_tablet` — exactly 70 items, matching §5.4's backfill (not empty — the exact failure mode this whole sequencing avoids).
+3. Same for `channel/customer_website` and `channel/window_display`.
+4. Confirm zero staging titles appear in any of the three responses.
+5. Browser check: Order Tablet, Admin Console, Customer Website, Window Display (including `/order`) all load and show the correct 70-item menu.
+6. Confirm the Admin Console POS Catalog Review page loads and shows the ~341 pending_review candidates plus the 9 already-linked/active items.
+7. Synthetic-only order-handoff check (`buildIdealposOrderPayload`/`resolveNativeProductCode` called directly, no HTTP, no live order) for at least the 9 trusted mappings — confirm codes match §1m exactly.
+
+**Do not submit a real order or trigger a KOT as part of this verification** — that remains gated behind §4's separate, already-documented authorization requirement, unrelated to this migration.
+
+### 5.11 Stability observation, then stop
+
+Observe for a full service cycle (at minimum a few hours spanning normal traffic) before considering this migration complete. Do not proceed to any destructive cleanup (§5.12) in the same session as the migration itself, regardless of how clean things look.
+
+### 5.12 Destructive cleanup — NOT AUTHORIZED, FUTURE GATE ONLY
+
+The following require their own, separate, explicit authorization, only after the migration above has been stable in production for a meaningful period:
+
+- Deleting the 825 staging `MenuItem` rows.
+- Deleting the staging `Category` row.
+- Dropping `MenuItem.posProductCode`.
+- Removing the now-superseded legacy scripts (`apply-plu-mapping.ts`, `set-menu-item-pos-product-code.ts`, `import-idealpos-catalog.ts`, `report-missing-pos-mappings.ts`) — keep in history with a "superseded" note, per this repo's existing convention (see `AUDIT_REPORT.md`'s precedent), not silently deleted even once authorized.
+
+None of this is authorized by this section. Do not perform it as part of Phase E2.
+
+### Rollback reference (see §5's own step numbers for exact reverse actions)
+
+- **After §5.2 (backup) only**: nothing to roll back, no write occurred.
+- **After §5.3 (additive schema)**: `DROP TABLE "PosProductIdentity"`, `ALTER TABLE "MenuItem" DROP COLUMN "isFeatured", DROP COLUMN "visibleChannels"`, `ALTER TABLE "Category" DROP COLUMN "visibleChannels"`, `DROP TYPE` the 4 new enums — or simply restore the §5.2 backup, which is simpler and equally safe given no real data has been layered in yet.
+- **After §5.4/§5.5 (backfill)**: re-run either script's logic in reverse (`visibleChannels: []`, `isFeatured: false` for the affected rows) or restore the §5.2 backup.
+- **After §5.6/§5.7 (PosProductIdentity sync/link)**: `DELETE FROM "PosProductIdentity"` (empty table otherwise, safe) or restore the §5.2 backup.
+- **After §5.9 (app deployment)**: `git checkout 733c40b` (or whatever the pre-migration Windows HEAD was) on Windows, rebuild, restart `VerduraAPI` — the additive schema remains compatible with the old code either way (§1m), so this alone un-does the deployment without needing a data rollback too.
+- At every stage, the freshest §5.2 backup remains the unconditional fallback: restore it, and every one of the additive changes above is undone in one step.
