@@ -229,6 +229,82 @@ describe('IdealposOrderDispatcherService', () => {
       );
     });
 
+    it('an active linked PosProductIdentity wins over a stale legacy posProductCode (Menu Management dual-read precedence)', async () => {
+      mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
+      mockPrisma.order.findUnique.mockResolvedValueOnce(mappedOrder());
+      mockPrisma.menuItem.findMany.mockResolvedValueOnce([
+        {
+          id: 'item-1',
+          posProductCode: '999-STALE',
+          posIdentity: { nativeCode: '710', lifecycleStatus: 'active' },
+        },
+      ]);
+
+      const result = await service.sweepDispatch();
+
+      expect(result.dispatched).toBe(1);
+      expect(mockConnectorCommandService.createCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            items: [expect.objectContaining({ productCode: '710' })],
+          }),
+        }),
+      );
+    });
+
+    it('falls back to the legacy posProductCode only when no PosProductIdentity is linked at all', async () => {
+      mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
+      mockPrisma.order.findUnique.mockResolvedValueOnce(mappedOrder());
+      mockPrisma.menuItem.findMany.mockResolvedValueOnce([
+        { id: 'item-1', posProductCode: 'PLU-4821', posIdentity: null },
+      ]);
+
+      const result = await service.sweepDispatch();
+
+      expect(result.dispatched).toBe(1);
+      expect(mockConnectorCommandService.createCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            items: [expect.objectContaining({ productCode: 'PLU-4821' })],
+          }),
+        }),
+      );
+    });
+
+    it.each([
+      ['source_missing'],
+      ['source_inactive'],
+      ['hidden'],
+      ['unavailable'],
+      ['pending_review'],
+    ])(
+      'fails closed when the linked PosProductIdentity is %s — never falls back to a legacy posProductCode even if one is set',
+      async (lifecycleStatus) => {
+        mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
+        mockPrisma.order.findUnique.mockResolvedValueOnce(mappedOrder());
+        mockPrisma.menuItem.findMany.mockResolvedValueOnce([
+          {
+            id: 'item-1',
+            posProductCode: 'PLU-4821', // deliberately present, must still be ignored
+            posIdentity: { nativeCode: '710', lifecycleStatus },
+          },
+        ]);
+
+        const result = await service.sweepDispatch();
+
+        expect(result.ineligible).toBe(1);
+        expect(mockConnectorCommandService.createCommand).not.toHaveBeenCalled();
+        expect(mockPrisma.pOSSyncRecord.updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              status: POSSyncStatus.failed,
+              errorMessage: expect.stringContaining(lifecycleStatus),
+            }),
+          }),
+        );
+      },
+    );
+
     it('marks an orphaned record (order no longer exists) failed rather than looping forever', async () => {
       mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
       mockPrisma.order.findUnique.mockResolvedValueOnce(null);

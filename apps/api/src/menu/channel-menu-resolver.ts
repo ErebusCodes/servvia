@@ -29,6 +29,46 @@ export interface ResolveChannelMenuInput {
   channel: MenuChannel;
 }
 
+// Every customer/staff-facing channel response is projected through these
+// explicit selects — never a bare `findMany()` returning every scalar
+// column. This is what keeps internal bookkeeping (organizationId,
+// createdById, timestamps) and, more importantly, the deprecated
+// `posProductCode` legacy PLU column out of every channel response: no
+// consumer of this resolver (Order Tablet included — the API order path
+// resolves the native POS code server-side, see
+// resolve-native-product-code.ts) needs a raw IdealPOS code on the wire.
+// `PosProductIdentity` fields (confidenceTier/evidence/lifecycleStatus)
+// can never leak this way regardless, since this resolver never includes
+// that relation at all — that richer identity stays exclusive to the
+// admin-only endpoints in menu-items.service.ts/pos-catalog.service.ts.
+const CATEGORY_SELECT = {
+  id: true,
+  name: true,
+  description: true,
+  imageUrl: true,
+  sortOrder: true,
+  isActive: true,
+  visibleChannels: true,
+} as const;
+
+const MENU_ITEM_SELECT = {
+  id: true,
+  categoryId: true,
+  subCategory: true,
+  title: true,
+  description: true,
+  imageUrl: true,
+  imageThumbnailUrl: true,
+  priceCents: true,
+  nutritionalDetails: true,
+  modifierGroups: true,
+  isSpicy: true,
+  isAvailable: true,
+  isFeatured: true,
+  sortOrder: true,
+  visibleChannels: true,
+} as const;
+
 /**
  * The single shared domain resolver every channel-facing menu endpoint
  * must call. Because a `PosProductIdentity` candidate (Menu Management
@@ -51,6 +91,7 @@ export async function resolveChannelMenu(
     prisma.category.findMany({
       where: { organizationId, isActive: true, visibleChannels: { has: channel } },
       orderBy: { sortOrder: 'asc' },
+      select: CATEGORY_SELECT,
     }),
     // Availability is deliberately NOT filtered at this query level: a
     // MenuItemVenueOverride can re-enable an item this venue wants
@@ -67,13 +108,24 @@ export async function resolveChannelMenu(
         visibleChannels: { has: channel },
       },
       orderBy: { sortOrder: 'asc' },
+      select: MENU_ITEM_SELECT,
     }),
     prisma.menuItemVenueOverride.findMany({ where: { venueId } }),
   ]);
 
   const overrideMap = new Map(overrides.map((o) => [o.menuItemId, o]));
+  // An item's own visibleChannels is necessary but not sufficient — its
+  // CATEGORY must independently be visible on this channel too. Without
+  // this intersection, a category a staff member hides from a channel
+  // could still leak every item inside it, as long as each item's own
+  // visibleChannels happened to include that channel (e.g. an item
+  // published on all three channels sitting inside a category an admin
+  // just hid from window_display only). Category visibility and item
+  // visibility are two independent gates; both must pass.
+  const visibleCategoryIds = new Set(categories.map((c) => c.id));
 
   const mergedItems = menuItems
+    .filter((item) => visibleCategoryIds.has(item.categoryId))
     .map((item) => {
       const itemOverride = overrideMap.get(item.id);
       return {

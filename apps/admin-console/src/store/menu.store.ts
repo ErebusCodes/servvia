@@ -291,13 +291,18 @@ interface MenuStoreState {
   loaded: boolean;
   error: string | null;
   fetchMenu: () => Promise<void>;
-  /** For ordering surfaces (Order Tablet): fetches the venue-resolved menu —
-   *  the same GET /api/kiosk/venues/:venueId/menu endpoint window-display
-   *  and customer-website use, which merges MenuItemVenueOverride pricing/
-   *  availability server-side. fetchMenu() above reads the unresolved
-   *  org-wide admin/menu/* endpoints instead — correct for Menu Management,
-   *  which edits the base MenuItem/Category rows, not a venue's effective
-   *  view of them.
+  /** For ordering surfaces (Order Tablet): fetches the venue-resolved menu
+   *  via the canonical Menu Management channel resolver — GET /api/menu/
+   *  venues/:venueId/channel/order_tablet (Phase D; superseded the raw,
+   *  intentionally-unfiltered GET /api/kiosk/venues/:venueId/menu, which
+   *  every channel used to share). The order_tablet channel policy still
+   *  returns unavailable items (dimmed 86'd UX, unchanged) but now can
+   *  structurally never return a pending_review POS candidate or a
+   *  channel-hidden item — that filtering is enforced server-side by
+   *  channel-menu-resolver.ts, not by anything in this file. fetchMenu()
+   *  below reads the unresolved org-wide admin/menu/* endpoints instead —
+   *  correct for Menu Management, which edits the base MenuItem/Category
+   *  rows, not a venue's effective view of them.
    *
    *  Deliberately kept in SEPARATE state (resolvedCategories/resolvedItems
    *  below), not the categories/items fields above: the two endpoints are
@@ -368,7 +373,9 @@ export const useMenuStore = create<MenuStoreState>((set, get) => ({
   fetchResolvedMenu: async (venueId) => {
     set({ resolvedLoading: true, resolvedError: null });
     try {
-      const { data } = await api.get<ResolvedMenuResponse>(`/api/kiosk/venues/${venueId}/menu`);
+      const { data } = await api.get<ResolvedMenuResponse>(
+        `/api/menu/venues/${venueId}/channel/order_tablet`,
+      );
       set({
         resolvedCategories: data.categories.map(toStoreCategory).sort((a, b) => a.sortOrder - b.sortOrder),
         resolvedItems: data.menuItems.map(toStoreItem),

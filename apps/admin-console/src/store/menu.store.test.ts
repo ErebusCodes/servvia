@@ -82,6 +82,16 @@ describe('useMenuStore (backend-backed, Phase 2)', () => {
     setItemSpy.mockRestore();
   });
 
+  it('fetchResolvedMenu calls the canonical order_tablet channel endpoint, not the old raw kiosk endpoint', async () => {
+    apiMock.get.mockResolvedValue({ data: { categories: [backendCategory], menuItems: [backendItem] } });
+
+    await useMenuStore.getState().fetchResolvedMenu('venue-1');
+
+    expect(apiMock.get).toHaveBeenCalledWith('/api/menu/venues/venue-1/channel/order_tablet');
+    expect(apiMock.get).not.toHaveBeenCalledWith(expect.stringContaining('/api/kiosk/'));
+    expect(useMenuStore.getState().resolvedLoaded).toBe(true);
+  });
+
   it('fetchMenu surfaces a real error instead of falling back to stale/fake data', async () => {
     apiMock.get.mockRejectedValue(new Error('network down'));
 
@@ -216,7 +226,7 @@ describe('useMenuStore (backend-backed, Phase 2)', () => {
       apiMock.get.mockImplementation((url: string) => {
         if (url === '/api/admin/menu/categories') return adminCats.promise;
         if (url === '/api/admin/menu/items') return adminItems.promise;
-        if (url.startsWith('/api/kiosk/venues/')) return resolvedResp.promise;
+        if (url.startsWith('/api/menu/venues/')) return resolvedResp.promise;
         throw new Error(`unexpected GET ${url}`);
       });
 
@@ -257,7 +267,7 @@ describe('useMenuStore (backend-backed, Phase 2)', () => {
       apiMock.get.mockImplementation((url: string) => {
         if (url === '/api/admin/menu/categories') return adminCats.promise;
         if (url === '/api/admin/menu/items') return adminItems.promise;
-        if (url.startsWith('/api/kiosk/venues/')) return resolvedResp.promise;
+        if (url.startsWith('/api/menu/venues/')) return resolvedResp.promise;
         throw new Error(`unexpected GET ${url}`);
       });
 

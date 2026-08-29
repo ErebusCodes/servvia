@@ -18,21 +18,20 @@ const API_BASE = import.meta.env?.VITE_API_URL || '';
 const VENUE_ID = import.meta.env?.VITE_VENUE_ID || '';
 
 /**
- * Normalizes a raw `GET /api/kiosk/venues/:venueId/menu` response into the
- * shape this app's menu/reservation UI renders — and, critically, is where
- * this shared, public-facing customer surface diverges from the endpoint's
- * other consumer.
+ * Normalizes a `GET /api/menu/venues/:venueId/channel/customer_website`
+ * response into the shape this app's menu/reservation UI renders.
  *
- * GET /api/kiosk/venues/:venueId/menu is also read by Order Tablet/Admin
- * Console (apps/admin-console/src/store/menu.store.ts), which intentionally
- * needs *every* item — including isAvailable:false ones — to render staff's
- * "86'd" grayed-out cards, so the API itself returns the unfiltered set.
- * This module's two callers (Menu.jsx and the reservation flow's
- * Step3Menu) are the only genuinely public-facing consumers, so the
- * available-only filter belongs here rather than in the shared endpoint.
- * Without it, any not-yet-curated import (e.g. a raw IdealPOS product sync,
- * seeded isAvailable:false pending review) would otherwise render straight
- * to customers.
+ * Phase D (Menu Management architecture): the backend channel resolver
+ * (apps/api/src/menu/channel-menu-resolver.ts) is now the authoritative
+ * safety boundary — it already excludes channel-hidden items/categories
+ * and (for this channel) unavailable items server-side, and a
+ * `PosProductIdentity` candidate can never appear here at all since it is
+ * never a `MenuItem` row. This function's own `isAvailable !== false`
+ * filter is kept only as defense-in-depth (see the 2026-08-26
+ * window-display incident this guarded against when the *old*, always-
+ * unfiltered `GET /api/kiosk/venues/:venueId/menu` endpoint was the only
+ * consumer) — it must be a no-op against a correct backend response, and
+ * the regression suite proves exactly that (menuClient.test.mjs).
  *
  * Exported separately (pure, no fetch/import.meta.env) so it can be
  * exercised directly by Node-based tooling/tests.
@@ -52,7 +51,11 @@ export function normalizePublicMenu({ categories, menuItems }) {
     is_spicy: item.isSpicy ?? false,
     image_url: item.imageUrl || null,
     tags: item.nutritionalDetails?.tags || [],
-    is_featured: item.nutritionalDetails?.isFeatured || false,
+    // Reads the real MenuItem.isFeatured column (Menu Management
+    // architecture) — the old nutritionalDetails.isFeatured JSON
+    // convention is no longer written anywhere; Phase E migrates any
+    // remaining historical data into this column.
+    is_featured: item.isFeatured || false,
     raw: item,
   }));
 
@@ -82,12 +85,25 @@ export function normalizePublicMenu({ categories, menuItems }) {
 }
 
 /**
- * Fetches the live menu from the backend (same endpoint the kiosk ordering
- * flow uses: GET /api/kiosk/venues/:venueId/menu — public, venue-scoped,
- * includes any venue price/availability overrides). Throws on failure
+ * Fetches the live menu from the canonical Menu Management channel
+ * resolver (GET /api/menu/venues/:venueId/channel/customer_website —
+ * public, venue-scoped, includes any venue price/availability overrides).
+ * Supersedes the old, always-unfiltered GET /api/kiosk/venues/:venueId/menu
+ * (Phase D) — that endpoint remains for now only for callers that
+ * genuinely need the raw, unfiltered set (Order Tablet/Admin Console have
+ * since migrated to their own `order_tablet` channel). Throws on failure
  * rather than silently returning stale or fabricated data — callers decide
  * how to present a loading/error/empty state.
  */
+/**
+ * Pure URL builder, exported separately so the customer_website channel
+ * migration (Phase D) has direct test coverage without needing to mock
+ * `import.meta.env`/`fetch` in this file's plain `node --test` runner.
+ */
+export function buildChannelMenuUrl(apiBase, venueId, channel) {
+  return `${apiBase}/api/menu/venues/${venueId}/channel/${channel}`;
+}
+
 export async function getAuthoritativeMenu() {
   if (!VENUE_ID) {
     throw new Error(
@@ -95,7 +111,7 @@ export async function getAuthoritativeMenu() {
     );
   }
 
-  const response = await fetch(`${API_BASE}/api/kiosk/venues/${VENUE_ID}/menu`);
+  const response = await fetch(buildChannelMenuUrl(API_BASE, VENUE_ID, 'customer_website'));
   if (!response.ok) {
     throw new Error(`Menu API request failed with status ${response.status}`);
   }

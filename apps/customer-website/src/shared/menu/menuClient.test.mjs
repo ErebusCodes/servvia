@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizePublicMenu } from './menuClient.js';
+import { normalizePublicMenu, buildChannelMenuUrl } from './menuClient.js';
 
 // Regression coverage for the 2026-08-26 Window Display incident: fixing the
 // venue-id lookup alone made GET /api/kiosk/venues/:venueId/menu return 200,
@@ -100,4 +100,32 @@ test('an item missing isAvailable entirely is treated as available (only explici
   });
 
   assert.equal(result.items.length, 1);
+});
+
+// Phase D (Menu Management architecture): getAuthoritativeMenu() now calls
+// the canonical customer_website channel resolver, not the old always-
+// unfiltered kiosk endpoint. buildChannelMenuUrl is the pure, directly
+// testable piece of that (see getAuthoritativeMenu's own doc comment for
+// why the fetch call itself isn't unit-tested in this plain-Node runner).
+test('getAuthoritativeMenu builds a URL against the canonical customer_website channel endpoint, not the old raw kiosk endpoint', () => {
+  const url = buildChannelMenuUrl('https://api.example', 'venue-1', 'customer_website');
+  assert.equal(url, 'https://api.example/api/menu/venues/venue-1/channel/customer_website');
+  assert.ok(!url.includes('/api/kiosk/'));
+});
+
+// Reads the real MenuItem.isFeatured column, not the old
+// nutritionalDetails.isFeatured JSON convention this project no longer
+// writes anywhere.
+test('is_featured reads MenuItem.isFeatured, not the old nutritionalDetails.isFeatured convention', () => {
+  const result = normalizePublicMenu({
+    categories: [category()],
+    menuItems: [
+      item({ id: 'a', isFeatured: true, nutritionalDetails: { isFeatured: false } }),
+      item({ id: 'b', isFeatured: false, nutritionalDetails: { isFeatured: true } }),
+    ],
+  });
+
+  const byId = Object.fromEntries(result.items.map((i) => [i.id, i]));
+  assert.equal(byId.a.is_featured, true);
+  assert.equal(byId.b.is_featured, false);
 });

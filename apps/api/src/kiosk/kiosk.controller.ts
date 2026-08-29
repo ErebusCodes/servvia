@@ -36,6 +36,21 @@ export class KioskController {
     });
   }
 
+  /**
+   * DEPRECATED (Phase D, Menu Management architecture) — superseded by
+   * `GET /api/menu/venues/:venueId/channel/:channel`
+   * (`ChannelMenuController`/`resolveChannelMenu`). As of this commit, no
+   * application code in this repository calls this endpoint anymore
+   * (Order Tablet, Customer Website, and Window Display have all migrated
+   * to their respective channel); confirmed by a full-repo grep before
+   * writing this comment. Left in place, unchanged, deliberately: the
+   * CURRENTLY DEPLOYED production frontend build (pre-Phase-D) still calls
+   * this endpoint against the live production API, since Phase B/C/D have
+   * not been deployed yet — removing or altering this now would break
+   * production before the coordinated Phase E deployment cuts every
+   * channel over together. Safe to delete once Phase E's deployment step
+   * confirms production is fully running the migrated frontends.
+   */
   @Get('venues/:venueId/menu')
   @RateLimit({ limit: 120, windowSeconds: 60 })
   async getVenueMenu(@Param('venueId', ParseUUIDPipe) venueId: string) {

@@ -268,9 +268,11 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // useMenuStore's resolved* fields start empty and have no persistence —
   // this is the only call site of fetchResolvedMenu(). The tablet is an
   // ordering surface: it must show the same venue-resolved price/
-  // availability (MenuItemVenueOverride-merged) that kiosk and customer
-  // show, so it calls fetchResolvedMenu() against the same public
-  // GET /api/kiosk/venues/:venueId/menu endpoint they use.
+  // availability (MenuItemVenueOverride-merged) as the other channels, so
+  // it calls fetchResolvedMenu() against the canonical Menu Management
+  // channel resolver (GET /api/menu/venues/:venueId/channel/order_tablet,
+  // Phase D — superseded the old shared, always-unfiltered
+  // GET /api/kiosk/venues/:venueId/menu every channel used to call).
   useEffect(() => {
     fetchResolvedMenu(DEFAULT_VENUE_ID);
   }, [fetchResolvedMenu]);

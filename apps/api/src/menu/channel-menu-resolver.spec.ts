@@ -180,10 +180,15 @@ describe('resolveChannelMenu', () => {
     expect(result.categories).toEqual([]);
   });
 
-  it('a category itself invisible on a channel excludes its items from that channel even if the item is marked visible', async () => {
+  it('a category itself invisible on a channel excludes its items from that channel, even when the item itself is marked visible on that channel (category visibility and item visibility are independent gates — both must pass)', async () => {
     const prisma = mockPrisma({
+      // Category hidden from customer_website (only visible on order_tablet)...
       categories: [makeCategory({ visibleChannels: ['order_tablet'] })],
-      menuItems: [makeItem()],
+      // ...but the item itself is marked visible on ALL three channels,
+      // including customer_website.
+      menuItems: [
+        makeItem({ visibleChannels: ['order_tablet', 'customer_website', 'window_display'] }),
+      ],
     });
 
     const result = await resolveChannelMenu(prisma, {
@@ -191,11 +196,27 @@ describe('resolveChannelMenu', () => {
       venueId: venue,
       channel: 'customer_website',
     });
-    // The category query itself is filtered by visibleChannels, so an
-    // invisible category never appears — but its items, if independently
-    // visible, still return from the item query. This test documents that
-    // current behavior explicitly rather than leaving it implicit.
+
     expect(result.categories).toEqual([]);
+    // The item must be absent too — a category-level hide must not be
+    // bypassable by an item's own, independently-permissive
+    // visibleChannels setting.
+    expect(result.menuItems).toEqual([]);
+  });
+
+  it('an item remains visible when both it and its category include the requested channel (the positive case for the same gate)', async () => {
+    const prisma = mockPrisma({
+      categories: [makeCategory({ visibleChannels: ['customer_website'] })],
+      menuItems: [makeItem({ visibleChannels: ['customer_website'] })],
+    });
+
+    const result = await resolveChannelMenu(prisma, {
+      organizationId: org,
+      venueId: venue,
+      channel: 'customer_website',
+    });
+
+    expect(result.categories.map((c) => c.id)).toEqual(['cat-1']);
     expect(result.menuItems.map((i) => i.id)).toEqual(['item-1']);
   });
 

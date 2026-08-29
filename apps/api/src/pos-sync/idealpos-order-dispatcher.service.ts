@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
 import { OrdersGateway } from '../orders/orders.gateway';
 import { buildIdealposOrderPayload, IdealposMappingError } from './idealpos-order-payload-mapper';
+import { resolveNativeProductCode } from './resolve-native-product-code';
 import {
   IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE,
   IDEALPOS_SUBMIT_ORDER_REQUIRED_CAPABILITY,
@@ -304,23 +305,51 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
     const menuItemIds = [...new Set(order.items.map((item) => item.menuItemId))];
     const menuItems = await this.prisma.menuItem.findMany({
       where: { id: { in: menuItemIds } },
-      select: { id: true, posProductCode: true },
+      select: {
+        id: true,
+        posProductCode: true,
+        posIdentity: { select: { nativeCode: true, lifecycleStatus: true } },
+      },
     });
-    const posProductCodeByMenuItemId = new Map(menuItems.map((m) => [m.id, m.posProductCode]));
+    const menuItemById = new Map(menuItems.map((m) => [m.id, m]));
 
     let payload;
     try {
+      // Dual-read precedence for the Menu Management migration window —
+      // see resolve-native-product-code.ts's own doc comment for the full
+      // rationale (linked PosProductIdentity wins when active, fails
+      // closed when linked-but-not-active, only falls back to the legacy
+      // MenuItem.posProductCode column when nothing is linked at all).
+      // Resolved once, per item, before ever calling the pure payload
+      // mapper — a resolution failure here is deterministic and
+      // non-retryable, exactly like the mapper's own unmapped_item case.
+      const resolvedItems = order.items.map((item) => {
+        const menuItem = menuItemById.get(item.menuItemId);
+        const resolution = resolveNativeProductCode({
+          posProductCode: menuItem?.posProductCode ?? null,
+          posIdentity: menuItem?.posIdentity ?? null,
+        });
+        if (!resolution.ok) {
+          throw new IdealposMappingError(
+            'unmapped_item',
+            `"${item.menuItemTitle}" has no usable POS mapping (${resolution.reason}) — cannot submit without guessing.`,
+            { menuItemId: item.menuItemId, reason: resolution.reason },
+          );
+        }
+        return { item, nativeCode: resolution.nativeCode };
+      });
+
       payload = buildIdealposOrderPayload({
         externalOrderId: order.id,
         serviceMode: order.serviceMode,
         tableCode: order.table?.posTableCode ?? null,
         notes: order.notes,
-        items: order.items.map((item) => ({
+        items: resolvedItems.map(({ item, nativeCode }) => ({
           menuItemId: item.menuItemId,
           menuItemTitle: item.menuItemTitle,
           quantity: item.quantity,
           selectedModifiers: item.selectedModifiers,
-          posProductCode: posProductCodeByMenuItemId.get(item.menuItemId) ?? null,
+          posProductCode: nativeCode,
         })),
       });
     } catch (err: unknown) {
