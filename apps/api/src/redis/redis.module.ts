@@ -26,6 +26,15 @@ import { REDIS_CLIENT } from './redis.constants';
           retryStrategy: (times: number) => {
             return Math.min(Math.pow(2, times) * 100, 10000);
           },
+          // Bounds every command's wait time regardless of connection state
+          // (ioredis starts this timer at dispatch, even for a command
+          // sitting in the offline queue waiting to (re)connect) — without
+          // it, maxRetriesPerRequest: null + an unreachable Redis meant a
+          // command here could hang the HTTP request indefinitely.
+          // RateLimitGuard's existing catch block already fails closed
+          // (503) on any rejected command; this just guarantees that path
+          // is reached within a bounded time instead of never.
+          commandTimeout: 1500,
         });
         client.on('error', (err: Error) => {
           logger.warn(`Redis client error (will retry): ${err.message}`);
