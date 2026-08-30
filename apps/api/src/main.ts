@@ -115,16 +115,28 @@ async function bootstrap() {
         'https://verdura.co.nz',
         'https://admin.verdura.co.nz',
         'https://kiosk.verdura.co.nz',
+        // Today's actual production topology for this venue is a single
+        // Windows box serving every frontend (Admin Console, Order Tablet,
+        // Window Display) directly off bare localhost ports — there are no
+        // real hostnames yet (Customer Website isn't even deployed). Gating
+        // these behind NODE_ENV !== 'production' meant a real browser
+        // opened at http://localhost:5177 in production had every fetch to
+        // the API silently CORS-blocked at the preflight stage: no
+        // Access-Control-Allow-Origin header, no proper HTTP status the
+        // frontend's error handling could see, just a generic "could not
+        // reach the server" — while any non-browser check (curl, a script,
+        // Invoke-WebRequest) never enforces CORS at all and saw the
+        // request succeed. Found 2026-08-30 chasing an Admin Console PIN
+        // login that worked from the backend but not from the browser.
+        // These are a fixed, enumerated, non-guessable set of ports (not
+        // "any localhost origin"), so always allowing them is a narrow
+        // addition, not a general CORS loosening.
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'http://localhost:5175',
+        'http://localhost:5176',
+        'http://localhost:5177',
       ];
-      if (process.env.NODE_ENV !== 'production') {
-        allowedOrigins.push(
-          'http://localhost:5173',
-          'http://localhost:5174',
-          'http://localhost:5175',
-          'http://localhost:5176',
-          'http://localhost:5177',
-        );
-      }
 
       let corsOptions;
       if (!origin || allowedOrigins.includes(origin)) {
