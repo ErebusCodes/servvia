@@ -174,7 +174,7 @@ jobs:
     # neither `npm run test:dev-scripts` nor a windows-deploy equivalent was
     # ever wired into this workflow, so "tests exist" was not the same claim
     # as "tests run." Real regression coverage that never runs isn't coverage.
-    name: Root scripts — dev-lock + windows-deploy proxy tests
+    name: Root scripts — dev-lock + windows-deploy proxy tests + NUL-byte guard
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -186,6 +186,7 @@ jobs:
       - run: npm ci
       - run: npm run test:dev-scripts
       - run: node --test windows-deploy/static-proxy-server.test.mjs
+      - run: npm run check:nul-bytes
 
   customer-website:
     name: Customer Website — lint, typecheck, build

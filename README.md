@@ -458,6 +458,12 @@ Scopes: `backend`, `admin-frontend`, `kiosk-frontend`, `kds`, `customer-frontend
   - Database interactions must use Prisma's parameterized query interface — never raw string interpolation.
   - Access tokens must never be logged, exposed in client consoles, or stored in `localStorage`.
 
+### 7.4 NUL-byte source integrity guard
+
+A file-writing tool once embedded literal `0x00` (NUL) bytes into a committed `.ts` file in place of plain spaces — `git diff` silently rendered the file as binary instead of a normal text diff, so the corruption wasn't visible until an explicit byte-level check caught it. `npm run check:nul-bytes` (`scripts/check-no-nul-bytes.mjs`) guards against a recurrence: it byte-scans every git-tracked text/source file (never binary assets like menu images, which legitimately contain NUL bytes as normal content) and fails if any contains one. It runs in CI as part of the "Root scripts" job on every push; run it locally the same way before a commit if you've had any AI-assisted or programmatic file-writing tool touch source files.
+
+**Working policy while this remains a known risk with AI-assisted authoring:** don't let a subagent/tool's raw file-write be the last step before a commit touches critical source. Either have the authoring session's own reviewer re-read the file (not just the diff summary) before staging it, or run `npm run check:nul-bytes` immediately after any subagent-created or -modified file and before relying on it further.
+
 ---
 
 ## 8. License
