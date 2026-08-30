@@ -1,0 +1,6315 @@
+{
+"categoryNames": [
+{
+"name": "Imported from IdealPOS (pending review)",
+"sortOrder": 0
+},
+{
+"name": "To Share",
+"sortOrder": 0
+},
+{
+"name": "Small Plates",
+"sortOrder": 1
+},
+{
+"name": "Salads",
+"sortOrder": 2
+},
+{
+"name": "Traditional Mediterranean Kebabs",
+"sortOrder": 3
+},
+{
+"name": "Mains",
+"sortOrder": 4
+},
+{
+"name": "Verdura Sharing Feasts",
+"sortOrder": 5
+},
+{
+"name": "Fresh From The Oven",
+"sortOrder": 6
+},
+{
+"name": "Burgers & Pasta",
+"sortOrder": 7
+},
+{
+"name": "Sides",
+"sortOrder": 8
+},
+{
+"name": "Desserts",
+"sortOrder": 9
+}
+],
+"items": [
+{
+"title": "VERDURA SPECIAL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "1",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Meze Doner - Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "10",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Johnnie Walker Red Labal",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "100",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Misc",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "1000",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Jim Beam",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "101",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Gordon Pink",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "102",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila shish Kabab Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "103",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Gordon - Dry",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "104",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Scapegrace Premium",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "105",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Scapegrace - Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "106",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bacardi Superior - Light",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "107",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coruba Original Dark",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "108",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BRANDY -Marquise Napoleon",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "109",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cheese sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "11",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Biryani Rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "110",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chamomile tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "111",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ghormeh Sabzi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "112",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Milk tea - 1000ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "113",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grill Salmon",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "114",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Beef Burger - kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "115",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VIMTO 25ML",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "116",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LABAN LOAF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "117",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Awar Qalb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "118",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "119",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEZZE SHISH- KEBAB",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "12",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Diet Coke",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "120",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke No Sugar",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "121",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sprite",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "122",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "pomergranate juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "123",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Orange Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "124",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fanta",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "125",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Virgin Mojito",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "126",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Yerbe Mate tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "127",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sage tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "128",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Orange Mango",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "129",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Meze -Grilled Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "13",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Black Current",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "130",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Feijoa",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "131",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ginger Beer",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "132",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemon Lime Bitters",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "133",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Raki",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "134",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Whisky",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "135",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Vodka",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "136",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Rum",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "137",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Gin",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "138",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tequilla",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "139",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Shish - Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "14",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hawke's Bay - peach Bomb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "140",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BOOKBINDER 500ML",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "141",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Stella",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "142",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Speights",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "143",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Corona",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "144",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Heineken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "145",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Steinlager",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "146",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Monteith Apple Cider",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "147",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Light Beer",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "148",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Noir Misty Cove Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "149",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Shish - Lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "15",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Noir Misty Cove Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "150",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Merlot ASH RIDGE Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "151",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Merlot ASH RIDGE Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "152",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHIRAZ Take to Grave Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "153",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHIRAZ Take to Grave Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "154",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sauvignon blanc Bladen Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "155",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sauvignon blanc Bladen Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "156",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "No Ice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "157",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chardonnay LANDMARK -Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "158",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Gris Brightwater Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "159",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kabab skewer-one",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "16",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Gris Brightwater Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "160",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Gris SML BTL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "161",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tea For Two",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "162",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sauvignon SML BTL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "163",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "UMM ALI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "164",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lindauer Brut Cuvee",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "166",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mango Mint",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "167",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lindauer Fraise",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "168",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Coffee",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "169",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskender - Lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "17",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "170",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hot Lemon & Honey",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "171",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "172",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Long Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "173",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Short Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "174",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flat White",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "175",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cappuccino",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "176",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Latte",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "177",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mocha",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "178",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hot Choclate",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "179",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskender - Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "18",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN TWISTER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "180",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Beef Steak Pita",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "181",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Milk tea - 500ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "182",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Loaded Pasta -Beef Steak",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "183",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemonade / Limonada",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "184",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "OVER EASY EGG",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "185",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SMALL FRIES",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "186",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MONIN - STREWBEERY SYRUP",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "187",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Small Fattoush salad",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "188",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Red Bull with Monin syrup",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "189",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskender - Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "19",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BAMIA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "190",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Marag Rubian",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "191",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ribeye Steak",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "192",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA FEAST PLATER - 10",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "193",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mashed potato",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "194",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "extra - chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "195",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Crispy bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "196",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Beef burgar - kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "197",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FRIED EGG",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "198",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sprite with Monin Syrup",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "199",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHISH - COMBINATION",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "2",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "WRAP LARGE - VEG.",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "200",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KARAK TEA - MEDUIM",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "201",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FRESHLY SQUEEZED ORANGE JUICE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "202",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Caesar Salad",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "203",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SISHA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "204",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Rice Pudding",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "205",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grilled fish with rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "206",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Wrap Large - halloumi cheese",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "207",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MUSHROOM SOUP",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "208",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Wrap medium- chicken shish",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "209",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEZZE SHISH - LAMB",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "21",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ZUBAIDI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "210",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VEGETARIN MEAL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "211",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Shish - Kebab",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "212",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ice with lemon",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "213",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Vegeble Mousskka",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "214",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "OMELETTE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "215",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ginger Ale",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "216",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Extra - Cucumber with yoghurt",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "217",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA FEAST PLATER -5",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "218",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN SHAWARMA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "219",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SILA LOADED ON - CHIPS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "22",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bag",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "220",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "RED BULL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "221",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SILA LOADED ON - PASTA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "222",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BOURI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "223",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Truffle Mayo",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "224",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KARAK TEA - 500ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "225",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SILA MEZZE PLATER -4",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "226",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fries",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "227",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "White Rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "228",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flavoured Rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "229",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemon slice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "23",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mardin",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "230",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Delight Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "231",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Butter chicken sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "232",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Delight Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "233",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kunafa with ice cream - Small",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "234",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "EXTRA - DAQOOS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "235",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Baklava one postion",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "236",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila mezze Platter -2",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "237",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Loaded Pasta -Beyond Meat",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "238",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Any Dips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "239",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Extra sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "24",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi Cheese",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "240",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Biryani Rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "241",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Baklava",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "242",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Yoghurt Bavarois",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "243",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Homemade Turkish Delight",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "244",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Beyond Meat Loaded Pasta",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "245",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sticky Date Pudding",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "246",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chocolate Brownie",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "247",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chocolate Fondant",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "248",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke - - can 330ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "249",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pump water",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "25",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cheese Sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "250",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke No Sugar -- can 330ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "251",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sprite - can 330ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "252",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fanta - can 330ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "253",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "WHOLE GRILL FISH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "254",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "255",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TA - Exttra shish LAMB",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "256",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Mandi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "257",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Quarter Lamb Ouzi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "258",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TA-Extra shish CHICKEN",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "259",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ginger Ale",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "26",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ginger Beer - bottel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "260",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemmon Lime Bitters - bottel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "261",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "262",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pomegranate Citrus Fizz",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "263",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Orange Mango - bottel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "264",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Blackcurrant - bottel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "265",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Fejoa Juice - bottel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "266",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Coffee",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "267",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "extra mushroom",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "268",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb biryani",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "269",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cigar Borek",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "27",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TROPICAL SUNRISE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "270",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Long Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "271",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Short Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "272",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flat White",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "273",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cappuccino",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "274",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Latte",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "275",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mocha",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "276",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GREEN GOODNESS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "277",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Doner Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "278",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Doner Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "279",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Yoghurt with cucumber",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "28",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mix Doner Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "280",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Falafel Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "281",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grilled Chicken Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "282",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken on Chips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "283",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Falafel on Chips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "284",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Chicken Kebab",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "285",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Lamb Kebab",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "286",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "287",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Falafel Kebab",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "288",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Vegetable Keabab",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "289",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MAABOUCH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "29",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Grilled Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "290",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Special",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "291",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Pirzola",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "292",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Papyon",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "293",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grilled Kofta",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "294",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mix Grill",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "295",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Meze",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "296",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Meze",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "297",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mix Meze",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "298",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Falafel Meze",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "299",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEZZE SHISH - CHICKEN",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "3",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "With Respbeery",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "30",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Veg Meze",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "300",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grilled Chicken Meze",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "301",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Shish Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "302",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Shish lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "303",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Adana Shish",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "304",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskenr Lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "305",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskenr Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "306",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskenr Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "307",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grill Chicken Iskenr",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "308",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskenr Vegetable",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "309",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mango Lassi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "31",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskenr Falafel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "310",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Mousskka",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "311",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Vegetable Mousskka",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "312",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Spinach Borek",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "313",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Borek",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "314",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cigar Borek",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "315",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Chicken Burger",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "316",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Adana Burger",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "317",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Vegetable Burger",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "318",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grilled Halloumi Cheese",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "319",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Half grilled chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "32",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grilled Chicken Salad",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "320",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BBQ Lamb Salad",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "321",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi Mediteranean Salad",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "322",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Isparata",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "323",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ottoman",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "324",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bodrum",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "325",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Aegean",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "326",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Akniz",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "327",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mardin",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "328",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila light Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "329",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Isparata pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "33",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila light Lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "330",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila light Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "331",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "332",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Mozlla Cheese Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "333",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bread and Dips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "334",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Platter",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "335",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fries",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "336",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Any Dips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "337",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi Cheese",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "338",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "339",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hibiscus mix tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "34",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Baklava",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "340",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cikolata",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "341",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Homema Turkish light",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "342",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Revani",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "343",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sticky Date Pudding",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "344",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cheese Cake",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "345",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chocolate Cake",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "346",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "347",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Diet Coke",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "348",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke No Sugar",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "349",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bodrum pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "35",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sprite",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "350",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fanta",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "351",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pepsi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "352",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pepsi Max",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "353",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mountain w",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "354",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke 600ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "355",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke No Sugar",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "356",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sprite 600ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "357",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ginger Beer",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "358",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemmon Lime Bitters",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "359",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Aegean Pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "36",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Orange Mango Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "360",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Blackcurrant Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "361",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Fejoa Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "362",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Coffee",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "363",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "364",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hot Lemon & Honey",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "365",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tea & Herbal Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "366",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Long Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "367",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Short Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "368",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flat White",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "369",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Akdeniz Pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "37",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cappuccino",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "370",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Latte",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "371",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mocha",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "372",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hot Chocolate",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "373",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "pita bread X 2",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "374",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ORDER MEAL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "375",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Gnger ale",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "376",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HONEY MUSTARD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "377",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kunafa - small",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "378",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "DOOR DESH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "379",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mardin Pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "38",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FOUL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "380",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KARAK TEA - SMALL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "381",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "REGULAR",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "382",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "DELIVERY FEE - FOR DRIVER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "383",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MONIN SYRUP 25ml- RESPBEERY",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "384",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BASBUSA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "385",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MONIN SYRUP 25ml- Blueberry",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "386",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "L & P",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "387",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mountain Dew",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "388",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Pita - shish kabab",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "389",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Delight - Chicken pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "39",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KARAK TEA 1000ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "390",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MACARONI BECHARMEL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "391",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "extra filling OLIVE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "392",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ZUBAIDI LARGE SIZE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "393",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BAMIA MEAT",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "394",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "shakshuka",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "395",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "EGG ANY STYEL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "396",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HONEY MUSTARD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "397",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "DELIVERY FEE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "398",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tea for two with mint",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "399",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lassi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "4",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Delight - Lamb pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "40",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pistachio Baklava",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "400",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "401",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cucumber slices",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "402",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BAKLAVA - 3 PICES",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "403",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Buffalo Ranch",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "404",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Beyond Meat - Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "405",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Onion slice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "406",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hummus bil Lahme",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "407",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mountain Dew - can 330ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "408",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "pepperoni pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "409",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Delight - Mix pizza",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "41",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Half Lamb Ouzi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "410",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "extra nuts",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "411",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CINAMON SCROLL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "412",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KUNAFA - LARGE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "413",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "POACHED",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "414",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Truffle Mayo",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "415",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Beyond Meat Loaded chips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "416",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Butter chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "417",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Classic Mojito",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "418",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Isparata",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "419",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hummus",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "42",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ottoman",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "420",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bodrum",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "421",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Aegean",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "422",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Akdeniz",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "423",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mardin",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "424",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila light Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "425",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila light Lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "426",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila light Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "427",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "428",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Mozlla Cheese Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "429",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cacik",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "43",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bread and Dips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "430",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Platter",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "431",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fries",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "432",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Any Dips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "433",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi Cheese",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "434",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "435",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Baklava",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "436",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cikolata",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "437",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Homemade Turkish light",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "438",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Revani",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "439",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tabouleh",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "44",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sticky Date Pudding",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "440",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cheese Cake",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "441",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chocolate Cake",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "442",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "443",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Diet Coke",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "444",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke No Sugar",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "445",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sprite",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "446",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fanta",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "447",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pepsi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "448",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pepsi Max",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "449",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Beetroot Dip",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "45",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mountain w",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "450",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke 600ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "451",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coke No Sugar",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "452",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sprite 600ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "453",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ginger Beer",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "454",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemmon Lime Bitters",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "455",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Orange Mango Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "456",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Blackcurrant Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "457",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Fejoa Juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "458",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Coffee",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "459",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Walnut Dip",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "46",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Apple Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "460",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hot Lemon & Honey",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "461",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tea & Herbal Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "462",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Long Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "463",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Short Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "464",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flat White",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "465",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cappuccino",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "466",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Latte",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "467",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mocha",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "468",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hot Chocolate",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "469",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Yoghurt Drink Ayran",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "47",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Special sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "470",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hot Chilli",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "471",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tahini",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "472",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Sauce - Toum",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "473",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Large Fries",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "474",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "EXTRA - MARAG POTATO",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "475",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Murabyan Rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "476",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pimajum",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "477",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Smirnoff",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "478",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Absolut Vanilla",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "479",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Babaganush",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "48",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Finlandia",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "480",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LIQUEURS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "481",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sweet Vermouth",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "482",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Angostura Bitters",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "483",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kahlua",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "484",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cachaca Sugar Cane",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "485",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Triple Sec",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "486",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Calle 23 Blanco",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "487",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pepe Lopez",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "488",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "The Daiquiri",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "489",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Bread",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "49",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Espresso Martini",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "490",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Margarita",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "491",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Delight",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "492",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Anaar",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "493",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Manhattan",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "494",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Emerson Pilsner Tap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "495",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Loaded chips -Beef Steak",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "496",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Extra Jalapino",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "497",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Earl Grey Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "498",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "English Breakfast Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "499",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hummus",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "5",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "pump water - 750ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "50",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lime Blossom",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "500",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iranian Saffron Black",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "501",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Jasmine Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "502",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pepperment Tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "503",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Infusion Iranian Saffron",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "504",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Paloma",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "505",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cartel Special",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "506",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "with cranberry juice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "507",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Delight Each",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "508",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Saffron Rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "509",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Ice Cream scoop",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "51",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HUMMUS WITH BREAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "510",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MUHALLEBI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "511",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "DAQOOS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "512",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pimajum",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "513",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Antipodes Sparking Water 1000",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "514",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KUNAFA WITH NUTELLA- SMALL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "515",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb shank - MOZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "516",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "NO HASHEW",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "517",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SMALL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "518",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEDIUM",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "519",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mezza Platter - 2",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "52",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LARGE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "520",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SMALL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "521",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEDIUM",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "522",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LARGE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "523",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "V - Vegetarian",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "524",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GF - Gluten Free",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "525",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "DF - Dairy Free",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "526",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "527",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CGF - Can Gluten Free",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "528",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CDF - Can Dairy Free",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "529",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Yoghurt Sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "53",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TIPS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "530",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BYO",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "531",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SIDES",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "532",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Spicy Aioli",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "533",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken biryani",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "534",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "extra filling - TOMATO",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "535",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MURABYAN SHRIMP",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "536",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "extra filling- ZATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "537",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sabzi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "538",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Emerson London porter",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "539",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sweet Chilli Sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "54",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "WITH HASHEW",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "540",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "YOGHURT",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "541",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Wrap Lamb - medium",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "542",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Wrap- chicken medium",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "543",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "paratha x 1",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "544",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LARGE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "545",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb on Chips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "546",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mix on Chips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "547",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Falafel Wrap Kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "548",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Soda WATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "549",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mayo",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "55",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TONIC WATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "550",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Lamb wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "551",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Chicken wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "552",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Mix wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "553",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Falafel Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "554",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Grilled chicken Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "555",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Loaded chips- Beyond Meat",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "556",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Beyond Meat - Pita",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "557",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ARABIC COFFEE 600-750 ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "558",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BRUT -",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "559",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BBQ",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "56",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "sila Pita - chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "560",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "sila Pita - lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "561",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "sila Pita - mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "562",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "sila Pita -Falafel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "563",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ICED AMERICANO",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "564",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Pita - Grilled chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "565",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Antipodes Sparkling 500ml",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "566",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Soda Water",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "567",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tonic Water",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "568",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sparkling Water",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "569",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tomato Sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "57",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemonade/ Sprite",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "570",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Coco Cola",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "571",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MARAG POTATO",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "572",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Special Dessert Of the day",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "573",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lahmacun",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "574",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "WRAP MEDIUM - VEG.",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "575",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FALAFEL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "576",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sigara Borek",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "577",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SCRAMBLED",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "579",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Aioli",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "58",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PARATHA X 3",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "580",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TA Sides",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "581",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "UE-Sides",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "582",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Set Menu $30",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "583",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Heineken Zero- 0%",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "584",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Marag potato",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "585",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Menu Log Misc",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "586",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Special menu",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "587",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Spicy Aioli",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "588",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TAKEAWAY MISC",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "589",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Shish Kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "59",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "UBER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "590",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VIMTO DRINKS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "591",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SAMBUSA VEG",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "592",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SAMBUSA CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "593",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SOUP LENTIL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "594",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Delight 500gm Box",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "595",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEZZE SHISH - COMBINATION",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "596",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lemon lime bitters",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "597",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SILA HALLOUMI WRAP",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "598",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SILA CHICKEN SHISH WRAP",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "599",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cardamom tea",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "6",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Shish Kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "60",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SILA PITA - HALLOUMI CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "600",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "EXTRA CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "601",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "white RICE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "602",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ARABIC TABBOULEH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "603",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEETROOT",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "604",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Buffalo Ranch",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "605",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CACIK",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "606",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BABAGANUSH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "607",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mezza platter - 4",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "608",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LARGE - CIGARA BOREK CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "609",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MINT WITH BLACK TEA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "61",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LARGE - CIGARA BOREK MEAT",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "610",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fried Kibbe",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "611",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tomato Sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "612",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BERRY OVERLORD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "613",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "sila pita - shish chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "614",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic yoghurt",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "615",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sweet chilli",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "616",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mayo",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "617",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BBQ",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "618",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic Aioli",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "619",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kabab Burger Kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "62",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "special sauce",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "620",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "TAHINI SAUCE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "621",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HUMMUS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "622",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "hot chilli",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "623",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "624",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "625",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Falafel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "626",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEEF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "627",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "COMMANDO FRIES",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "628",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Roasted Vegetables",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "629",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Burger Kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "63",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Cacik",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "630",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tabouleh",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "631",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Beetroot Dip",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "632",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Babaganush",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "633",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "With Ice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "634",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ON THE PLATE - NO BREAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "635",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Laban",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "636",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Extra - yought",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "637",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Laban with mint",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "638",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ADD EXTRA CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "639",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken nuggets Kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "64",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "London Porter",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "640",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Paynter's Alchemist Cider",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "641",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHINING PEAK",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "642",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Duncan's pale Ale",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "643",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Emerson's Hazed & Confused",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "644",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Misc",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "645",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Service Charge",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "646",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Bread And Dips",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "647",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hummus Beiruty",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "648",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GUACAMOLE WITH CORN CHIPS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "649",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "lamb shish - kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "65",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MUTABAL WITH KIBBE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "650",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VINE LEAVES [ Dolma]",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "651",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CYPRUS MEATBALLS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "652",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BATTATA HARRA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "653",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PRAWNS SIGARA B\ufffdREGI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "654",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SPICY WINGS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "655",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CRISPY DYNAMITE SHRIMPS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "656",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ARAYES & CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "657",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CAULIFLOWER FRITTERS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "658",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Muhammara|",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "659",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Meat on Chips Kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "66",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mutable|",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "660",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tzatziki",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "661",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "AVOCADO HALLOUMI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "662",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FATTOUSH SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "664",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GRILLED HALLOUMI CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "665",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "666",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FALAFEL SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "667",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHISH TAOUK TAVUK SIS)",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "668",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PERSIAN KOOBIDEH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "669",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Garlic sauce -Toum",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "67",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LAHAM MESHWI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "670",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MIXED GRILL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "671",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ALI NAZIK",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "672",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GREEK EGGPLANT LAMB MOUSSAKA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "673",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PENNE PASTA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "674",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FETTUCCINE ALFREDO",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "675",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN BOREKS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "676",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HAMSA KUWAITI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "677",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FISH OF THE DAY",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "678",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MIGHTY ANGUS BEEF BURGER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "679",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "68",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN BURGER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "680",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VEGGIE BURGER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "681",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KOOBIDEH SANDWICH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "682",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHISH TAOUK SANDWICH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "683",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GEM\ufffdSE\ufffdBERLIN SANDWICH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "684",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "685",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "steak",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "686",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Laham Meshwi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "687",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Shish Taouk",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "688",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "koobideh",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "689",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "69",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "690",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grill Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "691",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grill Prawns",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "692",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA SPECIAL MEZZE PLATTER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "693",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA GRILL PLATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "694",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA COUPLE PLATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "695",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA COMBO PLATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "696",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA FAMILY CHAR- GRILL PLA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "697",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Meat Kibbeh",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "698",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Veg Sanbusak",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "699",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Shish Mix Grill",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "7",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mix",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "70",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GARLIC PIDE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "700",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHEESE PIDE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "702",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SPICY MUHAMMARA LOAF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "703",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HALLOUMI LOAF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "705",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LEBANESE LAHM BIL AJIN",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "706",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CLASSIC MARGHERITA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "707",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VEGETARIAN BALLISTA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "709",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sila Beef Steak Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "71",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SEBZELI PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "711",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "713",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN TOUMI Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "714",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "STEAKMOUS Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "715",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "STEAKWARMA Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "716",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PESTO CHICKEN PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ZAATAR LOAF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SPICY MEDITERRANEAN PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GARLIC CHEESE PIDE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BUFFALO CHICKEN Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "717",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GO FAJITA Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "718",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FALAFA - GUAC Fusion Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "719",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chocolate Cake kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "72",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEZZA WRAP",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "720",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MR DRAPER Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "721",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEIRUT CHICKEN Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "722",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEYOND Mr. Draper Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "723",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEYOND STEAKMOUS Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "724",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEYOND STEAKWARMA Wrap",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "725",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Steak",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "726",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "727",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Hummus",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "728",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Muhammara",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "729",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Warm Chocolate Brownie kids",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "73",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tzatziki",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "730",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flavoured rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "731",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mutable",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "732",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HALLOUMI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "733",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Pide Basket full",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "734",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Skewer -ONE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "735",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Skewer - ONE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "736",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Green Salad",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "737",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lokum Turkish Delight",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "738",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Yoghurt Bavarois",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "739",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Vanilla Ice Cream W Choc",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "74",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Trio Of Icecream",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "740",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Maple Syrup Walnut",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "741",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Vanilla Bean",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "742",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Roasted White Chocolate &amp;",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "743",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BREAD AND DIPS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "744",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HUMMUS BEIRUTY",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "745",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GUACAMOLE WITH CORN CHIPS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "746",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MUTABAL WITH KIBBE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "747",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VINE LEAVES [ Dolma]",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "748",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CYPRUS MEATBALLS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "749",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Vanilla Ice Cream W Caramel",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "75",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BATTATA HARRA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "750",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PRAWNS SIGARA B\ufffdREGI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "751",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SPICY WINGS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "752",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CRISPY DYNAMITE SHRIMPS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "753",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ARAYES &CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "754",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CAULIFLOWER FRITTERS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "755",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "AVOCADO HALLOUMI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "756",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN AVOCADO SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "757",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FATTOUSH SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "758",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GRILLED HALLOUMI CHEESE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "759",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Baklava",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "76",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "760",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FALAFEL SALAD/ PLATE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "761",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHISH TAOUK",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "762",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PERSIAN KOOBIDEH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "763",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LAHAM MESHWI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "764",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MIXED GRILL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "765",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ALI NAZIK",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "766",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GREEK EGGPLANT LAMB MOUSSAKA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "767",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PENNE PASTA WITH SHRIMPS AND P",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "768",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FETTUCCINE ALFREDO",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "769",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "chocoLate brownie",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "77",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN BOREKS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "770",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HAMSA KUWAITI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "771",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MIGHTY ANGUS BEEF BURGER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "772",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN BURGER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "773",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VEGGIE BURGER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "774",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "KOOBIDEH SANDWICH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "775",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SHISH TAOUK SANDWICH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "776",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GEM\ufffdSE BERLIN SANDWICH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "777",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA SPECIAL MEZZE PLATTER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "778",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA GRILL PLATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "779",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Delight",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "78",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA COUPLE PLATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "780",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA COMBO PLATER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "781",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA FAMILY CHAR- GRILL PLA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "782",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GARLIC PIDE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "783",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GARLIC CHEESE PIDE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "784",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHEESE PIDE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "785",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SPICY MUHAMMARA LOAF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "786",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ZA'ATAR LOAF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "787",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "HALLOUMI LOAF",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "788",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LEBANESE LAHM BIL AJIN",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "789",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "chocolate fondant",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "79",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CLASSIC MARGHERITA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "790",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN BALLISTA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "791",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VEGETARIAN BALLISTA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "792",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "PESTO CHICKEN PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "793",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SEBZELI PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "794",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SPICY MEDITERRANEAN PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "795",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "VERDURA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "796",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN TOUMI",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "797",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "STEAKMOUS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "798",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "STEAKWARMA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "799",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Meze Doner - Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "8",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sticky Date Pudding",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "80",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BUFFALO CHICKEN",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "800",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "GO FAJITA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "801",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FALAFA - GUAC Fusion",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "802",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEZZA WRAP",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "803",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MR DRAPER",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "804",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEIRUT CHICKEN",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "805",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEYOND Mr. Draper",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "806",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEYOND STEAKMOUS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "807",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "BEYOND STEAKWARMA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "808",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hummus",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "809",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "FELAFEL SHAWARMA / SANDWICH",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "81",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Muhammara",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "810",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fries",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "811",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tzatziki",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "812",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "White rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "813",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flavoured rice",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "814",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mutable",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "815",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Arabic Tabbouleh",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "816",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Pide Basket",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "817",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mini Sigara B\ufffdrek",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "818",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Skewer - ONE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "819",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "MEAT SHAWARMA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "82",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Skewer - ONE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "820",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Green Salad",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "821",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Turkish Pide Basket half",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "822",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Maschboos",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "823",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "SMALL",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "824",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "LINDEAUR BRUT-S BOTTLE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "83",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sauvignon Lirrle Angel Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "84",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Sauvignon Lirrle Angel Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "85",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ROSE - GEORGES ROAD GLASS",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "86",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "ROSE GEORGES ROAD - BOTTLE",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "87",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHARDONNAY Ash Ridge Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "88",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHARDONNAY Ash Ridge Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "89",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Meze Doner - LAMB",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "9",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Gris Misty Cove Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "90",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Gris Misty Cove Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "91",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Noir Goldfields Glass",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "92",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Noir Goldfields Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "93",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pinot Noir Providore Bottle",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "94",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Merlot Cabernet Te Awanga Bott",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "95",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Jack Daniel's",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "96",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Jameson's",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "97",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Canadian Clab",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "98",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Johnnie Walker Black Labal",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": "99",
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mezze Platter For Four",
+"categoryName": "To Share",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mezze Platter For Two",
+"categoryName": "To Share",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Bread & Dips",
+"categoryName": "To Share",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Mezze Board",
+"categoryName": "To Share",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Arayes & Cheese",
+"categoryName": "Small Plates",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Battata Harra",
+"categoryName": "Small Plates",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Crispy Dynamite Prawns",
+"categoryName": "Small Plates",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Falafel Plate",
+"categoryName": "Small Plates",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Grilled Halloumi",
+"categoryName": "Small Plates",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mutabal With Kibbeh",
+"categoryName": "Small Plates",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fattoush",
+"categoryName": "Salads",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi & Avocado Salad",
+"categoryName": "Salads",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mediterranean Greek Salad",
+"categoryName": "Salads",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tabbouleh",
+"categoryName": "Salads",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Salad",
+"categoryName": "Salads",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Loaded On Chips",
+"categoryName": "Traditional Mediterranean Kebabs",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Avocado Salad",
+"categoryName": "Salads",
+"posProductCode": "663",
+"priceCents": 2200,
+"isAvailable": true
+},
+{
+"title": "Wrap | Pita Pocket | On a Plate",
+"categoryName": "Traditional Mediterranean Kebabs",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Shish [Shish Taouk]",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Greek Eggplant & Lamb Moussaka",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskender D\u00f6ner",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kuwaiti Chicken Machboos",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kuwaiti Lamb Shank Machboos",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Shish [Laham Meshwi]",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mixed Shish",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Persian Koobideh [Kofta Kebab]",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Signature",
+"categoryName": "Mains",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Couple Feast",
+"categoryName": "Verdura Sharing Feasts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Family Feast",
+"categoryName": "Verdura Sharing Feasts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Grand Feast",
+"categoryName": "Verdura Sharing Feasts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Grill For Two",
+"categoryName": "Verdura Sharing Feasts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Classic Margherita",
+"categoryName": "Fresh From The Oven",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Delight Pizza",
+"categoryName": "Fresh From The Oven",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi Loaf",
+"categoryName": "Fresh From The Oven",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lebanese Lahm Bi Ajin",
+"categoryName": "Fresh From The Oven",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Mediterranean Pizza",
+"categoryName": "Fresh From The Oven",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Alfredo",
+"categoryName": "Burgers & Pasta",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mediterranean Chicken Burger",
+"categoryName": "Burgers & Pasta",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mighty Angus Beef Burger",
+"categoryName": "Burgers & Pasta",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Shrimp Pasta",
+"categoryName": "Burgers & Pasta",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pesto Chicken Pizza",
+"categoryName": "Fresh From The Oven",
+"posProductCode": "710",
+"priceCents": 2350,
+"isAvailable": true
+},
+{
+"title": "Za'atar Loaf",
+"categoryName": "Fresh From The Oven",
+"posProductCode": "704",
+"priceCents": 1300,
+"isAvailable": true
+},
+{
+"title": "Spicy Mediterranean Pizza",
+"categoryName": "Fresh From The Oven",
+"posProductCode": "712",
+"priceCents": 2350,
+"isAvailable": true
+},
+{
+"title": "Garlic & Cheese Pide",
+"categoryName": "Fresh From The Oven",
+"posProductCode": "701",
+"priceCents": 1500,
+"isAvailable": true
+},
+{
+"title": "Verdura Veggie Burger",
+"categoryName": "Burgers & Pasta",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Beetroot Dip",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Skewer",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Falafel",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Flavoured Rice",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Fries",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Green Salad",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Halloumi",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Hummus",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Kebab Skewer",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lamb Skewer",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Muhammara",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Mutabal",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Bread \u2014 Full",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Pita Bread \u2014 Half",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tabbouleh",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tzatziki",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "White Rice",
+"categoryName": "Sides",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Baklava",
+"categoryName": "Desserts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "K\u00fcnefe",
+"categoryName": "Desserts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Lugaimat",
+"categoryName": "Desserts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Verdura Dessert Platter",
+"categoryName": "Desserts",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "CHICKEN BALLISTA PIZZA",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Chicken Ballista Pizza",
+"categoryName": "Fresh From The Oven",
+"posProductCode": "708",
+"priceCents": 2350,
+"isAvailable": true
+},
+{
+"title": "TIRAMISU",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Tiramisu",
+"categoryName": "Desserts",
+"posProductCode": "578",
+"priceCents": 1300,
+"isAvailable": true
+},
+{
+"title": "Iskender - Grill Chicken",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Iskender Grill Chicken",
+"categoryName": "Mains",
+"posProductCode": "20",
+"priceCents": 3000,
+"isAvailable": true
+},
+{
+"title": "Dolma",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+},
+{
+"title": "Dolma",
+"categoryName": "Small Plates",
+"posProductCode": "165",
+"priceCents": 1000,
+"isAvailable": true
+},
+{
+"title": "CHICKEN AVOCADO SALAD",
+"categoryName": "Imported from IdealPOS (pending review)",
+"posProductCode": null,
+"priceCents": 0,
+"isAvailable": false
+}
+]
+}

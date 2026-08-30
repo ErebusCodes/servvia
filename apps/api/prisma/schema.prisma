@@ -672,13 +672,21 @@ model PosProductIdentity {
   evidence Json @default("{}")
 
   // IdealPOS's own live sale price (StockItemsValue, Type=1/"Price",
-  // Level=1) as of the last sync. Populated for every candidate but never
-  // consumed to set MenuItem.priceCents automatically — Verdura's own
-  // priceCents remains authoritative for what customers are charged
-  // (confirmed policy). This exists solely to power an admin-visible price
-  // drift warning once linked (real drift already found live: Pesto
-  // Chicken Pizza and Spicy Mediterranean Pizza both $23.50 in Verdura vs
-  // $23.00 in IdealPOS at sync time).
+  // Level=1) as of the last sync. The routine background sync
+  // (sync-pos-catalog.ts) populates this for every candidate but never
+  // consumes it to set MenuItem.priceCents automatically — Verdura's own
+  // priceCents remains authoritative there so an unattended sync can never
+  // silently change what customers are charged. It otherwise exists to
+  // power an admin-visible price drift warning once linked (real drift
+  // already found live: Pesto Chicken Pizza and Spicy Mediterranean Pizza
+  // both $23.50 in Verdura vs $23.00 in IdealPOS at sync time).
+  //
+  // One deliberate, human-reviewed exception: the one-time authoritative
+  // menu migration (prisma/scripts/menu-migration/) DOES set
+  // MenuItem.priceCents from this value for its screenshot-confirmed,
+  // manifest-approved items — that's an explicit, reviewed migration
+  // decision (IdealPOS price is the source of truth for that one cutover),
+  // not the routine sync described above.
   priceCentsFromPos Int?
   priceLastSyncedAt DateTime?
 
