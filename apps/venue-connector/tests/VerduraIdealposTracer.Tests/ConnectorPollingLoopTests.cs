@@ -75,6 +75,8 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         public List<string> AcceptedCommandIds { get; } = [];
         public List<(string CommandId, string Body)> Reports { get; } = [];
         public int PollCount { get; private set; }
+        public List<string> HeartbeatBodies { get; } = [];
+        public HttpStatusCode HeartbeatStatus { get; set; } = HttpStatusCode.OK;
 
         public void EnqueuePoll(params ClaimedCommand[] commands)
         {
@@ -96,6 +98,12 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/heartbeat"))
+            {
+                var body = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? "";
+                HeartbeatBodies.Add(body);
+                return Task.FromResult(new HttpResponseMessage(HeartbeatStatus));
+            }
             if (path.EndsWith("/poll"))
             {
                 PollCount++;
@@ -325,6 +333,65 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         Assert.Empty(protocol.Reports); // never reported — the command was never truly ours
         Assert.Contains(log.Errors, m => m.Contains("cmd-1") && m.Contains("unexpected error"));
         Assert.True(protocol.PollCount >= 2, "A losing claim race on one command must not stop the loop from polling again.");
+    }
+
+    // ── Capability reporting ────────────────────────────────────────────
+
+    [Fact]
+    public async Task Startup_ReportsSupportedCapabilities_AsCamelCaseObjectBeforeFirstPoll()
+    {
+        var (loop, protocol, _) = Build();
+        protocol.EnqueuePoll(); // always empty
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+        await loop.RunAsync(cts.Token);
+
+        Assert.Single(protocol.HeartbeatBodies);
+        using var doc = JsonDocument.Parse(protocol.HeartbeatBodies[0]);
+        var root = doc.RootElement;
+        Assert.True(root.TryGetProperty("capabilities", out var capabilities), "must serialize as camelCase 'capabilities', matching ConnectorHeartbeatDto.");
+        Assert.True(capabilities.TryGetProperty(IdealposOrderSubmissionService.CommandType, out _),
+            "must report the exact command type this build actually dispatches to IdealposOrderSubmissionService.");
+        Assert.True(capabilities.TryGetProperty(DiscoveryTracerService.CommandType, out _),
+            "must report the exact command type this build actually dispatches to DiscoveryTracerService.");
+        // Never claim a capability this build cannot actually service.
+        Assert.False(capabilities.TryGetProperty("some.unimplemented.type.v1", out _));
+    }
+
+    [Fact]
+    public async Task RestartRecovery_EachFreshLoopInstance_ReReportsCapabilitiesOnItsOwnStartup()
+    {
+        // Every RunAsync call models one process/service (re)start — proves
+        // a Restart-Service cycle actually re-heartbeats, not just the
+        // first-ever launch.
+        var (loop1, protocol1, _) = Build();
+        protocol1.EnqueuePoll();
+        using (var cts1 = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500)))
+        {
+            await loop1.RunAsync(cts1.Token);
+        }
+        Assert.Single(protocol1.HeartbeatBodies);
+
+        var (loop2, protocol2, _) = Build();
+        protocol2.EnqueuePoll();
+        using var cts2 = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+        await loop2.RunAsync(cts2.Token);
+        Assert.Single(protocol2.HeartbeatBodies);
+    }
+
+    [Fact]
+    public async Task CapabilityReportFailure_IsNonFatal_LoopStillPollsAndProcessesCommands()
+    {
+        var (loop, protocol, log) = Build();
+        protocol.HeartbeatStatus = HttpStatusCode.ServiceUnavailable;
+        protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-1"));
+        protocol.EnqueuePoll();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+        await loop.RunAsync(cts.Token); // must not throw despite the failed heartbeat
+
+        Assert.Contains(log.Errors, m => m.Contains("Capability report failed"));
+        Assert.Single(protocol.Reports); // command processing proceeds normally regardless
     }
 
     // ── Restart recovery ───────────────────────────────────────────────

@@ -20,6 +20,16 @@ public sealed record ReportRequest(
     string? FailureReason = null);
 
 /// <summary>
+/// Wire shape for `POST connector/heartbeat` (apps/api/src/connector/dto/
+/// connector-heartbeat.dto.ts: <c>{ version?: string, capabilities?:
+/// Record&lt;string, unknown&gt; }</c>). The server only reads key
+/// *presence* in <c>Capabilities</c> (see connector-command.service.ts's
+/// <c>parseCapabilities</c> — it calls <c>Object.keys(...)</c> on an object
+/// payload), so any truthy value per key is sufficient.
+/// </summary>
+public sealed record HeartbeatRequest(string? Version, Dictionary<string, object?>? Capabilities);
+
+/// <summary>
 /// A thin, cross-platform client for Story 2-10's authenticated HTTPS
 /// command protocol (docs/decisions-log.md DL-070) — poll, accept, report.
 /// Every call carries the same Story 2-9 durable connector credential
@@ -78,6 +88,17 @@ public sealed class ConnectorCommandProtocolClient(HttpClient httpClient, string
         using var request = new HttpRequestMessage(HttpMethod.Post, $"connector/commands/{commandId}/report")
         {
             Content = JsonContent.Create(report, options: JsonOptions),
+        };
+        AddAuthHeader(request);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task HeartbeatAsync(HeartbeatRequest heartbeat, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "connector/heartbeat")
+        {
+            Content = JsonContent.Create(heartbeat, options: JsonOptions),
         };
         AddAuthHeader(request);
         using var response = await httpClient.SendAsync(request, cancellationToken);

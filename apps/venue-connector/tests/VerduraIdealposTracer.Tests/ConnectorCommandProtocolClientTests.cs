@@ -91,4 +91,32 @@ public sealed class ConnectorCommandProtocolClientTests
         Assert.Equal(1, result.Commands[0].SchemaVersion);
         Assert.Equal("connector.self_test.v1", result.Commands[0].RequiredCapability);
     }
+
+    [Fact]
+    public async Task HeartbeatAsync_SerializesCapabilitiesAsCamelCaseObject_MatchingConnectorHeartbeatDto()
+    {
+        var handler = new CapturingHandler
+        {
+            ResponseToReturn = new HttpResponseMessage(HttpStatusCode.OK),
+        };
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/api/") };
+        var client = new ConnectorCommandProtocolClient(httpClient, "installation-1.secret");
+
+        await client.HeartbeatAsync(
+            new HeartbeatRequest(Version: null, Capabilities: new Dictionary<string, object?> { ["idealpos.submit_order.v1"] = true }),
+            CancellationToken.None);
+
+        Assert.NotNull(handler.CapturedRequestBody);
+        using var doc = JsonDocument.Parse(handler.CapturedRequestBody!);
+        var root = doc.RootElement;
+
+        // apps/api/src/connector/dto/connector-heartbeat.dto.ts expects
+        // camelCase `capabilities` as a plain object (@IsObject()) — an
+        // array here would fail that DTO's validation and the real
+        // reportHealth() call would never persist anything.
+        Assert.True(root.TryGetProperty("capabilities", out var capabilities));
+        Assert.Equal(JsonValueKind.Object, capabilities.ValueKind);
+        Assert.True(capabilities.TryGetProperty("idealpos.submit_order.v1", out _));
+        Assert.False(root.TryGetProperty("Capabilities", out _), "PascalCase 'Capabilities' must not appear — the real backend's whitelist ValidationPipe would silently drop it.");
+    }
 }

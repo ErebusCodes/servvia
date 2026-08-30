@@ -44,6 +44,22 @@ public sealed class ConnectorPollingLoop(
     TimeSpan errorBackoff)
 {
     /// <summary>
+    /// The command types this connector build genuinely dispatches — kept
+    /// in lockstep with <see cref="ProcessOneCommandAsync"/>'s own
+    /// <c>if (command.CommandType == X.CommandType)</c> checks, so this set
+    /// never advertises more than what's actually implemented (see
+    /// connector-command.service.ts's <c>requiredCapability</c> claim
+    /// filter, which every one of these unlocks). Adding a new handled
+    /// command type is a deliberate two-place change (the dispatch check
+    /// and this set), not a one-line addition here alone.
+    /// </summary>
+    private static readonly Dictionary<string, object?> SupportedCapabilities = new()
+    {
+        [DiscoveryTracerService.CommandType] = true,
+        [IdealposOrderSubmissionService.CommandType] = true,
+    };
+
+    /// <summary>
     /// Runs until <paramref name="stoppingToken"/> is cancelled. Never
     /// throws <see cref="OperationCanceledException"/> — a cancellation
     /// requested mid-poll, mid-command, or mid-delay is treated as a clean
@@ -54,6 +70,7 @@ public sealed class ConnectorPollingLoop(
         log.Info("Connector polling loop starting.");
         try
         {
+            await ReportCapabilitiesAsync(stoppingToken);
             while (!stoppingToken.IsCancellationRequested)
             {
                 await RunOneCycleAsync(stoppingToken);
@@ -66,6 +83,34 @@ public sealed class ConnectorPollingLoop(
         finally
         {
             log.Info("Connector polling loop stopped.");
+        }
+    }
+
+    /// <summary>
+    /// Reports this build's supported capability set once per loop start
+    /// (i.e. every process/service restart re-reports it — see DL-095's own
+    /// restart-safety framing). A failure here must never prevent the
+    /// connector from starting or polling: the server-side claim filter
+    /// (connector-command.service.ts) simply leaves capability-gated
+    /// commands unclaimed by this installation until the next successful
+    /// heartbeat, the exact same fail-closed-not-fail-crashed posture
+    /// <see cref="ProcessOneCommandAsync"/> already uses for an
+    /// unrecognized command type.
+    /// </summary>
+    private async Task ReportCapabilitiesAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await protocolClient.HeartbeatAsync(new HeartbeatRequest(Version: null, Capabilities: SupportedCapabilities), stoppingToken);
+            log.Info($"Reported capabilities: {string.Join(", ", SupportedCapabilities.Keys)}");
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            log.Error($"Capability report failed — continuing without it: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
