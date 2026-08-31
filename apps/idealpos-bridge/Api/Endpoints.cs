@@ -178,6 +178,11 @@ namespace VerduraIdealposBridge.Api
                 processed = r.Status != OrderStatus.Received && r.Status != OrderStatus.Validated && r.Status != OrderStatus.SubmittedToIdealpos && r.Status != OrderStatus.PendingIdealposProcessing,
                 tableOccupiedWarning = r.TableOccupiedWarning,
                 strategyUsed = r.StrategyUsed,
+                // Reported as a fact, not left for the caller to assume. The
+                // Webit contract has no table field, so no strategy assigns a
+                // table on this ingest path — see TableAssignmentCapability.
+                tableAssignedNatively = TableAssignmentCapability.CanAssignNativeTableViaWebit,
+                tableAssignmentEffect = TableAssignmentCapability.DescribeEffect(r.StrategyUsed),
                 submittedAtUtc = r.SubmittedAtUtc,
                 lastObservedAtUtc = r.LastObservedAtUtc,
                 lastError = r.LastError,

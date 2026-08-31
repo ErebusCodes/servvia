@@ -30,7 +30,19 @@ namespace VerduraIdealposBridge
                 Logger.F("port", config.Port),
                 Logger.F("allowLan", config.AllowLan),
                 Logger.F("tableAssignmentStrategy", config.TableAssignmentStrategyName),
-                Logger.F("tableAssignmentConfirmed", config.TableAssignmentConfirmed));
+                Logger.F("tableAssignmentConfirmed", config.TableAssignmentConfirmed),
+                Logger.F("canAssignNativeTableViaWebit", TableAssignmentCapability.CanAssignNativeTableViaWebit),
+                Logger.F("tableAssignmentEffect", TableAssignmentCapability.DescribeEffect(config.TableAssignmentStrategyName)));
+            if (TableAssignmentCapability.IsMisleading(config.TableAssignmentStrategyName))
+            {
+                // Loud, because these two do not merely fail to assign a
+                // table — Message prints one on the kitchen docket that was
+                // never assigned, and ReferencePrefix moves the pending-sale
+                // code reconciliation anchors on.
+                Logger.Warn("table_assignment_strategy_is_misleading",
+                    Logger.F("strategy", config.TableAssignmentStrategyName),
+                    Logger.F("effect", TableAssignmentCapability.DescribeEffect(config.TableAssignmentStrategyName)));
+            }
 
             if (!string.IsNullOrWhiteSpace(config.DllProbeDirectory))
             {
