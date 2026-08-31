@@ -20,7 +20,7 @@ namespace VerduraIdealposBridge.Ci
 {
     public static class CiTestMain
     {
-        private const int ExpectedTestCount = 24;
+        private const int ExpectedTestCount = 45;
 
         public static int Main()
         {
@@ -28,6 +28,7 @@ namespace VerduraIdealposBridge.Ci
             results.AddRange(OrderValidatorTests.RunAll());
             results.AddRange(OrderStatusTests.RunAll());
             results.AddRange(IdealposReadRepositoryTests.RunAll());
+            results.AddRange(ReconciliationTests.RunAll());
 
             int passed = 0, failed = 0;
             foreach (var r in results)

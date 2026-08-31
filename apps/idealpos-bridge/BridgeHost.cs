@@ -41,10 +41,28 @@ namespace VerduraIdealposBridge
             var submitter = new IdealposOrderSubmitter();
             var hub = new WebSocketHub();
 
+            // Null unless PosServerConnection is configured. Logged either way
+            // so the operator can see from the log which reconciliation mode
+            // the bridge is actually running in, rather than inferring it from
+            // the absence of table transitions.
+            PosServerReadRepository posServerRepo = null;
+            if (config.CrossStoreReconciliationEnabled)
+            {
+                posServerRepo = new PosServerReadRepository(config.PosServerConnectionString);
+                string detail;
+                bool reachable = posServerRepo.CanConnect(out detail);
+                Logger.Info("cross_store_reconciliation_enabled", Logger.F("posServerReachable", reachable), Logger.F("detail", detail));
+            }
+            else
+            {
+                Logger.Info("cross_store_reconciliation_disabled",
+                    Logger.F("reason", "no PosServerConnection in App.config — orders will anchor in IPSTransaction and stop there"));
+            }
+
             _store = new OrderStateStore(config.StateDatabasePath);
             var orderService = new OrderService(config, _store, repo, submitter, hub);
 
-            _watcher = new OrderLifecycleWatcher(config, _store, repo, orderService);
+            _watcher = new OrderLifecycleWatcher(config, _store, repo, orderService, posServerRepo);
             _watcher.Start();
 
             var availability = new AvailabilityChecker(config, repo);

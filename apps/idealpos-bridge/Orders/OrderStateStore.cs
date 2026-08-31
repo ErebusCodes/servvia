@@ -60,12 +60,50 @@ CREATE TABLE IF NOT EXISTS Orders (
     TableMatchesRequest INTEGER NULL,
     LastError TEXT NULL,
     LastObservedAtUtc TEXT NOT NULL,
-    TableOccupiedWarning INTEGER NOT NULL DEFAULT 0
+    TableOccupiedWarning INTEGER NOT NULL DEFAULT 0,
+    AnchoredAtUtc TEXT NULL,
+    PosServerPendingSaleId INTEGER NULL,
+    PosServerPendingSaleCode TEXT NULL
 );
 CREATE INDEX IF NOT EXISTS IX_Orders_Status ON Orders(Status);
 CREATE INDEX IF NOT EXISTS IX_Orders_IdealposWebReference ON Orders(IdealposWebReference);
 ";
                 cmd.ExecuteNonQuery();
+            }
+
+            // The three cross-store columns were added after this store had
+            // already shipped, so CREATE TABLE IF NOT EXISTS above is a no-op
+            // against an existing state file and would leave it one schema
+            // behind — the bridge would then throw on its first write. SQLite
+            // has no ADD COLUMN IF NOT EXISTS, so ask the table what it has.
+            AddColumnIfMissing("AnchoredAtUtc", "TEXT NULL");
+            AddColumnIfMissing("PosServerPendingSaleId", "INTEGER NULL");
+            AddColumnIfMissing("PosServerPendingSaleCode", "TEXT NULL");
+        }
+
+        private void AddColumnIfMissing(string column, string declaration)
+        {
+            using (var conn = Open())
+            {
+                using (var check = conn.CreateCommand())
+                {
+                    check.CommandText = "PRAGMA table_info(Orders)";
+                    using (var reader = check.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            if (string.Equals(reader["name"].ToString(), column, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return;
+                            }
+                        }
+                    }
+                }
+                using (var alter = conn.CreateCommand())
+                {
+                    alter.CommandText = "ALTER TABLE Orders ADD COLUMN " + column + " " + declaration;
+                    alter.ExecuteNonQuery();
+                }
             }
         }
 
@@ -119,11 +157,13 @@ CREATE INDEX IF NOT EXISTS IX_Orders_IdealposWebReference ON Orders(IdealposWebR
 INSERT INTO Orders
 (ExternalOrderId, RequestedTable, ItemsJson, Notes, SubmittedAtUtc, Status, StrategyUsed,
  IdealposWebReference, OriginGuid, WebPendingOrderId, PendingSalesId, PendingSalesCode,
- TableMatchesRequest, LastError, LastObservedAtUtc, TableOccupiedWarning)
+ TableMatchesRequest, LastError, LastObservedAtUtc, TableOccupiedWarning,
+ AnchoredAtUtc, PosServerPendingSaleId, PosServerPendingSaleCode)
 VALUES
 (@ExternalOrderId, @RequestedTable, @ItemsJson, @Notes, @SubmittedAtUtc, @Status, @StrategyUsed,
  @IdealposWebReference, @OriginGuid, @WebPendingOrderId, @PendingSalesId, @PendingSalesCode,
- @TableMatchesRequest, @LastError, @LastObservedAtUtc, @TableOccupiedWarning)";
+ @TableMatchesRequest, @LastError, @LastObservedAtUtc, @TableOccupiedWarning,
+ @AnchoredAtUtc, @PosServerPendingSaleId, @PosServerPendingSaleCode)";
                     BindParameters(cmd, record);
                     cmd.ExecuteNonQuery();
                 }
@@ -152,7 +192,10 @@ UPDATE Orders SET
     TableMatchesRequest = @TableMatchesRequest,
     LastError = @LastError,
     LastObservedAtUtc = @LastObservedAtUtc,
-    TableOccupiedWarning = @TableOccupiedWarning
+    TableOccupiedWarning = @TableOccupiedWarning,
+    AnchoredAtUtc = @AnchoredAtUtc,
+    PosServerPendingSaleId = @PosServerPendingSaleId,
+    PosServerPendingSaleCode = @PosServerPendingSaleCode
 WHERE ExternalOrderId = @ExternalOrderId";
                     BindParameters(cmd, record);
                     cmd.ExecuteNonQuery();
@@ -202,6 +245,9 @@ WHERE ExternalOrderId = @ExternalOrderId";
             cmd.Parameters.AddWithValue("@LastError", (object)r.LastError ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@LastObservedAtUtc", r.LastObservedAtUtc.ToString("o"));
             cmd.Parameters.AddWithValue("@TableOccupiedWarning", r.TableOccupiedWarning ? 1 : 0);
+            cmd.Parameters.AddWithValue("@AnchoredAtUtc", r.AnchoredAtUtc.HasValue ? (object)r.AnchoredAtUtc.Value.ToString("o") : DBNull.Value);
+            cmd.Parameters.AddWithValue("@PosServerPendingSaleId", (object)r.PosServerPendingSaleId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@PosServerPendingSaleCode", (object)r.PosServerPendingSaleCode ?? DBNull.Value);
         }
 
         private static OrderRecord ReadRecord(IDataRecord reader)
@@ -226,6 +272,9 @@ WHERE ExternalOrderId = @ExternalOrderId";
                 LastError = reader["LastError"] as string,
                 LastObservedAtUtc = DateTime.Parse((string)reader["LastObservedAtUtc"]).ToUniversalTime(),
                 TableOccupiedWarning = Convert.ToInt32(reader["TableOccupiedWarning"]) != 0,
+                AnchoredAtUtc = reader["AnchoredAtUtc"] == DBNull.Value ? (DateTime?)null : DateTime.Parse((string)reader["AnchoredAtUtc"]).ToUniversalTime(),
+                PosServerPendingSaleId = reader["PosServerPendingSaleId"] == DBNull.Value ? (int?)null : Convert.ToInt32(reader["PosServerPendingSaleId"]),
+                PosServerPendingSaleCode = reader["PosServerPendingSaleCode"] as string,
             };
         }
 

@@ -21,15 +21,28 @@ namespace VerduraIdealposBridge.Orders
         private readonly OrderStateStore _store;
         private readonly IdealposReadRepository _repo;
         private readonly OrderService _service;
+
+        /// <summary>Null unless Bridge:PosServerConnection is configured.
+        /// Null means cross-store reconciliation is DISABLED, which is a
+        /// different fact from "no table sale was found" and is reported as
+        /// such — see ObserveTableLink.</summary>
+        private readonly PosServerReadRepository _posServerRepo;
+
         private Timer _timer;
         private int _tickRunning; // 0/1 used as a poor-man's non-reentrant guard
 
         public OrderLifecycleWatcher(BridgeConfig config, OrderStateStore store, IdealposReadRepository repo, OrderService service)
+            : this(config, store, repo, service, null)
+        {
+        }
+
+        public OrderLifecycleWatcher(BridgeConfig config, OrderStateStore store, IdealposReadRepository repo, OrderService service, PosServerReadRepository posServerRepo)
         {
             _config = config;
             _store = store;
             _repo = repo;
             _service = service;
+            _posServerRepo = posServerRepo;
         }
 
         public void Start()
@@ -71,7 +84,8 @@ namespace VerduraIdealposBridge.Orders
         {
             bool stillResolving = record.Status == OrderStatus.SubmittedToIdealpos
                                 || record.Status == OrderStatus.PendingIdealposProcessing
-                                || record.Status == OrderStatus.Processed;
+                                || record.Status == OrderStatus.Processed
+                                || record.Status == OrderStatus.AnchoredInIdealpos;
             if (stillResolving && DateTime.UtcNow - record.SubmittedAtUtc > TimeSpan.FromMinutes(_config.OrderStaleTimeoutMinutes))
             {
                 // Preflight fix (2026-08-19, independent review): this used
@@ -91,10 +105,29 @@ namespace VerduraIdealposBridge.Orders
                 string evidence;
                 switch (record.Status)
                 {
+                    case OrderStatus.AnchoredInIdealpos:
+                        // The strongest evidence any state here carries: the
+                        // order's own native pending sale was located and its
+                        // immutable ID captured. Timing out does not weaken
+                        // that — it only records that no supported conversion
+                        // onto the requested table happened while watching,
+                        // which on the installed build is the expected
+                        // outcome rather than a fault (DL-112 §A3).
+                        evidence = "CONFIRMED: this order's native pending sale was located in " +
+                                   "IPSTransaction.dbo.PendingSales — ID " + record.PendingSalesId +
+                                   ", Code '" + record.PendingSalesCode + "'. It is NOT on a table: " +
+                                   "native table sales live in POSServer.dbo.PendingSales, and no " +
+                                   "supported path converts a WB* web-order sale into one on this build " +
+                                   "(DL-112 §A3, DL-111 Q7/Q8). The order exists in Idealpos and can be " +
+                                   "actioned by staff from the Web Orders screen; it has not been billed " +
+                                   "to the requested table.";
+                        break;
                     case OrderStatus.Processed:
                         evidence = "CONFIRMED: WebPendingOrder.Processed=1 was observed — native Idealpos definitely " +
-                                   "consumed this order. No PendingSales correlation was found within the timeout. " +
-                                   "Check the native Idealpos UI/table directly before assuming anything about this order.";
+                                   "consumed this order. But no IPSTransaction.dbo.PendingSales row with Code '" +
+                                   Reconciliation.BuildNativeWebCode(record.IdealposWebReference) + "' was found within " +
+                                   "the timeout, so the order could not even be anchored. Check the native Idealpos " +
+                                   "UI/table directly before assuming anything about this order.";
                         break;
                     case OrderStatus.PendingIdealposProcessing:
                         evidence = "CONFIRMED: a WebPendingOrder row exists (Processed=0) — native Idealpos has not " +
@@ -122,11 +155,17 @@ namespace VerduraIdealposBridge.Orders
 
             if (record.Status == OrderStatus.Processed)
             {
-                ObservePendingSaleAssignment(record);
+                ObserveAnchor(record);
+                if (record.Status != OrderStatus.AnchoredInIdealpos) return; // fall through only if it just anchored this tick
+            }
+
+            if (record.Status == OrderStatus.AnchoredInIdealpos)
+            {
+                ObserveTableLink(record);
                 return;
             }
 
-            if (record.Status == OrderStatus.AssignedToTable && record.PendingSalesId.HasValue)
+            if (record.Status == OrderStatus.AssignedToTable)
             {
                 ObservePendingSaleStillOpen(record);
             }
@@ -171,41 +210,115 @@ namespace VerduraIdealposBridge.Orders
             }
         }
 
-        /// <summary>NOT fully confirmed (Section K.2 — the harness's open
-        /// question): whether native Idealpos links PendingSales.Reference
-        /// back to our WebReference, and whether PendingSales.Code ends up
-        /// equal to the requested table, both depend on behaviour this
-        /// investigation could not decompile. Falls back to an unfiltered
-        /// recent-rows scan (same rationale as the harness's watch
-        /// command) if the direct Reference match finds nothing.</summary>
-        private void ObservePendingSaleAssignment(OrderRecord record)
+        /// <summary>
+        /// STAGE 1 — pre-transfer anchoring. Deterministic, and the part that
+        /// actually works today.
+        ///
+        /// Finds this order's own pending sale in IPSTransaction by the code
+        /// native Idealpos gives it ("WB" + OrderReference) and captures the
+        /// immutable ID. Replaces a lookup on PendingSales.Reference, which
+        /// is NULL for every Webit-ingested order and therefore never matched
+        /// anything (DL-112 §4).
+        ///
+        /// Critically, this does NOT transition to AssignedToTable. The row
+        /// found here is a web-order sale, not a table sale, and the two are
+        /// in different databases — see ObserveTableLink.
+        /// </summary>
+        private void ObserveAnchor(OrderRecord record)
         {
-            PendingSaleRow sale = _repo.GetPendingSaleByReference(record.IdealposWebReference);
-            if (sale == null)
+            string expectedCode = Reconciliation.BuildNativeWebCode(record.IdealposWebReference);
+            if (expectedCode == null)
             {
-                // Leave status at Processed — do not guess. Logged at Debug
-                // so it doesn't spam Info-level logs every poll interval
-                // while normal (staff hasn't picked it up / mapping isn't
-                // via Reference in this Idealpos version).
+                Logger.Warn("watcher_anchor_no_web_reference", Logger.F("externalOrderId", record.ExternalOrderId));
+                return;
+            }
+
+            PendingSaleRow sale = _repo.GetPendingSaleByNativeCode(expectedCode);
+            if (!Reconciliation.IsAnchorMatch(sale, expectedCode))
+            {
+                // Leave status at Processed — do not guess. Logged at Debug so
+                // it doesn't spam Info-level logs every poll interval while
+                // native Idealpos has simply not materialised the sale yet.
                 List<PendingSaleRow> recent = _repo.GetRecentPendingSales(record.SubmittedAtUtc.AddMinutes(-1), 5);
-                Logger.Debug("watcher_no_pending_sale_match_yet",
+                Logger.Debug("watcher_no_anchor_match_yet",
                     Logger.F("externalOrderId", record.ExternalOrderId),
+                    Logger.F("expectedNativeCode", expectedCode),
                     Logger.F("recentPendingSalesCount", recent.Count));
                 return;
             }
 
             record.PendingSalesId = sale.Id;
             record.PendingSalesCode = sale.Code;
-            record.TableMatchesRequest = string.Equals(
-                (sale.Code ?? "").Trim(), (record.RequestedTable ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+            record.AnchoredAtUtc = DateTime.UtcNow;
 
-            if (record.TableMatchesRequest == false)
+            // Explicitly NOT set here. The anchor says nothing about a table,
+            // and leaving this null is the honest representation of "not yet
+            // determined" — setting it false would imply we checked a table
+            // and it did not match.
+            record.TableMatchesRequest = null;
+
+            Logger.Info("order_anchored",
+                Logger.F("externalOrderId", record.ExternalOrderId),
+                Logger.F("ipsPendingSaleId", sale.Id),
+                Logger.F("ipsPendingSaleCode", sale.Code));
+
+            Transition(record, OrderStatus.AnchoredInIdealpos, null);
+        }
+
+        /// <summary>
+        /// STAGE 2 — cross-store table linkage.
+        ///
+        /// Resolves the POSServer.dbo.PendingSales TABLE sale for the
+        /// requested table and, only if that resolves, promotes the order to
+        /// AssignedToTable. The IPSTransaction anchor ID is deliberately not
+        /// carried across: the stores' ID spaces are disjoint, so the linkage
+        /// is by table code (DL-112 §A4b).
+        ///
+        /// On the installed build this cannot succeed, and that is the
+        /// expected outcome rather than a defect: no supported native path
+        /// converts a WB* sale into a POSServer table sale (DL-112 §A3).
+        /// The method is written and tested now so that the moment the vendor
+        /// answers DL-111 Q7/Q8 the remaining work is configuration, not
+        /// design — and so that nothing in the meantime quietly claims a
+        /// table that was never assigned.
+        /// </summary>
+        private void ObserveTableLink(OrderRecord record)
+        {
+            if (_posServerRepo == null)
+            {
+                // Disabled, not negative. Logged at Debug, and the record is
+                // left untouched so nothing reads as a checked-and-failed
+                // table match.
+                Logger.Debug("watcher_cross_store_disabled",
+                    Logger.F("externalOrderId", record.ExternalOrderId));
+                return;
+            }
+
+            string reason;
+            PosServerPendingSaleRow tableSale = Reconciliation.SelectTableSale(
+                _posServerRepo.GetOpenTableSales(), record.RequestedTable, out reason);
+
+            if (tableSale == null)
+            {
+                Logger.Debug("watcher_no_table_link_yet",
+                    Logger.F("externalOrderId", record.ExternalOrderId),
+                    Logger.F("requestedTable", record.RequestedTable),
+                    Logger.F("reason", reason));
+                return;
+            }
+
+            if (!Reconciliation.ConfirmsRequestedTable(tableSale, record.RequestedTable))
             {
                 Logger.Warn("table_mismatch",
                     Logger.F("externalOrderId", record.ExternalOrderId),
                     Logger.F("requestedTable", record.RequestedTable),
-                    Logger.F("actualPendingSalesCode", sale.Code));
+                    Logger.F("posServerPendingSaleCode", tableSale.Code));
+                return;
             }
+
+            record.PosServerPendingSaleId = tableSale.Id;
+            record.PosServerPendingSaleCode = tableSale.Code;
+            record.TableMatchesRequest = true;
 
             Transition(record, OrderStatus.AssignedToTable, null);
         }
@@ -219,8 +332,26 @@ namespace VerduraIdealposBridge.Orders
         /// testing (README.md Test 8/9) before relying on it operationally.</summary>
         private void ObservePendingSaleStillOpen(OrderRecord record)
         {
-            PendingSaleRow row = _repo.GetPendingSaleById(record.PendingSalesId.Value);
-            if (row != null) return; // still open — nothing to do
+            // Watch the row that actually represents the open table sale. An
+            // order only reaches AssignedToTable via a resolved POSServer row,
+            // so that is the one whose disappearance means the table closed —
+            // watching the IPSTransaction anchor instead would be watching the
+            // wrong database for this question.
+            if (record.PosServerPendingSaleId.HasValue)
+            {
+                if (_posServerRepo == null) return; // cannot observe; say nothing rather than infer
+                if (_posServerRepo.GetById(record.PosServerPendingSaleId.Value) != null) return; // still open
+
+                Transition(record, OrderStatus.Paid, null);
+                Transition(record, OrderStatus.Closed,
+                    "Heuristic: POSServer.dbo.PendingSales row " + record.PosServerPendingSaleId +
+                    " disappeared, inferred as paid+closed. Not directly confirmed against native " +
+                    "IPS.exe behaviour — see README.md.");
+                return;
+            }
+
+            if (!record.PendingSalesId.HasValue) return;
+            if (_repo.GetPendingSaleById(record.PendingSalesId.Value) != null) return; // still open
 
             Transition(record, OrderStatus.Paid, null);
             Transition(record, OrderStatus.Closed,

@@ -12,6 +12,25 @@ namespace VerduraIdealposBridge.Config
     public class BridgeConfig
     {
         public string IpsConnectionString { get; private set; }
+
+        /// <summary>
+        /// Optional. Read-only connection to the POSServer database, which
+        /// holds native TABLE sales — a different database from IPSTransaction
+        /// (DL-112 §A4b).
+        ///
+        /// Null when unconfigured, and that is the supported default: without
+        /// it the bridge anchors web orders in IPSTransaction and stops there,
+        /// which is exactly as far as the installed build can honestly go.
+        /// Configuring it enables cross-store table resolution; it does not
+        /// enable any write, and no supported native conversion exists to
+        /// produce a row for it to find yet (DL-111 Q7/Q8).
+        /// </summary>
+        public string PosServerConnectionString { get; private set; }
+
+        public bool CrossStoreReconciliationEnabled
+        {
+            get { return !string.IsNullOrWhiteSpace(PosServerConnectionString); }
+        }
         public string BindAddress { get; private set; }
         public int Port { get; private set; }
         public bool AllowLan { get; private set; }
@@ -50,6 +69,24 @@ namespace VerduraIdealposBridge.Config
                     "before starting the bridge.");
             }
             cfg.IpsConnectionString = connEntry.ConnectionString;
+
+            // Optional, unlike IpsConnection: absent means cross-store
+            // reconciliation is off, which is a valid and currently correct
+            // configuration. A present-but-placeholder value is rejected
+            // rather than treated as absent — that would silently disable a
+            // feature the operator believed they had turned on.
+            var posServerEntry = ConfigurationManager.ConnectionStrings["PosServerConnection"];
+            if (posServerEntry != null && !string.IsNullOrWhiteSpace(posServerEntry.ConnectionString))
+            {
+                if (posServerEntry.ConnectionString.IndexOf("CHANGE_ME", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    throw new ConfigurationErrorsException(
+                        "App.config's PosServerConnection still contains a 'CHANGE_ME' placeholder. " +
+                        "Either point it at the POSServer database or remove the entry entirely to " +
+                        "leave cross-store reconciliation disabled.");
+                }
+                cfg.PosServerConnectionString = posServerEntry.ConnectionString;
+            }
 
             cfg.BindAddress = GetString("Bridge:BindAddress", "127.0.0.1");
             cfg.Port = GetInt("Bridge:Port", 5588);

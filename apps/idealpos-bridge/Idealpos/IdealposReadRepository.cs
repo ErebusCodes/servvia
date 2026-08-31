@@ -39,7 +39,7 @@ namespace VerduraIdealposBridge.Idealpos
     /// <summary>
     /// All read-only. Every query here targets a table this investigation's
     /// static analysis of IPS.Data.SQL.dll's embedded DDL confirmed exists,
-    /// with the exact confirmed column list ÔÇö see the technical report,
+    /// with the exact confirmed column list ï¿½ï¿½ï¿½ see the technical report,
     /// Sections D/F/K. This class never writes to WebPendingOrder,
     /// PendingSales, or PendingSaleLines; order creation goes exclusively
     /// through IdealposOrderSubmitter -> LocalDataHelper.InsertOrders().
@@ -76,9 +76,9 @@ namespace VerduraIdealposBridge.Idealpos
         }
 
         /// <summary>
-        /// dbo.TableMapSetups ÔÇö the floor-plan table objects. Confirmed
+        /// dbo.TableMapSetups ï¿½ï¿½ï¿½ the floor-plan table objects. Confirmed
         /// column set, Section F of the investigation report.
-        /// "LikelyOccupied" is an explicit heuristic ÔÇö see TableDto.
+        /// "LikelyOccupied" is an explicit heuristic ï¿½ï¿½ï¿½ see TableDto.
         /// </summary>
         public List<TableDto> GetTables()
         {
@@ -126,11 +126,11 @@ namespace VerduraIdealposBridge.Idealpos
         /// <summary>
         /// Confirmed live against a real installation (2026-08-26): some
         /// venues leave TableMapSetups.Caption (and .Name) blank for every
-        /// real table ÔÇö Verdura cannot match/select a table by an empty
+        /// real table ï¿½ï¿½ï¿½ Verdura cannot match/select a table by an empty
         /// string, and every row would collapse to the same "" identifier,
         /// making tables indistinguishable. Falls back to "{Code}-{Index}"
-        /// ÔÇö TableMapSetups' own composite key components, confirmed unique
-        /// per row by the table's schema design ÔÇö only when Caption is
+        /// ï¿½ï¿½ï¿½ TableMapSetups' own composite key components, confirmed unique
+        /// per row by the table's schema design ï¿½ï¿½ï¿½ only when Caption is
         /// genuinely blank, so venues that DO populate Caption are
         /// unaffected. Never guesses a value; Code and Index are read
         /// directly off the same row, not derived or inferred.
@@ -142,8 +142,8 @@ namespace VerduraIdealposBridge.Idealpos
 
         /// <summary>
         /// Real DUNEDIN StockItems (2026-08-26) includes a literal placeholder
-        /// row ÔÇö Code="Deleted", Description="Deleted Deleted Deleted Stock
-        /// Items" ÔÇö IdealPOS's own internal marker, not a real menu item.
+        /// row ï¿½ï¿½ï¿½ Code="Deleted", Description="Deleted Deleted Deleted Stock
+        /// Items" ï¿½ï¿½ï¿½ IdealPOS's own internal marker, not a real menu item.
         /// A real product Code is always a plain non-negative integer here;
         /// anything else is skipped rather than surfaced as orderable.
         /// </summary>
@@ -159,15 +159,15 @@ namespace VerduraIdealposBridge.Idealpos
         /// written. Confirmed live against DUNEDIN (2026-08-26): that vendor
         /// method returned an empty dictionary for a real installation with
         /// 826 real active StockItems rows, while SqlConnected/AssembliesLoaded
-        /// both reported healthy ÔÇö i.e. it did not error, it filtered
+        /// both reported healthy ï¿½ï¿½ï¿½ i.e. it did not error, it filtered
         /// everything out. Direct read-only evidence: EVERY row has
         /// SentOnline=0 AND Availability=0 (confirmed via
-        /// "SELECT SentOnline, COUNT(*) ... GROUP BY SentOnline" ÔÇö all 826
+        /// "SELECT SentOnline, COUNT(*) ... GROUP BY SentOnline" ï¿½ï¿½ï¿½ all 826
         /// active rows in the SentOnline=0 bucket, same for Availability).
         /// GetIpsStockItemsDic() almost certainly filters on one or both of
         /// these online/web-visibility flags, which is an Idealpos-side
         /// per-product setting this venue has simply never used (no prior
-        /// online-ordering integration) ÔÇö not something this bridge may set
+        /// online-ordering integration) ï¿½ï¿½ï¿½ not something this bridge may set
         /// itself (that would be a live IdealPOS catalog mutation, out of
         /// bounds by this project's own non-negotiable rule). This is
         /// load-bearing, not cosmetic: OrderService.SubmitOrder() builds its
@@ -177,11 +177,11 @@ namespace VerduraIdealposBridge.Idealpos
         /// PLU actually was.
         ///
         /// Price is deliberately NOT sourced here (StockItems has no Price/
-        /// Price1-shaped column in this schema ÔÇö the vendor method must join
+        /// Price1-shaped column in this schema ï¿½ï¿½ï¿½ the vendor method must join
         /// a separate pricing table internally). Confirmed unnecessary for
         /// correctness: IdealposOrderSubmitter.BuildItems() leaves
         /// StockItem.PricingMode at its default (Inherit) specifically so
-        /// Idealpos prices each line itself ÔÇö ProductDto.Price/Available
+        /// Idealpos prices each line itself ï¿½ï¿½ï¿½ ProductDto.Price/Available
         /// exist only for the /api/products discovery response, never for
         /// order submission.
         /// </summary>
@@ -207,9 +207,9 @@ namespace VerduraIdealposBridge.Idealpos
                             Code = code,
                             Description = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim(),
                             Available = true, // see ProductDto.Available for why
-                            Price = 0m, // deliberately not sourced ÔÇö see method doc comment
+                            Price = 0m, // deliberately not sourced ï¿½ï¿½ï¿½ see method doc comment
                             // dbo.StockItems.DepartmentCode is smallint (Int16)
-                            // in this schema, not int ÔÇö confirmed via
+                            // in this schema, not int ï¿½ï¿½ï¿½ confirmed via
                             // INFORMATION_SCHEMA.COLUMNS after GetInt32() threw
                             // "Specified cast is not valid" against the real
                             // live database.
@@ -266,6 +266,39 @@ namespace VerduraIdealposBridge.Idealpos
                 "from dbo.PendingSales where Reference = @ref order by ID desc", conn))
             {
                 cmd.Parameters.AddWithValue("@ref", webReference);
+                conn.Open();
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read()) return null;
+                    return ReadPendingSaleRow(reader);
+                }
+            }
+        }
+
+        /// <summary>
+        /// The deterministic anchor lookup: find this order's own web-order
+        /// pending sale by the code native Idealpos gives it,
+        /// "WB" + OrderReference (DL-108 Â§3).
+        ///
+        /// This exists because GetPendingSaleByReference above cannot work
+        /// for a Webit-ingested order: PendingSales.Reference is NULL on the
+        /// only such order this venue has ever had (ORD-600002, ID 4522), so
+        /// that lookup returns nothing every time and the order ages out to
+        /// Uncertain having never been correlated at all.
+        ///
+        /// Equality, not LIKE. This database also contains a manually typed
+        /// 'WBORD' pending sale (4523, entered on POS 2 by clerk 108), and a
+        /// prefix match would claim that staff-entered sale as ORD-600002's.
+        /// </summary>
+        public PendingSaleRow GetPendingSaleByNativeCode(string nativeCode)
+        {
+            if (string.IsNullOrWhiteSpace(nativeCode)) return null;
+            using (var conn = new SqlConnection(_connectionString))
+            using (var cmd = new SqlCommand(
+                "select ID, Code, Status, OrderState, SentOnline, Reference, Date, OrderDate " +
+                "from dbo.PendingSales where ltrim(rtrim(Code)) = @code order by ID desc", conn))
+            {
+                cmd.Parameters.AddWithValue("@code", nativeCode.Trim());
                 conn.Open();
                 using (var reader = cmd.ExecuteReader())
                 {

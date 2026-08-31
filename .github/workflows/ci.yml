@@ -290,7 +290,7 @@ jobs:
     # simply cannot compile on a runner with no Idealpos installation, and
     # no amount of CI configuration changes that.
     #
-    # What it CAN do is compile and run the 24 of the bridge's 40 self-tests
+    # What it CAN do is compile and run the 45 of the bridge's 61 self-tests
     # whose sources depend on nothing but in-box .NET Framework assemblies
     # (see apps/idealpos-bridge-ci/ and scripts/bridge-test-inventory.json).
     # The remaining 16 are vendor-typed and stay local-only — a real,
@@ -312,5 +312,5 @@ jobs:
         with:
           dotnet-version: '8.0.x'
       - run: dotnet build VerduraIdealposBridge.CiTests.csproj -c Release
-      - name: Vendor-free self-test subset (24 of 40 tests; count is pinned)
+      - name: Vendor-free self-test subset (45 of 61 tests; count is pinned)
         run: ./bin/Release/net48/VerduraIdealposBridge.CiTests.exe

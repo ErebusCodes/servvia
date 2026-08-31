@@ -25,14 +25,43 @@ namespace VerduraIdealposBridge.Orders
         PendingIdealposProcessing,
 
         /// <summary>WebPendingOrder.Processed flipped to 1. Does NOT by
-        /// itself prove a table was assigned — see AssignedToTable.</summary>
+        /// itself prove a table was assigned — see AssignedToTable. It does
+        /// not even prove the order is reconcilable: treat it as "native
+        /// Idealpos consumed the message", nothing more.</summary>
         Processed,
 
-        /// <summary>A dbo.PendingSales row was found referencing this order
-        /// (via Reference, or via the unfiltered-recent fallback) with a
-        /// non-empty Code. OrderRecord.TableMatchesRequest tells you
-        /// whether that Code equals the table Verdura actually asked for —
-        /// check it; per Section K.2 this is not guaranteed.</summary>
+        /// <summary>
+        /// The order's own pending sale has been located in
+        /// IPSTransaction.dbo.PendingSales by its native code
+        /// ("WB" + OrderReference), and its immutable ID captured.
+        ///
+        /// This is a strictly stronger fact than Processed — the sale
+        /// demonstrably exists and the bridge knows which row it is — and a
+        /// strictly weaker one than AssignedToTable. The order is NOT on a
+        /// table here, and on the installed build it cannot be put on one:
+        /// table sales live in a different database entirely
+        /// (POSServer.dbo.PendingSales) and no supported native path
+        /// converts a WB* sale into one (DL-112 §A3, DL-111 Q7/Q8).
+        ///
+        /// Non-terminal: the watcher keeps observing, because the anchor is
+        /// what a future supported conversion would be followed FROM.
+        /// </summary>
+        AnchoredInIdealpos,
+
+        /// <summary>
+        /// A POSServer.dbo.PendingSales TABLE sale has been resolved for this
+        /// order and its Code equals the table Verdura asked for.
+        ///
+        /// Corrected 2026-09-01 (DL-112 §A4b). This state previously meant
+        /// only "some IPSTransaction.dbo.PendingSales row was found", and
+        /// TableMatchesRequest was decided by comparing that row's Code to
+        /// the requested table — but for a web order that Code is
+        /// "WB" + OrderReference, never a table, and table sales are not in
+        /// that database at all. The old rule therefore compared an order
+        /// identifier against a table identifier, across two disjoint
+        /// stores. Reaching this state now requires a genuine cross-store
+        /// resolution; see Reconciliation.ConfirmsRequestedTable.
+        /// </summary>
         AssignedToTable,
 
         /// <summary>Row disappeared from WebPendingOrder without ever
@@ -99,6 +128,7 @@ namespace VerduraIdealposBridge.Orders
                 case OrderStatus.SubmittedToIdealpos: return "submitted_to_idealpos";
                 case OrderStatus.PendingIdealposProcessing: return "pending_idealpos_processing";
                 case OrderStatus.Processed: return "processed";
+                case OrderStatus.AnchoredInIdealpos: return "anchored_in_idealpos";
                 case OrderStatus.AssignedToTable: return "assigned_to_table";
                 case OrderStatus.Rejected: return "rejected";
                 case OrderStatus.Failed: return "failed";

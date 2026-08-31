@@ -21,6 +21,7 @@ namespace VerduraIdealposBridge.Tests
             results.AddRange(OrderStatusTests.RunAll());
             results.AddRange(IdealposReadRepositoryTests.RunAll());
             results.AddRange(IdealposOrderSubmitterTests.RunAll());
+            results.AddRange(ReconciliationTests.RunAll());
 
             int passed = 0, failed = 0;
             foreach (var r in results)

@@ -161,8 +161,19 @@ namespace VerduraIdealposBridge.Api
                 status = r.Status.ToWireString(),
                 table = r.RequestedTable,
                 idealposWebPendingOrderId = r.WebPendingOrderId,
+                // IPSTransaction anchor — the order's own web-order sale.
+                // Existing field names kept so this stays wire-compatible;
+                // their meaning is unchanged, it is only the (previously
+                // wrong) inference drawn from them that changed.
                 idealposPendingSaleId = r.PendingSalesId,
                 idealposPendingSaleCode = r.PendingSalesCode,
+                anchoredAtUtc = r.AnchoredAtUtc,
+                // POSServer table sale — a different database. Null until a
+                // supported native conversion exists (DL-111 Q7/Q8).
+                posServerPendingSaleId = r.PosServerPendingSaleId,
+                posServerPendingSaleCode = r.PosServerPendingSaleCode,
+                // Null means "not determined yet", NOT "checked and did not
+                // match". Only ever true off a resolved POSServer table sale.
                 tableMatchesRequest = r.TableMatchesRequest,
                 processed = r.Status != OrderStatus.Received && r.Status != OrderStatus.Validated && r.Status != OrderStatus.SubmittedToIdealpos && r.Status != OrderStatus.PendingIdealposProcessing,
                 tableOccupiedWarning = r.TableOccupiedWarning,
