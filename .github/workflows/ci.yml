@@ -174,7 +174,7 @@ jobs:
     # neither `npm run test:dev-scripts` nor a windows-deploy equivalent was
     # ever wired into this workflow, so "tests exist" was not the same claim
     # as "tests run." Real regression coverage that never runs isn't coverage.
-    name: Root scripts — dev-lock + windows-deploy proxy tests + NUL-byte guard
+    name: Root scripts — dev-lock + windows-deploy proxy tests + NUL-byte and bridge-governance guards
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -187,6 +187,14 @@ jobs:
       - run: npm run test:dev-scripts
       - run: node --test windows-deploy/static-proxy-server.test.mjs
       - run: npm run check:nul-bytes
+      # apps/idealpos-bridge's safety properties are conventions, not
+      # compiler-enforced: vendor DLLs stay untracked, no build output is
+      # committed, the tracked App.config holds a placeholder key, and the
+      # CI test host's suite split stays honest. Checked here rather than in
+      # the Windows job below because it is plain Node with no toolchain
+      # need — and because it must still run even if the Windows runner is
+      # unavailable. See scripts/check-bridge-governance.mjs.
+      - run: npm run check:bridge-governance
 
   customer-website:
     name: Customer Website — lint, typecheck, build
@@ -272,3 +280,37 @@ jobs:
           dotnet-version: '8.0.x'
       - run: dotnet build src/VerduraIdealposTracer.Windows/VerduraIdealposTracer.Windows.csproj -c Release
       - run: dotnet build src/VerduraIdealposTracer.Cli/VerduraIdealposTracer.Cli.csproj -c Release
+
+  idealpos-bridge:
+    # PARTIAL coverage by construction, and worth being precise about: this
+    # job cannot build apps/idealpos-bridge itself. The bridge is net48 and
+    # references three proprietary IdealPos.*.dll assemblies — the client's
+    # own licensed Idealpos install files, deliberately never committed (see
+    # apps/idealpos-bridge/lib/PUT_DLLS_HERE.txt) — so the main project
+    # simply cannot compile on a runner with no Idealpos installation, and
+    # no amount of CI configuration changes that.
+    #
+    # What it CAN do is compile and run the 24 of the bridge's 40 self-tests
+    # whose sources depend on nothing but in-box .NET Framework assemblies
+    # (see apps/idealpos-bridge-ci/ and scripts/bridge-test-inventory.json).
+    # The remaining 16 are vendor-typed and stay local-only — a real,
+    # documented coverage gap, not one this job papers over: the CI host
+    # exits non-zero if the covered count ever drifts from its recorded pin,
+    # so tests cannot quietly disappear from the covered half either.
+    #
+    # windows-latest rather than ubuntu because net48 needs the .NET
+    # Framework targeting pack, which only the Windows images carry.
+    name: Idealpos Bridge (.NET Framework) — vendor-free self-test subset
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/idealpos-bridge-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build VerduraIdealposBridge.CiTests.csproj -c Release
+      - name: Vendor-free self-test subset (24 of 40 tests; count is pinned)
+        run: ./bin/Release/net48/VerduraIdealposBridge.CiTests.exe

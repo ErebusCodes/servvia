@@ -1,0 +1,78 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CI-ONLY test host. Never shipped, never installed, never referenced by
+    VerduraIdealposBridge.csproj.
+
+    Why this project exists at all: the bridge's five self-test suites live
+    inside the main net48 executable, and two of them are typed against
+    IdealPos.Webit — a proprietary vendor assembly that is the client's own
+    licensed Idealpos install file and is deliberately not source-controlled
+    (lib/PUT_DLLS_HERE.txt). A GitHub runner therefore cannot build the main
+    project at all. Rather than leave the bridge with zero automated
+    coverage, this project links the subset of production sources and suites
+    that depend on nothing but in-box .NET Framework assemblies, so the
+    pure-logic half of the bridge is genuinely exercised on every push.
+
+    Why a SIBLING directory rather than apps/idealpos-bridge/ci/: this was
+    first written nested inside the bridge, and that broke the shipped
+    build outright. VerduraIdealposBridge.csproj is SDK-style, so it globs
+    every .cs file underneath itself — it swallowed CiTestSupport.cs and
+    produced CS0101/CS0111 duplicate-definition errors against the very
+    TestResult/Assert types the mirror copies. Excluding the folder from
+    the shipped csproj would have fixed it too, but at the cost of editing
+    a production build file to accommodate a CI-only concern. Living
+    outside the bridge tree keeps that file untouched.
+
+    Compile items are listed EXPLICITLY (EnableDefaultCompileItems=false)
+    rather than globbed. That is the point: a glob would silently pull in a
+    vendor-typed file the moment one is added and break CI with a confusing
+    missing-assembly error, whereas this list makes the DLL-free boundary a
+    reviewable, intentional statement. scripts/check-bridge-governance.mjs
+    verifies this list still matches the recorded inventory.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>VerduraIdealposBridge.CiTests</AssemblyName>
+    <RootNamespace>VerduraIdealposBridge.Ci</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <StartupObject>VerduraIdealposBridge.Ci.CiTestMain</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In-box only. No vendor DLL, no NuGet package — same zero-dependency
+         policy the shipped project holds itself to. -->
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Production sources under test — all vendor-free. -->
+    <Compile Include="..\idealpos-bridge\Orders\OrderModels.cs" Link="Orders\OrderModels.cs" />
+    <Compile Include="..\idealpos-bridge\Orders\OrderStatus.cs" Link="Orders\OrderStatus.cs" />
+    <Compile Include="..\idealpos-bridge\Orders\OrderSubmitOutcome.cs" Link="Orders\OrderSubmitOutcome.cs" />
+    <Compile Include="..\idealpos-bridge\Orders\OrderValidator.cs" Link="Orders\OrderValidator.cs" />
+    <Compile Include="..\idealpos-bridge\Idealpos\Dto.cs" Link="Idealpos\Dto.cs" />
+    <Compile Include="..\idealpos-bridge\Idealpos\IdealposReadRepository.cs" Link="Idealpos\IdealposReadRepository.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Vendor-free suites, compiled from the very same files the local self-test
+         run executes. No copies, no CI-specific test code. -->
+    <Compile Include="..\idealpos-bridge\Tests\OrderValidatorTests.cs" Link="Tests\OrderValidatorTests.cs" />
+    <Compile Include="..\idealpos-bridge\Tests\OrderStatusTests.cs" Link="Tests\OrderStatusTests.cs" />
+    <Compile Include="..\idealpos-bridge\Tests\IdealposReadRepositoryTests.cs" Link="Tests\IdealposReadRepositoryTests.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="CiTestSupport.cs" />
+    <Compile Include="CiTestMain.cs" />
+  </ItemGroup>
+
+</Project>

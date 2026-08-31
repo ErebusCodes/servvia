@@ -8,3 +8,12 @@ obj/
 # rolling logs, never source.
 state/
 logs/
+
+# Vendor DLLs are deliberately NOT bundled with this project — they are the
+# client's own already-licensed Idealpos install files, copied in locally
+# before building (see lib/PUT_DLLS_HERE.txt, README.md "Build"). Tracking
+# them would redistribute licensed third-party binaries and would also let
+# CI build against a stale committed copy instead of the real install.
+lib/*.dll
+lib/x86/*.dll
+lib/x64/*.dll

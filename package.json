@@ -24,6 +24,7 @@
     "db:local:reset": "node scripts/db-local-reset.mjs",
     "validate:menu": "node scripts/validate-menu.mjs",
     "check:nul-bytes": "node scripts/check-no-nul-bytes.mjs",
+    "check:bridge-governance": "node scripts/check-bridge-governance.mjs",
     "test:dev-scripts": "node --test scripts/*.test.mjs",
     "dev:api": "npm run start:dev --workspace=apps/api",
     "dev:customer-website": "npm run dev --workspace=apps/customer-website",

@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Recorded self-test inventory for apps/idealpos-bridge, and the record of",
+    "which suites CI can and cannot execute. Checked by",
+    "scripts/check-bridge-governance.mjs on every push.",
+    "",
+    "The split is not a preference. Two suites are typed against IdealPos.Webit,",
+    "a proprietary vendor assembly that is the client's own licensed Idealpos",
+    "install file and is deliberately not source-controlled (see",
+    "apps/idealpos-bridge/lib/PUT_DLLS_HERE.txt). A GitHub runner has no Idealpos",
+    "installation, so those two suites cannot run there at all. The remaining",
+    "three depend on nothing but in-box .NET Framework assemblies and do run.",
+    "",
+    "Update these numbers ONLY together with the matching ExpectedTestCount in",
+    "apps/idealpos-bridge-ci/CiTestMain.cs, and only as a deliberate change."
+  ],
+  "totalLocalBaseline": 40,
+  "ciCovered": {
+    "tests": 24,
+    "suites": [
+      "OrderValidatorTests",
+      "OrderStatusTests",
+      "IdealposReadRepositoryTests"
+    ]
+  },
+  "ciNotCovered": {
+    "tests": 16,
+    "reason": "typed against the proprietary IdealPos.Webit vendor DLL, which is not source-controlled and is absent from any GitHub runner",
+    "suites": [
+      "TableAssignmentStrategyTests",
+      "IdealposOrderSubmitterTests"
+    ]
+  }
+}
