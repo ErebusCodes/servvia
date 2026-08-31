@@ -147,3 +147,148 @@ Both blockers are now questions 7 and 8 of DL-111.
   `ClerkID=1`; 3 `PendingSaleLines`; exactly 1 `WB%` pending sale in the database.
 - `TableMapSetups` Code=1, Type=3, Index=5, Caption=`5` — `Status=0` (Ready), `StartTime` NULL.
 - `TableTransfersToKitchen` left at `1`. No option written.
+
+---
+
+# Addendum — 2026-09-01: the RED BULL / `WBORD` order, and the installed transfer architecture
+
+Read-only. No UI action, no click, no caption change, no transfer, no option altered, no order
+created or modified. All database access was `SELECT` / `INFORMATION_SCHEMA`; IPS.exe was read only.
+
+A second item — RED BULL, $4.00 — was observed in the Web Orders queue and reported as a possible
+improvement over ORD-600002, on the grounds that it could be recalled into the normal sale screen.
+It is not an improvement, and the record must not carry it as one.
+
+## A1. RED BULL did NOT traverse Verdura / Connector / Bridge / Webit
+
+| Evidence | Value |
+|---|---|
+| `dbo.WebPendingOrder` rows | still exactly **2** — `ORD-600001`, `ORD-600002`, both `Processed=1`. **No row for RED BULL.** |
+| Native audit `Cons 90491`, POS **2**, 2026-08-31 23:35:33, Clerk **108** | line 1 `SI 221 RED BULL`; line 2 `H [ Saved to Pending Sale WBORD ]` |
+| `PendingSales` 4523 | `Code='WBORD'` (no order reference appended), `ClerkID=108`, `POS=1` |
+| `PendingSaleLines` 4523 | `SI 221 RED BULL qty 1 $4 Printed=1`, `ClerkID=108`, `LocationSold=1`; **no `H` message lines** |
+
+It was entered manually on native POS terminal 2 by clerk 108 and saved to a native pending sale
+whose code was typed as `WBORD`. Its appearance in the Web Orders queue is explained **entirely** by
+that screen's filter `WHERE trim(PendingSales.Code) LIKE 'WB*'` — a naming collision, not an ingest.
+
+### Correction to this document's own §1
+
+§1 above closes with "destroy the only `WB*` pending sale that has ever existed in this database."
+That was true when written on 2026-08-31. It is now false: `PendingSales` 4523 (`Code='WBORD'`) is a
+second `WB*` row, created manually at 23:35:33 that same evening. The original wording is left
+standing rather than rewritten, per this project's DL-109/DL-110 convention. The operative point is
+unchanged and if anything stronger — ORD-600002 remains the only *Webit-ingested* `WB*` sale, and the
+only one carrying a Verdura order reference.
+
+Contrast with a genuine Webit order (ORD-600002, `PendingSales` 4522): `Code='WBORD-600002'` built as
+`"WB" & OrderReference` (DL-108 §3), header `ClerkID=1` (`IdealWebitClerk`), line `ClerkID=10000`,
+`LocationSold=0`, and two `H` message lines carrying `Order Tablet Checkout (Guests: 1)`.
+
+**Do not cite RED BULL as evidence that a Verdura web order can be recalled differently from
+ORD-600002.** Recalling a pending sale into the sale screen is the ordinary native workflow — this
+site has 4,521 `Saved to Pending Sale` and 13,183 `Saved to Table` audit events. RED BULL demonstrates
+nothing about the Webit pipeline.
+
+## A2. What RED BULL *is* useful for
+
+It exercised a native guard we had not previously reached:
+
+- a recalled pending sale does load into the normal `frmSale` screen;
+- attempting a table conversion from there reaches real native code;
+- the installed IPS.exe rejects it with `Cannot Transfer to Table!`
+
+Traced in the installed binary: the literal is at file offset `0x003b4ecc` (VA `0x007b4ecc`) with
+exactly **one** code reference, at `0x0228f3fb`, inside the `frmSale` procedure that also owns
+`Cannot Transfer to a Pending Sale!`, `Cannot save Table Sale to Pending Sale!` and
+`Cannot save a Hold Print sale to a Pending Sale`. The decoded branch:
+
+```
+mov   ecx,[ebp+0x20]          ; procedure parameter (Integer)
+movsx edx,word [ecx]
+test  edx,edx
+jnz   skip                    ; precondition 1: parameter must be 0
+movsx eax,word [0x02a2f55c]   ; module-level flag
+test  eax,eax
+jz    skip                    ; precondition 2: flag must be non-zero
+call  [edx+0x3e0]             ; fetch a form control
+call  __vbaLateIdCallLd       ; late-bound property get -> its text
+push  eax                     ; needle   = that text
+push  0x7b0ae4                ; haystack = literal "Pending Sale"
+push  0
+call  __vbaInStr
+neg / sbb / neg / neg         ; -> boolean
+test  eax,eax
+jz    skip
+=> MsgBox "Cannot Transfer to Table!"
+```
+
+Imports resolved from the PE import directory: `0x401404 __vbaInStr`, `0x401428 __vbaStrCopy`,
+`0x401508 __vbaStrMove`, `0x4012c4 __vbaLateIdCallLd`.
+
+**Reason for rejection:** the sale loaded on screen is itself a recalled *Pending Sale*, and this
+build refuses to convert a pending sale into a table sale through the sale screen. Corroborated
+behaviourally — the same clerk on the same terminal saved sales directly to Table 17 and Table 18
+minutes earlier (`[ Saved to Table ]`, `Cons` 90482 / 90483 / 90490), so the table path itself is
+healthy; only the pending-sale-to-table conversion is blocked. The `WB` prefix is incidental: any
+pending sale meets the same guard.
+
+Not resolved, and deliberately not guessed: the identity of the control whose text is read (a
+late-bound DispID call) and the module flag at `0x02a2f55c`.
+
+## A3. The installed-v7 transfer architecture
+
+**Web Orders mode** — `frmPendingSales`, filter `Code LIKE 'WB*'`:
+Email · Reprint Kitchen · Print · `cmdRecall` re-captioned **`Finalize`** · native transfer control
+**hidden**.
+
+**Normal Pending Sales mode** — `frmPendingSales`, filter excludes `WB*`
+(`NOT LIKE 'WB*' AND NOT LIKE '8888*' AND NOT LIKE '{*' AND NOT LIKE '-*'`):
+Windows Print · **Transfer to Table** (`cmdTransferToTable`, `PDTF`) · Email · Reprint Kitchen ·
+Modify · Print · OK.
+
+**Recalled pending sale** — `frmSale`: attempting table conversion hits the §A2 guard and yields
+`Cannot Transfer to Table!`.
+
+All controls are instantiated on both variants of the one form; the mode switches visibility and
+captions. There is no `cmdFinalize` control — `Finalize` is `cmdRecall`'s web-order caption, and `OK`
+is the same control's normal-mode caption.
+
+**Therefore there are NOT two interchangeable ways to transfer.** Only `PDTF` appears designed for
+pending-sale-to-table transfer, and Web Orders mode prevents access to it. No supported option, sale
+type, licence, permission or clerk right governing that visibility has been found; on current
+evidence it is compiled logic. Both questions are now DL-111 Q7 and Q8.
+
+## A4. Reconciliation consequence
+
+ORD-600002 native state: `PendingSales.ID = 4522`, `Code = WBORD-600002`, `Reference = NULL`.
+
+Bridge reconciles via `PendingSales.Reference` (`IdealposReadRepository.cs:266`), which is NULL — so
+it cannot correlate this order today. And if `PDTF` later becomes available, the transfer changes
+`Code` from `WBORD-600002` to the native table code, destroying the only currently visible ORD
+identifier.
+
+Likely robust future model, recorded and **deliberately not implemented** — vendor transfer semantics
+must come first:
+
+1. at initial Webit/native detection, correlate once on `Code = 'WB' + externalOrderId`;
+2. capture the immutable `PendingSales.ID`;
+3. persist that ID in Bridge/Verdura synchronization state;
+4. follow the same native ID through any supported transfer;
+5. verify the resulting `Code`/table;
+6. only then set `tableMatchesRequest = true`.
+
+## A5. Standing operational risk (not actioned)
+
+`PendingSales` 4522 (`WBORD-600002`) and 4523 (`WBORD`) are both open in a live venue — real table
+service was running through 23:35 on 2026-08-31. They are diagnostic specimens, and clearing them is
+a production mutation requiring its own plan and explicit approval. **Not actioned in this phase.**
+Flagged so it is a decision rather than an accident of the next shift reset.
+
+## A6. State verified unchanged at the end of this addendum
+
+- `PendingSales` 4522 — `Code=WBORD-600002`, `POS=1`, `Status=0`, `Reference` NULL, 3 lines.
+- `PendingSales` 4523 — `Code=WBORD`, `POS=1`, `Status=0`, `Reference` NULL, 1 line, `Printed=1`.
+- `dbo.WebPendingOrder` — 2 rows, unchanged.
+- `TableMapSetups` Table 5 — `Status=0` (Ready), `StartTime` NULL.
+- `TableTransfersToKitchen` left at `1`. No option written. `PDTF` event count still 0.

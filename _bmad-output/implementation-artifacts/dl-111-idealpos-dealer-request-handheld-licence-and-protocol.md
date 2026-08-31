@@ -62,33 +62,59 @@ the licence state of one module, and the documented protocol for the interface i
 6. May a third-party integration run locally on the same Windows host and connect to
    `127.0.0.1:12183` without exposing a LAN or internet-facing port?
 
-7. On IdealPOS v7.133.0200, is the native **Transfer to a Table** action intended to be available for
-   Web Orders / pending sales whose `Code` begins with `WB`?
+7. On IdealPOS v7.133.0200 we can identify **two different transfer paths**, and they behave
+   differently. We would like to know which one is the supported route, if either.
 
-   At this site the two screens do not overlap:
-   - the **Web Orders** screen lists the `WB*` sale but exposes only Email / Reprint Kitchen /
-     Print / Finalize;
-   - the standard **Pending Sales** screen does expose Transfer to a Table, but explicitly filters
-     `WB*` sales out of its list.
+   **Path 1 — recall the pending sale into the normal sale screen, then attempt a table transfer.**
+   This is rejected by the installed native code with:
 
-   So there is currently no screen from which a web order can be transferred to a table. If that
-   transfer is supported, please tell us exactly:
-   - how it is enabled or configured
-   - whether it is licence-dependent
-   - whether it prompts the operator to select the destination table
-   - whether it moves the existing pending sale rather than creating a second sale
+   ```
+   Cannot Transfer to Table!
+   ```
 
-8. With the site option `TableTransfersToKitchen = 1`, what is the exact kitchen-print behaviour when
-   a pending sale is transferred to a table?
+   The relevant `frmSale` branch identifies the sale currently on screen as a recalled *Pending Sale*
+   and prevents conversion through that route. We reproduced this on this installation.
 
-   Specifically:
-   - are lines already marked `Printed=1` printed again?
-   - or are only new/unprinted lines sent to the kitchen?
-   - does a web order that has already printed one kitchen docket through Webit produce a second
-     docket when it is transferred to a table?
+   **Path 2 — the separate native Pending Sales action** `cmdTransferToTable`, audit/action code
+   `PDTF` ("Transfer Pending Sale to Table: "), shown as **Transfer to Table** on the normal
+   Table / Pending Sales screen.
 
-   We need this documented before we can use a native transfer as even a temporary operating
-   workflow — a second kitchen docket would send the food twice.
+   However, when the same `frmPendingSales` form runs in **Web Orders mode**:
+   - `WB*` orders are listed;
+   - `cmdTransferToTable` is hidden;
+   - and the standard Pending Sales mode, which does expose **Transfer to Table**, filters `WB*`
+     rows out of its list.
+
+   So neither screen currently offers a `WB*` web order a route to a native table.
+
+   Please tell us explicitly:
+
+   - Is `cmdTransferToTable` / `PDTF` intended to support `WB*` Web Orders?
+   - If **yes**, how is that control enabled or exposed for Web Orders on v7.133.0200?
+   - Is that governed by a licence, an option, a sale type, a user or clerk permission, a
+     configuration setting, or something else? Please name the specific mechanism.
+   - If **no**, are `WB*` Web Orders intentionally non-transferable to native tables in this version?
+   - What is the supported workflow or API for converting an existing Web Order pending sale into a
+     native dine-in table sale **without finalizing or tendering it**?
+
+   For completeness, if `PDTF` is the supported route we would also like to know whether it prompts
+   the operator to select the destination table, and whether it moves the existing pending sale
+   rather than creating a second sale.
+
+8. With the site option `TableTransfersToKitchen = 1`, what is the exact kitchen-print behaviour of a
+   `PDTF` pending-sale-to-table transfer?
+
+   Specifically, does it:
+   - print a table-transfer notification docket only?
+   - reprint all food lines?
+   - print only lines with `Printed=0`?
+   - ignore lines already marked `Printed=1`?
+   - and can it be configured **not** to generate another kitchen docket?
+
+   This matters because a web order at this site has already printed exactly one kitchen docket at
+   ingest (`IdealWebitAutoPrintKitchen = -1`), and its line is already `Printed=1`. We need this
+   documented before we can use a native transfer as even a temporary operating workflow — a second
+   kitchen docket would send the food to the kitchen twice.
 
 **Context on why the existing web-order path is not sufficient for us:**
 
