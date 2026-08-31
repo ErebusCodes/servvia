@@ -883,13 +883,47 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
             (o) => o.tableNumber === table?.tableNumber && o.status !== 'completed' && o.status !== 'cancelled',
           );
           if (recovered) {
+            // Real defect closed here (2026-08-31): this branch used to
+            // hydrate over the cart unconditionally and `return recovered`,
+            // i.e. report SUCCESS. That is only correct when this device had
+            // nothing pending — the "my own earlier attempt already
+            // committed" recovery case this branch was written for. When the
+            // cart still holds unsent lines, the 409 means the opposite: the
+            // backend created NOTHING for them (see validateTableForOrder /
+            // persistOrder's FOR UPDATE recheck, orders.service.ts), because
+            // this table already has a different active order. Hydrating then
+            // silently destroyed the staff's just-entered round AND reported
+            // it as sent — the exact false-success this file's own audit
+            // exists to prevent, and materially worse than a plain rejection.
+            const rejectedLines = cart.filter((l) => !l.sent);
             const hydrated = hydrateTableOrder(recovered);
-            setCart(hydrated.cart);
             setGuests(hydrated.guests);
             setSeatsCount(hydrated.seatsCount);
-            setCreatedOrderRef(recovered.id);
             setCreatedTakeawayReference(recovered.takeawayReference ?? null);
-            return recovered;
+
+            if (rejectedLines.length === 0) {
+              // Nothing was pending on this device — this genuinely is the
+              // lost-response recovery case. Unchanged behaviour.
+              setCart(hydrated.cart);
+              setCreatedOrderRef(recovered.id);
+              return recovered;
+            }
+
+            // Show what the kitchen really has, but never at the cost of
+            // discarding what staff just entered: the rejected lines are
+            // preserved, still unsent, re-keyed past the hydrated ones so
+            // React keys stay unique (hydrateTableOrder hands back the next
+            // free key as `keyN`).
+            setCart([
+              ...hydrated.cart,
+              ...rejectedLines.map((l, i) => ({ ...l, key: hydrated.keyN + i })),
+            ]);
+            setOrderActionError(
+              `Table ${table?.tableNumber ?? ''} already has an active order — these ${rejectedLines.length} new item(s) were NOT sent to the kitchen. Adding a further round to an open table isn't supported yet: close the table out first, then send them.`,
+            );
+            // Must NOT return `recovered` — the caller treats any truthy
+            // order as a successful send (handleSendToKitchen).
+            return null;
           }
         }
         const body = await res.json().catch(() => ({}));
@@ -1122,8 +1156,23 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         // OrdersService.validateTableForOrder) — there is no "append items to
         // an existing order" endpoint, so a second round can't be silently
         // merged in the way the previous client-only mock allowed.
-        setOrderActionError('This table already has an order being prepared.');
         setCreatedOrderRef(activeOrder.id);
+
+        // 2026-08-31: previously this always jumped straight to the 'pay'
+        // screen with a message that never mentioned the cart. When staff had
+        // entered a further round (the ordinary drinks -> mains -> dessert
+        // pattern), those unsent lines were left stranded behind a screen
+        // that said nothing about them — easily read as "it went through".
+        // Name the real outcome and stay put so the lines remain visible.
+        const unsentLines = cart.filter((l) => !l.sent);
+        if (unsentLines.length > 0) {
+          setOrderActionError(
+            `Table ${tableNumber} already has an active order — these ${unsentLines.length} new item(s) have NOT been sent to the kitchen. Adding a further round to an open table isn't supported yet: close the table out first, then send them.`,
+          );
+          return;
+        }
+
+        setOrderActionError('This table already has an order being prepared.');
         setScreen('pay');
         return;
       }

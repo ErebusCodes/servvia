@@ -1264,4 +1264,76 @@ describe('OrderTabletPage — stale order-cache / auth-expiry safety (2026-08-26
       expect(calls.some((c) => c.url.includes('/api/admin/orders') && c.init?.method === 'POST')).toBe(true);
     });
   });
+
+  // Reported live at DUNEDIN (2026-08-31): "it's not allowing me to place
+  // another order on the same table".
+  //
+  // Blocking itself is correct and not what these guard. There is genuinely
+  // no "append items to an existing order" endpoint — orders.controller.ts
+  // exposes only order creation and a status PATCH — and the backend rejects
+  // a second active order per table outright (OrdersService
+  // .validateTableForOrder, plus persistOrder's FOR UPDATE recheck). What
+  // was wrong was HOW the block was delivered: the tablet offers "Open
+  // order · add items" on an occupied table (see startLabel), lets staff
+  // build a whole round, and then discarded or disowned it without ever
+  // saying so.
+  describe('adding a further round to an already-open table', () => {
+    const openOrderOnTable1 = {
+      id: 'order-existing-1',
+      venueId: 'venue-1',
+      tableId: 'real-table-1',
+      tableNumber: '1',
+      serviceMode: 'dine_in',
+      takeawayReference: null,
+      // Deliberately empty: hydrateTableOrder then contributes no cart
+      // lines, so anything left in the cart is unambiguously the new round.
+      items: [],
+      status: 'preparing',
+      source: 'staff',
+      subtotalCents: 7000,
+      taxCents: 1050,
+      totalCents: 8050,
+      notes: null,
+      submittedAt: new Date().toISOString(),
+    };
+
+    async function openOccupiedTableAndAddARound() {
+      // Occupied tables render the status into the subLabel (see tablesV's
+      // `subLabel`), so the accessible name differs from the free-table one
+      // selectTableAndStartOrder matches.
+      fireEvent.click(await screen.findByRole('button', { name: 'T12 seats · occupied' }));
+      fireEvent.click(await screen.findByRole('button', { name: /Open order · add items/i }));
+      await addTestItemToCart();
+    }
+
+    it('states that the new round was NOT sent, and leaves those lines in the cart rather than stranding them behind the pay screen', async () => {
+      useLiveOrdersMock.mockReturnValue({
+        // `as never`: useLiveOrdersMock's return type is inferred from its
+        // `data: []` default, so it widens to never[] — this file's existing
+        // store-seeding convention for the same problem.
+        data: [openOrderOnTable1] as never,
+        isRealtimeConnected: true,
+        ordersDataIsAuthoritative: true,
+      });
+      const { calls } = installFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+      renderTablet();
+
+      await openOccupiedTableAndAddARound();
+      fireEvent.click(await screen.findByRole('button', { name: /Send to kitchen/i }));
+
+      // The outcome is named in terms of the staff's own round. The previous
+      // message ("This table already has an order being prepared.") was true
+      // but never mentioned the cart, so it read as information about the
+      // table rather than a rejection of what had just been entered.
+      expect(await screen.findByText(/have NOT been sent to the kitchen/i)).toBeInTheDocument();
+
+      // The backend would reject this anyway — the guard must not spend a
+      // real request discovering that.
+      expect(calls.some((c) => c.url.includes('/api/admin/orders') && c.init?.method === 'POST')).toBe(false);
+
+      // The round is still on screen and still recoverable. This is the
+      // regression that mattered: staff work must never vanish.
+      expect(screen.getAllByText('Test Kebab').length).toBeGreaterThan(0);
+    });
+  });
 });
