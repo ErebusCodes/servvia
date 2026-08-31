@@ -176,6 +176,31 @@ namespace VerduraIdealposBridge.Tests
                     "reason should distinguish disabled from absent, was: " + reason);
             });
 
+            yield return Assert.Run("Table link: ignores rows that are not at Pos 1, POSServer's own invariant", () =>
+            {
+                // POSServer's NEWLINES and TABLEDATA handlers both write and
+                // query these rows pinned to Pos == 1. A row at another Pos is
+                // not the one those handlers maintain for this table.
+                string reason;
+                var chosen = Reconciliation.SelectTableSale(
+                    new List<PosServerPendingSaleRow> { new PosServerPendingSaleRow { Id = 99411, Code = "17", Map = 1, Pos = 2 } },
+                    "17", out reason);
+                Assert.IsTrue(chosen == null, "Pos 2 row must not be selected");
+            });
+
+            yield return Assert.Run("Table link: identity is the table code, so it survives POSServer re-inserting the row", () =>
+            {
+                // POSServer services a table update by DELETING the row and
+                // inserting a fresh one (TABLEDATA), so the ID changes during
+                // ordinary service. Resolution must still find the same table.
+                string reason;
+                var before = Reconciliation.SelectTableSale(new List<PosServerPendingSaleRow> { Pos(99411, "17", 1) }, "17", out reason);
+                var after = Reconciliation.SelectTableSale(new List<PosServerPendingSaleRow> { Pos(99999, "17", 1) }, "17", out reason);
+                Assert.IsTrue(before != null && after != null, "both must resolve");
+                Assert.IsTrue(before.Id != after.Id, "fixture should model a regenerated ID");
+                Assert.AreEqual(before.Code, after.Code, "the code is what stays stable across the re-insert");
+            });
+
             yield return Assert.Run("Table link: an order with no requested table resolves to nothing", () =>
             {
                 string reason;

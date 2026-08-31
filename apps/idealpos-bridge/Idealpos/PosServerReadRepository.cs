@@ -89,25 +89,29 @@ namespace VerduraIdealposBridge.Idealpos
             return result;
         }
 
-        public PosServerPendingSaleRow GetById(int id)
+        /// <summary>
+        /// Is this table's sale still open? Resolved by CODE, never by a
+        /// previously captured ID.
+        ///
+        /// POSServer regenerates these IDs during ordinary operation: its
+        /// TABLEDATA handler services a table update by deleting the row and
+        /// its lines and inserting a fresh one, and SYSDATA calls ClearAll()
+        /// over the whole collection before reloading. A GetById() written
+        /// against a stored ID would therefore return null the first time
+        /// staff so much as edited the table — and the caller would read that
+        /// as the table having closed and the order having been paid. That is
+        /// why no GetById exists on this class.
+        /// </summary>
+        public bool TableSaleIsOpen(string tableCode)
         {
+            if (string.IsNullOrWhiteSpace(tableCode)) return false;
             using (var conn = new SqlConnection(_connectionString))
             using (var cmd = new SqlCommand(
-                "select ID, Code, Map, POS from dbo.PendingSales where ID = @id", conn))
+                "select count(*) from dbo.PendingSales where ltrim(rtrim(Code)) = @code and POS = 1", conn))
             {
-                cmd.Parameters.AddWithValue("@id", id);
+                cmd.Parameters.AddWithValue("@code", tableCode.Trim());
                 conn.Open();
-                using (var reader = cmd.ExecuteReader())
-                {
-                    if (!reader.Read()) return null;
-                    return new PosServerPendingSaleRow
-                    {
-                        Id = reader.GetInt32(0),
-                        Code = reader.IsDBNull(1) ? null : reader.GetString(1),
-                        Map = reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetValue(2)),
-                        Pos = reader.IsDBNull(3) ? 0 : Convert.ToInt32(reader.GetValue(3)),
-                    };
-                }
+                return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
             }
         }
     }

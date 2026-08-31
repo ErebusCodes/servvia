@@ -48,11 +48,19 @@ namespace VerduraIdealposBridge.Orders
 
         public DateTime? AnchoredAtUtc { get; set; }
 
-        /// <summary>POSServer.dbo.PendingSales.ID — the native TABLE sale,
-        /// resolved only after a supported native conversion. Null until
-        /// then, which on the installed build is always.</summary>
+        /// <summary>
+        /// POSServer.dbo.PendingSales.ID AS OBSERVED AT THE MOMENT OF
+        /// LINKING. Diagnostic only — it is NOT durable and must never be
+        /// used to re-resolve the row later: POSServer's TABLEDATA handler
+        /// deletes and re-inserts a table's row on every update, and SYSDATA
+        /// clears the whole collection, so this value goes stale during
+        /// ordinary service.
+        /// </summary>
         public int? PosServerPendingSaleId { get; set; }
 
+        /// <summary>The table code. THIS is the durable POSServer handle —
+        /// (Code, Map, Pos) is the natural key POSServer's own NEWLINES and
+        /// TABLEDATA handlers query on.</summary>
         public string PosServerPendingSaleCode { get; set; }
 
         /// <summary>True only when a POSServer table sale was resolved AND

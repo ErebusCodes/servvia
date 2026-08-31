@@ -337,16 +337,23 @@ namespace VerduraIdealposBridge.Orders
             // so that is the one whose disappearance means the table closed —
             // watching the IPSTransaction anchor instead would be watching the
             // wrong database for this question.
-            if (record.PosServerPendingSaleId.HasValue)
+            if (!string.IsNullOrWhiteSpace(record.PosServerPendingSaleCode))
             {
                 if (_posServerRepo == null) return; // cannot observe; say nothing rather than infer
-                if (_posServerRepo.GetById(record.PosServerPendingSaleId.Value) != null) return; // still open
+
+                // By CODE, deliberately, not by the captured POSServer ID.
+                // POSServer's TABLEDATA handler services an ordinary table
+                // update by deleting the row and inserting a fresh one, so the
+                // ID changes whenever staff touch the table. Checking the ID
+                // would report "row gone" on a routine edit and this method
+                // would then declare the order paid and closed mid-service.
+                if (_posServerRepo.TableSaleIsOpen(record.PosServerPendingSaleCode)) return; // still open
 
                 Transition(record, OrderStatus.Paid, null);
                 Transition(record, OrderStatus.Closed,
-                    "Heuristic: POSServer.dbo.PendingSales row " + record.PosServerPendingSaleId +
-                    " disappeared, inferred as paid+closed. Not directly confirmed against native " +
-                    "IPS.exe behaviour — see README.md.");
+                    "Heuristic: no open POSServer.dbo.PendingSales row remains for table '" +
+                    record.PosServerPendingSaleCode + "', inferred as paid+closed. Not directly " +
+                    "confirmed against native IPS.exe behaviour — see README.md.");
                 return;
             }
 
