@@ -1,0 +1,53 @@
+# VerduraIdealposBridge source manifest — SHA256, generated 2026-08-19
+# (macOS preflight, after the two P0 build-defect fixes and the Uncertain
+# truthfulness fix were applied and verified against the real vendor DLLs).
+# Excludes bin/, obj/, docs/ (this file's own directory) and lib/*.dll
+# (never present in source control — see lib/PUT_DLLS_HERE.txt).
+#
+# Regenerate on the Windows machine BEFORE building, to confirm the copied
+# source is byte-identical to what was reviewed here:
+#   Get-ChildItem -Recurse -File | Where-Object {
+#     $_.FullName -notmatch '\\(bin|obj|docs)\\' -and $_.Extension -ne '.dll'
+#   } | ForEach-Object {
+#     $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+#     "$hash  .$($_.FullName.Substring($PWD.Path.Length))" -replace '\\','/'
+#   } | Sort-Object
+# Compare the output against this file (order and path separators will
+# naturally differ cosmetically; the (path, hash) PAIRS must match).
+afce163f21a0aa089ab0f60d21e1adea8604b5a18dc21ba019ca0d7808f75c28  ./Api/Endpoints.cs
+9f06688529f2fd62d7aa3748f792dc36c056c907ee44f05c27c4fc9c5d3fed8a  ./App.config
+6cb58a02599cba00190841d270d637b723be3fffde73e13e548f8f5d0a0358e8  ./BridgeHost.cs
+3468b4b66766384ffb0ca2821637e675e3046ec2cf8d834d2976c23edaff6405  ./BridgeService.cs
+a2f3e75cb963a4afdddd17f7bc7153e71aa0dec4fde9b0988620227e75bb8207  ./Config/BridgeConfig.cs
+a6da32c83e42933fa19287bb1d837fcc51b979c83ed9a8006f1dcdaccff6cf89  ./deploy/install-service.ps1
+551bdb93aa1362de90ba57f3d73d709e9e973b96fa54e71949e223a17181068b  ./deploy/uninstall-service.ps1
+371112b3b7bd009533c8704359340b6fabba9394887099b3bca03532bb030653  ./examples/verdura-client-example.html
+73efe4dacfa7f08d6059cc48250afdb30f37048c27c2713ddb135519b9130a54  ./examples/verdura-client-example.md
+9315d19d66e6333a64e63c84f58da17e9e835d3a0dd1fa33d5795fcdda695134  ./Http/HttpServer.cs
+c661ac1d03188cea5be1eb22b1524d2ce77542485bcd6bf0f17fb139dc43629c  ./Http/JsonUtil.cs
+7f9e5f782e6cc937abc8e06663896cf15ed37d8fcc1c0fbf8a43b22418d22975  ./Idealpos/AvailabilityChecker.cs
+8c1daa961bd3bd83c9c5dd9e4d81aab8e443b9f08017e442b308b6c59794a6ad  ./Idealpos/Dto.cs
+c515af83e728733c44383e080c301e334a1b9c1ceb734851b71f126106ae9719  ./Idealpos/IdealposAssemblyProbe.cs
+5e4499bafed58aa2a230280b7894690c71edf6105482e535957748098a794522  ./Idealpos/IdealposOrderSubmitter.cs
+c4ad52330638ab8852d9e6e211de2408e4c0efadde6e8820b9360c06143376c4  ./Idealpos/IdealposReadRepository.cs
+91ade109b6ac037a10f4f01389629efe61a2b8fc9e6492f568149d7ba780178f  ./lib/PUT_DLLS_HERE.txt
+3e665dbf64ca91f4e817b7c9634a8450c2e3a68c0f7a5113641694e1328277b8  ./Logging/Logger.cs
+8d2c9289ce835de1244a5d427750b43e729da33676f7e64040b1c0a0e992677a  ./Orders/OrderLifecycleWatcher.cs
+647991a1d61c2b79a030ff58afa398adc20dc95f40f1863f1b107ea1e79b2ddc  ./Orders/OrderModels.cs
+2c832a074acb35070a4d48b275b92149c7d695620f407fe5433570b195cecdb4  ./Orders/OrderService.cs
+6e9eff120cab9f4edd5aaf4a26ecbf40471735437523d73e3c96e5d87150bf3a  ./Orders/OrderStateStore.cs
+c400496343fc1dfe074718384eb38bbd40f8c12ee91f4431011b22b68373095c  ./Orders/OrderStatus.cs
+3a6c1ecfd7d51a678887c1ef1bedeac98105fc7bdeaada7acc000806b86d0e8d  ./Orders/OrderSubmitOutcome.cs
+69f2ebcf7e182b44d0876d375bccd1ddebccfaf3a23b66bcbfdc59a1ea4e0d8f  ./Orders/OrderValidator.cs
+0496f457635e21efa228d1a51f90e07167f5e24bb2e090dc4b4976d5d083c29b  ./Program.cs
+a06dd0266ed14ed02cb570eb80dd223ff8afb05bad752bdefbe0737eece51bad  ./README.md
+2f40227eb894fbc9a88473d8dd1053eef28b10a7876d0e2df90c98c843aeaf37  ./Realtime/RealtimeEvent.cs
+41bd07754b4d28c651346091cbf6f8e48fa43a8d24717feb2e5d388cd2081cc4  ./Realtime/WebSocketHub.cs
+7f0e329ef18c37ae83d7d06f397b0c11673f7cb89576b826d722c0c5b05f09e6  ./TableAssignment/ITableAssignmentStrategy.cs
+a0d85e1f4b526d06742e025a231941a64a3d176350fec509e1d8df56464a2cbc  ./TableAssignment/Strategies.cs
+ddc069d9a6283ce546b4999515336ba3480f4475b003d0f2b558ee8b88f7d143  ./TableAssignment/TableAssignmentStrategyFactory.cs
+1f9d42e5b54bb1466477f1ebd2f6fb8ee934f4185c6cdb8543259cb9e4415b1b  ./Tests/OrderStatusTests.cs
+967c92ecd1a3b253a4694a016231987c64c82ff17166eaec73c382e52184395b  ./Tests/OrderValidatorTests.cs
+68749bffc03dadbd305d892fbc915f29009c41b10c1c3500e3f354b5ed046615  ./Tests/TableAssignmentStrategyTests.cs
+eb38bd3e12ffe999a493e66ebc4b5d4cb619eac043c7284354a4dfefaba4a3ca  ./Tests/TestRunner.cs
+e88a1f276ba5fd8a266b59831d55a4a564955f98dc4c8636d6d7670cde042b96  ./VerduraIdealposBridge.csproj

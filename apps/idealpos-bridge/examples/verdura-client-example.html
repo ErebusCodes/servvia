@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VerduraIdealposBridge — example client</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, sans-serif; max-width: 780px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.3rem; }
+  fieldset { margin-bottom: 1.5rem; padding: 1rem; }
+  label { display: block; margin: 0.4rem 0 0.15rem; font-size: 0.85rem; color: #444; }
+  input, button { font-size: 0.95rem; padding: 0.4rem; }
+  input[type=text], input[type=url] { width: 100%; box-sizing: border-box; }
+  button { margin-top: 0.6rem; cursor: pointer; }
+  pre { background: #f4f4f4; padding: 0.75rem; overflow-x: auto; font-size: 0.8rem; border-radius: 4px; max-height: 300px; }
+  .log-line { border-bottom: 1px solid #eee; padding: 2px 0; }
+  #wsLog { max-height: 220px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<h1>VerduraIdealposBridge — example client</h1>
+<p>This is a minimal reference implementation, not part of the bridge itself — it shows the exact HTTP + WebSocket calls a real Verdura client would make. See <code>verdura-client-example.md</code> for the same calls as plain curl.</p>
+
+<fieldset>
+  <legend>Connection</legend>
+  <label for="baseUrl">Bridge base URL</label>
+  <input type="url" id="baseUrl" value="http://localhost:5588">
+  <label for="apiKey">API key (Bridge:ApiKey)</label>
+  <input type="text" id="apiKey" placeholder="paste the key from App.config">
+</fieldset>
+
+<fieldset>
+  <legend>1. Health</legend>
+  <button onclick="callHealth()">GET /api/health</button>
+  <pre id="healthOut">(not called yet)</pre>
+</fieldset>
+
+<fieldset>
+  <legend>2. Tables</legend>
+  <button onclick="callTables()">GET /api/tables</button>
+  <pre id="tablesOut">(not called yet)</pre>
+</fieldset>
+
+<fieldset>
+  <legend>3. Products</legend>
+  <button onclick="callProducts()">GET /api/products</button>
+  <pre id="productsOut">(not called yet)</pre>
+</fieldset>
+
+<fieldset>
+  <legend>4. Submit order — Table 12, Burger x2, Chips x1, Coke x2</legend>
+  <label for="externalOrderId">externalOrderId</label>
+  <input type="text" id="externalOrderId" value="VERDURA-EXAMPLE-0001">
+  <label for="table">table</label>
+  <input type="text" id="table" value="12">
+  <label for="burgerCode">Burger productCode</label>
+  <input type="text" id="burgerCode" value="101002">
+  <label for="chipsCode">Chips productCode</label>
+  <input type="text" id="chipsCode" value="101003">
+  <label for="cokeCode">Coke productCode</label>
+  <input type="text" id="cokeCode" value="101004">
+  <button onclick="submitOrder()">POST /api/orders</button>
+  <pre id="submitOut">(not submitted yet)</pre>
+</fieldset>
+
+<fieldset>
+  <legend>5. Poll status</legend>
+  <button onclick="pollStatus()">GET /api/orders/{externalOrderId}</button>
+  <pre id="statusOut">(not called yet)</pre>
+</fieldset>
+
+<fieldset>
+  <legend>6. Real-time events (WebSocket)</legend>
+  <button onclick="connectWs()">Connect ws://.../ws/orders</button>
+  <button onclick="disconnectWs()">Disconnect</button>
+  <div id="wsLog"></div>
+</fieldset>
+
+<script>
+function baseUrl() { return document.getElementById('baseUrl').value.replace(/\/$/, ''); }
+function apiKey() { return document.getElementById('apiKey').value; }
+
+async function apiGet(path) {
+  const res = await fetch(baseUrl() + path, { headers: { 'Authorization': 'Bearer ' + apiKey() } });
+  return { status: res.status, body: await res.json() };
+}
+async function apiPost(path, body) {
+  const res = await fetch(baseUrl() + path, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + apiKey(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.json() };
+}
+function show(id, result) {
+  document.getElementById(id).textContent = result.status + '\n' + JSON.stringify(result.body, null, 2);
+}
+
+async function callHealth() { show('healthOut', await apiGet('/api/health')); }
+async function callTables() { show('tablesOut', await apiGet('/api/tables')); }
+async function callProducts() { show('productsOut', await apiGet('/api/products')); }
+
+async function submitOrder() {
+  const body = {
+    externalOrderId: document.getElementById('externalOrderId').value,
+    table: document.getElementById('table').value,
+    items: [
+      { productCode: document.getElementById('burgerCode').value, quantity: 2 },
+      { productCode: document.getElementById('chipsCode').value, quantity: 1 },
+      { productCode: document.getElementById('cokeCode').value, quantity: 2 },
+    ],
+    notes: 'Example order from verdura-client-example.html',
+  };
+  show('submitOut', await apiPost('/api/orders', body));
+}
+
+async function pollStatus() {
+  const id = document.getElementById('externalOrderId').value;
+  show('statusOut', await apiGet('/api/orders/' + encodeURIComponent(id)));
+}
+
+let ws = null;
+function connectWs() {
+  if (ws) return;
+  const wsUrl = baseUrl().replace(/^http/, 'ws') + '/ws/orders?api_key=' + encodeURIComponent(apiKey());
+  ws = new WebSocket(wsUrl);
+  logWs('connecting to ' + wsUrl);
+  ws.onopen = () => logWs('connected');
+  ws.onclose = () => { logWs('disconnected'); ws = null; };
+  ws.onerror = (e) => logWs('error (see browser console)');
+  ws.onmessage = (evt) => logWs(evt.data);
+}
+function disconnectWs() { if (ws) ws.close(); }
+function logWs(text) {
+  const el = document.getElementById('wsLog');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.textContent = new Date().toLocaleTimeString() + '  ' + text;
+  el.insertBefore(line, el.firstChild);
+}
+</script>
+</body>
+</html>

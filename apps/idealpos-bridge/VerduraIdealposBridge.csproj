@@ -1,0 +1,127 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    net48, for the same reason as VerduraIdealposHarness: IdealPos.Webit.Core.dll
+    (and IdealPos.Data.dll / IdealPos.Common.dll) are compiled against .NET
+    Framework 4.0, confirmed from their own decompiled assembly metadata.
+    A single in-process net48 host is the simplest architecture that can
+    reliably call them: no IPC, no cross-process marshalling, no second
+    runtime to keep alive. ASP.NET Core would need a separate .NET Framework
+    bridge process just to reach these DLLs at all — unjustified complexity
+    for what this needs to do.
+
+    Zero NuGet packages are required. JSON (Newtonsoft.Json.dll) and SQLite
+    (System.Data.SQLite.dll + interop) are both already shipped inside the
+    Idealpos installation itself — see lib/PUT_DLLS_HERE.txt — so the bridge
+    reuses those exact copies instead of pulling in new dependencies on a
+    restaurant PC that may not have reliable internet access. HTTP hosting
+    and WebSockets use System.Net.HttpListener / System.Net.WebSockets,
+    both in-box in net48.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>VerduraIdealposBridge</AssemblyName>
+    <RootNamespace>VerduraIdealposBridge</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <AppConfig>App.config</AppConfig>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In-box .NET Framework assemblies — no NuGet packages required. -->
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Net" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Real, first-party Idealpos assemblies — copy from the installation
+      into ./lib before building. See lib/PUT_DLLS_HERE.txt and README.md.
+    -->
+    <Reference Include="IdealPos.Webit.Core">
+      <HintPath>lib\IdealPos.Webit.Core.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="IdealPos.Data">
+      <HintPath>lib\IdealPos.Data.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="IdealPos.Common">
+      <HintPath>lib\IdealPos.Common.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+
+    <!--
+      Reused, not new: Idealpos's own bundled copies of Newtonsoft.Json and
+      System.Data.SQLite (the latter with its x86/x64 native interop DLLs,
+      probed automatically by System.Data.SQLite from subfolders next to
+      it — the same layout Idealpos itself ships under IdealposService/).
+    -->
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>lib\Newtonsoft.Json.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Data.SQLite">
+      <HintPath>lib\System.Data.SQLite.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Native SQLite interop — copied verbatim from the Idealpos install.
+      Real Windows run (2026-08-24): without the explicit <Link> below,
+      MSBuild's default CopyToOutputDirectory behavior preserves each
+      item's full *source-relative* path under the output directory —
+      i.e. these landed at bin\...\lib\x86\SQLite.Interop.dll and
+      bin\...\lib\x64\SQLite.Interop.dll, NOT at bin\...\x86\... and
+      bin\...\x64\..., which is the one place System.Data.SQLite's native
+      loader actually probes next to the managed assembly. Every build
+      before this fix started, then failed at runtime with
+      System.DllNotFoundException: Unable to load DLL 'SQLite.Interop.dll'
+      the moment OrderStateStore opened its SQLite connection — a real,
+      reproduced defect, not a copy mistake made once. <Link> remaps the
+      output-relative path independently of the source path.
+    -->
+    <None Include="lib\x86\SQLite.Interop.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('lib\x86\SQLite.Interop.dll')">
+      <Link>x86\SQLite.Interop.dll</Link>
+    </None>
+    <None Include="lib\x64\SQLite.Interop.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('lib\x64\SQLite.Interop.dll')">
+      <Link>x64\SQLite.Interop.dll</Link>
+    </None>
+  </ItemGroup>
+
+  <!--
+    P0 build-blocking defect found and fixed (preflight, 2026-08-19): an
+    explicit `<Compile Include="**\*.cs">` ItemGroup used to sit here. The
+    Microsoft.NET.Sdk (used by every SDK-style project, this one included)
+    already globs and includes all *.cs files under the project directory
+    by default — that is what "SDK-style" means. The explicit Include above
+    therefore added every file a SECOND time, which MSBuild rejects
+    outright (NETSDK1022: "Duplicate 'Compile' items were included"). This
+    was not a macOS/cross-platform artifact — NETSDK1022 is the same
+    default-items behavior on every platform the .NET SDK runs on,
+    including Windows — so `dotnet build` failed unconditionally, on any
+    machine, before this fix. Removing the redundant explicit ItemGroup
+    (rather than adding EnableDefaultCompileItems=false) is the correct
+    fix: it restores the SDK's own default globbing, which is what every
+    other ItemGroup in this file (Reference, None) already assumes is
+    active for Compile items too.
+  -->
+
+</Project>

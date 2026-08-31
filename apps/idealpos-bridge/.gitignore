@@ -1,0 +1,10 @@
+bin/
+obj/
+*.user
+.vs/
+
+# Runtime state the service writes beside its own binaries (see App.config
+# Bridge:StateDatabasePath and Logging:Directory) — a live SQLite store and
+# rolling logs, never source.
+state/
+logs/

@@ -1,0 +1,16 @@
+Copy these files from the Idealpos installation into this folder (and its
+x86/x64 subfolders) before building — see README.md "Build".
+
+  IdealPos.Webit.Core.dll   <- IdealposService/IdealPos.Webit.Core.dll
+                               (or Idealpos/IdealPos.Webit.Core.dll)
+  IdealPos.Data.dll         <- Idealpos/IdealPos.Data.dll
+  IdealPos.Common.dll       <- Idealpos/IdealPos.Common.dll
+  Newtonsoft.Json.dll       <- Idealpos/Newtonsoft.Json.dll
+  System.Data.SQLite.dll    <- IdealposService/System.Data.SQLite.dll
+
+  x86/SQLite.Interop.dll    <- IdealposService/x86/SQLite.Interop.dll
+  x64/SQLite.Interop.dll    <- IdealposService/x64/SQLite.Interop.dll
+
+All five top-level DLLs are the client's own already-licensed/already-used
+software — reused as-is rather than pulling new NuGet dependencies onto a
+restaurant PC. They are deliberately not bundled with this project.
