@@ -278,6 +278,61 @@ must come first:
 5. verify the resulting `Code`/table;
 6. only then set `tableMatchesRequest = true`.
 
+## A4b. CORRECTION to A4 — there are TWO pending-sale stores, and the single-ID model is invalid
+
+Established 2026-09-01, read-only, from the live SQL instance. A4 above (and every earlier statement
+of the "capture `PendingSales.ID` and follow the same ID after transfer" model) assumed one store.
+That assumption is wrong. The wording in A4 is left standing per the DL-109/DL-110 convention; this
+section supersedes it.
+
+| Store | Role | Contents observed |
+|---|---|---|
+| `IPSTransaction.dbo.PendingSales` (45 rows) | Webit / phone / operator pending-sale store | `4522 WBORD-600002`, `4523 WBORD`, 43 stale orders. **No row for any table.** |
+| `POSServer.dbo.PendingSales` (3 rows) | **native table-sale store** | `99411 Code='17' Map=1` (live table), `99410 Code='WBORD' Map=0`, `99408 Code='0' Map=1` (empty stub) |
+
+Three consequences:
+
+1. **Table sales do not live in `IPSTransaction`.** Table 17 was occupied
+   (`TableMapSetups` Status=8, StartTime 22:39:32) with 21 lines in `POSServer.PendingSales` 99411
+   and **no** `IPSTransaction.PendingSales` row at all.
+2. **`WBORD-600002` was never registered with POSServer.** The natively-created `WBORD` propagated to
+   both stores; the Webit-injected `WBORD-600002` exists only in `IPSTransaction`. This is a plausible
+   root cause for Web Orders mode hiding `cmdTransferToTable`: a `WB*` Webit row is not a
+   POSServer-registered, table-capable sale.
+3. **The ID spaces are disjoint.** `IPSTransaction.PendingSales.ID = 4522` cannot survive into
+   POSServer's space (99408–99411). Following 4522 through a transfer would follow it to a row that
+   has stopped being the table sale.
+
+Corrected future model — a **cross-store transition**, still deliberately NOT implemented:
+
+```
+Verdura externalOrderId
+  <-> IPSTransaction web-order identity   (correlate once on Code = 'WB' + externalOrderId)
+  <-> supported native conversion event
+  <-> POSServer table-sale identity        (resolve by Code = requested table, Map, POS)
+  <-> requested native table
+```
+
+The second half cannot be specified safely until vendor transfer semantics are known.
+
+### Incidental KOT evidence, and it is favourable
+
+`POSServer.PendingSales` 99411 (Table 17) carried **21 lines added across 54 minutes**
+(`OrderedTime` 22:39:28 -> 23:33:44) — several successive rounds on one open table — with **all 21
+lines `Printed=1` and none `Printed=0`**. That is IdealPOS's native per-line anti-reprint discipline
+working in production: each round prints once, `SetPrintedFlags` marks it, and later saves to the
+same table do not resend it.
+
+Separately, `Support.PrintTableTransferToKitchen`'s query is verbatim
+`SELECT * FROM PendingSaleLines WHERE Code='TRANSFER' ORDER BY Line`. `PendingSaleLines` has **no
+`Code` column in either database**, and no `PendingSales` row whose code contains `TRANSFER` has ever
+existed here. So that routine does **not** re-select the transferred sale's food lines by
+`PendingSaleID`, and against this schema the query cannot match anything.
+
+This downgrades §3's "evidence points to YES" on a duplicate food docket to **evidence now points to
+NO** — but not to proven-safe. `PDTF` has still never run here, and a query that cannot bind is as
+likely to error as to no-op. The KOT gate stays closed.
+
 ## A5. Standing operational risk (not actioned)
 
 `PendingSales` 4522 (`WBORD-600002`) and 4523 (`WBORD`) are both open in a live venue — real table
