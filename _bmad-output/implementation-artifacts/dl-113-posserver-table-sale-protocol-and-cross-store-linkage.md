@@ -176,3 +176,84 @@ option written; `PDTF` event count 0.
 
 DL-112 §A5's standing operational risk is also unchanged and still not actioned: 4522 and 4523 remain
 open in a live venue, and clearing them is a production mutation needing its own plan and approval.
+
+---
+
+# Addendum — POSServer's two WCF services, and why `ITableOrdering` is not what its name suggests
+
+Read-only. No database access, no live service contacted, no HTTP request issued, no registry value
+written. Static decompilation of an installed vendor assembly, plus one registry read.
+
+Recorded because the name is actively misleading and the next reader will otherwise spend a day on
+it, exactly as this phase nearly did. `POSServer.Communication` contains
+`ApplicationLog.Write("Creating TableOrderingHost")` and hosts a WCF endpoint literally called
+`tableordering` — which reads, on first encounter, as a supported table-order write API and therefore
+as the answer to DL-111 Q5.
+
+It is not. It is a floor-plan picture renderer.
+
+## B1. The contract
+
+`ITableOrdering` lives in `POSServer.API.WCF`, shipped in
+`C:\Program Files\Idealpos Solutions\POSServer\POSServer.WCF.dll` (installed at this site; not
+previously decompiled, hence not covered by DL-108 through DL-113 §1-§8). Its complete surface:
+
+```csharp
+public interface ITableOrdering
+{
+    [OperationContract] [WebGet(UriTemplate = "/map/{mapnumber}")] Stream Map(string mapNumber);
+    [OperationContract] [WebGet(UriTemplate = "/maps/")]           Stream MapIndex();
+}
+```
+
+Two operations, both `WebGet`. There is no `WebInvoke`, so nothing on this contract accepts a body
+and nothing writes. The implementing class `TableOrdering` emits HTML5 canvas drawing script —
+`ctx.fillStyle`, `ctx.fillRect`, `ctx.font`, with a private `ItemType { None, Box, Line, Table }`
+enum for the shapes it draws. It renders the table map as a picture for a browser.
+
+It reads `TableMapSetups` geometry. It does not touch `PendingSales` at all.
+
+## B2. It is not even running here
+
+The host is gated in `Listener`'s constructor:
+
+```csharp
+using RegistryKey registryKey2 = registryKey.OpenSubKey("SOFTWARE\Idealpos Solutions\POSServer");
+if ((int)registryKey2.GetValue("TableOrdering", 0) == 1) { createTableService = true; }
+```
+
+Read live from this host: `HKLM\SOFTWARE\Idealpos Solutions\POSServer` exists and holds exactly three
+values — `FIX1`, `InstallDate`, `InstallPath`. There is no `TableOrdering` value, so `GetValue`
+returns its default `0`, `createTableService` stays false, and `TableOrderingHost` is never
+constructed. The endpoint at `http://localhost:{WCFPort}/tableordering/` is not listening.
+
+No request was sent to confirm that, deliberately: POSServer is a live production service and
+probing it is an action against production, not an observation of it.
+
+## B3. The other WCF service, for completeness
+
+`StockControlHost` **is** started unconditionally. Its contract `IStockService`
+(`http://au.com.idealpos.stock/`) is stocktake only: `GetLocations`, `GetPriceDescriptors`,
+`GetStockItems`, `GetSuppliers`, `GetData`, `Ping`, `GetFile`, `RegisterDevice`, `VerifyAccess`,
+`SubmitResults`, `TransferResults`. Its four `WebInvoke` operations write stocktake results and
+device registrations. None creates a sale, assigns a table, or appends a line.
+
+## B4. Consequence
+
+Both of POSServer's WCF surfaces are now accounted for, and neither is an order-ingestion path. Taken
+with §1 of this document — where the pending-sale store is shown to be written only by the five
+terminal-push packet handlers — **POSServer exposes no supported way for a third party to create a
+sale, assign a table, or append a round.** §3's conclusion is unchanged and now rests on a complete
+enumeration of POSServer's external surface rather than on the packet protocol alone.
+
+This closes local API archaeology on POSServer. The remaining routes are the ones DL-111 already
+asks the vendor about, and the handheld/WaiterPad interface on TCP 12183 remains the only candidate
+that performs order → table → KOT → append as one native operation.
+
+| Question | Answer |
+|---|---|
+| `ITableOrdering` an order-ingestion API | **NO** — floor-plan renderer, read-only |
+| Table ordering service active at this venue | **NO** — registry value absent, host never started |
+| Order creation capability | **NO** |
+| Table assignment capability | **NO** |
+| Append capability | **NO** |
