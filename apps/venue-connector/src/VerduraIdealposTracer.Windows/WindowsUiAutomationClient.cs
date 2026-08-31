@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows.Automation;
 using VerduraIdealposTracer.Core.Automation;
+using VerduraIdealposTracer.Core.Terminal;
 
 namespace VerduraIdealposTracer.Windows;
 
@@ -156,6 +157,87 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 Description: verified
                     ? $"Re-read main window Name property: \"{name}\"."
                     : "Main window Name property was empty — cannot verify."));
+        }
+        finally
+        {
+            foreach (var p in candidates) p.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Fail-closed native "Save to Table" scaffold. This method is a REAL
+    /// scaffold — it verifies the process, the window, and the absence of a
+    /// blocking modal, and it builds the intended action plan — but it
+    /// performs NO mutating UI action whatsoever. There is deliberately not
+    /// a single Invoke/SetValue/Select/SendInput/SetForegroundWindow/
+    /// WM_COMMAND call in this method's body or its helpers.
+    ///
+    /// Until the authorised Session-1 discovery run populates real,
+    /// non-placeholder selectors in <see cref="WindowsAutomationSettings"/>,
+    /// <see cref="TerminalSelectorReadiness"/> returns not-ready and this
+    /// method returns a fail-closed <see cref="TerminalSaveToTableResult"/>.
+    /// No placeholder selector can fall through into a live action, because
+    /// the live actions do not exist here yet — this scaffold ends at the
+    /// readiness gate.
+    /// </summary>
+    public Task<TerminalSaveToTableResult> AttemptSaveToTableAsync(TerminalRoundRequest request, CancellationToken cancellationToken)
+    {
+        var plan = TerminalActionPlan.Build(request);
+
+        var validationErrors = request.Validate();
+        if (validationErrors.Count > 0)
+        {
+            return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                "invalid request: " + string.Join("; ", validationErrors), plan));
+        }
+
+        // 1. verify IPS process (read-only)
+        var candidates = Process.GetProcessesByName(settings.ExpectedProcessName);
+        try
+        {
+            var process = candidates.FirstOrDefault(p => !p.HasExited && p.MainWindowHandle != IntPtr.Zero);
+            if (process is null)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                    $"IPS process '{settings.ExpectedProcessName}' with a visible main window was not found (are you in the interactive session?)", plan));
+            }
+
+            // 2. verify expected window (read-only)
+            var mainWindow = FindMainWindowElement(process.Id);
+            if (mainWindow is null)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                    $"main window for process id {process.Id} not found via UI Automation", plan));
+            }
+
+            // 3. verify no unexpected modal (read-only)
+            if (HasModalChildWindow(mainWindow))
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ModalDetected, request.RoundId, request.TableCode,
+                    "a modal dialog is blocking the main window", plan));
+            }
+
+            // 4. require real, non-placeholder Session-1 selectors — the
+            //    fail-closed gate this scaffold ends at.
+            var selectors = settings.BuildTerminalSelectors();
+            if (!TerminalSelectorReadiness.IsReadyForLiveExecution(selectors, out var reason))
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                    $"terminal selectors not ready for live execution: {reason}. "
+                    + "Live execution is intentionally not enabled until Session-1 discovery populates real selectors.", plan));
+            }
+
+            // Selectors present but the live-action steps are intentionally
+            // NOT implemented in this scaffold commit — still refuse to act.
+            return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                "selectors present, but native Save-to-Table execution is not enabled in this scaffold "
+                + "(no click/SetValue/Send has been implemented yet); this commit is fail-closed by design.", plan));
         }
         finally
         {

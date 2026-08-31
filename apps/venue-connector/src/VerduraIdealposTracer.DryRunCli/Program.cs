@@ -2,7 +2,54 @@ using System.Text.Json;
 using VerduraIdealposTracer.Core.Automation;
 using VerduraIdealposTracer.Core.Discovery;
 using VerduraIdealposTracer.Core.Persistence;
+using VerduraIdealposTracer.Core.Terminal;
 using VerduraIdealposTracer.Fixtures;
+
+// ── Terminal dry-run mode (TRACER_MODE=terminal) ──
+// Emits the intended native Save-to-Table plan for a round and NOTHING
+// else. It never constructs an automation client and never calls
+// AttemptSaveToTableAsync, so not even the fake's in-memory state is
+// touched — a dry run is pure plan text. The default (unset TRACER_MODE)
+// keeps the existing discovery dry-run the crash-replay tests rely on.
+if (string.Equals(Environment.GetEnvironmentVariable("TRACER_MODE"), "terminal", StringComparison.OrdinalIgnoreCase))
+{
+    var table = Environment.GetEnvironmentVariable("TRACER_TABLE") ?? "5";
+    var plu = Environment.GetEnvironmentVariable("TRACER_PLU") ?? "708";
+    var qty = int.TryParse(Environment.GetEnvironmentVariable("TRACER_QTY"), out var q) ? q : 1;
+    var roundKind = string.Equals(Environment.GetEnvironmentVariable("TRACER_ROUND"), "second", StringComparison.OrdinalIgnoreCase)
+        ? TerminalRoundKind.SecondRound
+        : TerminalRoundKind.FirstRound;
+
+    var terminalRequest = new TerminalRoundRequest
+    {
+        ExternalOrderId = Environment.GetEnvironmentVariable("TRACER_EXTERNAL_ORDER_ID") ?? "DRYRUN-ORDER",
+        RoundId = Environment.GetEnvironmentVariable("TRACER_ROUND_ID") ?? (roundKind == TerminalRoundKind.SecondRound ? "round-2" : "round-1"),
+        RoundKind = roundKind,
+        OrderReference = Environment.GetEnvironmentVariable("TRACER_ORDER_REFERENCE") ?? "DRYRUN-REF",
+        TableCode = table,
+        Items = new[] { new TerminalRoundItem(plu, qty) },
+    };
+
+    var terminalErrors = terminalRequest.Validate();
+    if (terminalErrors.Count > 0)
+    {
+        Console.Error.WriteLine("Invalid terminal round request: " + string.Join("; ", terminalErrors));
+        return 2;
+    }
+
+    var dryRunResult = TerminalSaveToTableResult.DryRun(terminalRequest.RoundId, terminalRequest.TableCode, TerminalActionPlan.Build(terminalRequest));
+
+    Console.WriteLine("DRY RUN — NO IDEALPOS MUTATION");
+    Console.WriteLine($"Round: {terminalRequest.RoundKind}  Table: {terminalRequest.TableCode}  Items: {string.Join(", ", terminalRequest.Items.Select(i => $"PLU {i.NativeCode} x{i.Quantity}"))}");
+    Console.WriteLine("Price carried in request: NO (IdealPOS is the pricing authority)");
+    Console.WriteLine("Intended plan:");
+    foreach (var step in dryRunResult.ActionPlan)
+    {
+        Console.WriteLine("  " + step);
+    }
+    Console.WriteLine($"Outcome: {dryRunResult.Outcome}  Mutated: {dryRunResult.Mutated}  SendBoundaryCrossed: {dryRunResult.SendBoundaryCrossed}");
+    return 0;
+}
 
 // Story 9-2 dry-run entry point. See this project's own .csproj doc
 // comment for the evidence-tier boundary this executable sits on: it is

@@ -1,5 +1,5 @@
 {
-  "ExpectedProcessName": "IPSClient",
+  "ExpectedProcessName": "IPS",
   "ExpectedMainWindowTitleContains": "Idealpos",
-  "ProfileVersion": "UNSET-COMPLETE-DURING-LIVE-DISCOVERY"
+  "ProfileVersion": "ips-7133-processname-verified-2026-09-01__title-and-automationids-PENDING-session1-discovery"
 }

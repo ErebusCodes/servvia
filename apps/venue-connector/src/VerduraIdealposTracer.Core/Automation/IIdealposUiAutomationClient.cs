@@ -1,3 +1,5 @@
+using VerduraIdealposTracer.Core.Terminal;
+
 namespace VerduraIdealposTracer.Core.Automation;
 
 /// <summary>Non-sensitive facts about a running Idealpos process — never a credential, licence key, or payment field.</summary>
@@ -68,6 +70,25 @@ public interface IIdealposUiAutomationClient
     /// as a state-mutating action.
     /// </summary>
     Task<HarmlessNavigationResult> PerformHarmlessNavigationAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Attempts one native "Save to Table" round — the whole first-round (or
+    /// second-round append) action — through the terminal's own licensed
+    /// sale screen, exactly as a clerk would. This is a MUTATING contract,
+    /// but the production (Windows) implementation is fail-closed: it
+    /// verifies process/window/no-modal, requires a fully populated,
+    /// non-placeholder Session-1 selector set, and returns a fail-closed
+    /// <see cref="TerminalSaveToTableResult"/> WITHOUT touching a single
+    /// control until those real selectors exist. It never clicks, sets a
+    /// value, selects, sends input, foregrounds a window, or posts a
+    /// message while selectors are unproven.
+    ///
+    /// Pricing is out of scope by construction: <see cref="TerminalRoundItem"/>
+    /// carries no price. Any price on the result is an observation read back
+    /// FROM IdealPOS, never an input — IdealPOS remains the pricing
+    /// authority.
+    /// </summary>
+    Task<TerminalSaveToTableResult> AttemptSaveToTableAsync(TerminalRoundRequest request, CancellationToken cancellationToken);
 }
 
 /// <summary>
