@@ -51,6 +51,29 @@ var windowsSettings = new WindowsAutomationSettings(expectedProfile.ExpectedProc
 var automationClient = new WindowsUiAutomationClient(windowsSettings);
 var localLog = new DurableLocalLog(storePath);
 
+if (string.Equals(mode, "capture", StringComparison.OrdinalIgnoreCase))
+{
+    // Passive Session-1 control-tree capture. Read-only: no click, no
+    // keystroke, no mutation — see WindowsUiAutomationClient.CaptureControlTreeAsync.
+    // Must run inside the interactive Session-1 desktop; from a service
+    // (Session 0) context it correctly returns an empty, fail-closed
+    // snapshot rather than inventing controls.
+    using var captureCts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+    var snapshot = await automationClient.CaptureControlTreeAsync(ControlTreeCaptureOptions.Default, captureCts.Token);
+    var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
+    var capturePath = Environment.GetEnvironmentVariable("TRACER_CAPTURE_OUT");
+    if (!string.IsNullOrWhiteSpace(capturePath))
+    {
+        File.WriteAllText(capturePath, json);
+        Console.WriteLine($"Capture written to {capturePath} (root present: {snapshot.HasRoot}, nodes: {snapshot.NodeCount}, truncated: {snapshot.Truncated}).");
+    }
+    else
+    {
+        Console.WriteLine(json);
+    }
+    return snapshot.HasRoot ? 0 : 1;
+}
+
 if (string.Equals(mode, "cloud", StringComparison.OrdinalIgnoreCase))
 {
     return await RunAlwaysOnHostAsync(args, automationClient, expectedProfile, localLog);

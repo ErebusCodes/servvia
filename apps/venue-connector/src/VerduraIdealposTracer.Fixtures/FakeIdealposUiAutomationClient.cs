@@ -1,4 +1,5 @@
 using VerduraIdealposTracer.Core.Automation;
+using VerduraIdealposTracer.Core.Discovery;
 using VerduraIdealposTracer.Core.Terminal;
 
 namespace VerduraIdealposTracer.Fixtures;
@@ -205,4 +206,65 @@ public sealed class FakeIdealposUiAutomationClient(
     private static Task<TerminalSaveToTableResult> Result(TerminalSaveToTableResult r) => Task.FromResult(r);
 
     private static IReadOnlyList<string> BuildActionPlan(TerminalRoundRequest request) => TerminalActionPlan.Build(request);
+
+    public Task<IdealposControlTreeSnapshot> CaptureControlTreeAsync(ControlTreeCaptureOptions options, CancellationToken cancellationToken)
+    {
+        if (scenario == FakeScenario.IdealposNotRunning)
+        {
+            return Task.FromResult(new IdealposControlTreeSnapshot
+            {
+                CapturedAtUtc = DateTimeOffset.UtcNow,
+                Root = null,
+                NodeCount = 0,
+                Diagnostics = new[] { "fixture: IPS not running" },
+            });
+        }
+
+        static ControlNodeSnapshot Node(string type, string? id, string? name, string? cls, int depth, params ControlNodeSnapshot[] kids) => new()
+        {
+            ControlType = type,
+            AutomationId = id,
+            Name = ControlTreeSanitizer.Sanitize(name), // sanitized exactly as the real capture does
+            ClassName = cls,
+            IsEnabled = true,
+            IsOffscreen = false,
+            Depth = depth,
+            Children = kids,
+        };
+
+        var root = Node("Window", null, "Idealpos - Table Selection", "ThunderRT6FormDC", 0,
+            Node("Pane", "tableMap", "Table Map", "ThunderRT6UserControlDC", 1,
+                Node("Button", "table_5", "Table 5", "ThunderRT6CommandButton", 2),
+                Node("Button", "table_6", "Table 6", "ThunderRT6CommandButton", 2)),
+            Node("Edit", "pluEntry", "PLU", "ThunderRT6TextBox", 1),
+            Node("Button", "saveToTable", "Save to Table", "ThunderRT6CommandButton", 1),
+            Node("Menu", "mainMenu", "Menu", "ThunderRT6MDIForm", 1,
+                Node("MenuItem", "menu_functions", "Functions", null, 2),
+                // Seed a sensitive value to prove the capture redacts it.
+                Node("MenuItem", "menu_clerk", "Clerk 1234567890123456 Loyalty", null, 2)));
+
+        var menus = new List<string>();
+        CollectMenuItems(root, menus);
+
+        return Task.FromResult(new IdealposControlTreeSnapshot
+        {
+            CapturedAtUtc = DateTimeOffset.UtcNow,
+            ProcessName = "IPS",
+            ProcessId = 4242,
+            RootWindowTitle = ControlTreeSanitizer.Sanitize("Idealpos - Table Selection"),
+            NodeCount = CountNodes(root),
+            Truncated = false,
+            Root = root,
+            MenuItems = menus,
+            Diagnostics = new[] { "UNIT_OR_MOCK fixture control tree — never real Windows/Idealpos evidence" },
+        });
+    }
+
+    private static int CountNodes(ControlNodeSnapshot node) => 1 + node.Children.Sum(CountNodes);
+
+    private static void CollectMenuItems(ControlNodeSnapshot node, List<string> into)
+    {
+        if (node.ControlType == "MenuItem" && !string.IsNullOrWhiteSpace(node.Name)) into.Add(node.Name!);
+        foreach (var c in node.Children) CollectMenuItems(c, into);
+    }
 }

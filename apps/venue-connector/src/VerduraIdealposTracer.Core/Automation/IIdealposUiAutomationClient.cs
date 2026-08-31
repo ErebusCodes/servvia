@@ -1,3 +1,4 @@
+using VerduraIdealposTracer.Core.Discovery;
 using VerduraIdealposTracer.Core.Terminal;
 
 namespace VerduraIdealposTracer.Core.Automation;
@@ -89,6 +90,18 @@ public interface IIdealposUiAutomationClient
     /// authority.
     /// </summary>
     Task<TerminalSaveToTableResult> AttemptSaveToTableAsync(TerminalRoundRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// PASSIVE, read-only capture of the current UI Automation control tree.
+    /// This is a pure observation: it reads AutomationId / ControlType /
+    /// accessible Name / Win32 ClassName and structural flags, bounded by
+    /// <see cref="ControlTreeCaptureOptions"/> (depth, node count, wall
+    /// clock). It never invokes a control, sets a value, selects, sends
+    /// input, foregrounds a window, or posts a message. Its whole purpose is
+    /// to turn the Session-1 sale screen into evidence a human can use to
+    /// populate real selectors — it cannot itself act on any of them.
+    /// </summary>
+    Task<IdealposControlTreeSnapshot> CaptureControlTreeAsync(ControlTreeCaptureOptions options, CancellationToken cancellationToken);
 }
 
 /// <summary>

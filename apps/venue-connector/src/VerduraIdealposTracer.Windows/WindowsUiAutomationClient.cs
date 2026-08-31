@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Windows.Automation;
 using VerduraIdealposTracer.Core.Automation;
+using VerduraIdealposTracer.Core.Discovery;
 using VerduraIdealposTracer.Core.Terminal;
 
 namespace VerduraIdealposTracer.Windows;
@@ -242,6 +243,161 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
         finally
         {
             foreach (var p in candidates) p.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Passive, read-only control-tree capture. Reads only metadata
+    /// (AutomationId / ControlType / accessible Name / Win32 ClassName /
+    /// enabled / offscreen) via the ControlView walker, bounded by depth,
+    /// node count, and a wall-clock stopwatch. There is deliberately NO
+    /// Invoke/SetValue/Select/SendInput/SetForegroundWindow/WM_COMMAND call
+    /// anywhere in this method or WalkControl — it cannot mutate the UI.
+    /// Every accessible Name is sanitized before it is stored.
+    /// </summary>
+    public Task<IdealposControlTreeSnapshot> CaptureControlTreeAsync(ControlTreeCaptureOptions options, CancellationToken cancellationToken)
+    {
+        var candidates = Process.GetProcessesByName(settings.ExpectedProcessName);
+        try
+        {
+            var process = candidates.FirstOrDefault(p => !p.HasExited && p.MainWindowHandle != IntPtr.Zero);
+            if (process is null)
+            {
+                return Task.FromResult(EmptySnapshot(
+                    $"IPS process '{settings.ExpectedProcessName}' with a visible main window was not found "
+                    + "(UI Automation is desktop-bound — run this inside the interactive Session-1 desktop)."));
+            }
+
+            var mainWindow = FindMainWindowElement(process.Id);
+            if (mainWindow is null)
+            {
+                return Task.FromResult(EmptySnapshot($"main window for process id {process.Id} not found via UI Automation"));
+            }
+
+            var state = new CaptureState();
+            var menus = new List<string>();
+            var sw = Stopwatch.StartNew();
+            var root = WalkControl(mainWindow, depth: 0, options, state, sw, menus, cancellationToken);
+
+            return Task.FromResult(new IdealposControlTreeSnapshot
+            {
+                CapturedAtUtc = DateTimeOffset.UtcNow,
+                ProcessName = process.ProcessName,
+                ProcessId = process.Id,
+                RootWindowTitle = ControlTreeSanitizer.Sanitize(SafeName(mainWindow)),
+                NodeCount = state.NodeCount,
+                Truncated = state.Truncated,
+                TruncationReason = state.TruncationReason,
+                Root = root,
+                MenuItems = menus,
+                Diagnostics = new[] { $"ControlView walk of pid {process.Id}, {state.NodeCount} node(s)." },
+            });
+        }
+        finally
+        {
+            foreach (var p in candidates) p.Dispose();
+        }
+    }
+
+    private static IdealposControlTreeSnapshot EmptySnapshot(string reason) => new()
+    {
+        CapturedAtUtc = DateTimeOffset.UtcNow,
+        NodeCount = 0,
+        Root = null,
+        Diagnostics = new[] { reason },
+    };
+
+    private static string? SafeName(AutomationElement element)
+    {
+        try { return element.Current.Name; } catch { return null; }
+    }
+
+    private static ControlNodeSnapshot? WalkControl(
+        AutomationElement element, int depth, ControlTreeCaptureOptions options,
+        CaptureState state, Stopwatch sw, List<string> menus, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested) { state.Stop("cancelled"); return null; }
+        if (sw.ElapsedMilliseconds > options.TimeoutMs) { state.Stop("timeout"); return null; }
+        if (state.NodeCount >= options.MaxNodes) { state.Stop("max nodes"); return null; }
+
+        string controlType, className;
+        string? automationId, name;
+        bool isEnabled, isOffscreen;
+        try
+        {
+            var info = element.Current;
+            controlType = info.ControlType?.ProgrammaticName?.Replace("ControlType.", string.Empty) ?? "Unknown";
+            automationId = string.IsNullOrEmpty(info.AutomationId) ? null : info.AutomationId;
+            name = info.Name;
+            className = info.ClassName;
+            isEnabled = info.IsEnabled;
+            isOffscreen = info.IsOffscreen;
+        }
+        catch
+        {
+            // Stale / unavailable element — skip this node rather than fail
+            // the whole capture.
+            return null;
+        }
+
+        state.NodeCount++;
+        var sanitizedName = ControlTreeSanitizer.Sanitize(name);
+        if (options.IncludeMenus && (controlType == "Menu" || controlType == "MenuItem")
+            && !string.IsNullOrWhiteSpace(sanitizedName))
+        {
+            menus.Add(sanitizedName!);
+        }
+
+        var children = new List<ControlNodeSnapshot>();
+        if (depth < options.MaxDepth)
+        {
+            try
+            {
+                var walker = TreeWalker.ControlViewWalker;
+                var child = walker.GetFirstChild(element);
+                while (child is not null)
+                {
+                    if (sw.ElapsedMilliseconds > options.TimeoutMs) { state.Stop("timeout"); break; }
+                    if (state.NodeCount >= options.MaxNodes) { state.Stop("max nodes"); break; }
+                    var childSnapshot = WalkControl(child, depth + 1, options, state, sw, menus, cancellationToken);
+                    if (childSnapshot is not null) children.Add(childSnapshot);
+                    child = walker.GetNextSibling(child);
+                }
+            }
+            catch
+            {
+                // A subtree became unavailable mid-walk — keep what we have.
+            }
+        }
+        else
+        {
+            state.Stop("max depth");
+        }
+
+        return new ControlNodeSnapshot
+        {
+            ControlType = controlType,
+            AutomationId = automationId,
+            Name = sanitizedName,
+            ClassName = string.IsNullOrEmpty(className) ? null : className,
+            IsEnabled = isEnabled,
+            IsOffscreen = isOffscreen,
+            Depth = depth,
+            Children = children,
+        };
+    }
+
+    private sealed class CaptureState
+    {
+        public int NodeCount;
+        public bool Truncated;
+        public string? TruncationReason;
+
+        public void Stop(string reason)
+        {
+            if (Truncated) return;
+            Truncated = true;
+            TruncationReason = reason;
         }
     }
 
