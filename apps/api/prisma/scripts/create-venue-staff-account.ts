@@ -20,12 +20,21 @@
  *     (super-user)"). An `owner` therefore PASSES the order-status guard.
  *     An earlier revision of this comment asserted the opposite — that
  *     `owner` could not pass the API order-role guard — and that was wrong.
- *   - One genuine `owner` gap does remain, and it is purely client-side: the
- *     Order Tablet derives `hasClosePerm` from supervisor/manager/admin
- *     (OrderTabletPage.tsx) and excludes `owner`, so the "Close Table"
- *     control is hidden from an owner even though the API would accept the
- *     call. That is a separate UI/API role-mismatch bug; it is deliberately
- *     NOT addressed by this script.
+ *   - A second, purely client-side `owner` gap sat alongside the missing PIN:
+ *     the Order Tablet derived `hasClosePerm` from supervisor/manager/admin
+ *     (OrderTabletPage.tsx) and excluded `owner`, hiding "Close Table" from an
+ *     owner the API would have accepted. So an owner could not close a table
+ *     for two independent reasons — no PIN to elevate with, and a frontend
+ *     role check that omitted the role — neither of which was API RBAC. The
+ *     frontend half is now fixed: hasClosePerm gates on the real StaffRole
+ *     vocabulary and includes `owner`.
+ *
+ * That frontend fix does not make this script redundant. The venue still had
+ * no PIN-enabled operational staff account, and `POST /tablet/elevate` still
+ * matches only active staff carrying a `pinHash` — so a tablet at a venue in
+ * that state still cannot elevate at all. The `manager` account this script
+ * bootstraps is an ordinary operational floor account; it is not, and was
+ * never, evidence that `owner` lacks API permission.
  *
  * Net effect: orders could be CREATED through the device-token path
  * (`/api/tablet/orders`, which needs no staff role), but no one could
@@ -74,12 +83,12 @@ const APPLY = cliArgs.includes('--apply');
 
 // Roles that can operate orders end to end through the tablet UI as well as
 // the API. Deliberately excludes `viewer` (no order permissions) and also
-// `owner` — but NOT because `owner` fails API RBAC. It does not: RolesGuard
-// grants `owner` a super-user bypass (see the header note). `owner` is
-// excluded because the tablet's own client-side `hasClosePerm` check omits
-// it, so an owner-only venue still could not close a table from the tablet.
-// Defaulting to `manager` resolves the venue without first depending on that
-// separate UI bug being fixed.
+// `owner` — but NOT because `owner` fails RBAC on either side. It does not:
+// RolesGuard grants `owner` a super-user bypass (see the header note), and
+// the tablet's `hasClosePerm` now includes `owner` too. `owner` stays out of
+// this set because this script bootstraps an *operational* account, and an
+// account minted for day-to-day floor use should not carry the super-user
+// role. `manager` is the least-privilege role that resolves the venue.
 const OPERATIONAL_ROLES = new Set<string>([
   StaffRole.admin,
   StaffRole.manager,

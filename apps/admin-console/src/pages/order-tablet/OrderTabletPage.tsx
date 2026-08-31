@@ -1622,18 +1622,38 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   const userRole = (standalone ? (staffElevated ? tabletDeviceAuth.staffRole ?? '' : '') : currentUser?.role || '').toLowerCase();
 
   // Permissions
+  //
+  // These are written against the ONLY role vocabulary this system has:
+  // Prisma's `StaffRole` = owner | admin | manager | cashier | kitchen |
+  // viewer (apps/api/prisma/schema.prisma). `userRole` above is that enum
+  // value, lowercased, whether it arrives from a tablet elevation
+  // (TabletAuthService.elevateStaff returns `staff.role`) or from the
+  // logged-in Admin Console user.
+  //
+  // Both checks previously tested 'staff', 'server' and 'supervisor'. None of
+  // those is a StaffRole member, so all three comparisons were permanently
+  // false and contributed nothing. They are removed as dead code; the
+  // effective role sets below are unchanged by their removal.
   const hasTransferPerm = isStaff && (
-    userRole === 'staff' ||
-    userRole === 'server' ||
-    userRole === 'supervisor' ||
     userRole === 'manager' ||
     userRole === 'admin'
   );
 
+  // Close Table adds `owner`, and only `owner`. RolesGuard short-circuits on
+  // `user.role === StaffRole.owner` and returns true before it consults the
+  // @Roles set at all (auth/guards/roles.guard.ts — "Owner role bypasses all
+  // RBAC checks (super-user)"), so an owner is already accepted by
+  // PATCH admin/orders/:id/status — the call handlePerformCloseTable makes.
+  // Omitting owner here hid a control the API would have honoured.
+  //
+  // `cashier` and `kitchen` are NOT added despite appearing in the API's
+  // STAFF_ORDER_ROLES. That set is one coarse bundle shared by every order
+  // endpoint, not a statement that either role should close a table; closing
+  // stays supervisory. Narrowing below what the API permits is safe.
   const hasClosePerm = isStaff && (
-    userRole === 'supervisor' ||
     userRole === 'manager' ||
-    userRole === 'admin'
+    userRole === 'admin' ||
+    userRole === 'owner'
   );
 
   // Order-affecting actions (status transitions) are audit-logged by the

@@ -20,6 +20,7 @@ vi.mock('../../shared/orders', async () => {
 const { useMenuStore } = await import('../../store/menu.store');
 const { useReservationStore } = await import('../../store/reservation.store');
 const { useTabletDeviceAuthStore } = await import('../../store/tabletDeviceAuth.store');
+const { useAuthStore } = await import('../../store/auth.store');
 const { OrderTabletPage } = await import('./OrderTabletPage');
 
 const NZ_SUPPORTED_TAX_CONFIG = { currency: 'NZD', locale: 'en-NZ', taxJurisdiction: 'NZ_GST', pricesIncludeTax: true };
@@ -1335,5 +1336,93 @@ describe('OrderTabletPage — stale order-cache / auth-expiry safety (2026-08-26
       // regression that mattered: staff work must never vanish.
       expect(screen.getAllByText('Test Kebab').length).toBeGreaterThan(0);
     });
+  });
+});
+
+// Close Table used to be gated on 'supervisor' | 'manager' | 'admin'.
+// 'supervisor' is not a StaffRole member (owner | admin | manager | cashier |
+// kitchen | viewer), so it never matched, and `owner` was absent — leaving an
+// owner a dead "Close Table" button even though RolesGuard grants owner a
+// super-user bypass and the API accepts their
+// PATCH /admin/orders/:id/status. These pin the corrected set.
+describe('OrderTabletPage — Close Table role gating', () => {
+  const openOrderOnTable1 = {
+    id: 'order-existing-1',
+    venueId: 'venue-1',
+    tableId: 'real-table-1',
+    tableNumber: '1',
+    serviceMode: 'dine_in',
+    takeawayReference: null,
+    items: [],
+    status: 'preparing',
+    source: 'staff',
+    subtotalCents: 7000,
+    taxCents: 1050,
+    totalCents: 8050,
+    notes: null,
+    submittedAt: new Date().toISOString(),
+  };
+
+  async function renderOccupiedTableAs(role: string) {
+    useAuthStore.setState({
+      accessToken: 'access.token',
+      user: { id: 'user-1', email: 'someone@verdura.co.nz', name: 'Someone', role },
+    });
+    useLiveOrdersMock.mockReturnValue({
+      // `as never`: useLiveOrdersMock's return type is inferred from its
+      // `data: []` default, so it widens to never[] — this file's existing
+      // store-seeding convention for the same problem.
+      data: [openOrderOnTable1] as never,
+      isRealtimeConnected: true,
+      ordersDataIsAuthoritative: true,
+    });
+    installFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+    renderTablet();
+    // Occupied tables render the status into the subLabel (see tablesV's
+    // `subLabel`), so the accessible name differs from the free-table one.
+    fireEvent.click(await screen.findByRole('button', { name: 'T12 seats · occupied' }));
+  }
+
+  afterEach(() => {
+    useAuthStore.setState({ accessToken: null, user: null });
+  });
+
+  it('enables Close Table for an owner — the API already accepts them via the RolesGuard super-user bypass', async () => {
+    await renderOccupiedTableAs('owner');
+    expect(await screen.findByRole('button', { name: /Close Table/i })).toBeEnabled();
+  });
+
+  it.each(['admin', 'manager'])('enables Close Table for a %s', async (role) => {
+    await renderOccupiedTableAs(role);
+    expect(await screen.findByRole('button', { name: /Close Table/i })).toBeEnabled();
+  });
+
+  it.each(['cashier', 'kitchen', 'viewer'])('keeps Close Table disabled for a %s — closing stays supervisory', async (role) => {
+    await renderOccupiedTableAs(role);
+    expect(await screen.findByRole('button', { name: /Close Table/i })).toBeDisabled();
+  });
+
+  // The guard against the original defect returning: none of these three
+  // names exists in StaffRole, so none may ever unlock Close Table.
+  it.each(['staff', 'server', 'supervisor'])('grants no Close Table to the non-existent role %s', async (role) => {
+    await renderOccupiedTableAs(role);
+    expect(await screen.findByRole('button', { name: /Close Table/i })).toBeDisabled();
+  });
+
+  // Transfer Table is NOT implemented — handlePerformTransfer reports it as
+  // unsupported and there is no move-order endpoint. Removing the dead role
+  // literals from hasTransferPerm must therefore change nothing about who can
+  // reach it: this pins the pre-existing effective set (manager | admin) so a
+  // later cleanup cannot quietly widen access to a capability that does not
+  // exist. It asserts reachability of the control only, never that a transfer
+  // can be performed.
+  it.each(['manager', 'admin'])('leaves Transfer Table reachable for a %s, exactly as before', async (role) => {
+    await renderOccupiedTableAs(role);
+    expect(await screen.findByRole('button', { name: /Transfer Table/i })).toBeEnabled();
+  });
+
+  it.each(['owner', 'cashier', 'kitchen', 'viewer'])('does not newly expose the unimplemented Transfer Table to a %s', async (role) => {
+    await renderOccupiedTableAs(role);
+    expect(await screen.findByRole('button', { name: /Transfer Table/i })).toBeDisabled();
   });
 });
