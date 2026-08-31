@@ -39,3 +39,18 @@ apps/api/storage/
 
 AUDIT_REPORT.md
 AUDIT_REPORT_V2.md
+
+# Nested live PostgreSQL data directory for the Windows production host. This
+# is a running database's on-disk state, not a dev scratch DB — the existing
+# `local-postgres/data/` rule above is anchored to the repo root and does not
+# reach it. Anchored so it can never hide a source directory of the same name.
+/verdura_MVP/local-postgres/
+
+# Decompiled/vendor IdealPOS diagnostic artifacts (third-party IL tooling
+# output). Kept on disk for investigation, never redistributed via git.
+/.tmp-idealpos-il-tools/
+
+# Admin console production build output. The generic `dist/` rule above does
+# not match this directory's name; anchored so `dist-admin` elsewhere in the
+# tree would still be trackable if ever legitimate.
+/apps/admin-console/dist-admin/
