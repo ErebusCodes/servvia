@@ -62,6 +62,34 @@ the licence state of one module, and the documented protocol for the interface i
 6. May a third-party integration run locally on the same Windows host and connect to
    `127.0.0.1:12183` without exposing a LAN or internet-facing port?
 
+7. On IdealPOS v7.133.0200, is the native **Transfer to a Table** action intended to be available for
+   Web Orders / pending sales whose `Code` begins with `WB`?
+
+   At this site the two screens do not overlap:
+   - the **Web Orders** screen lists the `WB*` sale but exposes only Email / Reprint Kitchen /
+     Print / Finalize;
+   - the standard **Pending Sales** screen does expose Transfer to a Table, but explicitly filters
+     `WB*` sales out of its list.
+
+   So there is currently no screen from which a web order can be transferred to a table. If that
+   transfer is supported, please tell us exactly:
+   - how it is enabled or configured
+   - whether it is licence-dependent
+   - whether it prompts the operator to select the destination table
+   - whether it moves the existing pending sale rather than creating a second sale
+
+8. With the site option `TableTransfersToKitchen = 1`, what is the exact kitchen-print behaviour when
+   a pending sale is transferred to a table?
+
+   Specifically:
+   - are lines already marked `Printed=1` printed again?
+   - or are only new/unprinted lines sent to the kitchen?
+   - does a web order that has already printed one kitchen docket through Webit produce a second
+     docket when it is transferred to a table?
+
+   We need this documented before we can use a native transfer as even a temporary operating
+   workflow — a second kitchen docket would send the food twice.
+
 **Context on why the existing web-order path is not sufficient for us:**
 
 We already have a working Webit integration at this site. It is proven end to end: it ingests our
