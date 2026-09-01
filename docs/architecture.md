@@ -6,6 +6,8 @@
 
 **Recommended architecture correction:** use an outbound-only, mutually authenticated edge connector; expose a scoped command/event API rather than Redis to venue agents; model `Queued`, `Delivered`, `Acknowledged` and `Confirmed` separately; store idempotency results durably; and fail unsupported provider capabilities explicitly.
 
+> **Technology standard — 2026-09-01:** [§10](#10--technology-standard-current-mvp-and-approved-target-architecture) is the canonical Verdura technology ownership standard. It separates the **current MVP implementation** (NestJS/Node, Prisma, React+Vite, .NET connector) from the **approved target architecture** (React+TypeScript web, Kotlin/Android native devices, **Go** Core Platform and Venue/Edge, **Python** AI/Data/Analytics, narrow C#/.NET Windows-IdealPOS adapter, PostgreSQL, Google Cloud Storage, Docker). Sections 1–9 of this document describe the current-MVP shape of the system; where they name a technology, read §10 for whether that technology is the long-term owner. No new implementation may create a second long-term owner for an existing capability (§10.11).
+
 **Phase 4 Output**
 **Date:** 2026-06-18
 
@@ -498,22 +500,282 @@ Public internet
 
 ---
 
-## 10 — Technology Stack Summary
+## 10 — Technology Standard: Current MVP and Approved Target Architecture
 
-| Layer | Technology | Version target |
-|-------|-----------|----------------|
-| API framework | NestJS | 11.x |
-| API language | TypeScript | 5.x |
-| PostgreSQL ORM | Prisma | 5.x |
-| Queue / workers | BullMQ | 5.x |
-| WebSocket | Socket.io | 4.x |
-| Redis client | ioredis | 5.x |
-| Image processing | sharp | 0.33.x |
-| Admin frontend | React 18, TypeScript, Vite, Tailwind, TanStack Query, Zustand | latest stable |
-| Kiosk frontend | React 18, TypeScript, Vite, Tailwind, Zustand | latest stable |
-| On-premise services | Node.js 20 LTS, PM2 | LTS |
-| Containerisation | Docker + Docker Compose | 24.x |
-| CI/CD | GitHub Actions | — |
-| Email | Resend (primary) / SendGrid (fallback) | — |
-| Media storage | Persistent local Docker volume | `verdura-media` |
-| Payments | Stripe | — |
+> **Normative — 2026-09-01.** This section is the source of truth for which technology owns which
+> capability at Verdura. It distinguishes what is **built today (Current MVP)** from what is
+> **approved as the destination (Target)**. A technology listed under Current MVP is not, by that
+> fact alone, the permanent owner of its capability. Where this section and any other document
+> disagree on technology ownership, this section governs.
+
+### 10.1 Purpose
+
+- State the approved **target** owner for each capability domain.
+- State honestly what the **current MVP** actually runs, without implying it is the destination.
+- Define the **migration ownership boundaries** that move current implementations to the target.
+- Record which technologies are **permitted exceptions**, and which must **not** be introduced.
+
+### 10.2 Current MVP architecture (current implementation — not automatically the target)
+
+This is what exists and runs today. Label these **CURRENT IMPLEMENTATION** in any downstream
+document; do not restate them as permanent target ownership.
+
+| Layer | Current implementation | Version target | Target disposition |
+|-------|-----------------------|----------------|--------------------|
+| API framework | NestJS | 11.x | **Migrates to Go Core Platform** (§10.3.C, §10.5) |
+| API language | TypeScript (Node.js) | 5.x | Migrates to Go for platform services |
+| PostgreSQL ORM | Prisma | 5.x | Retires with the Node services it serves |
+| Queue / workers | BullMQ | 5.x | Migrates with the owning service |
+| WebSocket | Socket.io | 4.x | Migrates with the owning service |
+| Redis client | ioredis | 5.x | Redis itself remains; client follows the owning service |
+| Image processing | sharp | 0.33.x | Follows the owning service |
+| Admin frontend | React 18, TypeScript, Vite, Tailwind, TanStack Query, Zustand | latest stable | **Target-aligned** — stays React + TypeScript |
+| Kiosk / KDS / Order Tablet / Window Display frontends | React 18, TypeScript, Vite, Tailwind, Zustand | latest stable | **Target-aligned** as web apps; native device surfaces move to Kotlin/Android only at a justified boundary (§10.6.B) |
+| Customer website | React 18, JavaScript, Vite | latest stable | Stays React/TypeScript; Next.js permitted only per §10.7 |
+| On-premise services | Node.js 20 LTS, PM2 | LTS | **Migrates to Go Venue/Edge** (§10.3.D) |
+| Venue connector / IdealPOS bridge | C# / .NET 8 | 8.x | **Narrows** to the Windows/IdealPOS adapter only (§10.6.C) |
+| Database | PostgreSQL | 16.x | **Target-aligned** |
+| Cache / queue broker | Redis | 7.x | **Target-aligned** |
+| Containerisation | Docker + Docker Compose | 24.x | **Target-aligned** (§10.9) |
+| CI/CD | GitHub Actions | — | Target-aligned |
+| Email | Resend (primary) / SendGrid (fallback) | — | Target-aligned |
+| Media storage | Google Cloud Storage (see §6) | — | **Target-aligned** |
+| Payments | Stripe | — | Target-aligned |
+
+**Explicitly:** the current MVP is **not yet identical** to the approved target architecture below.
+Node/TypeScript core services and the current breadth of .NET venue orchestration are the
+*current* implementation of capabilities the target standard assigns to **Go**.
+
+### 10.3 Approved target architecture
+
+**A. React + TypeScript — Web applications.**
+Admin Console, KDS, Order Tablet, Window Display, Kiosk, Customer Website. Vite is the standard
+build tool for the operational apps.
+
+**B. Kotlin + Android — Native device applications.**
+The standard for **new** native device surfaces.
+
+**C. Go — Core Platform.**
+Transactional business services; orders; venue state; table/order lifecycle orchestration;
+staff/authorization orchestration where appropriate; menu/platform APIs; connector command
+orchestration; device/venue configuration; event publication; platform services.
+
+**D. Go — Venue / Edge.**
+Cloud-to-venue communication; local durable command handling; synchronization; retries;
+telemetry; edge state; platform-independent venue orchestration.
+
+**E. Python — AI / Data / Analytics.**
+Analytics, data pipelines, forecasting, optimization, machine learning, AI, anomaly detection,
+menu intelligence, kitchen analytics, demand prediction.
+
+**F. C# / .NET — Windows / IdealPOS integration boundary.**
+Narrow by design; see §10.6.C.
+
+**G. PostgreSQL — Transactional source of truth.**
+
+**H. Google Cloud Storage — Media storage.** (Consistent with §6.)
+
+**I. Docker — Infrastructure / packaging / deployment standard.** (See §10.9.)
+
+**J. Next.js — permitted exception within the React/TypeScript web domain**, public website only.
+(See §10.7.)
+
+**K. Kubernetes — later-stage deployment option only.** Not an MVP requirement and not part of
+the application architecture. (See §10.9.)
+
+### 10.4 Technology ownership matrix
+
+| Domain / capability | Target owner | Current implementation | Status |
+|---------------------|--------------|------------------------|--------|
+| Web applications (admin, KDS, tablet, window, kiosk, website) | **React + TypeScript** | React + TypeScript + Vite | Aligned |
+| Native device applications | **Kotlin + Android** | Web-based device surfaces (React) | Migrate only at a justified boundary (§10.6.B) |
+| Core Platform: orders, venue state, table/order lifecycle, staff/authorization orchestration, menu/platform APIs, connector command orchestration, device/venue configuration, event publication | **Go** | NestJS / Node.js + TypeScript + Prisma | Migration required (§10.5) |
+| Venue / Edge: cloud-to-venue comms, durable local command handling, sync, retries, telemetry, edge state | **Go** | Node.js/PM2 on-premise services + .NET venue-connector | Migration required (§10.5) |
+| IdealPOS / Windows adapter: vendor SDK, Webit, IPS/POSServer, Windows APIs, UI Automation, interactive terminal agent | **C# / .NET** | C# / .NET 8 connector + tracer | Aligned, but must **narrow** to this boundary |
+| AI / Data / Analytics: pipelines, forecasting, optimization, ML, anomaly detection, menu intelligence, kitchen analytics, demand prediction | **Python** | Not yet implemented | Target technology, first-class — not "optional/future" |
+| Transactional source of truth | **PostgreSQL** | PostgreSQL 16 | Aligned |
+| Media storage | **Google Cloud Storage** | GCS (§6) | Aligned |
+| Packaging / deployment | **Docker** | Docker + Compose | Aligned |
+| Public website SSR/SEO | React/TS, **Next.js permitted exception** | React + Vite | Exception only where justified (§10.7) |
+| Cluster orchestration | **Kubernetes — later-stage option** | Not used | Not required for MVP |
+
+Go and Python are recorded as **first-class target technologies**, not optional or speculative.
+
+### 10.5 Migration policy
+
+Go progressively replaces equivalent Node and .NET platform functionality at **defined
+boundaries**. Kotlin/Android progressively takes over native device surfaces at defined
+boundaries. Migration never proceeds by accretion.
+
+**Every migration must record, before work starts:**
+
+1. **Current owner** — the exact service/capability being replaced.
+2. **New owner** — the Go (or Kotlin) component that takes ownership.
+3. **Cutover** — how traffic/responsibility moves, and how it is verified.
+4. **Retirement condition** — the explicit criterion under which the old implementation is
+   deleted, and the bounded period in which that must happen.
+
+**Permanent duplicate implementations are prohibited.** See §10.11.
+
+Migration is capability-by-capability. There is no big-bang rewrite, and no requirement to
+migrate a capability that is working and in scope until its boundary is defined.
+
+### 10.6 Platform boundaries
+
+**A. Go Core Platform vs Python intelligence.**
+
+> **Go owns transactional truth. Python derives intelligence.**
+
+Python must **not** become a second transactional backend. Python does **not** own: create order;
+close table; payment lifecycle; staff transactional state; venue transactional truth; POS command
+truth; or transactional menu/order source-of-truth operations. Python services **consume**
+authoritative platform data and events and **produce derived outputs** (forecasts, scores,
+recommendations, anomaly signals, analytics datasets).
+
+**B. Kotlin/Android vs existing web device surfaces.**
+
+Kotlin + Android is the standard for **new** native device applications. Existing React-based
+device apps (KDS, Order Tablet, Window Display, Kiosk) **remain valid** and require no immediate
+rewrite. Migrate a surface to native Android where it materially improves device control,
+reliability, kiosk behaviour, offline operation, peripheral access, lifecycle management, or
+deployment/device management — and only with a defined migration boundary per §10.5.
+
+**C. Go Venue/Edge vs C#/.NET Windows adapter.**
+
+| Responsibility | Owner |
+|----------------|-------|
+| General, platform-independent venue/edge orchestration; cloud-to-venue transport; durable command handling; sync; retries; telemetry; edge state | **Go Venue/Edge** |
+| IdealPOS vendor SDK integration; Webit; IPS / POSServer integration; Windows APIs; Windows UI Automation; the interactive Windows terminal agent; other unavoidable Windows/vendor-specific adapters | **C# / .NET** |
+
+C#/.NET must **not** become a competing general Core Platform or a general-purpose Venue/Edge
+platform. It exposes a **narrow** adapter surface to the Go edge. This does not weaken the
+existing outbound-only, mutually authenticated connector trust boundary (§4.8,
+[target-operating-model.md](./target-operating-model.md) §8) — that constraint applies to
+whichever technology implements the connector.
+
+**D. React/TypeScript web domain.**
+
+React + TypeScript remains the primary web standard, and the current Vite-based operational apps
+remain valid. There is **no blanket migration to Next.js**.
+
+### 10.7 Permitted exceptions
+
+**Next.js — PERMITTED EXCEPTION, NOT GENERAL STANDARD.**
+
+Permitted only inside the React/TypeScript web domain, for the **public customer website**, and
+only where there is a demonstrated requirement for SSR, SEO, metadata generation, public
+landing/location/menu pages, server rendering, or public-web performance benefits.
+
+Do **not** migrate Admin Console, KDS, Order Tablet, or Window Display to Next.js for
+consistency. Those are authenticated/operational surfaces with no SSR or SEO requirement.
+
+**Rust — architecture exception only.** Not a standard Verdura technology. Permitted solely
+through a specific, recorded architecture exception for a demonstrated native, security,
+performance, or embedded requirement that Go, Kotlin, or .NET cannot meet cleanly.
+
+**Django — conditional, inside the Python domain only.** Not automatically approved because
+Python is approved. Permitted only within the Python AI/Data/Analytics domain where Django itself
+is specifically justified, and never as a second general transactional backend.
+
+### 10.8 Prohibited / non-standard technologies
+
+| Technology | Disposition | Reason |
+|------------|-------------|--------|
+| **Bun** | Not part of the approved architecture | No unique ownership domain. Do not introduce it to optimize Node tooling during a migration *away* from Node-owned core services. |
+| **Rust** | Not standard; architecture exception only | Permitted only for a demonstrated native/security/performance/embedded need that Go/Kotlin/.NET cannot meet cleanly (§10.7). |
+| **Rails** | Do not introduce | Duplicates Core Platform responsibilities owned by Go. |
+| **Laravel** | Do not introduce | Duplicates Core Platform responsibilities owned by Go. |
+| **Django** | Not automatically approved | Permitted only inside the Python AI/Data/Analytics domain with specific justification; must never become a second general transactional backend (§10.7). |
+
+### 10.9 Infrastructure standards
+
+**Docker is the approved packaging and deployment standard.** Approved uses: local PostgreSQL;
+local Redis; repeatable dev environments; CI parity; Go service packaging; Python worker/service
+packaging; cloud service containers.
+
+**Explicit exception — do not force the native IdealPOS Windows stack into Docker.** The
+following stay native, where containerisation would break or complicate desktop, session, or
+native integration:
+
+- `IPS.exe`
+- `POSServer`
+- `IdealposService`
+- Windows/IdealPOS C# adapters
+- the interactive Windows UI automation agent
+
+**Kubernetes is a LATER-SCALE DEPLOYMENT OPTION.** It is **not** required for the MVP, **not**
+required for Go adoption, and **not** an application architecture standard. Adopt only when
+justified by service count, autoscaling, regional deployment, workload scheduling, complex
+service discovery, high-availability requirements, or operational/platform maturity.
+
+Preferred progression: **Docker → managed container runtime → Kubernetes/GKE only when scale
+justifies it.**
+
+### 10.10 Current-to-target architecture diagram
+
+```
+                    TARGET ARCHITECTURE
+
+            React + TypeScript Web
+            (admin, KDS, tablet, window, kiosk, website)
+                      |
+                      v
+              +-------------------+
+              | Go Core Platform  |  transactional truth
+              +-------------------+
+                      |
+        +-------------+------------------+
+        v             v                  v
+   PostgreSQL       Redis        Python Intelligence
+   (source of      (cache/       (analytics, ML, AI,
+    truth)          queue)        forecasting - derived,
+                                  never transactional)
+                      |
+                      v
+              +-------------------+
+              | Go Venue / Edge   |  platform-independent
+              +-------------------+  edge orchestration
+                      |
+                      v
+         C# / .NET IdealPOS Adapter    narrow Windows/vendor
+                      |                boundary only
+                      v
+            IPS / POSServer / Windows
+
+
+   Native device apps:            Media:
+   Kotlin / Android               Google Cloud Storage
+        |
+        v
+   Go Platform APIs               Infrastructure:
+                                  Docker as standard packaging
+                                  Kubernetes only later, if justified
+```
+
+Current MVP differs from the diagram above at exactly three points: the Core Platform is NestJS/
+Node instead of Go; Venue/Edge is Node/PM2 plus a broader .NET connector instead of Go; and
+device surfaces are React web apps instead of Kotlin/Android. Python intelligence is not yet
+built. Everything else is already target-aligned.
+
+### 10.11 Architecture governance rules
+
+> **NO NEW IMPLEMENTATION MAY CREATE A SECOND LONG-TERM OWNER FOR AN EXISTING CAPABILITY.**
+
+Temporary migration overlap is allowed **only** when all five hold: a defined source owner; a
+defined target owner; explicit cutover criteria; explicit retirement criteria; and a bounded
+migration period.
+
+**Prohibited (permanent duplicate ownership):**
+
+- Node order service **and** Go order service, permanently.
+- .NET venue orchestration **and** Go venue orchestration, permanently.
+- A Go transactional service **and** a Python transactional service.
+
+**Correct:**
+
+- A Node capability migrated to Go, traffic cut over, the Node capability retired.
+- Go Venue/Edge owns orchestration; .NET exposes a narrow IdealPOS/Windows adapter.
+- Go publishes authoritative events and data; Python consumes them for analytics and AI.
+
+Any proposal to introduce a technology not listed in §10.3, or to widen an owner beyond §10.4,
+requires a recorded decision in [decisions-log.md](./decisions-log.md) referencing this section.

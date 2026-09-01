@@ -52,7 +52,9 @@ Verdura solves these operational inefficiencies by unifying all key operational 
 
 ## 2. Architecture & Tech Stack
 
-Verdura utilizes a modern web architecture divided into two main layers: a high-performance **NestJS (Node.js)** backend API and a **React 18** frontend client ecosystem, unified in a monorepo setup via NPM Workspaces.
+Verdura **currently** runs a modern web architecture divided into two main layers: a **NestJS (Node.js)** backend API and a **React 18** frontend client ecosystem, unified in a monorepo setup via NPM Workspaces.
+
+> **Current implementation vs approved target.** Everything in this section describes what is **built today**, not the permanent technology ownership standard. The canonical standard is [`docs/architecture.md` §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture), which assigns the Core Platform and Venue/Edge domains to **Go**, AI/Data/Analytics to **Python**, native device apps to **Kotlin/Android**, and narrows **C#/.NET** to the Windows/IdealPOS adapter boundary. React + TypeScript, PostgreSQL, Google Cloud Storage and Docker are already target-aligned. Next.js is a permitted exception for the public website only; Kubernetes is a later-scale option, not an MVP requirement.
 
 ### 2.1 System Context Diagram
 
@@ -130,7 +132,7 @@ The following diagram illustrates the network boundaries and integration points 
 
   This diagram shows the **proposed** target architecture for the on-premise Idealpos side, not a built or deployed system. A vendor-supported Idealpos interface (ecommerce/Online/Doshii/SDK) remains preferred over the Windows Connector + POS Bridge shown above whenever it is commercially and technically confirmed available -- see `docs/integrations/idealpos.md` section 13.
 
-### 2.2 Core Technical Specifications
+### 2.2 Core Technical Specifications (current implementation)
 
 | Component | Technical Stack | Responsibility |
 |---|---|---|
