@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Automation;
 using VerduraIdealposTracer.Core.Automation;
 using VerduraIdealposTracer.Core.Discovery;
@@ -257,59 +259,294 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
     /// </summary>
     public Task<IdealposControlTreeSnapshot> CaptureControlTreeAsync(ControlTreeCaptureOptions options, CancellationToken cancellationToken)
     {
-        var candidates = Process.GetProcessesByName(settings.ExpectedProcessName);
+        int tracerSession = SafeSessionId(Process.GetCurrentProcess());
+        var diagnostics = new List<string>();
+
+        // Probe the configured terminal AND IPSClient, so the capture never
+        // silently depends on which one owns the sale-screen window.
+        var probeNames = new[] { settings.ExpectedProcessName, "IPSClient" }
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var procs = new List<Process>();
+        foreach (var n in probeNames) procs.AddRange(Process.GetProcessesByName(n));
         try
         {
-            var process = candidates.FirstOrDefault(p => !p.HasExited && p.MainWindowHandle != IntPtr.Zero);
-            if (process is null)
+            var live = procs.Where(p => { try { return !p.HasExited; } catch { return false; } }).ToList();
+            if (live.Count == 0)
             {
-                return Task.FromResult(EmptySnapshot(
-                    $"IPS process '{settings.ExpectedProcessName}' with a visible main window was not found "
-                    + "(UI Automation is desktop-bound — run this inside the interactive Session-1 desktop)."));
+                return Task.FromResult(EmptySnapshot(tracerSession, null, false,
+                    "No IPS/IPSClient process is running."));
             }
 
-            var mainWindow = FindMainWindowElement(process.Id);
-            if (mainWindow is null)
+            var primary = live.FirstOrDefault(p => string.Equals(p.ProcessName, settings.ExpectedProcessName, StringComparison.OrdinalIgnoreCase)) ?? live[0];
+            int? targetSession = SafeSessionId(primary);
+            bool mismatch = targetSession.HasValue && targetSession.Value != tracerSession;
+
+            // EnumWindows over EVERY top-level window owned by a candidate —
+            // does NOT rely on MainWindowHandle (which is 0 cross-session and
+            // can be 0 for windowless-main processes).
+            var pidToProc = live.GroupBy(p => p.Id).ToDictionary(g => g.Key, g => g.First());
+            var topWindows = EnumerateTopLevelWindows(pidToProc);
+            diagnostics.Add($"EnumWindows found {topWindows.Count} top-level window(s) for candidate process(es) on this desktop.");
+
+            var chosen = topWindows.FirstOrDefault(w => w.Visible && w.ProcessId == primary.Id)
+                         ?? topWindows.FirstOrDefault(w => w.ProcessId == primary.Id)
+                         ?? topWindows.FirstOrDefault(w => w.Visible)
+                         ?? topWindows.FirstOrDefault();
+
+            if (chosen is null)
             {
-                return Task.FromResult(EmptySnapshot($"main window for process id {process.Id} not found via UI Automation"));
+                diagnostics.Add(mismatch
+                    ? $"SESSION MISMATCH PROVEN: tracer session {tracerSession} != target session {targetSession}; no window of the target is on this desktop. Run inside the target's session."
+                    : $"No top-level window found for {primary.ProcessName} (pid {primary.Id}) in session {tracerSession}.");
+                return new IdealposControlTreeSnapshot
+                {
+                    CapturedAtUtc = DateTimeOffset.UtcNow,
+                    ProcessName = primary.ProcessName,
+                    ProcessId = primary.Id,
+                    TracerSessionId = tracerSession,
+                    TargetSessionId = targetSession,
+                    SessionMismatch = mismatch,
+                    Mechanism = CaptureMechanism.None,
+                    TopLevelWindows = topWindows,
+                    NodeCount = 0,
+                    Root = null,
+                    Diagnostics = diagnostics,
+                }.AsCompleted();
             }
 
+            var hwnd = new IntPtr(Convert.ToInt64(chosen.Handle, 16));
             var state = new CaptureState();
             var menus = new List<string>();
             var sw = Stopwatch.StartNew();
-            var root = WalkControl(mainWindow, depth: 0, options, state, sw, menus, cancellationToken);
+            ControlNodeSnapshot? root = null;
+            var mechanism = CaptureMechanism.None;
 
-            return Task.FromResult(new IdealposControlTreeSnapshot
+            // 1) UIA bound to the exact HWND (not RootElement.FindFirst).
+            try
+            {
+                var element = AutomationElement.FromHandle(hwnd);
+                if (element is not null)
+                {
+                    root = WalkControl(element, 0, options, state, sw, menus, cancellationToken);
+                    if (root is not null && state.NodeCount > 1) mechanism = CaptureMechanism.UiaFromHandle;
+                }
+            }
+            catch (Exception ex) { diagnostics.Add($"UIA FromHandle failed: {ex.GetType().Name}: {ex.Message}"); }
+
+            // 2) Win32 fallback (crucial for VB6 apps whose UIA tree is sparse).
+            if (mechanism == CaptureMechanism.None)
+            {
+                var win32 = BuildWin32Node(hwnd, 0, options, state, sw);
+                if (win32 is not null && (win32.Children.Count > 0 || state.NodeCount > 0))
+                {
+                    root = win32;
+                    mechanism = CaptureMechanism.Win32;
+                    diagnostics.Add("UIA yielded no usable tree; used Win32 EnumChildWindows fallback.");
+                }
+            }
+
+            // 3) MSAA (oleacc) fallback probe.
+            if (mechanism == CaptureMechanism.None)
+            {
+                var msaa = BuildMsaaProbe(hwnd, state, diagnostics);
+                if (msaa is not null)
+                {
+                    root = msaa;
+                    mechanism = CaptureMechanism.Msaa;
+                    diagnostics.Add("UIA+Win32 empty; used MSAA (oleacc) fallback probe.");
+                }
+            }
+
+            // 4) Win32 menu-bar enumeration.
+            EnumerateWin32Menus(hwnd, menus);
+
+            diagnostics.Add($"mechanism={mechanism}, nodes={state.NodeCount}, hwnd={chosen.Handle}, tracerSession={tracerSession}, targetSession={targetSession}, mismatch={mismatch}.");
+
+            return new IdealposControlTreeSnapshot
             {
                 CapturedAtUtc = DateTimeOffset.UtcNow,
-                ProcessName = process.ProcessName,
-                ProcessId = process.Id,
-                RootWindowTitle = ControlTreeSanitizer.Sanitize(SafeName(mainWindow)),
+                ProcessName = primary.ProcessName,
+                ProcessId = primary.Id,
+                RootWindowTitle = ControlTreeSanitizer.Sanitize(chosen.Title),
                 NodeCount = state.NodeCount,
                 Truncated = state.Truncated,
                 TruncationReason = state.TruncationReason,
                 Root = root,
-                MenuItems = menus,
-                Diagnostics = new[] { $"ControlView walk of pid {process.Id}, {state.NodeCount} node(s)." },
-            });
+                MenuItems = menus.Distinct().ToList(),
+                TracerSessionId = tracerSession,
+                TargetSessionId = targetSession,
+                SessionMismatch = mismatch,
+                Mechanism = mechanism,
+                TopLevelWindows = topWindows,
+                Diagnostics = diagnostics,
+            }.AsCompleted();
         }
         finally
         {
-            foreach (var p in candidates) p.Dispose();
+            foreach (var p in procs) { try { p.Dispose(); } catch { } }
         }
     }
 
-    private static IdealposControlTreeSnapshot EmptySnapshot(string reason) => new()
+    private static IdealposControlTreeSnapshot EmptySnapshot(int tracerSession, int? targetSession, bool mismatch, string reason) => new()
     {
         CapturedAtUtc = DateTimeOffset.UtcNow,
         NodeCount = 0,
         Root = null,
+        TracerSessionId = tracerSession,
+        TargetSessionId = targetSession,
+        SessionMismatch = mismatch,
+        Mechanism = CaptureMechanism.None,
         Diagnostics = new[] { reason },
     };
+
+    private static int SafeSessionId(Process p)
+    {
+        try { return p.SessionId; } catch { return -1; }
+    }
 
     private static string? SafeName(AutomationElement element)
     {
         try { return element.Current.Name; } catch { return null; }
+    }
+
+    // ── Win32 / MSAA / EnumWindows helpers (all read-only) ──
+
+    private static List<TopLevelWindowInfo> EnumerateTopLevelWindows(Dictionary<int, Process> pidToProc)
+    {
+        var results = new List<TopLevelWindowInfo>();
+        Native.EnumWindows((h, l) =>
+        {
+            Native.GetWindowThreadProcessId(h, out uint pid);
+            if (pidToProc.TryGetValue((int)pid, out var proc))
+            {
+                results.Add(new TopLevelWindowInfo
+                {
+                    Handle = "0x" + h.ToInt64().ToString("X"),
+                    Title = ControlTreeSanitizer.Sanitize(GetWinText(h)),
+                    ClassName = GetWinClass(h),
+                    Visible = Native.IsWindowVisible(h),
+                    ProcessName = proc.ProcessName,
+                    ProcessId = proc.Id,
+                });
+            }
+            return true;
+        }, IntPtr.Zero);
+        return results;
+    }
+
+    private static string GetWinText(IntPtr h)
+    {
+        var sb = new StringBuilder(512);
+        Native.GetWindowText(h, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
+    private static string GetWinClass(IntPtr h)
+    {
+        var sb = new StringBuilder(256);
+        Native.GetClassName(h, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
+    private static ControlNodeSnapshot? BuildWin32Node(IntPtr hwnd, int depth, ControlTreeCaptureOptions options, CaptureState state, Stopwatch sw)
+    {
+        if (hwnd == IntPtr.Zero) return null;
+        if (state.NodeCount >= options.MaxNodes) { state.Stop("max nodes"); return null; }
+        if (sw.ElapsedMilliseconds > options.TimeoutMs) { state.Stop("timeout"); return null; }
+        state.NodeCount++;
+
+        var children = new List<ControlNodeSnapshot>();
+        if (depth < options.MaxDepth)
+        {
+            var directChildren = new List<IntPtr>();
+            Native.EnumChildWindows(hwnd, (h, l) =>
+            {
+                if (Native.GetParent(h) == hwnd) directChildren.Add(h);
+                return true;
+            }, IntPtr.Zero);
+
+            foreach (var c in directChildren)
+            {
+                if (state.NodeCount >= options.MaxNodes) { state.Stop("max nodes"); break; }
+                if (sw.ElapsedMilliseconds > options.TimeoutMs) { state.Stop("timeout"); break; }
+                var childNode = BuildWin32Node(c, depth + 1, options, state, sw);
+                if (childNode is not null) children.Add(childNode);
+            }
+        }
+        else
+        {
+            state.Stop("max depth");
+        }
+
+        return new ControlNodeSnapshot
+        {
+            ControlType = "Win32",
+            AutomationId = null, // Win32 has no AutomationId; the class name is the identifier here
+            Name = ControlTreeSanitizer.Sanitize(GetWinText(hwnd)),
+            ClassName = GetWinClass(hwnd),
+            IsEnabled = Native.IsWindowEnabled(hwnd),
+            IsOffscreen = !Native.IsWindowVisible(hwnd),
+            Depth = depth,
+            Children = children,
+        };
+    }
+
+    private static ControlNodeSnapshot? BuildMsaaProbe(IntPtr hwnd, CaptureState state, List<string> diagnostics)
+    {
+        try
+        {
+            var iid = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71"); // IID_IAccessible
+            const uint OBJID_CLIENT = 0xFFFFFFFC;
+            int hr = Native.AccessibleObjectFromWindow(hwnd, OBJID_CLIENT, ref iid, out object acc);
+            if (hr != 0 || acc is null) { diagnostics.Add($"MSAA AccessibleObjectFromWindow hr=0x{hr:X}"); return null; }
+
+            state.NodeCount++;
+            string? name = null; int childCount = 0;
+            try { name = acc.GetType().InvokeMember("accName", System.Reflection.BindingFlags.GetProperty, null, acc, new object[] { 0 }) as string; } catch { }
+            try { childCount = Convert.ToInt32(acc.GetType().InvokeMember("accChildCount", System.Reflection.BindingFlags.GetProperty, null, acc, null)); } catch { }
+            diagnostics.Add($"MSAA root reachable: accChildCount={childCount}");
+
+            return new ControlNodeSnapshot
+            {
+                ControlType = "MSAA-Accessible",
+                AutomationId = null,
+                Name = ControlTreeSanitizer.Sanitize(name),
+                ClassName = GetWinClass(hwnd),
+                IsEnabled = Native.IsWindowEnabled(hwnd),
+                IsOffscreen = !Native.IsWindowVisible(hwnd),
+                Depth = 0,
+                Children = Array.Empty<ControlNodeSnapshot>(),
+            };
+        }
+        catch (Exception ex)
+        {
+            diagnostics.Add($"MSAA probe threw {ex.GetType().Name}");
+            return null;
+        }
+    }
+
+    private static void EnumerateWin32Menus(IntPtr hwnd, List<string> menus)
+    {
+        try
+        {
+            var menu = Native.GetMenu(hwnd);
+            if (menu == IntPtr.Zero) return;
+            int count = Native.GetMenuItemCount(menu);
+            for (int i = 0; i < count && i < 128; i++)
+            {
+                var sb = new StringBuilder(256);
+                int n = Native.GetMenuString(menu, (uint)i, sb, sb.Capacity, 0x00000400 /*MF_BYPOSITION*/);
+                if (n > 0)
+                {
+                    var text = ControlTreeSanitizer.Sanitize(sb.ToString().Replace("&", string.Empty));
+                    if (!string.IsNullOrWhiteSpace(text)) menus.Add(text!);
+                }
+            }
+        }
+        catch { /* no menu / not reachable — leave menus as-is */ }
     }
 
     private static ControlNodeSnapshot? WalkControl(
@@ -447,4 +684,36 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             "Session-lock detection is not yet implemented — see this method's own remarks. " +
             "This intentionally causes the caller to fail closed rather than assume the session is unlocked.");
     }
+}
+
+/// <summary>Wraps a completed snapshot as a Task without an async state machine.</summary>
+internal static class SnapshotTaskExtensions
+{
+    public static Task<IdealposControlTreeSnapshot> AsCompleted(this IdealposControlTreeSnapshot snapshot)
+        => Task.FromResult(snapshot);
+}
+
+/// <summary>
+/// Read-only Win32 / oleacc interop for the capture. Every entry point here
+/// observes window/menu/accessibility state — none sends input, posts a
+/// message, or changes any window.
+/// </summary>
+internal static class Native
+{
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr hWndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hWnd);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+    [DllImport("user32.dll")] public static extern IntPtr GetMenu(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr hMenu);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetMenuString(IntPtr hMenu, uint uIDItem, StringBuilder lpString, int nMaxCount, uint uFlag);
+
+    [DllImport("oleacc.dll")]
+    public static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint id, ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object ppvObject);
 }

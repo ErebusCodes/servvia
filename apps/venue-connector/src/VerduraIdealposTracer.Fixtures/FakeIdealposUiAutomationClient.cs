@@ -256,6 +256,22 @@ public sealed class FakeIdealposUiAutomationClient(
             Truncated = false,
             Root = root,
             MenuItems = menus,
+            TracerSessionId = 1,
+            TargetSessionId = 1,
+            SessionMismatch = false,
+            Mechanism = CaptureMechanism.UiaFromHandle,
+            TopLevelWindows = new[]
+            {
+                new TopLevelWindowInfo
+                {
+                    Handle = "0x10042",
+                    Title = ControlTreeSanitizer.Sanitize("Idealpos - Table Selection"),
+                    ClassName = "ThunderRT6FormDC",
+                    Visible = true,
+                    ProcessName = "IPS",
+                    ProcessId = 4242,
+                },
+            },
             Diagnostics = new[] { "UNIT_OR_MOCK fixture control tree — never real Windows/Idealpos evidence" },
         });
     }

@@ -95,4 +95,17 @@ public sealed class ControlTreeCaptureTests
         Assert.True(o.MaxNodes > 0);
         Assert.True(o.TimeoutMs > 0);
     }
+
+    [Fact]
+    public async Task FakeCapture_ReportsMechanism_SessionDiagnostics_AndTopLevelWindows()
+    {
+        var ui = new FakeIdealposUiAutomationClient(FakeScenario.HappyPath);
+        var s = await ui.CaptureControlTreeAsync(ControlTreeCaptureOptions.Default, CancellationToken.None);
+
+        Assert.Equal(CaptureMechanism.UiaFromHandle, s.Mechanism);
+        Assert.False(s.SessionMismatch);
+        Assert.Equal(s.TracerSessionId, s.TargetSessionId);
+        Assert.NotEmpty(s.TopLevelWindows);
+        Assert.Contains(s.TopLevelWindows, w => w.ClassName == "ThunderRT6FormDC" && w.Visible);
+    }
 }

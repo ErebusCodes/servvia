@@ -39,12 +39,39 @@ public sealed record ControlNodeSnapshot
     public IReadOnlyList<ControlNodeSnapshot> Children { get; init; } = Array.Empty<ControlNodeSnapshot>();
 }
 
+/// <summary>One top-level window discovered by EnumWindows, independent of MainWindowHandle.</summary>
+public sealed record TopLevelWindowInfo
+{
+    public required string Handle { get; init; }
+    public string? Title { get; init; }
+    public string? ClassName { get; init; }
+    public bool Visible { get; init; }
+    public string? ProcessName { get; init; }
+    public int ProcessId { get; init; }
+}
+
+/// <summary>Which binding mechanism actually produced the tree.</summary>
+public enum CaptureMechanism
+{
+    None,
+    UiaFromHandle,
+    Win32,
+    Msaa,
+}
+
 /// <summary>
 /// The complete result of one passive capture. It carries no ability to act
 /// — it is a description of what the sale screen looks like, to be read by a
 /// human and turned into real selectors. <see cref="Truncated"/> makes any
 /// bound that was hit an explicit, auditable fact rather than a silent
 /// omission.
+///
+/// The session fields make a session mismatch an EXPLICIT, self-proving fact
+/// in the snapshot itself: if <see cref="SessionMismatch"/> is true, the
+/// tracer (<see cref="TracerSessionId"/>) is not on the same desktop session
+/// as the target (<see cref="TargetSessionId"/>), which is why a
+/// cross-session capture returns nothing — no assertion required, the
+/// numbers are in the file.
 /// </summary>
 public sealed record IdealposControlTreeSnapshot
 {
@@ -58,6 +85,15 @@ public sealed record IdealposControlTreeSnapshot
     public ControlNodeSnapshot? Root { get; init; }
     public IReadOnlyList<string> MenuItems { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Diagnostics { get; init; } = Array.Empty<string>();
+
+    // ── Session diagnostics (self-proving) ──
+    public int TracerSessionId { get; init; } = -1;
+    public int? TargetSessionId { get; init; }
+    public bool SessionMismatch { get; init; }
+
+    // ── How the tree was obtained, and every top-level window seen ──
+    public CaptureMechanism Mechanism { get; init; } = CaptureMechanism.None;
+    public IReadOnlyList<TopLevelWindowInfo> TopLevelWindows { get; init; } = Array.Empty<TopLevelWindowInfo>();
 
     /// <summary>True only when a root window was actually walked — a fail-closed empty capture is not "captured".</summary>
     public bool HasRoot => Root is not null;
