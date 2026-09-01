@@ -264,7 +264,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
 
         // Probe the configured terminal AND IPSClient, so the capture never
         // silently depends on which one owns the sale-screen window.
-        var probeNames = new[] { settings.ExpectedProcessName, "IPSClient" }
+        var probeNames = new[] { settings.ExpectedProcessName, "IPS", "IPSClient" }
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -291,10 +291,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             var topWindows = EnumerateTopLevelWindows(pidToProc);
             diagnostics.Add($"EnumWindows found {topWindows.Count} top-level window(s) for candidate process(es) on this desktop.");
 
-            var chosen = topWindows.FirstOrDefault(w => w.Visible && w.ProcessId == primary.Id)
-                         ?? topWindows.FirstOrDefault(w => w.ProcessId == primary.Id)
-                         ?? topWindows.FirstOrDefault(w => w.Visible)
-                         ?? topWindows.FirstOrDefault();
+            var chosen = WindowSelection.Choose(topWindows, settings.ExpectedMainWindowTitleContains, primary.Id);
 
             if (chosen is null)
             {

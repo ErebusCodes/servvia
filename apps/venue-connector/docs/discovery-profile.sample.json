@@ -1,5 +1,5 @@
 {
-  "ExpectedProcessName": "IPS",
-  "ExpectedMainWindowTitleContains": "Idealpos",
-  "ProfileVersion": "ips-7133-processname-verified-2026-09-01__title-and-automationids-PENDING-session1-discovery"
+  "ExpectedProcessName": "IPSClient",
+  "ExpectedMainWindowTitleContains": "IPS Client",
+  "ProfileVersion": "ipsclient-winforms-window-verified-2026-09-01__control-selectors-PENDING-populated-sale-screen"
 }
