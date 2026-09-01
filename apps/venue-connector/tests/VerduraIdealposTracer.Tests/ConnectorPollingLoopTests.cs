@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using VerduraIdealposTracer.Core.Automation;
 using VerduraIdealposTracer.Core.Discovery;
@@ -23,19 +24,30 @@ namespace VerduraIdealposTracer.Tests;
 /// behaviour only, exactly as truthfully scoped as every other test in this
 /// project.
 ///
-/// Each test's <c>CancellationTokenSource</c> duration is the actual wall-
-/// clock time the loop runs before assertions inspect what it did (the loop
-/// runs until cancelled, not until some other terminal condition) — bumped
-/// from the original 100/150/300ms to 1500/2000ms after a real Windows run
-/// (2026-08-24, the target production machine) failed
-/// DeterministicFailure_BridgeRejects_ReportsFailedAndLoopKeepsRunning with
-/// zero reports observed, while 5/5 reruns on the authoring Mac passed at
-/// the original values. Root cause: a hardcoded ~150ms budget for two
-/// 20ms-interval poll cycles plus async/thread-pool warm-up has very little
-/// margin, and a busier or differently-scheduled machine can exhaust it
-/// before the loop completes even once — a test-timing fragility, not a
-/// defect in ConnectorPollingLoop itself. The new values keep the whole
-/// suite well under a few seconds while giving ~10x the original margin.
+/// TIMING CONTRACT — read before adding a test here. No test in this class
+/// may decide how long to run the loop by wall clock. That approach failed
+/// twice: first on a real Windows run (2026-08-24) at 100/150/300ms, and
+/// again on 2026-09-02 at the "safe" 1500ms it had been raised to, when
+/// TransientFailure_BridgeUnavailable_ReportsFailedAndLoopKeepsRunning threw
+/// on <c>Reports[0]</c> under parallel load. Raising the number a third time
+/// only buys a longer interval between false failures — the budget is a
+/// guess about someone else's machine either way.
+///
+/// Instead every test states the CONDITION it is waiting for
+/// (<see cref="RunUntilObservedAsync"/>): the loop runs until the scripted
+/// protocol handler has actually observed that many polls/reports/
+/// heartbeats, and is cancelled the moment it has. Assertions therefore run
+/// against a state that is known to have been reached, never one that was
+/// merely likely to have been reached in time. The 30s
+/// <see cref="SafetyNet"/> exists only so a genuinely broken loop fails
+/// instead of hanging CI; on a healthy run it is never reached, and a run
+/// that does reach it fails with the observed counts rather than an
+/// IndexOutOfRangeException.
+///
+/// Waiting for the NEXT poll (<c>PollCount >= 2</c>) is the idiom for "the
+/// previous batch finished" — it is what makes assertions about per-command
+/// log side effects deterministic, since a report can be written before the
+/// rest of its batch has been handled.
 /// </summary>
 public sealed class ConnectorPollingLoopTests : IDisposable
 {
@@ -78,6 +90,34 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         public List<string> HeartbeatBodies { get; } = [];
         public HttpStatusCode HeartbeatStatus { get; set; } = HttpStatusCode.OK;
 
+        private readonly object _gate = new();
+        private readonly List<(Func<ScriptedProtocolHandler, bool> Predicate, TaskCompletionSource Signal)> _observers = [];
+
+        /// <summary>
+        /// Returns a task that completes as soon as <paramref name="predicate"/>
+        /// holds against this handler's observed traffic. Evaluated once on
+        /// registration (so an already-satisfied condition never waits) and
+        /// again after every protocol interaction this handler records.
+        /// </summary>
+        public Task WhenObserved(Func<ScriptedProtocolHandler, bool> predicate)
+        {
+            var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_gate) { _observers.Add((predicate, signal)); }
+            EvaluateObservers();
+            return signal.Task;
+        }
+
+        private void EvaluateObservers()
+        {
+            lock (_gate)
+            {
+                foreach (var (predicate, signal) in _observers)
+                {
+                    if (!signal.Task.IsCompleted && predicate(this)) signal.TrySetResult();
+                }
+            }
+        }
+
         public void EnqueuePoll(params ClaimedCommand[] commands)
         {
             var body = JsonSerializer.Serialize(new PollResponse(commands.ToList()));
@@ -101,20 +141,27 @@ public sealed class ConnectorPollingLoopTests : IDisposable
             if (path.EndsWith("/heartbeat"))
             {
                 var body = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? "";
-                HeartbeatBodies.Add(body);
+                lock (_gate) { HeartbeatBodies.Add(body); }
+                EvaluateObservers();
                 return Task.FromResult(new HttpResponseMessage(HeartbeatStatus));
             }
             if (path.EndsWith("/poll"))
             {
-                PollCount++;
-                var factory = _pollResponses.Count > 0 ? _pollResponses.Dequeue() : _lastPollResponse
-                    ?? (() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"commands":[]}""", System.Text.Encoding.UTF8, "application/json") });
+                Func<HttpResponseMessage> factory;
+                lock (_gate)
+                {
+                    PollCount++;
+                    factory = _pollResponses.Count > 0 ? _pollResponses.Dequeue() : _lastPollResponse
+                        ?? (() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"commands":[]}""", System.Text.Encoding.UTF8, "application/json") });
+                }
+                EvaluateObservers();
                 return Task.FromResult(factory());
             }
             if (path.EndsWith("/accept"))
             {
                 var commandId = path.Split('/')[^2];
-                AcceptedCommandIds.Add(commandId);
+                lock (_gate) { AcceptedCommandIds.Add(commandId); }
+                EvaluateObservers();
                 var status = AcceptStatusByCommandId.GetValueOrDefault(commandId, HttpStatusCode.OK);
                 return Task.FromResult(new HttpResponseMessage(status));
             }
@@ -122,7 +169,8 @@ public sealed class ConnectorPollingLoopTests : IDisposable
             {
                 var commandId = path.Split('/')[^2];
                 var body = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? "";
-                Reports.Add((commandId, body));
+                lock (_gate) { Reports.Add((commandId, body)); }
+                EvaluateObservers();
                 var status = ReportStatusByCommandId.GetValueOrDefault(commandId, HttpStatusCode.OK);
                 return Task.FromResult(new HttpResponseMessage(status));
             }
@@ -178,6 +226,42 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         return (loop, protocolHandler, inMemoryLog);
     }
 
+    /// <summary>
+    /// Upper bound on how long a single test may wait for its condition.
+    /// This is a hang-breaker, not a timing budget: a healthy run never
+    /// reaches it, and reaching it is reported as a real failure naming the
+    /// counts actually observed.
+    /// </summary>
+    private static readonly TimeSpan SafetyNet = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Runs the loop until the scripted handler has OBSERVED
+    /// <paramref name="until"/>, then cancels and awaits a clean shutdown.
+    /// The condition - not a stopwatch - decides when assertions may run.
+    /// </summary>
+    private static async Task RunUntilObservedAsync(
+        ConnectorPollingLoop loop,
+        ScriptedProtocolHandler protocol,
+        Func<ScriptedProtocolHandler, bool> until,
+        [CallerArgumentExpression(nameof(until))] string? untilExpression = null)
+    {
+        using var cts = new CancellationTokenSource(SafetyNet);
+        var observed = protocol.WhenObserved(until);
+        var run = loop.RunAsync(cts.Token);
+
+        var first = await Task.WhenAny(observed, run);
+        cts.Cancel();
+        await run; // must return cleanly however it was stopped
+
+        if (first != observed)
+        {
+            throw new Xunit.Sdk.XunitException(
+                $"The loop stopped before the awaited condition was observed: {untilExpression}. "
+                + $"Observed polls={protocol.PollCount}, reports={protocol.Reports.Count}, "
+                + $"accepts={protocol.AcceptedCommandIds.Count}, heartbeats={protocol.HeartbeatBodies.Count}.");
+        }
+    }
+
     // ── Lifecycle ──────────────────────────────────────────────────────
 
     [Fact]
@@ -186,8 +270,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         var (loop, protocol, log) = Build();
         protocol.EnqueuePoll(); // always empty
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token); // must return, never throw
+        await RunUntilObservedAsync(loop, protocol, p => p.PollCount >= 1);
 
         Assert.Contains(log.Info, m => m.Contains("starting", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(log.Info, m => m.Contains("stopped", StringComparison.OrdinalIgnoreCase));
@@ -199,9 +282,17 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         var (loop, protocol, _) = Build(pollInterval: TimeSpan.FromSeconds(30));
         protocol.EnqueuePoll(); // empty -> loop immediately enters the 30s inter-poll delay
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+        // Measures the cancel -> return latency directly. The old version
+        // timed the whole run against a 5s bound, so it was really asserting
+        // that its own 1500ms cancellation timer had fired.
+        using var cts = new CancellationTokenSource(SafetyNet);
+        var polled = protocol.WhenObserved(p => p.PollCount >= 1);
+        var run = loop.RunAsync(cts.Token);
+        await polled; // the loop has polled, so it is now in the 30s delay
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        await loop.RunAsync(cts.Token);
+        cts.Cancel();
+        await run;
         sw.Stop();
 
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"Expected cancellation to interrupt the delay promptly, took {sw.Elapsed}.");
@@ -216,8 +307,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-42"));
         protocol.EnqueuePoll(); // subsequent polls empty
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token);
+        await RunUntilObservedAsync(loop, protocol, p => p.Reports.Count >= 1);
 
         Assert.Single(protocol.Reports);
         Assert.Equal("cmd-1", protocol.Reports[0].CommandId);
@@ -234,8 +324,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token);
+        await RunUntilObservedAsync(loop, protocol, p => p.Reports.Count >= 1 && p.PollCount >= 2);
 
         Assert.Single(protocol.Reports);
         using var doc = JsonDocument.Parse(protocol.Reports[0].Body);
@@ -251,8 +340,10 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token);
+        // This is the test that failed under load on 2026-09-02: it indexed
+        // Reports[0] after a 1500ms wall-clock run. It now waits for the
+        // report to actually exist.
+        await RunUntilObservedAsync(loop, protocol, p => p.Reports.Count >= 1 && p.PollCount >= 2);
 
         using var doc = JsonDocument.Parse(protocol.Reports[0].Body);
         Assert.Equal("bridge_unreachable_or_failed", doc.RootElement.GetProperty("resultType").GetString());
@@ -268,8 +359,8 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
-        await loop.RunAsync(cts.Token); // must not throw despite two failed polls
+        // must not throw despite two failed polls
+        await RunUntilObservedAsync(loop, protocol, p => p.Reports.Count >= 1 && p.PollCount >= 3);
 
         Assert.True(protocol.PollCount >= 3);
         Assert.Contains(log.Errors, m => m.Contains("Poll failed"));
@@ -287,8 +378,9 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-99"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token);
+        // Waits for all three scripted polls so the redelivery has actually
+        // been seen and whatever reports exist are final.
+        await RunUntilObservedAsync(loop, protocol, p => p.PollCount >= 3 && p.Reports.Count >= 1);
 
         Assert.True(protocol.Reports.Count >= 1);
         foreach (var (_, body) in protocol.Reports)
@@ -307,8 +399,10 @@ public sealed class ConnectorPollingLoopTests : IDisposable
             new ClaimedCommand("cmd-2", "some.unrecognized.type.v1", 1, [], null));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token);
+        // PollCount >= 2 proves the WHOLE batch was handled: cmd-1's report
+        // can land before cmd-2 has been looked at, so waiting on the report
+        // alone would race the cmd-2 warning this test asserts on.
+        await RunUntilObservedAsync(loop, protocol, p => p.PollCount >= 2 && p.Reports.Count >= 1);
 
         Assert.Single(protocol.Reports);
         Assert.Equal("cmd-1", protocol.Reports[0].CommandId);
@@ -327,8 +421,9 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token); // must not throw
+        // must not throw; PollCount >= 2 proves the losing claim was fully
+        // handled and the loop came back for more.
+        await RunUntilObservedAsync(loop, protocol, p => p.PollCount >= 2);
 
         Assert.Empty(protocol.Reports); // never reported — the command was never truly ours
         Assert.Contains(log.Errors, m => m.Contains("cmd-1") && m.Contains("unexpected error"));
@@ -343,8 +438,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         var (loop, protocol, _) = Build();
         protocol.EnqueuePoll(); // always empty
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token);
+        await RunUntilObservedAsync(loop, protocol, p => p.HeartbeatBodies.Count >= 1 && p.PollCount >= 1);
 
         Assert.Single(protocol.HeartbeatBodies);
         using var doc = JsonDocument.Parse(protocol.HeartbeatBodies[0]);
@@ -366,16 +460,12 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         // first-ever launch.
         var (loop1, protocol1, _) = Build();
         protocol1.EnqueuePoll();
-        using (var cts1 = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500)))
-        {
-            await loop1.RunAsync(cts1.Token);
-        }
+        await RunUntilObservedAsync(loop1, protocol1, p => p.HeartbeatBodies.Count >= 1 && p.PollCount >= 1);
         Assert.Single(protocol1.HeartbeatBodies);
 
         var (loop2, protocol2, _) = Build();
         protocol2.EnqueuePoll();
-        using var cts2 = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop2.RunAsync(cts2.Token);
+        await RunUntilObservedAsync(loop2, protocol2, p => p.HeartbeatBodies.Count >= 1 && p.PollCount >= 1);
         Assert.Single(protocol2.HeartbeatBodies);
     }
 
@@ -387,8 +477,8 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-1"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token); // must not throw despite the failed heartbeat
+        // must not throw despite the failed heartbeat
+        await RunUntilObservedAsync(loop, protocol, p => p.Reports.Count >= 1 && p.PollCount >= 2);
 
         Assert.Contains(log.Errors, m => m.Contains("Capability report failed"));
         Assert.Single(protocol.Reports); // command processing proceeds normally regardless
@@ -408,8 +498,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         protocol.EnqueuePoll(SubmitOrderCommand("cmd-1", "order-77"));
         protocol.EnqueuePoll();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
-        await loop.RunAsync(cts.Token);
+        await RunUntilObservedAsync(loop, protocol, p => p.Reports.Count >= 1);
 
         Assert.Single(protocol.Reports);
         using var doc = JsonDocument.Parse(protocol.Reports[0].Body);

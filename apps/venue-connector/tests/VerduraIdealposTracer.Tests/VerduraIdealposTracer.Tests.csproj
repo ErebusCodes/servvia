@@ -17,6 +17,23 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\VerduraIdealposTracer.Core\VerduraIdealposTracer.Core.csproj" />
     <ProjectReference Include="..\..\src\VerduraIdealposTracer.Fixtures\VerduraIdealposTracer.Fixtures.csproj" />
+
+    <!--
+      CrashReplayTests spawns DryRunCli as a REAL separate OS process and
+      reads its build output off disk, so it needs that output to exist in
+      the SAME configuration the tests were built in. ReferenceOutputAssembly
+      is false because nothing here compiles against DryRunCli — this
+      reference exists purely to make `dotnet build`/`dotnet test` on THIS
+      project also produce the executable the crash proof spawns.
+
+      Without it the retry/crash no-resend proof fails with "DryRunCli build
+      output not found ... run `dotnet build` on the solution first" — and on
+      an SDK 8 machine that instruction is impossible to follow, because
+      VerduraIdealposTracer.slnx needs SDK 9.0.200+ to build. The crash proof
+      must never depend on a remembered manual step.
+    -->
+    <ProjectReference Include="..\..\src\VerduraIdealposTracer.DryRunCli\VerduraIdealposTracer.DryRunCli.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>
