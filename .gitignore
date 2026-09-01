@@ -50,7 +50,15 @@ AUDIT_REPORT_V2.md
 # output). Kept on disk for investigation, never redistributed via git.
 /.tmp-idealpos-il-tools/
 
-# Admin console production build output. The generic `dist/` rule above does
-# not match this directory's name; anchored so `dist-admin` elsewhere in the
-# tree would still be trackable if ever legitimate.
+# Admin console / Kitchen Display production build output. The generic
+# `dist/` rule above does not match these directories' names; anchored so
+# `dist-admin`/`dist-kds` elsewhere in the tree would still be trackable if
+# ever legitimate. Each is one VITE_APP_MODE's output -- see
+# apps/admin-console/vite.config.ts's OUT_DIR_BY_APP_MODE.
 /apps/admin-console/dist-admin/
+/apps/admin-console/dist-kds/
+
+# Timestamped rollback copies taken before a production rebuild on the
+# Windows host (dist.rollback-*, dist-admin.rollback-*). Machine-local
+# operational state, never committed.
+/apps/admin-console/dist*.rollback-*/

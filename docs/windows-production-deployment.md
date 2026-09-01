@@ -27,7 +27,8 @@ C:\Users\Posmate\Documents\verdura_MVP\           # the git-tracked application
                                                    # VerduraAPI, VerduraOrderTablet,
                                                    # VerduraAdminConsole,
                                                    # VerduraCustomerWebsite,
-                                                   # VerduraWindowDisplay
+                                                   # VerduraWindowDisplay,
+                                                   # VerduraKitchenDisplay
 
 C:\Users\Posmate\Documents\verduraBridge\
   VerduraServerOps\                # operational scripts/tooling for the host
@@ -83,41 +84,72 @@ one-time fact — see
 [`source-of-truth-and-environments.md` §3](./source-of-truth-and-environments.md#3-deployment-verification-gate)
 for the full rule and what counts as expected untracked state (this
 checkout's own expected untracked entries: the nested `verdura_MVP\`
-subtree, see §5, and build output such as `apps/admin-console/dist-admin\`).
+subtree, see §5, and build output such as `apps/admin-console/dist-admin\`
+and `dist-kds\`, plus any timestamped `dist*.rollback-*\` copies kept from a
+redeploy — all gitignored, see §4).
 
-## 4. Customer Website and Window Display persistent launch
+## 4. Frontend persistent launch (5173-5177)
 
-Both frontends run as **NSSM-managed Windows services** that serve a
-production build through `windows-deploy/static-proxy-server.mjs` — exactly
-the mechanism Order Tablet and Admin Console already use:
+Every Verdura frontend runs as an **NSSM-managed Windows service** serving a
+production build through `windows-deploy/static-proxy-server.mjs`. There is
+no Vite dev server anywhere in production, and `npm run dev` is not part of
+this host's operation at all — it cannot even start here, because 3000/5176/
+5177 are held by these services.
 
-| Service | Port | `dist` served |
-| --- | --- | --- |
-| `VerduraCustomerWebsite` | 5173 | `apps\customer-website\dist` |
-| `VerduraWindowDisplay` | 5174 | `apps\window-display\dist` |
+| Service | Port | `dist` served | Build command |
+| --- | --- | --- | --- |
+| `VerduraCustomerWebsite` | 5173 | `apps\customer-website\dist` | `npm run build:customer-website` |
+| `VerduraWindowDisplay` | 5174 | `apps\window-display\dist` | `npm run build:window-display` |
+| `VerduraKitchenDisplay` | 5175 | `apps\admin-console\dist-kds` | `npm run build:kitchen-display` |
+| `VerduraOrderTablet` | 5176 | `apps\admin-console\dist` | `npm run build:order-tablet` |
+| `VerduraAdminConsole` | 5177 | `apps\admin-console\dist-admin` | `npm run build:admin-console` |
 
-Both are configured identically to `VerduraOrderTablet` /
-`VerduraAdminConsole`: `Start SERVICE_AUTO_START`, `ObjectName LocalSystem`,
-`DependOnService :VerduraAPI`, `AppExit Default Restart` with
+All five share one configuration: `Start SERVICE_AUTO_START`, `ObjectName
+LocalSystem`, `DependOnService :VerduraAPI`, `AppExit Default Restart` with
 `AppRestartDelay 5000`, and `AppDirectory
-C:\Users\Posmate\Documents\verdura_MVP`. Logs go to
-`verduraBridge\VerduraServerOps\customer-website-{stdout,stderr}.log` and
-`window-display-{stdout,stderr}.log`.
+C:\Users\Posmate\Documents\verdura_MVP`. Each logs to its own
+`verduraBridge\VerduraServerOps\<app>-{stdout,stderr}.log`.
 
-`static-proxy-server.mjs` binds `0.0.0.0`, so both are reachable across the
-LAN (`http://192.168.1.250:5173/`, `http://192.168.1.250:5174/`), and it
-proxies `/api/`, `/socket.io/` and `/media/` same-origin to
-`http://127.0.0.1:3000`. Both apps' `.env` deliberately leave
-`VITE_API_URL` empty so the browser calls the same origin it loaded from —
-a LAN phone or tablet must never be handed a `127.0.0.1` API URL, which on
-that device resolves to the device itself. Matching the existing 5176/5177
-rules, inbound firewall rules `Verdura Customer Website (5173)` and
-`Verdura Window Display (5174)` (TCP, Domain+Private) allow LAN access.
+`static-proxy-server.mjs` binds `0.0.0.0`, so all five are reachable across
+the LAN (`http://192.168.1.250:<port>/`), and it proxies `/api/`,
+`/socket.io/` and `/media/` same-origin to `http://127.0.0.1:3000` —
+including the WebSocket upgrade, which the Kitchen Display and Order Tablet
+need for live order updates. Every app's `.env` deliberately leaves
+`VITE_API_URL` empty so the browser calls the same origin it loaded from: a
+LAN phone, tablet or kitchen screen must never be handed a `127.0.0.1` API
+URL, which on that device resolves to the device itself. Inbound firewall
+rules `Verdura Customer Website (5173)`, `Verdura Window Display (5174)`,
+`Verdura Kitchen Display (5175)`, `Verdura Order Tablet (5176)` and `Verdura
+Admin Console (5177)` (TCP, Domain+Private) allow that access.
 
-Rebuild after a code change with `npm run build:customer-website` /
-`npm run build:window-display` from the repo root, then
-`Restart-Service VerduraCustomerWebsite` / `VerduraWindowDisplay`. Neither
-`dist\` is committed — both are gitignored build output.
+To redeploy after a code change: run the app's build command from the repo
+root, then `Restart-Service <service>`. No `dist` directory is committed —
+all are gitignored build output.
+
+### Three apps, one workspace: the output directories are not interchangeable
+
+`apps/admin-console` builds three different products, selected by
+`VITE_APP_MODE` (`src/App.tsx` dispatches on it). Each mode writes to its own
+directory, and **that mapping lives in `apps/admin-console/vite.config.ts`
+(`OUT_DIR_BY_APP_MODE`) — not in the caller**:
+
+| `VITE_APP_MODE` | Product | `outDir` |
+| --- | --- | --- |
+| *(unset)* | Admin Console | `dist-admin` |
+| `tablet` | Order Tablet | `dist` |
+| `kds` | Kitchen Display | `dist-kds` |
+
+Do **not** pass `vite build --outDir ...` for a standard mode build; the
+config already selects the right directory, and an unrecognised
+`VITE_APP_MODE` now fails the build loudly rather than guessing. Until
+2026-09-01 Vite's default `outDir` (a constant `dist`) applied to all three
+modes, so they silently overwrote one another — meaning a plain `npm run
+build:admin-console` would have replaced the **live Order Tablet on 5176**
+with the Admin Console, and CI's three back-to-back builds each clobbered the
+last so only the third was really exercised. Rebuilding a directory that is
+being served is still a live-file replacement: build to a staging directory
+and rename it into place, keeping a timestamped `*.rollback-*` copy, rather
+than rebuilding a serving directory in place.
 
 **Superseded 2026-09-01: the `Verdura Window Display` Scheduled Task.**
 Window Display previously ran `npm run dev` (a Vite dev server) from a
@@ -329,8 +361,8 @@ disabled — enabling it was considered and explicitly declined, since it
 would let anyone with console/KVM access bypass the Windows login screen
 entirely). NSSM-managed services (`VerduraAPI`, `VerduraOrderTablet`,
 `VerduraAdminConsole`, `VerduraCustomerWebsite`, `VerduraWindowDisplay`,
-`VerduraConnector`, `VerduraPostgreSQL`) have no such dependency and start
-on boot regardless.
+`VerduraKitchenDisplay`, `VerduraConnector`, `VerduraPostgreSQL`) have no
+such dependency and start on boot regardless.
 
 The task runs one wrapper script:
 `C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\ensure-verdura-redis.ps1`
