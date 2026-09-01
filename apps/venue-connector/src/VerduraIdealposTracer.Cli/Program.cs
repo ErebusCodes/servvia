@@ -65,13 +65,29 @@ if (string.Equals(mode, "capture", StringComparison.OrdinalIgnoreCase))
     if (!string.IsNullOrWhiteSpace(capturePath))
     {
         File.WriteAllText(capturePath, json);
-        Console.WriteLine($"Capture written to {capturePath} (root present: {snapshot.HasRoot}, nodes: {snapshot.NodeCount}, truncated: {snapshot.Truncated}).");
+        Console.WriteLine(
+            $"Capture written to {capturePath} (root present: {snapshot.HasRoot}, nodes: {snapshot.NodeCount}, "
+            + $"CLIENT nodes: {snapshot.ClientNodeCount}, mechanism: {snapshot.Mechanism}, truncated: {snapshot.Truncated}).");
     }
     else
     {
         Console.WriteLine(json);
     }
-    return snapshot.HasRoot ? 0 : 1;
+
+    // Binding a window frame is NOT a successful discovery capture. Exit 0
+    // only when the walk reached client-area content a selector could be
+    // derived from; otherwise surface every diagnostic and fail, so a
+    // chrome-only walk can never be recorded as a passing run.
+    if (!snapshot.HasClientContent)
+    {
+        Console.Error.WriteLine(
+            $"CAPTURE FAILED: bound a window (root present: {snapshot.HasRoot}) but reached ZERO client-area "
+            + "controls, so no selector can be derived from it.");
+        foreach (var diagnostic in snapshot.Diagnostics) Console.Error.WriteLine($"  - {diagnostic}");
+        return 1;
+    }
+
+    return 0;
 }
 
 if (string.Equals(mode, "cloud", StringComparison.OrdinalIgnoreCase))

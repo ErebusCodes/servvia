@@ -95,8 +95,26 @@ public sealed record IdealposControlTreeSnapshot
     public CaptureMechanism Mechanism { get; init; } = CaptureMechanism.None;
     public IReadOnlyList<TopLevelWindowInfo> TopLevelWindows { get; init; } = Array.Empty<TopLevelWindowInfo>();
 
+    /// <summary>
+    /// How many nodes represent real CLIENT-AREA content, excluding the root
+    /// window element and its non-client TitleBar subtree. This, not
+    /// <see cref="NodeCount"/>, is the number that decides whether a capture
+    /// is usable: a bound-but-unrendered window yields a nonzero NodeCount
+    /// (window frame, system menu, min/max/close) and a ClientNodeCount of
+    /// zero.
+    /// </summary>
+    public int ClientNodeCount { get; init; }
+
     /// <summary>True only when a root window was actually walked — a fail-closed empty capture is not "captured".</summary>
     public bool HasRoot => Root is not null;
+
+    /// <summary>
+    /// The honest success test for a discovery capture. <see cref="HasRoot"/>
+    /// only says a window frame was bound; this says the walk actually
+    /// reached content a selector could be derived from. No selector may be
+    /// authored from a snapshot where this is false.
+    /// </summary>
+    public bool HasClientContent => ClientNodeCount > 0;
 }
 
 /// <summary>

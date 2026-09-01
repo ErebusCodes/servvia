@@ -321,27 +321,59 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             ControlNodeSnapshot? root = null;
             var mechanism = CaptureMechanism.None;
 
+            // The bound window's own visibility is the single most useful
+            // fact when a capture comes back empty, so state it up front
+            // rather than leaving the operator to infer it from a node count.
+            if (!chosen.Visible)
+            {
+                diagnostics.Add(
+                    $"WARNING: the bound window '{chosen.Title}' ({chosen.Handle}) reports IsWindowVisible=false. "
+                    + "A window without WS_VISIBLE does not render its client area, so no sale-screen control "
+                    + "can be walked out of it no matter which mechanism is used.");
+            }
+
             // 1) UIA bound to the exact HWND (not RootElement.FindFirst).
+            //    Accepted ONLY if it yields client-area content. A tree of
+            //    pure window chrome (TitleBar/Minimize/Maximize/Close) is a
+            //    FAILED capture that must fall through to the fallbacks —
+            //    the second live capture returned exactly seven such nodes
+            //    and the old NodeCount > 1 test wrongly called it a success.
+            ControlNodeSnapshot? uiaRoot = null;
             try
             {
                 var element = AutomationElement.FromHandle(hwnd);
                 if (element is not null)
                 {
-                    root = WalkControl(element, 0, options, state, sw, menus, cancellationToken);
-                    if (root is not null && state.NodeCount > 1) mechanism = CaptureMechanism.UiaFromHandle;
+                    uiaRoot = WalkControl(element, 0, options, state, sw, menus, cancellationToken);
+                    if (uiaRoot is not null && !ControlTreeQuality.IsChromeOnly(uiaRoot))
+                    {
+                        root = uiaRoot;
+                        mechanism = CaptureMechanism.UiaFromHandle;
+                    }
+                    else if (uiaRoot is not null)
+                    {
+                        diagnostics.Add(ControlTreeQuality.ChromeOnlyDiagnostic("UIA FromHandle", state.NodeCount));
+                    }
                 }
             }
             catch (Exception ex) { diagnostics.Add($"UIA FromHandle failed: {ex.GetType().Name}: {ex.Message}"); }
 
             // 2) Win32 fallback (crucial for VB6 apps whose UIA tree is sparse).
+            //    Requires real child windows: state.NodeCount is cumulative
+            //    across attempts, so testing it here would accept a childless
+            //    root purely because step 1 had already counted nodes.
             if (mechanism == CaptureMechanism.None)
             {
                 var win32 = BuildWin32Node(hwnd, 0, options, state, sw);
-                if (win32 is not null && (win32.Children.Count > 0 || state.NodeCount > 0))
+                if (win32 is not null && win32.Children.Count > 0)
                 {
                     root = win32;
                     mechanism = CaptureMechanism.Win32;
-                    diagnostics.Add("UIA yielded no usable tree; used Win32 EnumChildWindows fallback.");
+                    diagnostics.Add("UIA yielded no client-area content; used Win32 EnumChildWindows fallback.");
+                }
+                else
+                {
+                    diagnostics.Add("Win32 EnumChildWindows fallback found no child windows either.");
                 }
             }
 
@@ -360,7 +392,21 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             // 4) Win32 menu-bar enumeration.
             EnumerateWin32Menus(hwnd, menus);
 
-            diagnostics.Add($"mechanism={mechanism}, nodes={state.NodeCount}, hwnd={chosen.Handle}, tracerSession={tracerSession}, targetSession={targetSession}, mismatch={mismatch}.");
+            // Nothing usable anywhere: still PRESERVE the chrome-only tree as
+            // evidence (it proves which window was bound and that the frame
+            // was reachable), but leave Mechanism = None so the snapshot
+            // never claims a capture it did not achieve.
+            if (mechanism == CaptureMechanism.None && root is null && uiaRoot is not null)
+            {
+                root = uiaRoot;
+                diagnostics.Add(
+                    "No mechanism produced client-area content. Retaining the chrome-only UIA tree as evidence "
+                    + "of which window was bound; Mechanism stays None and ClientNodeCount stays 0.");
+            }
+
+            var clientNodeCount = ControlTreeQuality.CountClientNodes(root);
+
+            diagnostics.Add($"mechanism={mechanism}, nodes={state.NodeCount}, clientNodes={clientNodeCount}, hwnd={chosen.Handle}, tracerSession={tracerSession}, targetSession={targetSession}, mismatch={mismatch}.");
 
             return new IdealposControlTreeSnapshot
             {
@@ -377,6 +423,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 TargetSessionId = targetSession,
                 SessionMismatch = mismatch,
                 Mechanism = mechanism,
+                ClientNodeCount = clientNodeCount,
                 TopLevelWindows = topWindows,
                 Diagnostics = diagnostics,
             }.AsCompleted();
