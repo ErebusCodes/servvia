@@ -25,7 +25,9 @@ source itself:
 C:\Users\Posmate\Documents\verdura_MVP\           # the git-tracked application
                                                    # deployment source — backs
                                                    # VerduraAPI, VerduraOrderTablet,
-                                                   # VerduraAdminConsole, Window Display
+                                                   # VerduraAdminConsole,
+                                                   # VerduraCustomerWebsite,
+                                                   # VerduraWindowDisplay
 
 C:\Users\Posmate\Documents\verduraBridge\
   VerduraServerOps\                # operational scripts/tooling for the host
@@ -83,30 +85,52 @@ for the full rule and what counts as expected untracked state (this
 checkout's own expected untracked entries: the nested `verdura_MVP\`
 subtree, see §5, and build output such as `apps/admin-console/dist-admin\`).
 
-## 4. Window Display persistent launch
+## 4. Customer Website and Window Display persistent launch
 
-The Window Display dev server (`apps/window-display`, port 5174) runs via
-a **permanent Scheduled Task** named `Verdura Window Display`, triggered
-at logon for `Posmate` (Interactive logon type, highest run level), with
-`WorkingDirectory` set to `C:\Users\Posmate\Documents\verdura_MVP` and
-action `cmd.exe /c npm run dev --workspace=apps/window-display -- --host
-0.0.0.0 --port 5174`, stdout/stderr redirected to
-`verduraBridge\VerduraServerOps\window-display.out.log` /
-`.err.log`. Reason a Scheduled Task is required at all: launching Window
-Display via `Start-Process` over the Win32 OpenSSH session used for remote
-administration causes the process to die the moment that SSH session
-ends — it is a child of the SSH-spawned process tree, not a true detached
-process; a Scheduled Task launches it outside that process tree so it
-survives both the SSH session closing and, via its logon trigger, a host
-reboot.
+Both frontends run as **NSSM-managed Windows services** that serve a
+production build through `windows-deploy/static-proxy-server.mjs` — exactly
+the mechanism Order Tablet and Admin Console already use:
 
-This is a known operational workaround, not an NSSM-managed service — the
-three NSSM-managed application services (`VerduraAPI`, `VerduraOrderTablet`,
-`VerduraAdminConsole`) plus `VerduraConnector`, `VerduraPostgreSQL`, and the
-IdealposBridge service remain the actual NSSM-managed production service
-set. There must be exactly one `Verdura Window Display` task; do not
-create a second one-shot or ad-hoc task — reuse/redeploy this one if the
-launch command ever needs to change.
+| Service | Port | `dist` served |
+| --- | --- | --- |
+| `VerduraCustomerWebsite` | 5173 | `apps\customer-website\dist` |
+| `VerduraWindowDisplay` | 5174 | `apps\window-display\dist` |
+
+Both are configured identically to `VerduraOrderTablet` /
+`VerduraAdminConsole`: `Start SERVICE_AUTO_START`, `ObjectName LocalSystem`,
+`DependOnService :VerduraAPI`, `AppExit Default Restart` with
+`AppRestartDelay 5000`, and `AppDirectory
+C:\Users\Posmate\Documents\verdura_MVP`. Logs go to
+`verduraBridge\VerduraServerOps\customer-website-{stdout,stderr}.log` and
+`window-display-{stdout,stderr}.log`.
+
+`static-proxy-server.mjs` binds `0.0.0.0`, so both are reachable across the
+LAN (`http://192.168.1.250:5173/`, `http://192.168.1.250:5174/`), and it
+proxies `/api/`, `/socket.io/` and `/media/` same-origin to
+`http://127.0.0.1:3000`. Both apps' `.env` deliberately leave
+`VITE_API_URL` empty so the browser calls the same origin it loaded from —
+a LAN phone or tablet must never be handed a `127.0.0.1` API URL, which on
+that device resolves to the device itself. Matching the existing 5176/5177
+rules, inbound firewall rules `Verdura Customer Website (5173)` and
+`Verdura Window Display (5174)` (TCP, Domain+Private) allow LAN access.
+
+Rebuild after a code change with `npm run build:customer-website` /
+`npm run build:window-display` from the repo root, then
+`Restart-Service VerduraCustomerWebsite` / `VerduraWindowDisplay`. Neither
+`dist\` is committed — both are gitignored build output.
+
+**Superseded 2026-09-01: the `Verdura Window Display` Scheduled Task.**
+Window Display previously ran `npm run dev` (a Vite dev server) from a
+logon-triggered Scheduled Task, because launching it with `Start-Process`
+over the Win32 OpenSSH session used for remote administration killed the
+process as soon as that SSH session ended. By 2026-09-01 the task had
+stopped serving 5174 altogether — `LastTaskResult 3221225786`
+(`0xC000013A`, `STATUS_CONTROL_C_EXIT`): its console had been terminated,
+and nothing restarted it. The task is now **disabled, not deleted** (kept
+for rollback and history). The NSSM service supersedes it and is strictly
+better: it starts at boot with no interactive logon, restarts itself on
+failure, and serves a production build rather than a dev server. Do not
+re-enable the task — it would race the service for port 5174.
 
 ## 5. Application-checkout consolidation (2026-08-27)
 
@@ -293,9 +317,10 @@ Triggered `AtLogOn` for `Posmate` (Interactive logon type, highest run
 level) — an `AtStartup`/System-context trigger was considered but rejected
 based on the `com.docker.service`-alone evidence above: Docker Desktop on
 this host needs an interactive session to finish initializing reliably, so
-`AtLogOn` is the proven mechanism, mirroring the Window Display task (§4).
-**This has a real consequence:** after a cold boot, Redis (and Window
-Display) do not come back until `Posmate` has an interactive logon —
+`AtLogOn` is the proven mechanism (it was also, until 2026-09-01, how
+Window Display started — see §4, now an NSSM service with no such
+dependency). **This has a real consequence:** after a cold boot, Redis does
+not come back until `Posmate` has an interactive logon —
 confirmed in practice to happen automatically via AnyDesk's own
 unattended-access auto-connect (verified during the 2026-08-27 reboot
 test, Explorer running in Session 1 within ~4 seconds of boot), but this
@@ -303,8 +328,9 @@ is external to Windows itself (`AutoAdminLogon` is deliberately `0` /
 disabled — enabling it was considered and explicitly declined, since it
 would let anyone with console/KVM access bypass the Windows login screen
 entirely). NSSM-managed services (`VerduraAPI`, `VerduraOrderTablet`,
-`VerduraAdminConsole`, `VerduraConnector`, `VerduraPostgreSQL`) have no
-such dependency and start on boot regardless.
+`VerduraAdminConsole`, `VerduraCustomerWebsite`, `VerduraWindowDisplay`,
+`VerduraConnector`, `VerduraPostgreSQL`) have no such dependency and start
+on boot regardless.
 
 The task runs one wrapper script:
 `C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\ensure-verdura-redis.ps1`
