@@ -1,5 +1,5 @@
 {
-  "ExpectedProcessName": "IPSClient",
-  "ExpectedMainWindowTitleContains": "IPS Client",
-  "ProfileVersion": "ipsclient-winforms-window-verified-2026-09-01__control-selectors-PENDING-populated-sale-screen"
+  "ExpectedProcessName": "IPS",
+  "ExpectedMainWindowTitleContains": "Idealpos",
+  "ProfileVersion": "ips-vb6-native-target-corrected-2026-09-02__control-selectors-PENDING-runtime-capture"
 }
