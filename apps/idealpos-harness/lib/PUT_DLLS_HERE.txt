@@ -1,0 +1,22 @@
+Copy these files from the Idealpos installation into this folder before
+building — see README.md "Build".
+
+  IdealPos.Webit.Core.dll   <- IdealposService/IdealPos.Webit.Core.dll
+  IdealPos.Data.dll         <- Idealpos/IdealPos.Data.dll
+  IdealPos.Common.dll       <- Idealpos/IdealPos.Common.dll
+
+These are the exact three assemblies IdealPos.Webit.Core.dll itself depends
+on — no other Idealpos DLL is required for this harness.
+
+They are the client's own already-licensed/already-installed software,
+reused as-is rather than pulling new NuGet dependencies onto a restaurant
+PC. They are deliberately not bundled with this project.
+
+IMPORTANT — take IdealPos.Webit.Core.dll from IdealposService\, not from
+Idealpos\. On DESKTOP-SOKKOQ7 as at 2026-09-03 the two differ:
+
+  IdealposService\IdealPos.Webit.Core.dll  082cec04…  <- correct
+  Idealpos\IdealPos.Webit.Core.dll         0ca0d20d…  <- different build
+
+The same applies to IdealPos.Common.dll. Taking the wrong copy will build,
+but will not match the assemblies the live POS actually loads.

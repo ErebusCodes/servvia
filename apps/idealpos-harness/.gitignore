@@ -1,0 +1,11 @@
+bin/
+obj/
+*.user
+.vs/
+
+# Vendor DLLs are deliberately NOT bundled with this project — they are the
+# client's own already-licensed Idealpos install files, copied in locally
+# before building (see lib/PUT_DLLS_HERE.txt, README.md "Build"). Tracking
+# them would redistribute licensed third-party binaries and would also let a
+# build run against a stale committed copy instead of the real install.
+lib/*.dll

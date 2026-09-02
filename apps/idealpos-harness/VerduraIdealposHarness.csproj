@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Targets classic .NET Framework 4.8, matching the confirmed target of
+    IdealPos.Webit.Core.dll (net40, per its own decompiled metadata) and
+    IPS.exe's process. net48 is binary-compatible in-process with net40
+    assemblies and is the version already present on any current Windows
+    10/11 machine capable of running Idealpos, so nothing extra needs to be
+    installed on the test box beyond the .NET Framework 4.8 Developer/
+    Targeting Pack if `dotnet build` is used instead of Visual Studio.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>VerduraIdealposHarness</AssemblyName>
+    <RootNamespace>VerduraIdealposHarness</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <Nullable>disable</Nullable>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <AppConfig>App.config</AppConfig>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- In-box .NET Framework assemblies — no NuGet packages required at all. -->
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Real, first-party Idealpos assemblies. Copy them from the installation
+      copy into ./lib before building — see README.md "Build" section.
+      Paths below assume you copied them as instructed; adjust if you keep
+      them elsewhere. These are the exact three assemblies IdealPos.Webit.
+      Core.dll itself depends on (confirmed by decompiling all three and
+      reading their generated reference lists) — no other Idealpos DLL is
+      required for this harness.
+    -->
+    <Reference Include="IdealPos.Webit.Core">
+      <HintPath>lib\IdealPos.Webit.Core.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="IdealPos.Data">
+      <HintPath>lib\IdealPos.Data.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="IdealPos.Common">
+      <HintPath>lib\IdealPos.Common.dll</HintPath>
+      <SpecificVersion>false</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!--
+    Real Windows build (2026-08-24): a Compile Include="Program.cs"
+    ItemGroup used to sit here. Microsoft.NET.Sdk (used by every SDK-style
+    project, this one included) already globs and includes all *.cs files
+    under the project directory by default, which is what "SDK-style"
+    means. The explicit Include therefore added Program.cs a second time,
+    which MSBuild rejects outright (NETSDK1022, "Duplicate 'Compile' items
+    were included"), on any platform including Windows: the exact same
+    defect VerduraIdealposBridge.csproj had and was fixed for in the
+    2026-08-19 preflight (see that project's own .csproj comment). This
+    sibling project was never given the same fix until this real Windows
+    build attempt hit it directly.
+  -->
+
+</Project>

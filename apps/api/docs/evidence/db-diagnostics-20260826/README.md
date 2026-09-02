@@ -22,7 +22,12 @@ with no interpolation, so there is no injection surface.
 
 Five further scripts from the same investigation were **archived outside this
 repository** rather than committed, at
-`C:\Users\Posmate\Documents\VerduraArchive\diagnostics-20260826\`:
+`C:\ProgramData\Verdura\archive\diagnostics-20260826\`.
+
+> Relocated there on 2026-09-03 under DL-114, when the
+> `C:\Users\Posmate\Documents\VerduraArchive\` directory was eliminated.
+> All six files were verified byte-identical by SHA-256 before the
+> `Documents`-root copy was removed; see `SHA256SUMS.txt` beside them.
 
 - `item_check.mjs`, `item_recheck.mjs`, `table_check.mjs`, `trace_order.mjs` —
   each embeds a hardcoded production UUID (organization, venue or item), which

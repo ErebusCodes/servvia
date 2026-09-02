@@ -331,7 +331,7 @@ withheld.
 ## Testing
 
 Reuse the disposable Idealpos test environment already set up for
-`VerduraIdealposHarness` (`../VerduraIdealposHarness/README.md` "1. Set up
+`VerduraIdealposHarness` (`../idealpos-harness/README.md` "1. Set up
 the disposable test environment"). Point this bridge's `App.config` at the
 same test SQL Server. **Never point this at the live restaurant.**
 
