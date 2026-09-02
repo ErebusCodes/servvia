@@ -1,0 +1,85 @@
+﻿# PRE-CUTOVER CAPTURE  2026-09-03 10:12:23 +12:00
+
+## Service state
+
+Name                      Status StartType
+----                      ------ ---------
+VerduraAdminConsole      Running Automatic
+VerduraAPI               Running Automatic
+VerduraConnector         Running Automatic
+VerduraCustomerWebsite   Running Automatic
+VerduraIdealposBridgeSvc Running Automatic
+VerduraKitchenDisplay    Running Automatic
+VerduraOrderTablet       Running Automatic
+VerduraPostgreSQL        Running Automatic
+VerduraWindowDisplay     Running Automatic
+## Dependency graph
+VerduraAdminConsole        DependsOn=[VerduraAPI]  Dependents=[]
+VerduraAPI                 DependsOn=[VerduraPostgreSQL]  Dependents=[VerduraKitchenDisplay,VerduraWindowDisplay,VerduraCustomerWebsite,VerduraOrderTablet,VerduraConnector,VerduraAdminConsole]
+VerduraConnector           DependsOn=[VerduraAPI]  Dependents=[]
+VerduraCustomerWebsite     DependsOn=[VerduraAPI]  Dependents=[]
+VerduraIdealposBridgeSvc   DependsOn=[]  Dependents=[]
+VerduraKitchenDisplay      DependsOn=[VerduraAPI]  Dependents=[]
+VerduraOrderTablet         DependsOn=[VerduraAPI]  Dependents=[]
+VerduraPostgreSQL          DependsOn=[RPCSS]  Dependents=[VerduraKitchenDisplay,VerduraWindowDisplay,VerduraCustomerWebsite,VerduraOrderTablet,VerduraConnector,VerduraAdminConsole,VerduraAPI]
+VerduraWindowDisplay       DependsOn=[VerduraAPI]  Dependents=[]
+
+## Service -> wrapper PID -> child PID -> port
+VerduraAdminConsole        wrapperPID=22580   state=Running
+                             children: 14996:node.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+VerduraAPI                 wrapperPID=16544   state=Running
+                             children: 11352:node.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+VerduraConnector           wrapperPID=8300    state=Running
+                             children: 21592:VerduraIdealposTracer.Cli.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+VerduraCustomerWebsite     wrapperPID=13648   state=Running
+                             children: 17648:node.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+VerduraIdealposBridgeSvc   wrapperPID=13412   state=Running
+                             children: 2076:VerduraIdealposBridge.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+VerduraKitchenDisplay      wrapperPID=5572    state=Running
+                             children: 16516:node.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+VerduraOrderTablet         wrapperPID=11084   state=Running
+                             children: 20860:node.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+VerduraPostgreSQL          wrapperPID=4156    state=Running
+                             children: 5524:postgres.exe
+                             ImagePath: "C:\Users\Posmate\Documents\VerduraPostgresBin\pgsql\bin\pg_ctl.exe" runservice -N "VerduraPostgreSQL" -D "C:\Users\Posmate\Documents\verduradb" -w
+VerduraWindowDisplay       wrapperPID=18612   state=Running
+                             children: 22484:node.exe
+                             ImagePath: C:\ProgramData\chocolatey\lib\NSSM\tools\nssm.exe
+
+## Listening ports (Verdura-relevant)
+
+LocalAddress LocalPort OwningProcess
+------------ --------- -------------
+0.0.0.0           3000         11352
+0.0.0.0           5173         17648
+0.0.0.0           5174         22484
+0.0.0.0           5175         16516
+0.0.0.0           5176         20860
+0.0.0.0           5177         14996
+::1               5432          5524
+127.0.0.1         5432          5524
+
+## VerduraPostgreSQL ImagePath (EXACT - ROLLBACK DESCRIPTOR)
+"C:\Users\Posmate\Documents\VerduraPostgresBin\pgsql\bin\pg_ctl.exe" runservice -N "VerduraPostgreSQL" -D "C:\Users\Posmate\Documents\verduradb" -w
+
+## VerduraAPI NSSM parameters (EXACT - ROLLBACK DESCRIPTOR)
+AppDirectory           [ExpandString] = C:\Users\Posmate\Documents\verdura_MVP\apps\api
+Application            [ExpandString] = C:\Program Files\nodejs\node.exe
+AppParameters          [ExpandString] = dist\src\main.js
+AppRestartDelay        [DWord] = 5000
+AppStderr              [ExpandString] = C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\api-stderr.log
+AppStdout              [ExpandString] = C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\api-stdout.log
+
+## VerduraPostgresBackup scheduled task action (EXACT - ROLLBACK DESCRIPTOR)
+Execute  : powershell.exe
+Arguments: -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\pg-backup.ps1"
+WorkingDir: 
+Principal: Posmate  RunLevel=Limited  LogonType=Interactive
+Triggers : MSFT_TaskDailyTrigger @ 2026-08-25T03:00:00+12:00
