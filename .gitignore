@@ -62,3 +62,6 @@ AUDIT_REPORT_V2.md
 # Windows host (dist.rollback-*, dist-admin.rollback-*). Machine-local
 # operational state, never committed.
 /apps/admin-console/dist*.rollback-*/
+
+# Venue-connector local capture output (tools/verdura-run-capture.cmd)
+apps/venue-connector/.captures/
