@@ -3,7 +3,7 @@
 **Status: S0 and S1 are COMPLETE and verified read-only on 2026-09-03.
 S2 is COMPLETE at 6 of 6 — the deferred `VerduraAPI` step was executed inside
 the approved combined PostgreSQL maintenance window on 2026-09-03 (§S-PG-EXEC).
-The Bridge cutover is COMPLETE and verified — it runs from an immutable release under `ProgramData` (§12). S-PG is COMPLETE and verified: PostgreSQL now runs from
+`verduraBridge` has been RETIRED by rename and is in its 7-day soak (§13). The Bridge cutover is COMPLETE and verified — it runs from an immutable release under `ProgramData` (§12). S-PG is COMPLETE and verified: PostgreSQL now runs from
 `C:\Program Files\Verdura\PostgreSQL\18` against
 `C:\ProgramData\Verdura\postgres\data`. Every other stage is PLANNING ONLY
 and UNAPPROVED — none has been executed.**
@@ -135,11 +135,11 @@ Scope: infrastructure relocation and `verduraBridge` retirement only. It does
 | **S3** | *Identity not established* | **UNAPPROVED** |
 | **S4** | Includes migration of the 8 live-critical ops scripts into `verdura_MVP\windows-deploy\ops\` | **UNAPPROVED** |
 | **S5** | *Identity not established* | **UNAPPROVED** |
-| **S6** | **Connector cutover** (targets `IPS.exe`) | **UNAPPROVED** |
+| **S6** | **Connector cutover** (targets `IPS.exe`) | **STILL UNAPPROVED.** The Connector was *relocated* at its deployed commit on 2026-09-03 (§13), which is NOT S6 — no retarget was performed and the profile still says `IPSClient` |
 | **S7 – S9** | *Identities not established* | **UNAPPROVED** |
 | **Bridge cutover** | Bridge relocated to the immutable commit-tagged release `C:\ProgramData\Verdura\releases\bridge\abe301a\`, with state and logs externalized | **COMPLETE and verified 2026-09-03** (§12). Predecessor release retained for rollback |
 | **S-PG** | PostgreSQL **binary** relocation to `C:\Program Files\Verdura\PostgreSQL\18` **and** data directory relocation to `C:\ProgramData\Verdura\postgres\data`, plus backup script/output migration off `verduraBridge` | **COMPLETE and verified 2026-09-03** (§S-PG-EXEC). Predecessor cluster retained under §S-PG.9 |
-| *(provisional)* | **`verduraBridge` retirement** — rename + soak; number not established | **UNAPPROVED** |
+| **`verduraBridge` retirement** | rename + soak | **EXECUTED 2026-09-03** — renamed to `verduraBridge.RETIRED-20260903` after a zero-live-dependency proof; 7-day soak running (§13) |
 | *(provisional)* | **`verduraBridge` deletion** — separate later approval | **UNAPPROVED** |
 
 **Authorization state: S0 complete, S1 complete, S2–S9 unapproved,
@@ -1305,3 +1305,123 @@ release (retained for rollback), `verduradb-backups` (superseded),
 
 **S6 plus the two scheduled tasks are all that stand between here and
 `verduraBridge` retirement.**
+
+---
+
+## 13. Connector relocation and `verduraBridge` retirement — 2026-09-03
+
+**Executed and verified.** Approved in-session as authorization to move the
+three remaining live dependencies out of `verduraBridge`, then classify the
+directory. Evidence:
+`_bmad-output/implementation-artifacts/2026-09-03-dl-114-connector-and-retirement/`.
+
+### THIS IS NOT S6 — read before touching the Connector again
+
+S6 is defined in §S6 as the Connector cutover **that targets `IPS.exe`**.
+What was executed here is a **relocation at the deployed commit**, with the
+discovery profile carried across **unchanged**. It still reads
+`ExpectedProcessName: "IPSClient"`.
+
+**S6 remains OPEN and UNAPPROVED.** Performing it means deploying nine
+commits of new IdealPOS automation — fail-closed native table execution,
+control-tree capture, HWND-bound capture, and the two retarget commits
+`33fd573` and `2b023de` — onto the live order path. That is DL-107
+certification territory and needs its own approval.
+
+**Do not "fix" the deployed profile on its own.** `Cli/Program.cs`
+deserializes the profile and builds a `WindowsUiAutomationClient` from its
+`ExpectedProcessName` *before* branching on `TRACER_MODE`, and passes both
+into `RunAlwaysOnHostAsync`. The `ProfileVersion` string
+`DUNEDIN-CLOUD-MODE-UNUSED` is a label someone wrote, **not** behaviour — the
+profile is live in cloud mode. Correcting it is a behaviour change and
+belongs with the retargeted binary, not with this build.
+
+**IPS revalidation was still performed**, as the control requires: `IPS.exe`
+pid 4332 (started 2026-09-03 04:01:46) and `IPSClient.exe` pid 12800 were
+**both running concurrently**, from
+`C:\Program Files (x86)\Idealpos Solutions\Idealpos\`. Recorded, not assumed.
+
+### What moved
+
+| Dependency | From | To |
+| --- | --- | --- |
+| Connector binaries | `verduraBridge\VerduraOrderTabletConnector\src\…\publish` | `C:\ProgramData\Verdura\releases\connector\9f17006` (38 files, manifested) |
+| Connector state | `…\tracer-store.jsonl` | `C:\ProgramData\Verdura\state\connector\` |
+| Discovery profile | `…\discovery-profile.local.json` | `C:\ProgramData\Verdura\config\connector\` |
+| Connector NSSM logs | `VerduraServerOps\connector-*.log` | `C:\ProgramData\Verdura\logs\services\` |
+| Redis startup script | `VerduraServerOps\ensure-verdura-redis.ps1` | `verdura_MVP\windows-deploy\ops\` (parameterized; log → `logs\ops\`) |
+| Window Display task logs | `VerduraServerOps\window-display.*.log` | `C:\ProgramData\Verdura\logs\ops\` |
+
+The release is a **byte-identical copy of the running publish output** —
+per-file SHA-256, 38 files, zero mismatches — so no functional change was
+deployed. `tracer-store.jsonl` was migrated with the service **stopped**.
+
+**Production credentials were preserved verbatim.** `AppEnvironmentExtra`
+went in with 7 elements and came out with 7; `TRACER_CONNECTOR_CREDENTIAL`
+and `IDEALPOS_BRIDGE_API_KEY` were verified unchanged by case-sensitive
+comparison. They live only in that NSSM value — never in the release
+directory, never in the repository.
+
+**Commit provenance for the Connector is circumstantial, not
+cryptographic** — the deployed binaries are dated four minutes after
+`9f17006`, and the directory held a
+`…exe.backup-20260830-pre-capability-fix` file matching that commit's
+subject. A reproducing `dotnet publish` was attempted and failed on MSB3030
+in this environment. Because the release is a byte-identical copy, this
+affects the confidence of the *label* only. Details in its
+`DEPLOYED-COMMIT.txt`.
+
+### Zero-live-dependency proof, run before the rename
+
+- **Services** — ImagePath and *every* NSSM parameter including the
+  environment block: **none**.
+- **Scheduled tasks** — every task on the host, not only `Verdura*`-named:
+  **none**.
+- **Running processes** imaged under `verduraBridge`: **none**.
+
+Three stray `cmd`/`powershell` processes carried the path in their *command
+line* — orphaned diagnostic shells from an earlier session (parent gone, a
+recursive listing piped into `ssh`). They are not services and not service
+children. **They were left running**, per §0 rule 3, and the rename then
+succeeded, which proves they held no blocking handle.
+
+### Retirement
+
+```
+C:\Users\Posmate\Documents\verduraBridge
+  -> C:\Users\Posmate\Documents\verduraBridge.RETIRED-20260903
+```
+
+Per §6.2. **Soak of at least 7 full days, retained intact. Deletion is a
+separate later approval and is not implied by this rename.**
+
+Post-rename verification: 9/9 services Running; `/api/health` ok; five
+frontends 200; Bridge authenticated health 200 with
+`bridgeRunning`/`sqlConnected`/`assembliesLoaded` true; Connector heartbeat
+advancing across two samples 60 s apart; zero orphaned wrappers; no process
+imaged under the old path. **The rename surviving cleanly is the empirical
+proof that the dependency count really was zero.**
+
+### AMENDED ROLLBACK — binding
+
+**The rename invalidated the literal paths in both service-pointer rollback
+descriptors.** To roll back the Bridge or the Connector, **first rename
+`verduraBridge.RETIRED-20260903` back to `verduraBridge`**, then restore the
+recorded NSSM values. The predecessor trees are retained intact for exactly
+this reason, which is the point of the soak.
+
+### Two things inside the retired tree that need deliberate handling
+
+1. **`VerduraServerOps\connector-credential.txt`** (80 bytes) is a credential
+   file. Nothing reads it — the live credential is in the NSSM environment —
+   but it must be dealt with deliberately at the deletion decision, not swept
+   up by a bulk delete.
+2. The **predecessor Bridge and Connector releases** are the rollback targets
+   for §12 and this section. They must survive the full soak.
+
+### What is left in `Documents`
+
+Only `verduradb` (RETIREMENT/SOAK under §S-PG.9), `verdura_MVP` (the approved
+repository location, not a migration target), and the renamed
+`verduraBridge.RETIRED-20260903`. **All five originally targeted
+`Documents`-root directories are now removed or in a retention gate.**
