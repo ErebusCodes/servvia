@@ -1,0 +1,157 @@
+﻿C:\ProgramData\Verdura\rollback\pre-migration-20260902 NT AUTHORITY\SYSTEM:(OI)(CI)(F)
+                                                       BUILTIN\Administrators:(OI)(CI)(F)
+                                                       DESKTOP-SOKKOQ7\Posmate:(OI)(CI)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\config NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                                              BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                                              DESKTOP-SOKKOQ7\Posmate:(I)(OI)(CI)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\hashes NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                                              BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                                              DESKTOP-SOKKOQ7\Posmate:(I)(OI)(CI)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                                                BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                                                DESKTOP-SOKKOQ7\Posmate:(I)(OI)(CI)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                                             BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                                             DESKTOP-SOKKOQ7\Posmate:(I)(OI)(CI)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\tasks NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                                             BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                                             DESKTOP-SOKKOQ7\Posmate:(I)(OI)(CI)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\verdura_production_pre-migration_20260902.dump NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                                      BUILTIN\Administrators:(I)(F)
+                                                                                                      DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\config\bridge-api-key.txt NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                 BUILTIN\Administrators:(I)(F)
+                                                                                 DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\config\bridge-App.config NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                BUILTIN\Administrators:(I)(F)
+                                                                                DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\config\bridge-exe.config NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                BUILTIN\Administrators:(I)(F)
+                                                                                DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\config\connector-credential.txt NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                       BUILTIN\Administrators:(I)(F)
+                                                                                       DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\config\connector-discovery-profile.local.json NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                                     BUILTIN\Administrators:(I)(F)
+                                                                                                     DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\config\owner-token.txt NT AUTHORITY\SYSTEM:(I)(F)
+                                                                              BUILTIN\Administrators:(I)(F)
+                                                                              DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\hashes\binaries.txt NT AUTHORITY\SYSTEM:(I)(F)
+                                                                           BUILTIN\Administrators:(I)(F)
+                                                                           DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\hashes\git-status.txt NT AUTHORITY\SYSTEM:(I)(F)
+                                                                             BUILTIN\Administrators:(I)(F)
+                                                                             DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\hashes\repo-HEAD.txt NT AUTHORITY\SYSTEM:(I)(F)
+                                                                            BUILTIN\Administrators:(I)(F)
+                                                                            DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\nssm-parameters.txt NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                    BUILTIN\Administrators:(I)(F)
+                                                                                    DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraAdminConsole.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                        BUILTIN\Administrators:(I)(F)
+                                                                                        DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraAPI.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                               BUILTIN\Administrators:(I)(F)
+                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraConnector.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                     BUILTIN\Administrators:(I)(F)
+                                                                                     DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraCustomerWebsite.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                           BUILTIN\Administrators:(I)(F)
+                                                                                           DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraIdealposBridgeSvc.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                             BUILTIN\Administrators:(I)(F)
+                                                                                             DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraKitchenDisplay.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                          BUILTIN\Administrators:(I)(F)
+                                                                                          DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraOrderTablet.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                       BUILTIN\Administrators:(I)(F)
+                                                                                       DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\registry\VerduraWindowDisplay.reg NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                         BUILTIN\Administrators:(I)(F)
+                                                                                         DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                                                         BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                                                         DESKTOP-SOKKOQ7\Posmate:(I)(OI)(CI)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-state.sqlite NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                 BUILTIN\Administrators:(I)(F)
+                                                                                 DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\state.sqlite.orphaned-20260824 NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                            BUILTIN\Administrators:(I)(F)
+                                                                                            DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\tracer-store.jsonl NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                BUILTIN\Administrators:(I)(F)
+                                                                                DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs\bridge-2026-08-25.log NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                               BUILTIN\Administrators:(I)(F)
+                                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs\bridge-2026-08-26.log NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                               BUILTIN\Administrators:(I)(F)
+                                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs\bridge-2026-08-27.log NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                               BUILTIN\Administrators:(I)(F)
+                                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs\bridge-2026-08-28.log NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                               BUILTIN\Administrators:(I)(F)
+                                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs\bridge-2026-08-30.log NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                               BUILTIN\Administrators:(I)(F)
+                                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs\bridge-2026-08-31.log NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                               BUILTIN\Administrators:(I)(F)
+                                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\state\bridge-logs\bridge-2026-09-01.log NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                               BUILTIN\Administrators:(I)(F)
+                                                                                               DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\tasks\Verdura-Redis-Startup.xml NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                       BUILTIN\Administrators:(I)(F)
+                                                                                       DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\tasks\Verdura-Window-Display.xml NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                        BUILTIN\Administrators:(I)(F)
+                                                                                        DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+C:\ProgramData\Verdura\rollback\pre-migration-20260902\tasks\VerduraPostgresBackup.xml NT AUTHORITY\SYSTEM:(I)(F)
+                                                                                       BUILTIN\Administrators:(I)(F)
+                                                                                       DESKTOP-SOKKOQ7\Posmate:(I)(F)
+
+Successfully processed 39 files; Failed processing 0 files

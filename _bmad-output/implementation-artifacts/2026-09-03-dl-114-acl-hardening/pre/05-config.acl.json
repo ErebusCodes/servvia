@@ -1,0 +1,35 @@
+﻿{
+    "Path":  "C:\\ProgramData\\Verdura\\config",
+    "SddlKind":  "DACL+SACL",
+    "Sddl":  "O:BAG:S-1-5-21-160777116-34683011-1598780446-513D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;S-1-5-21-160777116-34683011-1598780446-1001)",
+    "Owner":  "BUILTIN\\Administrators",
+    "Group":  "DESKTOP-SOKKOQ7\\None",
+    "AccessProtected":  true,
+    "AuditProtected":  true,
+    "Aces":  [
+                 {
+                     "IdentityReference":  "NT AUTHORITY\\SYSTEM",
+                     "FileSystemRights":  "FullControl",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  false,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "None"
+                 },
+                 {
+                     "IdentityReference":  "BUILTIN\\Administrators",
+                     "FileSystemRights":  "FullControl",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  false,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "None"
+                 },
+                 {
+                     "IdentityReference":  "DESKTOP-SOKKOQ7\\Posmate",
+                     "FileSystemRights":  "FullControl",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  false,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "None"
+                 }
+             ]
+}

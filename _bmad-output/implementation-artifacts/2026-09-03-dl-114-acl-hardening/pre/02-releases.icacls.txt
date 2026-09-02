@@ -1,0 +1,19 @@
+﻿C:\ProgramData\Verdura\releases NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                CREATOR OWNER:(I)(OI)(CI)(IO)(F)
+                                BUILTIN\Users:(I)(OI)(CI)(RX)
+                                BUILTIN\Users:(I)(CI)(WD,AD,WEA,WA)
+
+C:\ProgramData\Verdura\releases\bridge NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                       BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                       CREATOR OWNER:(I)(OI)(CI)(IO)(F)
+                                       BUILTIN\Users:(I)(OI)(CI)(RX)
+                                       BUILTIN\Users:(I)(CI)(WD,AD,WEA,WA)
+
+C:\ProgramData\Verdura\releases\connector NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                                          BUILTIN\Administrators:(I)(OI)(CI)(F)
+                                          CREATOR OWNER:(I)(OI)(CI)(IO)(F)
+                                          BUILTIN\Users:(I)(OI)(CI)(RX)
+                                          BUILTIN\Users:(I)(CI)(WD,AD,WEA,WA)
+
+Successfully processed 3 files; Failed processing 0 files

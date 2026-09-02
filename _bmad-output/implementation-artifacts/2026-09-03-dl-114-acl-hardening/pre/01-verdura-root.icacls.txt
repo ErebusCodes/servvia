@@ -1,0 +1,8 @@
+﻿C:\ProgramData\Verdura NT AUTHORITY\SYSTEM:(OI)(CI)(F)
+                       NT AUTHORITY\SYSTEM:(I)(OI)(CI)(F)
+                       BUILTIN\Administrators:(I)(OI)(CI)(F)
+                       CREATOR OWNER:(I)(OI)(CI)(IO)(F)
+                       BUILTIN\Users:(I)(OI)(CI)(RX)
+                       BUILTIN\Users:(I)(CI)(WD,AD,WEA,WA)
+
+Successfully processed 1 files; Failed processing 0 files

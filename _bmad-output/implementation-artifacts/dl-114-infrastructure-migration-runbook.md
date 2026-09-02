@@ -6,6 +6,11 @@ No uncompleted production-affecting stage may run without separate, explicit,
 per-stage approval and, where service lifecycle changes are involved, the
 maintenance-window controls defined in this runbook.
 
+**§0 rule 7 (`ProgramData` ACL pre-use gate) is SATISFIED for `releases`,
+`state` and `logs` as of 2026-09-03.** That is a permission change and
+nothing more: it **authorises no stage**. S2 in particular remains
+**UNAPPROVED** and still requires its own approval and maintenance window.
+
 This is the **durable** migration artifact and the authoritative record of
 stage identity, status and sequence. Where a stage identity is **not** firmly
 established, this document marks it as such and uses a descriptive
@@ -65,6 +70,54 @@ Scope: infrastructure relocation and `verduraBridge` retirement only. It does
    The observed current state that makes this gate necessary is recorded in
    §S1.
 
+   **STATUS — SATISFIED for `releases`, `state` and `logs` on 2026-09-03.**
+   The ACL model was explicitly approved by the user, applied, and verified.
+   Evidence:
+   `_bmad-output/implementation-artifacts/2026-09-03-dl-114-acl-hardening/`.
+
+   The approved and applied model, recorded here because the gate is only
+   discharged by a *specific* model — this is the record of the approved
+   security decision, not an invention by this runbook:
+
+   | Element | Applied as |
+   | --- | --- |
+   | Inheritance | disabled and **protected** (`SE_DACL_PROTECTED`) |
+   | `NT AUTHORITY\SYSTEM` | FullControl, `(OI)(CI)`, explicit |
+   | `BUILTIN\Administrators` | FullControl, `(OI)(CI)`, explicit |
+   | `BUILTIN\Users` | **removed entirely** |
+   | `CodexSandboxUsers` / `…Offline` / `…Online` | **no access of any kind** |
+   | `CREATOR OWNER` | **removed** — not required once inheritance is protected |
+   | Owner | **unchanged** (`BUILTIN\Administrators`); ownership was not touched |
+
+   Resulting DACL, identical on all three roots —
+   `D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)` — and on all 7 descendants,
+   inherited and unprotected: `D:AI(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)`.
+
+   Verified: inheritance protected; SYSTEM and Administrators FullControl;
+   `BUILTIN\Users` absent from roots **and** descendants; the three Codex
+   identities absent by `icacls /findsid` across the whole
+   `C:\ProgramData\Verdura` tree **and** unable to reach the Administrators
+   ACE by group nesting (`Administrators` holds only two local users, neither
+   of them a Codex identity); and `C:\ProgramData`, the Verdura runtime root,
+   `config`, `config\secrets`, `backups`, `rollback`, the **S0 baseline
+   (all 38 entries)** and `README.md` unchanged pre → post.
+
+   **The scope was exactly this ACL change.** No service was stopped,
+   started, restarted or reconfigured; no file was created, moved or deleted
+   in the three trees. Non-invasive health verification before and after was
+   identical, **including every `Verdura*` service PID** — direct evidence
+   that nothing restarted — with `/api/health` returning
+   `{"status":"ok","db":"ok","redis":"ok"}` and all five frontend listeners
+   answering `200`.
+
+   **Two consequences carry into later stages.** First, `Posmate` reached
+   these trees through `BUILTIN\Users`, so **non-elevated** tooling can no
+   longer read or write `releases`, `state` or `logs`; anything touching them
+   must run elevated. This is the intended effect of the model. Second, the
+   runtime root, `backups` and `rollback` were **not** in scope and still
+   grant `BUILTIN\Users` write by inheritance — extending production use to
+   `backups` would need its own rule 7 decision.
+
 ---
 
 ## 1. Stage and authorization status
@@ -86,6 +139,12 @@ Scope: infrastructure relocation and `verduraBridge` retirement only. It does
 
 **Authorization state: S0 complete, S1 complete, S2–S9 unapproved,
 PostgreSQL relocation newly planned and unapproved.**
+
+**The `ProgramData` ACL hardening of 2026-09-03 is not a stage and is given
+no stage number.** It is a discrete, separately approved permission change
+that discharges the §0 rule 7 pre-use gate for `releases`, `state` and
+`logs`. It changes no stage's status, and it must not be cited as authority
+for beginning any stage.
 
 **Chronology note (filesystem observation, 2026-09-03).** The S1 runtime
 skeleton was created at **14:08:11**, and the S0 baseline was captured into
@@ -207,14 +266,23 @@ posture differs between paths and must not be treated as uniform:
 | `rollback\pre-migration-20260902` | **disabled** (protected) | `SYSTEM`, `Administrators`, `Posmate` — explicit entries only |
 
 **The hardened posture at `config\secrets` does not extend to the runtime
-root.** The root, and the `releases`, `state` and `logs` subtrees beneath it,
-currently grant `BUILTIN\Users` write access by inheritance.
+root.** The root granted — and still grants — `BUILTIN\Users` write access by
+inheritance, as did the `releases`, `state` and `logs` subtrees beneath it at
+the time of this observation.
 
-**This finding is a binding pre-use gate, not a deferred observation —
-see §0 rule 7.** No production stage may begin using `releases`, `state` or
-`logs` until the intended ACL model for those paths is explicitly approved,
-applied and verified. Nothing here authorizes an ACL change now, and this
-runbook does not specify the final ACL entries.
+**This finding was a binding pre-use gate, not a deferred observation —
+see §0 rule 7.** No production stage could begin using `releases`, `state` or
+`logs` until the intended ACL model for those paths was explicitly approved,
+applied and verified.
+
+> **SUPERSEDED for `releases`, `state` and `logs` on 2026-09-03.** The table
+> above is the **pre-hardening** observation and must not be read as current
+> state for those three paths. The approved model has since been applied and
+> verified: all three are now **protected**, with `SYSTEM` and
+> `Administrators` FullControl only — `BUILTIN\Users` and `CREATOR OWNER` are
+> gone. See §0 rule 7 STATUS. The rows for the runtime root and
+> `rollback\pre-migration-20260902` remain **current and unchanged**, and were
+> re-verified byte-for-byte as part of that work.
 
 *Corroborating the S1 permission-validation result:* the explicit
 non-inherited `SYSTEM` FullControl entry at the runtime root is consistent
@@ -239,10 +307,20 @@ approved, applied and verified **before** that redirection occurs. S2 does
 not proceed while inherited `BUILTIN\Users` write access remains, unless that
 access has been explicitly accepted as part of the approved security model.
 
+**This prerequisite is SATISFIED as of 2026-09-03** — see §0 rule 7 STATUS.
+`logs` is protected, `BUILTIN\Users` is removed, and `SYSTEM` holds an
+explicit FullControl `(OI)(CI)` grant, which is what the NSSM services need
+in order to write into `logs\services` as LocalSystem.
+
+**Satisfying this prerequisite does not approve S2.** It discharges one of
+several conditions. **S2 remains UNAPPROVED**, and every requirement below
+still stands in full — in particular the maintenance-window authorization of
+§0 rule 4, which no ACL approval substitutes for.
+
 Because this changes NSSM service parameters, it **requires service
 restarts**, and therefore requires all of:
 
-- **§0 rule 7 satisfied** for `logs` (see prerequisite above);
+- **§0 rule 7 satisfied** for `logs` — **met 2026-09-03**;
 - explicit maintenance-window approval (§0 rule 4);
 - per-service preflight;
 - **one service at a time**;
@@ -849,3 +927,16 @@ corrections covering the Bridge/API health probe schemes with
 superseded menu-mapping count — are **deliberately kept as a change separate
 from this runbook**. They correct live-order certification preconditions,
 are not migration governance, and must not be merged into a migration commit.
+
+**2026-09-03 — `ProgramData` ACL hardening.** The approved ACL model was
+applied to `releases`, `state` and `logs`, discharging §0 rule 7 for those
+paths. Sections updated: the status header, §0 rule 7 (STATUS added), §1
+(scoping note), §S1 (pre-hardening table marked superseded for the three
+paths), and §S2 (prerequisite marked met). Evidence, including the
+authoritative rollback descriptors, is at
+`_bmad-output/implementation-artifacts/2026-09-03-dl-114-acl-hardening/`.
+
+This was applied **on its own**, deliberately not combined with S2, service
+reconfiguration, any service lifecycle operation, the Bridge/Connector
+migration, the PostgreSQL relocation, or any deletion. **No stage was
+approved, begun or advanced by it.**

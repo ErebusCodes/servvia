@@ -1,0 +1,59 @@
+﻿{
+    "Path":  "C:\\ProgramData\\Verdura",
+    "SddlKind":  "DACL+SACL",
+    "Sddl":  "O:BAG:S-1-5-21-160777116-34683011-1598780446-513D:AI(A;OICI;FA;;;SY)(A;OICIID;FA;;;SY)(A;OICIID;FA;;;BA)(A;OICIIOID;GA;;;CO)(A;OICIID;0x1200a9;;;BU)(A;CIID;DCLCRPCR;;;BU)",
+    "Owner":  "BUILTIN\\Administrators",
+    "Group":  "DESKTOP-SOKKOQ7\\None",
+    "AccessProtected":  false,
+    "AuditProtected":  true,
+    "Aces":  [
+                 {
+                     "IdentityReference":  "NT AUTHORITY\\SYSTEM",
+                     "FileSystemRights":  "FullControl",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  false,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "None"
+                 },
+                 {
+                     "IdentityReference":  "NT AUTHORITY\\SYSTEM",
+                     "FileSystemRights":  "FullControl",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  true,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "None"
+                 },
+                 {
+                     "IdentityReference":  "BUILTIN\\Administrators",
+                     "FileSystemRights":  "FullControl",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  true,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "None"
+                 },
+                 {
+                     "IdentityReference":  "CREATOR OWNER",
+                     "FileSystemRights":  "268435456",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  true,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "InheritOnly"
+                 },
+                 {
+                     "IdentityReference":  "BUILTIN\\Users",
+                     "FileSystemRights":  "ReadAndExecute, Synchronize",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  true,
+                     "InheritanceFlags":  "ContainerInherit, ObjectInherit",
+                     "PropagationFlags":  "None"
+                 },
+                 {
+                     "IdentityReference":  "BUILTIN\\Users",
+                     "FileSystemRights":  "Write",
+                     "AccessControlType":  "Allow",
+                     "IsInherited":  true,
+                     "InheritanceFlags":  "ContainerInherit",
+                     "PropagationFlags":  "None"
+                 }
+             ]
+}
