@@ -1,15 +1,17 @@
 # DL-114 — Verdura infrastructure migration runbook
 
-**Status: S0 and S1 are COMPLETE and verified read-only on 2026-09-03. Every
-other stage is PLANNING ONLY and UNAPPROVED — none has been executed.**
+**Status: S0 and S1 are COMPLETE and verified read-only on 2026-09-03.
+S2 is APPROVED and 5 of its 6 services are migrated and verified; the
+`VerduraAPI` step is blocked and S2 is NOT complete (§S2). Every other stage
+is PLANNING ONLY and UNAPPROVED — none has been executed.**
 No uncompleted production-affecting stage may run without separate, explicit,
 per-stage approval and, where service lifecycle changes are involved, the
 maintenance-window controls defined in this runbook.
 
 **§0 rule 7 (`ProgramData` ACL pre-use gate) is SATISFIED for `releases`,
 `state` and `logs` as of 2026-09-03.** That is a permission change and
-nothing more: it **authorises no stage**. S2 in particular remains
-**UNAPPROVED** and still requires its own approval and maintenance window.
+nothing more: it **authorises no stage**. S2 was approved separately and
+afterwards.
 
 This is the **durable** migration artifact and the authoritative record of
 stage identity, status and sequence. Where a stage identity is **not** firmly
@@ -126,7 +128,7 @@ Scope: infrastructure relocation and `verduraBridge` retirement only. It does
 | --- | --- | --- |
 | **S0** | Immutable pre-migration baseline | **COMPLETE** — captured 2026-09-02 14:10:04–14:11:33; verified 2026-09-03 |
 | **S1** | `C:\ProgramData\Verdura\` runtime skeleton creation + permission validation | **COMPLETE** — created 2026-09-02 14:08:11; verified 2026-09-03 |
-| **S2** | Service stdout/stderr logging relocation to `C:\ProgramData\Verdura\logs\services\` | **UNAPPROVED** |
+| **S2** | Service stdout/stderr logging relocation to `C:\ProgramData\Verdura\logs\services\` | **APPROVED and PARTLY EXECUTED 2026-09-03 — 5 of 6 services complete and verified; `VerduraAPI` NOT migrated, blocked by a scope conflict (see §S2)** |
 | **S3** | *Identity not established* | **UNAPPROVED** |
 | **S4** | Includes migration of the 8 live-critical ops scripts into `verdura_MVP\windows-deploy\ops\` | **UNAPPROVED** |
 | **S5** | *Identity not established* | **UNAPPROVED** |
@@ -291,7 +293,33 @@ succeeded. `DESKTOP-SOKKOQ7\CodexSandboxUsers` — the identity holding read
 access over the current PostgreSQL data directory (§4.5) — is **absent from
 every directory** under `C:\ProgramData\Verdura`.
 
-### S2 — Service logging relocation — UNAPPROVED
+### S2 — Service logging relocation — APPROVED; 5 of 6 EXECUTED 2026-09-03
+
+> **STATUS 2026-09-03.** Approved with maintenance-window authorization and
+> executed for the **five frontends only**: `VerduraCustomerWebsite`,
+> `VerduraWindowDisplay`, `VerduraKitchenDisplay`, `VerduraOrderTablet`,
+> `VerduraAdminConsole`. Each passed full verification — wrapper/child/port,
+> child PID changed, no orphans, HTTP 200, new log path receiving output, old
+> log path static across two samples. No rollback was needed. Evidence:
+> `_bmad-output/implementation-artifacts/2026-09-03-dl-114-s2-logging-relocation/`.
+>
+> **`VerduraAPI` was NOT migrated, and S2 is therefore NOT complete.**
+> `VerduraAPI` has six dependent services — the five frontends **and
+> `VerduraConnector`** — so SCM cannot stop it without stopping them. That
+> makes "restart only that service" and "do not touch the Connector"
+> mutually unsatisfiable for the API step. The approved scope disclosed the
+> frontend dependency but **not** the Connector dependency, so this
+> consequence was never put to the approver. Execution stopped cleanly rather
+> than stacking an unapproved change. **Completing S2 requires a fresh
+> decision that explicitly accepts a `VerduraConnector` stop/start.**
+>
+> The resulting half-migrated state is stable: the API keeps logging to its
+> original `VerduraServerOps\api-*.log`, untouched and writable. Rollback of
+> any migrated frontend remains per-service and isolated, since none has
+> dependents.
+>
+> **NSSM log rotation was not enabled** — `AppRotateFiles` remains unset on
+> all six services, as required.
 
 Planned migration of **stdout/stderr logging for the six NSSM application
 services** away from `verduraBridge\VerduraServerOps` to:
@@ -653,6 +681,13 @@ capture each in the S-PG.1 baseline so attribution is unambiguous:
 `ipsExePathExists:false` (§5), `tableAssignmentConfirmed:false`, and the
 three orders parked at `submitted_awaiting_confirmation`. All predate S-PG
 and are governed by DL-107.
+
+> **Correction, machine-verified 2026-09-03 (§0 rule 6).** The order-status
+> claim above is wrong as written. The database holds exactly **three orders
+> in total**, and their statuses are **2 × `preparing`** (`ORD-600003`,
+> `ORD-600002`) and **1 × `cancelled`** (`ORD-600001`) — not
+> `submitted_awaiting_confirmation`. The count of three is right; the status
+> is not. Do not cite the status claim as-is; re-verify at stage time.
 
 ### S-PG.8 Rollback
 

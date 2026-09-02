@@ -1,0 +1,39 @@
+﻿################ VerduraKitchenDisplay (port 5175) ################
+time: 2026-09-03 02:35:41 +12:00
+BEFORE AppStdout (ExpandString) = C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\kitchen-display-stdout.log
+BEFORE AppStderr (ExpandString) = C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\kitchen-display-stderr.log
+BEFORE chain: wrapper=20440 kids=21092 state=Running
+
+-- setting new log paths (same value kind: ExpandString)
+  PASS  AppStdout now = C:\ProgramData\Verdura\logs\services\kitchen-display-stdout.log
+  PASS  AppStderr now = C:\ProgramData\Verdura\logs\services\kitchen-display-stderr.log
+  PASS  AppStdout kind preserved = ExpandString
+  PASS  AppStderr kind preserved = ExpandString
+
+-- restarting VerduraKitchenDisplay through SCM
+  PASS  service Running and port 5175 listening
+
+-- process + port verification
+AFTER chain: wrapper=5572 kids=16516 state=Running
+  PASS  SCM state = Running
+  PASS  wrapper holds exactly one child (count=1)
+  PASS  port 5175 owned by pid=16516 (node), inside service chain
+  PASS  child pid changed 21092 -> 16516 (proves real restart)
+  PASS  no orphaned nssm wrapper (found 0)
+  PASS  previous child pid 21092 is gone (no orphan)
+
+-- HTTP check
+  PASS  GET http://localhost:5175/ -> HTTP 200 (1336 bytes)
+
+-- new log path receiving output
+  PASS  new stdout exists: C:\ProgramData\Verdura\logs\services\kitchen-display-stdout.log (176 bytes)
+  PASS  new stderr exists: C:\ProgramData\Verdura\logs\services\kitchen-display-stderr.log (0 bytes)
+  PASS  new log path is actually receiving output (stdout=176 stderr=0 bytes)
+
+-- old log path stopped growing (two samples)
+  PASS  old file static across samples: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\kitchen-display-stdout.log  [528|639239161363713379]
+  PASS  old file unchanged since before restart: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\kitchen-display-stdout.log
+  PASS  old file static across samples: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\kitchen-display-stderr.log  [4508|639239161362493477]
+  PASS  old file unchanged since before restart: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\kitchen-display-stderr.log
+
+==== VerduraKitchenDisplay : VERIFICATION PASSED ====

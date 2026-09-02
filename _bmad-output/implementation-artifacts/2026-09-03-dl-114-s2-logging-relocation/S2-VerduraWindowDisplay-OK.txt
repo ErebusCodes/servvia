@@ -1,0 +1,39 @@
+﻿################ VerduraWindowDisplay (port 5174) ################
+time: 2026-09-03 02:35:19 +12:00
+BEFORE AppStdout (ExpandString) = C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\window-display-stdout.log
+BEFORE AppStderr (ExpandString) = C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\window-display-stderr.log
+BEFORE chain: wrapper=18640 kids=18384 state=Running
+
+-- setting new log paths (same value kind: ExpandString)
+  PASS  AppStdout now = C:\ProgramData\Verdura\logs\services\window-display-stdout.log
+  PASS  AppStderr now = C:\ProgramData\Verdura\logs\services\window-display-stderr.log
+  PASS  AppStdout kind preserved = ExpandString
+  PASS  AppStderr kind preserved = ExpandString
+
+-- restarting VerduraWindowDisplay through SCM
+  PASS  service Running and port 5174 listening
+
+-- process + port verification
+AFTER chain: wrapper=18612 kids=22484 state=Running
+  PASS  SCM state = Running
+  PASS  wrapper holds exactly one child (count=1)
+  PASS  port 5174 owned by pid=22484 (node), inside service chain
+  PASS  child pid changed 18384 -> 22484 (proves real restart)
+  PASS  no orphaned nssm wrapper (found 0)
+  PASS  previous child pid 18384 is gone (no orphan)
+
+-- HTTP check
+  PASS  GET http://localhost:5174/ -> HTTP 200 (1036 bytes)
+
+-- new log path receiving output
+  PASS  new stdout exists: C:\ProgramData\Verdura\logs\services\window-display-stdout.log (173 bytes)
+  PASS  new stderr exists: C:\ProgramData\Verdura\logs\services\window-display-stderr.log (0 bytes)
+  PASS  new log path is actually receiving output (stdout=173 stderr=0 bytes)
+
+-- old log path stopped growing (two samples)
+  PASS  old file static across samples: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\window-display-stdout.log  [519|639239161324758912]
+  PASS  old file unchanged since before restart: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\window-display-stdout.log
+  PASS  old file static across samples: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\window-display-stderr.log  [4508|639239161323633566]
+  PASS  old file unchanged since before restart: C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\window-display-stderr.log
+
+==== VerduraWindowDisplay : VERIFICATION PASSED ====
