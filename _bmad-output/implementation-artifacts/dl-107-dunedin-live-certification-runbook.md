@@ -1052,9 +1052,52 @@ not trust this document's own dates.
    (`tableAssignmentConfirmed: false`, with a `reasons` entry warning
    orders may get stuck at `processed` without advancing to
    `assigned_to_table`) — **do not run §4 without resolving this first.**
+
+   > **Re-verified read-only 2026-09-03.** All nine Verdura services are
+   > `Running` on `DESKTOP-SOKKOQ7`, each service wrapper holding exactly one
+   > correct child process, no orphans and no duplicate listeners:
+   > `:3000` API · `:5173` CustomerWebsite · `:5174` WindowDisplay ·
+   > `:5175` KitchenDisplay · `:5176` OrderTablet · `:5177` AdminConsole ·
+   > `:5432` PostgreSQL · `:5588` Bridge. Two corrections to this item as
+   > written:
+   >
+   > - **The Bridge health probe requires `Authorization: Bearer <key>`.**
+   >   `X-Api-Key` returns `401` on this build. A preflight using the wrong
+   >   scheme will read a healthy Bridge as unauthorised.
+   > - **The API health route is `/api/health`**, not `/health` — the app
+   >   sets a global `api` prefix, so bare `/health` returns 404. Verified
+   >   response: `{"status":"ok","db":"ok","redis":"ok"}`.
+   >
+   > **`Idealpos:TableAssignmentConfirmed=false` is confirmed still false,
+   > and the predicted failure has now actually occurred.** The Bridge
+   > self-reports `tableAssignmentConfirmed:false` with
+   > `tableAssignmentStrategy:"NoHint"`, and every order ever submitted
+   > through this chain is stuck exactly as its `reasons` string warns:
+   > `ORD-600001`, `ORD-600002` and `ORD-600003` all sit at POSSyncRecord
+   > status `submitted_awaiting_confirmation` with `attemptCount=1` and
+   > `dispatchedAt`, `syncedAt` and `failedAt` all `NULL` — while their
+   > `ConnectorCommand` rows all report `succeeded` / `bridge_accepted`.
+   > The Bridge accepts the order and the order never advances to table
+   > assignment. `ORD-600001` additionally carries: *"Order was cancelled in
+   > Verdura, but POS dispatch (status was `submitted_awaiting_confirmation`)
+   > could not be stopped in time — verify directly with IdealPOS/kitchen"* —
+   > whether a corresponding sale exists in IdealPOS has never been
+   > established. **This item's "do not run §4 without resolving this first"
+   > stands, and is now evidence-backed rather than precautionary.**
 3. **Connector enrolled and polling.** `GET /venues/{venueId}/connector/
    installations` (bearer staff/admin token) shows `status: "active"` and
    `lastSeenAt` advancing within the last poll interval.
+
+   > **Correction — compare `lastSeenAt` on a common time base, or this
+   > precondition will read false.** `ConnectorInstallation.lastSeenAt` is
+   > `timestamp without time zone` holding **UTC**, while `now()` is
+   > `timestamptz` in **Pacific/Auckland**. A naive `now() - "lastSeenAt"`
+   > therefore overstates the age by 12 h (13 h during NZDT) and will make a
+   > perfectly healthy connector look half a day dead. Compare against
+   > `now() AT TIME ZONE 'UTC'`. Verified on that basis read-only
+   > 2026-09-03: `status: "active"`, heartbeat age **1.2 s** — polling
+   > normally. The same UTC/local mismatch applies to `Order.createdAt` and
+   > its sibling columns when reading evidence in §4.
 4. **`TABLE19_LIVE_TEST_ENABLED`/`TABLE19_LIVE_TEST_VENUE_ID` — read this
    carefully, the flag name is legacy.** The only implemented controlled-
    validation guard in `orders.service.ts`
@@ -1117,6 +1160,25 @@ not trust this document's own dates.
    Every *other* curated item (66 of 70) still has no `posProductCode` —
    do not assume any other menu item is ready without repeating §1i's
    12-step process.
+
+   > **SUPERSEDED — the "66 of 70" figure is stale.** It predates the Menu
+   > Management import (§1m). Verified read-only 2026-09-03 by exact
+   > `COUNT(*)`: **895 `MenuItem` rows, 825 with a non-empty
+   > `posProductCode`, 228 `isAvailable` — and all 228 available items carry
+   > a `posProductCode`.** The precondition as written (hand-curate the test
+   > items first) is therefore satisfied for every item a live order can
+   > currently select, and the count no longer blocks §4.
+   >
+   > **The per-item evidence requirement still applies.** Only the mappings
+   > from §1j/§1l were individually human-verified against live IdealPOS
+   > `StockItems`; the remaining bulk mappings came from the import and have
+   > not been individually re-verified. Re-verify the specific item chosen
+   > for §4 step 2 before relying on it.
+   >
+   > Note when gathering evidence: read row counts with exact `COUNT(*)`.
+   > `pg_stat_user_tables.n_live_tup` is unusable on this instance — 25 of
+   > 30 user tables have never been analyzed, so it reports 0 rows for
+   > `Organization`, `Venue` and `Table`, all of which hold rows.
 6. **Backups exist** for `C:\Users\Posmate\Documents\verduradb` (Postgres)
    and the Bridge's `state\bridge-state.sqlite`, taken immediately before
    this session, per the standing safety constraint.
