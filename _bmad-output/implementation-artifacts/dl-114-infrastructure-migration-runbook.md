@@ -3,7 +3,7 @@
 **Status: S0 and S1 are COMPLETE and verified read-only on 2026-09-03.
 S2 is COMPLETE at 6 of 6 — the deferred `VerduraAPI` step was executed inside
 the approved combined PostgreSQL maintenance window on 2026-09-03 (§S-PG-EXEC).
-S-PG is COMPLETE and verified: PostgreSQL now runs from
+The Bridge cutover is COMPLETE and verified — it runs from an immutable release under `ProgramData` (§12). S-PG is COMPLETE and verified: PostgreSQL now runs from
 `C:\Program Files\Verdura\PostgreSQL\18` against
 `C:\ProgramData\Verdura\postgres\data`. Every other stage is PLANNING ONLY
 and UNAPPROVED — none has been executed.**
@@ -137,7 +137,7 @@ Scope: infrastructure relocation and `verduraBridge` retirement only. It does
 | **S5** | *Identity not established* | **UNAPPROVED** |
 | **S6** | **Connector cutover** (targets `IPS.exe`) | **UNAPPROVED** |
 | **S7 – S9** | *Identities not established* | **UNAPPROVED** |
-| *(provisional)* | **Bridge cutover stage** — number not established; must precede S6 | **UNAPPROVED** |
+| **Bridge cutover** | Bridge relocated to the immutable commit-tagged release `C:\ProgramData\Verdura\releases\bridge\abe301a\`, with state and logs externalized | **COMPLETE and verified 2026-09-03** (§12). Predecessor release retained for rollback |
 | **S-PG** | PostgreSQL **binary** relocation to `C:\Program Files\Verdura\PostgreSQL\18` **and** data directory relocation to `C:\ProgramData\Verdura\postgres\data`, plus backup script/output migration off `verduraBridge` | **COMPLETE and verified 2026-09-03** (§S-PG-EXEC). Predecessor cluster retained under §S-PG.9 |
 | *(provisional)* | **`verduraBridge` retirement** — rename + soak; number not established | **UNAPPROVED** |
 | *(provisional)* | **`verduraBridge` deletion** — separate later approval | **UNAPPROVED** |
@@ -1185,3 +1185,123 @@ The API log sinks, the backup script and the backup output directory no
 longer resolve into `verduraBridge`. What remains is recorded in §6 as the
 current dependency set — the Bridge and Connector service definitions
 themselves, and two scheduled tasks.
+
+---
+
+## 12. Bridge cutover — executed 2026-09-03
+
+**Executed and verified.** Approved in-session as an isolated maintenance
+window for `VerduraIdealposBridgeSvc` only. Evidence:
+`_bmad-output/implementation-artifacts/2026-09-03-dl-114-bridge-staging/`.
+
+**Outage was ~60 seconds and affected one service.** The Bridge has no SCM
+dependents and no dependencies, so 8 of the 9 services stayed Running
+throughout. This is why it was executed on its own rather than folded into a
+larger window.
+
+### Deployed commit — and why not HEAD
+
+The release is **`abe301a`**, not repo HEAD. **This was a relocation, and a
+relocation must not smuggle in a code upgrade.**
+
+The running binary carried no provenance record, so its source had to be
+established by evidence:
+
+- building `abe301a` produces **120,320 bytes**, an exact size match with the
+  deployed binary;
+- the two differ by only **six embedded managed strings**, every one a
+  build-path or compression artifact — no functional string differs;
+- a raw byte comparison differs in ~18%, but that is metadata and layout from
+  a different toolchain invocation. **.NET builds are not deterministic, so
+  raw-byte equality is the wrong test here**; size plus embedded-string
+  identity is the reliable one. Do not later mistake that 18% for evidence of
+  a functional difference.
+
+Building HEAD (`567dce7`) produces **148,992 bytes** and adds **386** embedded
+strings across four commits after `abe301a` — `833540f`, `8d0cd1a`,
+`4b2a394`, `442a7c4` — covering P0 cross-store reconciliation, POSServer
+table-sale resolution by code, and table-assignment capability reporting.
+Those touch the live order path.
+
+**HEAD additionally references a `PosServerConnection` connection string that
+exists in neither the production config nor the repo `App.config`**, so its
+cross-store reconciliation would ship inert until someone supplies POSServer
+credentials — a separate production configuration decision.
+
+**Upgrading the Bridge to HEAD therefore remains OPEN and UNAPPROVED.** It is
+a functional change to the order path and needs its own approval plus DL-107
+certification consideration. It is not part of any relocation stage.
+
+### What moved
+
+| Element | From | To |
+| --- | --- | --- |
+| Binaries | `verduraBridge\verduraIdealposBridge\bin\Release\net48` | `C:\ProgramData\Verdura\releases\bridge\abe301a` (immutable, manifested) |
+| State DB | `…\net48\state\bridge-state.sqlite` | `C:\ProgramData\Verdura\state\bridge\bridge-state.sqlite` |
+| App logs | `…\net48\logs\` | `C:\ProgramData\Verdura\logs\bridge\` |
+| NSSM stdout/stderr | `verduraBridge\VerduraServerOps\bridge-svc-*.log` | `C:\ProgramData\Verdura\logs\services\bridge-svc-*.log` |
+
+Exactly two config settings differ from production — `Bridge:StateDatabasePath`
+and `Logging:Directory`, both now absolute. `BridgeConfig.ResolvePath` honours
+rooted paths. **Every other setting is byte-identical to production, including
+the production `Bridge:ApiKey` and the `IpsConnection` string. No repository
+default was substituted for a production secret** — verified by authenticating
+the post-cutover health probe with the carried-over key.
+
+All seven vendor and native assemblies were verified byte-identical by SHA-256
+to those running in production before the switch.
+
+### Verification
+
+Service Running from the release path; release manifest re-verified after
+start (11 files, 0 mismatches, 0 unexpected files); Bridge authenticated
+health 200 with `bridgeRunning`/`sqlConnected`/`assembliesLoaded` true;
+9/9 services Running; `/api/health` ok; five frontends 200; Connector
+heartbeat advancing across two samples 60 s apart, confirming it recovered
+from the Bridge gap; zero orphaned wrappers; exactly one Bridge process.
+
+**Proof the externalized paths are genuinely in effect:** the release
+directory contains **no** `state\` or `logs\` subdirectory. Had the app fallen
+back to relative resolution it would have created them beside the binaries.
+The app log is being written to the absolute `ProgramData` path, which
+exercises the same config file and the same `ResolvePath` call as the state
+path.
+
+The predecessor state DB is untouched (20,480 bytes, 2026-09-01 17:07:52).
+
+### Deliberately unchanged
+
+`Idealpos:ExpectedIpsExePath` still points at the nonexistent
+`C:\Idealpos\IPS.exe`, so `ipsExePathExists` remains `false`. Correcting it is
+§5 work and changes a health field, so it was kept out of a relocation.
+
+`Idealpos:TableAssignmentConfirmed` remains `false`. **The DL-107
+certification gate was not touched or weakened.**
+
+### Rollback (still available)
+
+Restore four NSSM values — `Application` and `AppDirectory` to the
+`verduraBridge` net48 path, `AppStdout`/`AppStderr` to
+`VerduraServerOps\bridge-svc-*.log` — and restart. The predecessor release
+directory and its state DB are intact, so rollback is a pointer change plus a
+restart. Exact values are in `01-staging-record.txt`.
+
+### `verduraBridge` dependency set after this stage
+
+Re-audited immediately after cutover:
+
+1. **`VerduraConnector`** — `Application`, `AppDirectory`, `AppStdout`,
+   `AppStderr`, and `AppEnvironmentExtra` (which carries `TRACER_STORE_PATH`
+   and `TRACER_PROFILE_PATH` **and the production Connector and Bridge
+   credentials — these must be carried across verbatim at S6, never replaced
+   with repository defaults**).
+2. **Scheduled task `Verdura Redis Startup`** (Ready) →
+   `VerduraServerOps\ensure-verdura-redis.ps1`.
+3. **Scheduled task `Verdura Window Display`** (Disabled) → log paths only.
+
+Everything else under `verduraBridge` is now inert: the predecessor Bridge
+release (retained for rollback), `verduradb-backups` (superseded),
+`installers`, `migration-state`, and `VerduraServer.retired-20260827-155640`.
+
+**S6 plus the two scheduled tasks are all that stand between here and
+`verduraBridge` retirement.**

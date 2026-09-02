@@ -1,0 +1,36 @@
+﻿BRIDGE CUTOVER — POST-CUTOVER VERIFICATION  2026-09-03 10:57:19 +12:00
+================================================================================
+Outage: VerduraIdealposBridgeSvc only, ~10:52:5x to ~10:53:56 (approx 60 seconds).
+Zero other services stopped — the Bridge has no SCM dependents and no dependencies.
+During the stop, 8 of 9 services remained Running.
+
+## Service now points at the immutable release
+  Application     = C:\ProgramData\Verdura\releases\bridge\abe301a\VerduraIdealposBridge.exe
+  AppDirectory    = C:\ProgramData\Verdura\releases\bridge\abe301a
+  AppParameters   = --console
+  AppStdout       = C:\ProgramData\Verdura\logs\services\bridge-svc-stdout.log
+  AppStderr       = C:\ProgramData\Verdura\logs\services\bridge-svc-stderr.log
+  wrapper PID     = 24260   child PID = 22420
+  child image     = C:\ProgramData\Verdura\releases\bridge\abe301a\VerduraIdealposBridge.exe
+  AppRotateFiles  = <unset> (unchanged, as required)
+
+## Integrity
+  release manifest re-verified after start: 11 files, 0 mismatches, 0 unexpected files
+  release dir contains NO state\ or logs\ — proving the absolute paths in the release
+  config are in effect and the app did not fall back to relative resolution
+  bridge-state.sqlite migrated with SHA-256 match; valid 'SQLite format 3' header
+  predecessor state DB left untouched (20480 bytes, 01/09/2026 17:07:52)
+
+## Health
+  Bridge /api/health = HTTP 200 using the PRESERVED production key
+  {"bridgeRunning":true,"bridgeVersion":"0.0.0.0","sqlConnected":true,"sqlDetail":"ok","assembliesLoaded":true,"assembliesDetail":"IdealPos.Webit.Core, Version=1.0.0.0, Culture=neutral, PublicKeyToken=c5adf46cc9f0e6c6","ipsExeRunning":true,"ipsExePathExists":false,"tableAssignmentStrategy":"NoHint","tableAssignmentConfirmed":false,"orderProcessingPathAvailable":true,"connectedRealtimeClients":0,"reasons":["Table-assignment strategy 'NoHint' is configured but not yet confirmed (Idealpos:TableAssignmentConfirmed=false) — run VerduraIdealposHarness against this Idealpos version first. Orders will still be submitted, but automatic table assignment is unproven; watch for orders stuck at 'processed' without advancing to 'assigned_to_table'."]}
+  services running   = 9 / 9
+  /api/health        = {"status":"ok","db":"ok","redis":"ok"}
+  five frontends     = 200
+  connector heartbeat= advancing across two samples 60s apart (age 3.1s then 2.1s) — recovered from the Bridge gap
+  orphaned wrappers  = 0
+
+## Deliberately unchanged
+  Idealpos:ExpectedIpsExePath still C:\Idealpos\IPS.exe -> ipsExePathExists stays false (section 5 work)
+  Idealpos:TableAssignmentConfirmed still false -> DL-107 certification gate untouched
+  Code is abe301a, identical to what was running. No functional change shipped.
