@@ -320,6 +320,63 @@ every directory** under `C:\ProgramData\Verdura`.
 >
 > **NSSM log rotation was not enabled** — `AppRotateFiles` remains unset on
 > all six services, as required.
+>
+> **Closed out and verified at 5 of 6 on 2026-09-03 02:43.** All 9 services
+> `Running`; `/api/health` ok; five frontends `200`; Bridge `200` with
+> `bridgeRunning`/`sqlConnected`/`assembliesLoaded` true; Connector heartbeat
+> advancing across two samples; all five migrated sinks held open by NSSM
+> (live handles); the API's original sink unchanged, present and held open;
+> zero orphaned wrappers. Evidence: `S2-CLOSEOUT-VERIFICATION.txt`.
+
+#### S2 DEFERRED FINDING — `VerduraAPI` cannot be restarted in isolation
+
+**This is the precise, self-contained record of why S2 stopped at 5 of 6.**
+
+Verified from SCM on 2026-09-03:
+
+```
+VerduraAPI  DependentServices:
+  VerduraKitchenDisplay, VerduraWindowDisplay, VerduraCustomerWebsite,
+  VerduraOrderTablet, VerduraConnector, VerduraAdminConsole      (six)
+
+VerduraAPI  DependOnService: VerduraPostgreSQL
+```
+
+Windows SCM refuses to stop a service while any dependent is running
+(`ERROR_DEPENDENT_SERVICES_RUNNING`). Therefore **any** SCM restart of
+`VerduraAPI` also stops `VerduraConnector` and all five frontends, and each
+must then be restarted and re-verified.
+
+Consequences, stated exactly:
+
+- Relocating the **API** log is *not* a single-service operation, unlike the
+  five frontends, each of which has **zero** dependents and was migrated in
+  isolation.
+- It conflicts with the S2 scope constraint "do not touch … Connector", so it
+  cannot be completed under the 2026-09-03 approval.
+- The alternatives are barred: **direct termination of the API's child
+  process violates §0 rule 3**, and `nssm restart` routes through the same
+  SCM stop, so it is not a workaround.
+
+**What completing it would require:** an approval that *explicitly* accepts a
+`VerduraConnector` stop/start, plus a maintenance window sized for six
+dependent restarts rather than one — with post-restart verification of the
+Connector heartbeat advancing, not merely `Running`.
+
+**Current state is stable and is not a defect.** `VerduraAPI` continues to
+log to
+`C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\api-{stdout,stderr}.log`
+(`REG_EXPAND_SZ`, unchanged, sink held open by NSSM). Nothing is inconsistent
+and nothing is at risk. Each migrated frontend remains independently
+reversible.
+
+**Standing direction recorded 2026-09-03:** this deferred API log relocation
+is **not** to be prioritised on its own. It carries six-service restart risk
+to move one log file. Work that actually removes the `verduraBridge`,
+PostgreSQL and other `Documents`-root dependencies takes precedence; the API
+log should be folded into whichever stage already has to restart the API for
+a substantive reason, rather than being scheduled as its own production
+change.
 
 Planned migration of **stdout/stderr logging for the six NSSM application
 services** away from `verduraBridge\VerduraServerOps` to:
@@ -945,6 +1002,13 @@ approval.
    identification of exactly which 8 scripts are the live-critical set.
 7. **Where S-PG belongs in the sequence.** It is newly planned and
    unapproved; its position is not established and must not be assumed.
+
+Separately open, not a stage identity: **the deferred `VerduraAPI` log
+relocation** — the remaining 1 of 6 of S2. It is blocked by the API's six
+dependent services (including `VerduraConnector`), not by any technical
+failure; see the S2 DEFERRED FINDING in §2. It requires an approval that
+explicitly accepts a Connector restart, and is deliberately **not** to be
+scheduled as a standalone production change.
 
 Separately open, not a stage identity: the INC-001 incident details
 (timestamp, process count, SCM event id) have never been verified against the

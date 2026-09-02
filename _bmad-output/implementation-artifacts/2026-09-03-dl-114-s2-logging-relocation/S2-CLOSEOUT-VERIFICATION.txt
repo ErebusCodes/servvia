@@ -1,0 +1,70 @@
+﻿================ S2 CLOSE-OUT VERIFICATION ================
+time: 2026-09-03 02:43:55 +12:00
+
+=== 1. all Verdura services Running ===
+  PASS  VerduraAdminConsole        Running   pid=22580
+  PASS  VerduraAPI                 Running   pid=16544
+  PASS  VerduraConnector           Running   pid=8300
+  PASS  VerduraCustomerWebsite     Running   pid=13648
+  PASS  VerduraIdealposBridgeSvc   Running   pid=13412
+  PASS  VerduraKitchenDisplay      Running   pid=5572
+  PASS  VerduraOrderTablet         Running   pid=11084
+  PASS  VerduraPostgreSQL          Running   pid=4156
+  PASS  VerduraWindowDisplay       Running   pid=18612
+  PASS  service count = 9 (expected 9)
+
+=== 2a. API health ===
+  PASS  GET /api/health -> 200 {"status":"ok","db":"ok","redis":"ok"}
+
+=== 2b. five frontend listeners ===
+  PASS  port 5173 -> HTTP 200 (521 bytes)
+  PASS  port 5174 -> HTTP 200 (1036 bytes)
+  PASS  port 5175 -> HTTP 200 (1336 bytes)
+  PASS  port 5176 -> HTTP 200 (1336 bytes)
+  PASS  port 5177 -> HTTP 200 (1336 bytes)
+
+=== 2c. Bridge health (Bearer; key never printed) ===
+  PASS  Bridge /api/health -> HTTP 200
+  PASS  bridgeRunning = True
+  PASS  sqlConnected  = True
+  PASS  assembliesLoaded = True
+        (pre-existing, not S2: ipsExePathExists=False tableAssignmentConfirmed=False)
+
+=== 3. five migrated log paths still ACTIVE ===
+  PASS  VerduraAdminConsole AppStdout -> C:\ProgramData\Verdura\logs\services\admin-stdout.log [ExpandString]
+  PASS  VerduraAdminConsole AppStderr -> C:\ProgramData\Verdura\logs\services\admin-stderr.log
+  PASS    stdout file present (178 bytes)
+  PASS    log sink held open by NSSM (live handle)
+  PASS  VerduraCustomerWebsite AppStdout -> C:\ProgramData\Verdura\logs\services\customer-website-stdout.log [ExpandString]
+  PASS  VerduraCustomerWebsite AppStderr -> C:\ProgramData\Verdura\logs\services\customer-website-stderr.log
+  PASS    stdout file present (175 bytes)
+  PASS    log sink held open by NSSM (live handle)
+  PASS  VerduraKitchenDisplay AppStdout -> C:\ProgramData\Verdura\logs\services\kitchen-display-stdout.log [ExpandString]
+  PASS  VerduraKitchenDisplay AppStderr -> C:\ProgramData\Verdura\logs\services\kitchen-display-stderr.log
+  PASS    stdout file present (176 bytes)
+  PASS    log sink held open by NSSM (live handle)
+  PASS  VerduraOrderTablet AppStdout -> C:\ProgramData\Verdura\logs\services\tablet-stdout.log [ExpandString]
+  PASS  VerduraOrderTablet AppStderr -> C:\ProgramData\Verdura\logs\services\tablet-stderr.log
+  PASS    stdout file present (172 bytes)
+  PASS    log sink held open by NSSM (live handle)
+  PASS  VerduraWindowDisplay AppStdout -> C:\ProgramData\Verdura\logs\services\window-display-stdout.log [ExpandString]
+  PASS  VerduraWindowDisplay AppStderr -> C:\ProgramData\Verdura\logs\services\window-display-stderr.log
+  PASS    stdout file present (173 bytes)
+  PASS    log sink held open by NSSM (live handle)
+  PASS  logs\services holds exactly 10 files (found 10)
+
+=== 4. API still writing normally to its ORIGINAL path ===
+  PASS  AppStdout unchanged -> C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\api-stdout.log [ExpandString]
+  PASS  AppStderr unchanged -> C:\Users\Posmate\Documents\verduraBridge\VerduraServerOps\api-stderr.log
+  PASS  api-stdout.log present (2296918 bytes)
+  PASS  api-stderr.log present (5937035 bytes)
+  PASS  API log sink held open by NSSM (live handle)
+  generating API traffic to observe logging...
+  api-stderr.log: 5937035 -> 5937035 bytes (delta 0); lastwrite 14:18:22 -> 14:18:22 UTC
+  PASS  API log did not truncate or regress
+
+=== 5. no orphaned NSSM wrappers ===
+  PASS  orphaned nssm wrappers = 0
+
+=== RESULT ===
+ALL CLOSE-OUT CHECKS PASSED
