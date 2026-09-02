@@ -1,0 +1,830 @@
+Code StockItemCode Description DepartmentCode Discontinue HasVariants Condiment Indirect
+---- ------------- ----------- -------------- ----------- ----------- --------- --------
+1                1 VERDURA SPECIAL 1 0 0 1 0
+10               10 Meze Doner - Mix 1 0 0 1 0
+100              100 Johnnie Walker Red Labal 27 0 0 1 0
+1000             1000 Misc 25 0 NULL 1 0
+101              101 Jim Beam 27 0 0 1 0
+102              102 Gordon Pink 27 0 0 1 0
+103              103 Sila shish Kabab Wrap 37 0 0 1 0
+104              104 Gordon - Dry 27 0 0 1 0
+105              105 Scapegrace Premium 27 0 0 1 0
+106              106 Scapegrace - Black 27 0 0 1 0
+107              107 Bacardi Superior - Light 27 0 0 1 0
+108              108 Coruba Original Dark 27 0 0 1 0
+109              109 BRANDY -Marquise Napoleon 11 0 0 1 0
+11               11 Cheese sauce 24 0 0 1 0
+#< CLIXML
+110              110 Biryani Rice 43 0 0 1 0
+111              111 Chamomile tea 35 0 0 0 0
+112              112 Ghormeh Sabzi 5 0 0 1 0
+113              113 Milk tea - 1000ml 35 0 0 1 0
+114              114 Grill Salmon 5 0 0 1 0
+115              115 Beef Burger - kids 4 0 0 1 0
+116              116 VIMTO 25ML 9 0 0 1 0
+117              117 LABAN LOAF 33 0 0 1 0
+118              118 Awar Qalb 38 0 0 1 0
+119              119 Coke 9 0 0 1 0
+12               12 MEZZE SHISH- KEBAB 1 0 0 1 0
+120              120 Diet Coke 9 0 NULL 1 0
+121              121 Coke No Sugar 9 0 0 1 0
+122              122 Sprite 9 0 NULL 1 0
+123              123 pomergranate juice 9 0 0 1 0
+124              124 Orange Juice 9 0 NULL 1 0
+125              125 Fanta 9 0 NULL 1 0
+126              126 Virgin Mojito 38 0 0 1 0
+127              127 Yerbe Mate tea 35 0 0 0 0
+128              128 Sage tea 35 0 0 0 0
+129              129 Apple Orange Mango 9 0 NULL 1 0
+13               13 Meze -Grilled Chicken 1 0 0 1 0
+130              130 Apple Black Current 9 0 NULL 1 0
+131              131 Apple Feijoa 9 0 NULL 1 0
+132              132 Ginger Beer 9 0 0 1 0
+133              133 Lemon Lime Bitters 9 0 0 1 0
+134              134 Turkish Raki 11 0 0 1 0
+135              135 Whisky 11 0 0 0 0
+136              136 Vodka 11 0 0 1 0
+137              137 Rum 11 0 0 1 0
+138              138 Gin 11 0 0 1 0
+139              139 Tequilla 11 0 0 1 0
+14               14 Shish -  Chicken 1 0 0 1 0
+140              140 Hawke's Bay - peach Bomb 12 0 0 1 0
+141              141 BOOKBINDER 500ML 12 0 0 1 0
+142              142 Stella 12 0 0 1 0
+143              143 Speights 12 0 0 1 0
+144              144 Corona 12 0 0 1 0
+145              145 Heineken 12 0 0 1 0
+146              146 Steinlager 12 0 0 1 0
+147              147 Monteith Apple Cider 12 0 0 1 0
+148              148 Light Beer 12 0 0 1 0
+149              149 Pinot Noir  Misty Cove   Glass 13 0 0 1 0
+15               15 Shish -  Lamb 1 0 0 1 0
+150              150 Pinot Noir  Misty Cove  Bottle 13 0 0 1 0
+151              151 Merlot   ASH RIDGE    Glass 13 0 0 1 0
+152              152 Merlot   ASH RIDGE   Bottle 13 0 0 1 0
+153              153 SHIRAZ  Take to Grave  Glass 13 0 0 1 0
+154              154 SHIRAZ  Take to Grave  Bottle 13 0 0 1 0
+155              155 Sauvignon blanc Bladen  Glass 14 0 0 1 0
+156              156 Sauvignon blanc Bladen  Bottle 14 0 0 1 0
+157              157 No Ice 38 0 0 1 0
+158              158 Chardonnay  LANDMARK -Bottle 14 0 0 1 0
+159              159 Pinot Gris  Brightwater  Glass 14 0 0 1 0
+16               16 Kabab skewer-one 20 0 0 1 0
+160              160 Pinot Gris Brightwater  Bottle 14 0 0 1 0
+161              161 Pinot Gris SML BTL 15 0 NULL 1 0
+162              162 Tea For Two 35 0 0 1 0
+163              163 Sauvignon SML BTL 15 0 NULL 1 0
+164              164 UMM ALI 6 0 0 1 0
+165              165 Dolma 34 0 0 1 0
+166              166 Lindauer Brut Cuvee 15 0 0 1 0
+167              167 Mango Mint 38 0 0 1 0
+168              168 Lindauer Fraise 15 0 0 1 0
+169              169 Turkish Coffee 16 0 0 1 0
+17               17 Iskender -  Lamb 1 0 0 1 0
+170              170 Apple Tea 16 0 0 1 0
+171              171 Hot Lemon & Honey 16 0 0 1 0
+172              172 Tea 16 0 0 1 0
+173              173 Long Black 16 0 0 1 0
+174              174 Short Black 16 0 0 1 0
+175              175 Flat White 16 0 0 1 0
+176              176 Cappuccino 16 0 0 1 0
+177              177 Latte 16 0 0 1 0
+178              178 Mocha 16 0 0 1 0
+179              179 Hot Choclate 16 0 0 1 0
+18               18 Iskender - Chicken 1 0 0 1 0
+180              180 CHICKEN TWISTER 5 0 0 1 0
+181              181 Sila Beef Steak Pita 37 0 0 1 0
+182              182 Milk tea - 500ml 35 0 0 1 0
+183              183 Sila Loaded Pasta -Beef Steak 37 0 0 1 0
+184              184 Lemonade / Limonada 9 0 0 1 0
+185              185 OVER EASY EGG 5 0 0 1 0
+186              186 SMALL FRIES 34 0 0 1 0
+187              187 MONIN - STREWBEERY SYRUP 9 0 0 1 0
+188              188 Small Fattoush salad 34 0 0 1 0
+189              189 Red Bull with Monin syrup 9 0 0 1 0
+19               19 Iskender - Mix 1 0 0 1 0
+190              190 BAMIA 5 0 0 1 0
+191              191 Marag Rubian 5 0 0 1 0
+192              192 Ribeye Steak 5 0 0 1 0
+193              193 VERDURA FEAST PLATER - 10 32 0 0 1 0
+194              194 Mashed potato 43 0 0 1 0
+195              195 extra - chicken 20 0 0 1 0
+196              196 Crispy bread 24 0 0 1 0
+197              197 Beef burgar - kids 4 0 0 1 0
+198              198 FRIED EGG 5 0 0 1 0
+199              199 Sprite with Monin Syrup 9 0 0 1 0
+2                2 SHISH - COMBINATION 1 0 0 1 0
+20               20 Iskender - Grill Chicken 1 0 0 1 0
+200              200 WRAP LARGE - VEG. 19 0 0 1 0
+201              201 KARAK TEA - MEDUIM 35 0 0 1 0
+202              202 FRESHLY SQUEEZED ORANGE JUICE 9 0 0 1 0
+203              203 Caesar Salad 31 0 0 1 0
+204              204 SISHA 20 0 0 1 0
+205              205 Rice Pudding 6 0 0 1 0
+206              206 Grilled fish with rice 43 0 0 1 0
+207              207 Wrap Large - halloumi cheese 19 0 0 1 0
+208              208 MUSHROOM SOUP 43 0 0 1 0
+209              209 Wrap medium- chicken shish 19 0 0 1 0
+21               21 MEZZE SHISH - LAMB 1 0 0 1 0
+210              210 ZUBAIDI 43 0 0 1 0
+211              211 VEGETARIN MEAL 19 0 0 1 0
+212              212 Shish - Kebab 1 0 0 1 0
+213              213 Ice with lemon 9 0 0 1 0
+214              214 Vegeble Mousskka 19 0 0 1 0
+215              215 OMELETTE 5 0 0 1 0
+216              216 Ginger Ale 9 0 0 1 0
+217              217 Extra - Cucumber with yoghurt 20 0 0 1 0
+218              218 VERDURA FEAST PLATER  -5 32 0 0 1 0
+219              219 CHICKEN SHAWARMA 39 0 0 1 0
+22               22 SILA LOADED ON - CHIPS 37 0 0 1 0
+220              220 Bag 19 0 0 1 0
+221              221 RED BULL 9 0 0 1 0
+222              222 SILA LOADED ON - PASTA 37 0 0 0 0
+223              223 BOURI 5 0 0 1 0
+224              224 Truffle Mayo 24 0 0 1 0
+225              225 KARAK TEA - 500ml 9 0 0 1 0
+226              226 SILA MEZZE PLATER -4 20 0 0 1 0
+227              227 Fries 20 0 0 1 0
+228              228 White Rice 20 0 0 1 0
+229              229 Flavoured Rice 20 0 0 1 0
+23               23 Lemon slice 24 0 0 1 0
+230              230 Mardin 20 0 0 1 0
+231              231 Sila Delight Chicken 20 0 0 1 0
+232              232 Butter chicken sauce 20 0 0 1 0
+233              233 Sila Delight Mix 20 0 0 1 0
+234              234 Kunafa with ice cream - Small 6 0 0 1 0
+235              235 EXTRA - DAQOOS 43 0 0 1 0
+236              236 Baklava one postion 20 0 0 0 0
+237              237 Sila mezze Platter -2 20 0 0 1 0
+238              238 Sila Loaded Pasta -Beyond Meat 37 0 0 1 0
+239              239 Any Dips 20 0 NULL 1 0
+24               24 Extra sauce 18 0 0 1 0
+240              240 Halloumi Cheese 18 0 0 1 0
+241              241 Biryani Rice 20 0 0 1 0
+242              242 Baklava 21 0 0 1 0
+243              243 Yoghurt Bavarois 21 0 0 1 0
+244              244 Homemade Turkish Delight 21 0 0 1 0
+245              245 Sila Beyond Meat  Loaded Pasta 37 0 0 1 0
+246              246 Sticky Date Pudding 21 0 0 1 0
+247              247 Chocolate Brownie 21 0 0 1 0
+248              248 Chocolate Fondant 21 0 0 1 0
+249              249 Coke  - - can 330ml 22 0 0 1 0
+25               25 Pump water 22 0 0 1 0
+250              250 Cheese Sauce 18 0 0 1 0
+251              251 Coke No Sugar  -- can 330ml 22 0 0 1 0
+252              252 Sprite - can 330ml 22 0 0 1 0
+253              253 Fanta  - can 330ml 22 0 0 1 0
+254              254 WHOLE GRILL FISH 43 0 0 0 0
+255              255 SALAD 43 0 0 1 0
+256              256 TA - Exttra shish   LAMB 19 0 0 1 0
+257              257 Chicken Mandi 5 0 0 1 0
+258              258 Quarter Lamb Ouzi 5 0 0 1 0
+259              259 TA-Extra shish CHICKEN 19 0 0 1 0
+26               26 Ginger Ale 9 0 0 1 0
+260              260 Ginger Beer - bottel 22 0 0 1 0
+261              261 Lemmon Lime Bitters  - bottel 22 0 0 1 0
+262              262 Apple Juice 22 0 0 1 0
+263              263 Pomegranate Citrus Fizz 38 0 0 1 0
+264              264 Apple Orange Mango - bottel 22 0 0 1 0
+265              265 Apple Blackcurrant  - bottel 22 0 0 1 0
+266              266 Apple Fejoa Juice - bottel 22 0 0 1 0
+267              267 Turkish Coffee 23 0 NULL 1 0
+268              268 extra mushroom 30 0 0 1 0
+269              269 Lamb  biryani 43 0 0 1 0
+27               27 Cigar Borek 1 0 0 1 0
+270              270 TROPICAL SUNRISE 38 0 0 1 0
+271              271 Long Black 23 0 NULL 1 0
+272              272 Short Black 23 0 NULL 1 0
+273              273 Flat White 23 0 0 1 0
+274              274 Cappuccino 23 0 0 1 0
+275              275 Latte 23 0 0 1 0
+276              276 Mocha 23 0 0 1 0
+277              277 GREEN GOODNESS 38 0 0 1 0
+278              278 Lamb Doner Wrap 24 0 NULL 1 0
+279              279 Chicken Doner Wrap 24 0 NULL 1 0
+28               28 Yoghurt with cucumber 18 0 0 1 0
+280              280 Mix Doner Wrap 24 0 NULL 1 0
+281              281 Falafel Wrap 24 0 NULL 1 0
+282              282 Grilled Chicken Wrap 24 0 NULL 1 0
+283              283 Chicken on Chips 24 0 NULL 1 0
+284              284 Falafel on Chips 24 0 NULL 1 0
+285              285 Pita Chicken Kebab 24 0 NULL 1 0
+286              286 Pita Lamb Kebab 24 0 NULL 1 0
+287              287 Pita Mix 24 0 NULL 1 0
+288              288 Pita Falafel Kebab 24 0 NULL 1 0
+289              289 Pita Vegetable Keabab 24 0 NULL 1 0
+29               29 MAABOUCH 43 0 0 1 0
+290              290 Pita Grilled Chicken 24 0 NULL 1 0
+291              291 Sila Special 24 0 NULL 1 0
+292              292 Sila Pirzola 24 0 NULL 1 0
+293              293 Chicken Papyon 24 0 NULL 1 0
+294              294 Grilled Kofta 24 0 NULL 1 0
+295              295 Mix Grill 24 0 NULL 1 0
+296              296 Chicken Meze 24 0 NULL 1 0
+297              297 Lamb Meze 24 0 NULL 1 0
+298              298 Mix Meze 24 0 NULL 1 0
+299              299 Falafel Meze 24 0 NULL 1 0
+3                3 MEZZE SHISH - CHICKEN 1 0 0 1 0
+30               30 With Respbeery 9 0 0 1 0
+300              300 Veg Meze 24 0 NULL 1 0
+301              301 Grilled Chicken Meze 24 0 NULL 1 0
+302              302 Sila Shish Chicken 24 0 NULL 1 0
+303              303 Sila Shish lamb 24 0 NULL 1 0
+304              304 Adana Shish 24 0 NULL 1 0
+305              305 Iskenr Lamb 24 0 NULL 1 0
+306              306 Iskenr Chicken 24 0 NULL 1 0
+307              307 Iskenr Mix 24 0 NULL 1 0
+308              308 Grill Chicken Iskenr 24 0 NULL 1 0
+309              309 Iskenr Vegetable 24 0 NULL 1 0
+31               31 Mango Lassi 9 0 0 1 0
+310              310 Iskenr Falafel 24 0 NULL 1 0
+311              311 Lamb Mousskka 24 0 NULL 1 0
+312              312 Vegetable Mousskka 24 0 NULL 1 0
+313              313 Spinach Borek 24 0 NULL 1 0
+314              314 Chicken Borek 24 0 NULL 1 0
+315              315 Cigar Borek 24 0 NULL 1 0
+316              316 Turkish Chicken Burger 24 0 NULL 1 0
+317              317 Adana Burger 24 0 NULL 1 0
+318              318 Vegetable Burger 24 0 NULL 1 0
+319              319 Grilled Halloumi Cheese 24 0 NULL 1 0
+32               32 Half grilled chicken 43 0 0 1 0
+320              320 Grilled Chicken Salad 24 0 NULL 1 0
+321              321 BBQ Lamb Salad 24 0 NULL 1 0
+322              322 Halloumi Mediteranean Salad 24 0 NULL 1 0
+323              323 Isparata 25 0 NULL 1 0
+324              324 Ottoman 25 0 NULL 1 0
+325              325 Bodrum 25 0 NULL 1 0
+326              326 Aegean 25 0 NULL 1 0
+327              327 Akniz 25 0 NULL 1 0
+328              328 Mardin 25 0 NULL 1 0
+329              329 Sila light Chicken 25 0 NULL 1 0
+33               33 Isparata pizza 1 0 0 1 0
+330              330 Sila light Lamb 25 0 NULL 1 0
+331              331 Sila light Mix 25 0 NULL 1 0
+332              332 Garlic Bread 25 0 NULL 1 0
+333              333 Garlic Mozlla Cheese Bread 25 0 NULL 1 0
+334              334 Bread and Dips 25 0 NULL 1 0
+335              335 Sila Platter 25 0 NULL 1 0
+336              336 Fries 25 0 NULL 1 0
+337              337 Any Dips 25 0 NULL 1 0
+338              338 Halloumi Cheese 25 0 NULL 1 0
+339              339 Bread 25 0 NULL 1 0
+34               34 Hibiscus mix tea 35 0 0 0 0
+340              340 Baklava 26 0 NULL 1 0
+341              341 Cikolata 26 0 NULL 1 0
+342              342 Homema Turkish light 26 0 NULL 1 0
+343              343 Revani 26 0 NULL 1 0
+344              344 Sticky Date Pudding 26 0 NULL 1 0
+345              345 Cheese Cake 26 0 NULL 1 0
+346              346 Chocolate Cake 26 0 NULL 1 0
+347              347 Coke 27 0 NULL 1 0
+348              348 Diet Coke 27 0 NULL 1 0
+349              349 Coke No Sugar 27 0 NULL 1 0
+35               35 Bodrum pizza 1 0 0 1 0
+350              350 Sprite 27 0 NULL 1 0
+351              351 Fanta 27 0 NULL 1 0
+352              352 Pepsi 27 0 NULL 1 0
+353              353 Pepsi Max 27 0 NULL 1 0
+354              354 Mountain w 27 0 NULL 1 0
+355              355 Coke 600ml 27 0 NULL 1 0
+356              356 Coke No Sugar 27 0 NULL 1 0
+357              357 Sprite 600ml 27 0 NULL 1 0
+358              358 Ginger Beer 27 0 NULL 1 0
+359              359 Lemmon Lime Bitters 27 0 NULL 1 0
+36               36 Aegean Pizza 1 0 0 1 0
+360              360 Apple Orange Mango Juice 27 0 NULL 1 0
+361              361 Apple Blackcurrant Juice 27 0 NULL 1 0
+362              362 Apple Fejoa Juice 27 0 NULL 1 0
+363              363 Turkish Coffee 28 0 NULL 1 0
+364              364 Apple Tea 28 0 NULL 1 0
+365              365 Hot Lemon & Honey 28 0 NULL 1 0
+366              366 Tea & Herbal Tea 28 0 NULL 1 0
+367              367 Long Black 28 0 NULL 1 0
+368              368 Short Black 28 0 NULL 1 0
+369              369 Flat White 28 0 NULL 1 0
+37               37 Akdeniz Pizza 1 0 0 1 0
+370              370 Cappuccino 28 0 NULL 1 0
+371              371 Latte 28 0 NULL 1 0
+372              372 Mocha 28 0 NULL 1 0
+373              373 Hot Chocolate 28 0 NULL 1 0
+374              374 pita bread X 2 5 0 0 1 0
+375              375 ORDER MEAL 7 0 0 1 0
+376              376 Gnger ale 9 0 0 1 0
+377              377 HONEY MUSTARD 18 0 0 1 0
+378              378 Kunafa - small 6 0 0 1 0
+379              379 DOOR DESH 26 0 0 1 0
+38               38 Mardin Pizza 1 0 0 1 0
+380              380 FOUL 5 0 0 1 0
+381              381 KARAK TEA - SMALL 35 0 0 1 0
+382              382 REGULAR 43 0 0 1 0
+383              383 DELIVERY FEE - FOR DRIVER 5 0 0 1 0
+384              384 MONIN SYRUP 25ml- RESPBEERY 9 0 0 1 0
+385              385 BASBUSA 6 0 0 1 0
+386              386 MONIN SYRUP 25ml- Blueberry 9 0 0 1 0
+387              387 L & P 9 0 0 1 0
+388              388 Mountain Dew 9 0 0 1 0
+389              389 Sila Pita - shish kabab 37 0 0 1 0
+39               39 Delight - Chicken pizza 1 0 0 1 0
+390              390 KARAK TEA 1000ml 9 0 0 1 0
+391              391 MACARONI BECHARMEL 5 0 0 1 0
+392              392 extra filling OLIVE 20 0 0 1 0
+393              393 ZUBAIDI LARGE SIZE 5 0 0 1 0
+394              394 BAMIA MEAT 5 0 0 1 0
+395              395 shakshuka 5 0 0 1 0
+396              396 EGG ANY STYEL 5 0 0 1 0
+397              397 HONEY MUSTARD 24 0 0 1 0
+398              398 DELIVERY FEE 20 0 0 1 0
+399              399 Tea for two with mint 35 0 0 1 0
+4                4 Lassi 9 0 0 1 0
+40               40 Delight - Lamb pizza 1 0 0 1 0
+400              400 Pistachio Baklava 6 0 0 1 0
+401              401 Bread 20 0 0 1 0
+402              402 Cucumber slices 20 0 0 1 0
+403              403 BAKLAVA - 3 PICES 6 0 0 1 0
+404              404 Buffalo Ranch 18 0 0 1 0
+405              405 Sila Beyond Meat - Wrap 37 0 0 1 0
+406              406 Onion slice 20 0 0 1 0
+407              407 Hummus bil Lahme 5 0 0 1 0
+408              408 Mountain Dew  - can 330ml 22 0 0 1 0
+409              409 pepperoni pizza 33 0 0 1 0
+41               41 Delight - Mix pizza 1 0 0 1 0
+410              410 Half  Lamb Ouzi 43 0 0 1 0
+411              411 extra nuts 43 0 0 1 0
+412              412 CINAMON SCROLL 38 0 0 1 0
+413              413 KUNAFA - LARGE 6 0 0 1 0
+414              414 POACHED 5 0 0 1 0
+415              415 Truffle Mayo 18 0 0 1 0
+416              416 Sila Beyond Meat  Loaded chips 37 0 0 1 0
+417              417 Butter chicken 43 0 0 1 0
+418              418 Classic Mojito 38 0 0 1 0
+419              419 Isparata 30 0 NULL 1 0
+42               42 Hummus 17 0 0 1 0
+420              420 Ottoman 30 0 NULL 1 0
+421              421 Bodrum 30 0 NULL 1 0
+422              422 Aegean 30 0 NULL 1 0
+423              423 Akdeniz 30 0 NULL 1 0
+424              424 Mardin 30 0 NULL 1 0
+425              425 Sila light Chicken 30 0 NULL 1 0
+426              426 Sila light Lamb 30 0 NULL 1 0
+427              427 Sila light Mix 30 0 NULL 1 0
+428              428 Garlic Bread 30 0 NULL 1 0
+429              429 Garlic Mozlla Cheese Bread 30 0 NULL 1 0
+43               43 Cacik 17 0 NULL 1 0
+430              430 Bread and Dips 30 0 NULL 1 0
+431              431 Sila Platter 30 0 NULL 1 0
+432              432 Fries 39 0 NULL 1 0
+433              433 Any Dips 39 0 NULL 1 0
+434              434 Halloumi Cheese 39 0 NULL 1 0
+435              435 Bread 39 0 NULL 1 0
+436              436 Baklava 31 0 NULL 1 0
+437              437 Cikolata 31 0 NULL 1 0
+438              438 Homemade Turkish light 31 0 NULL 1 0
+439              439 Revani 31 0 NULL 1 0
+44               44 Tabouleh 17 0 0 1 0
+440              440 Sticky Date Pudding 31 0 NULL 1 0
+441              441 Cheese Cake 31 0 NULL 1 0
+442              442 Chocolate Cake 31 0 NULL 1 0
+443              443 Coke 32 0 NULL 1 0
+444              444 Diet Coke 32 0 NULL 1 0
+445              445 Coke No Sugar 32 0 NULL 1 0
+446              446 Sprite 32 0 NULL 1 0
+447              447 Fanta 32 0 NULL 1 0
+448              448 Pepsi 32 0 NULL 1 0
+449              449 Pepsi Max 32 0 NULL 1 0
+45               45 Beetroot Dip 17 0 NULL 1 0
+450              450 Mountain w 32 0 NULL 1 0
+451              451 Coke 600ml 32 0 NULL 1 0
+452              452 Coke No Sugar 32 0 NULL 1 0
+453              453 Sprite 600ml 32 0 NULL 1 0
+454              454 Ginger Beer 32 0 NULL 1 0
+455              455 Lemmon Lime Bitters 32 0 NULL 1 0
+456              456 Apple Orange Mango Juice 32 0 NULL 1 0
+457              457 Apple Blackcurrant Juice 32 0 NULL 1 0
+458              458 Apple Fejoa Juice 32 0 NULL 1 0
+459              459 Turkish Coffee 33 0 NULL 1 0
+46               46 Walnut Dip 17 0 NULL 1 0
+460              460 Apple Tea 33 0 NULL 1 0
+461              461 Hot Lemon & Honey 33 0 NULL 1 0
+462              462 Tea & Herbal Tea 33 0 NULL 1 0
+463              463 Long Black 33 0 NULL 1 0
+464              464 Short Black 33 0 NULL 1 0
+465              465 Flat White 33 0 NULL 1 0
+466              466 Cappuccino 33 0 NULL 1 0
+467              467 Latte 33 0 NULL 1 0
+468              468 Mocha 33 0 NULL 1 0
+469              469 Hot Chocolate 33 0 NULL 1 0
+47               47 Yoghurt Drink Ayran 38 0 0 1 0
+470              470 Special sauce 18 0 0 1 0
+471              471 Hot Chilli 18 0 NULL 1 0
+472              472 Tahini 18 0 0 1 0
+473              473 Garlic Sauce -  Toum 18 0 0 1 0
+474              474 Large Fries 34 0 0 1 0
+475              475 EXTRA - MARAG POTATO 43 0 0 1 0
+476              476 Murabyan Rice 20 0 0 1 0
+477              477 Pimajum 3 0 NULL 1 0
+478              478 Smirnoff 27 0 0 1 0
+479              479 Absolut Vanilla 27 0 0 1 0
+48               48 Babaganush 17 0 NULL 1 0
+480              480 Finlandia 27 0 0 1 0
+481              481 LIQUEURS 11 0 0 1 0
+482              482 Sweet Vermouth 27 0 0 1 0
+483              483 Angostura Bitters 27 0 0 1 0
+484              484 Kahlua 27 0 0 1 0
+485              485 Cachaca Sugar Cane 27 0 0 1 0
+486              486 Triple Sec 27 0 0 1 0
+487              487 Calle 23 Blanco 27 0 0 1 0
+488              488 Pepe Lopez 27 0 0 1 0
+489              489 The Daiquiri 38 0 0 1 0
+49               49 Garlic Bread 3 0 0 1 0
+490              490 Espresso Martini 38 0 0 1 0
+491              491 Margarita 38 0 0 1 0
+492              492 Turkish Delight 38 0 0 1 0
+493              493 Anaar 38 0 0 1 0
+494              494 Manhattan 38 0 0 1 0
+495              495 Emerson Pilsner Tap 10 0 0 1 0
+496              496 Sila Loaded  chips -Beef Steak 37 0 0 1 0
+497              497 Extra Jalapino 20 0 0 1 0
+498              498 Earl Grey Tea 35 0 0 0 0
+499              499 English Breakfast Tea 35 0 0 0 0
+5                5 Hummus 18 0 0 1 0
+50               50 pump water - 750ml 9 0 0 1 0
+500              500 Lime Blossom 35 0 0 0 0
+501              501 Iranian Saffron Black 35 0 0 1 0
+502              502 Jasmine Tea 35 0 0 0 0
+503              503 Pepperment Tea 35 0 0 1 0
+504              504 Infusion Iranian Saffron 35 0 0 0 0
+505              505 Paloma 38 0 0 1 0
+506              506 Cartel Special 38 0 0 1 0
+507              507 with cranberry juice 38 0 0 1 0
+508              508 Turkish Delight Each 21 0 0 1 0
+509              509 Saffron Rice 20 0 0 1 0
+51               51 Ice Cream scoop 20 0 0 1 0
+510              510 HUMMUS WITH BREAD 28 0 0 1 0
+511              511 MUHALLEBI 6 0 0 1 0
+512              512 DAQOOS 43 0 0 1 0
+513              513 Pimajum 20 0 NULL 1 0
+514              514 Antipodes Sparking Water 1000 9 0 0 1 0
+515              515 KUNAFA WITH NUTELLA- SMALL 6 0 0 1 0
+516              516 Lamb shank - MOZZA 43 0 0 1 0
+517              517 NO HASHEW 43 0 0 1 0
+518              518 SMALL 33 0 NULL 1 0
+519              519 MEDIUM 33 0 NULL 1 0
+52               52 Mezza Platter - 2 1 0 0 1 0
+520              520 LARGE 33 0 NULL 1 0
+521              521 SMALL 28 0 NULL 1 0
+522              522 MEDIUM 28 0 NULL 1 0
+523              523 LARGE 28 0 NULL 1 0
+524              524 V - Vegetarian 100 0 NULL 1 0
+525              525 GF - Gluten Free 100 0 0 1 0
+526              526 DF - Dairy Free 100 0 0 1 0
+527              527 VE 100 0 NULL 1 0
+528              528 CGF - Can Gluten Free 100 0 NULL 1 0
+529              529 CDF - Can Dairy Free 100 0 NULL 1 0
+53               53 Garlic Yoghurt Sauce 18 0 0 1 0
+530              530 TIPS 100 0 0 1 0
+531              531 BYO 36 0 0 1 0
+532              532 SIDES 34 0 0 1 0
+533              533 Spicy Aioli 18 0 0 1 0
+534              534 Chicken biryani 43 0 0 1 0
+535              535 extra filling - TOMATO 20 0 0 1 0
+536              536 MURABYAN SHRIMP 43 0 0 1 0
+537              537 extra filling- ZATER 20 0 0 1 0
+538              538 Sabzi 5 0 0 1 0
+539              539 Emerson London porter 12 0 0 1 0
+54               54 Sweet Chilli Sauce 18 0 0 1 0
+540              540 WITH HASHEW 43 0 0 1 0
+541              541 YOGHURT 43 0 0 1 0
+542              542 Wrap Lamb - medium 19 0 0 1 0
+543              543 Wrap- chicken medium 19 0 0 1 0
+544              544 paratha x 1 5 0 0 1 0
+545              545 LARGE 43 0 0 1 0
+546              546 Lamb on Chips 24 0 NULL 1 0
+547              547 Mix on Chips 24 0 NULL 1 0
+548              548 Falafel Wrap Kids 4 0 NULL 1 0
+549              549 Soda WATER 9 0 NULL 1 0
+55               55 Mayo 18 0 NULL 1 0
+550              550 TONIC WATER 9 0 NULL 1 0
+551              551 Sila Lamb wrap 37 0 0 1 0
+552              552 Sila Chicken wrap 37 0 0 1 0
+553              553 Sila Mix wrap 37 0 0 1 0
+554              554 Sila Falafel Wrap 37 0 0 1 0
+555              555 Sila Grilled chicken Wrap 37 0 0 1 0
+556              556 Sila Loaded chips- Beyond Meat 37 0 0 1 0
+557              557 Sila Beyond Meat - Pita 37 0 0 1 0
+558              558 ARABIC COFFEE       600-750 ml 35 0 0 1 0
+559              559 BRUT - 14 0 0 1 0
+56               56 BBQ 18 0 0 1 0
+560              560 sila Pita - chicken 37 0 0 1 0
+561              561 sila Pita - lamb 37 0 0 1 0
+562              562 sila Pita - mix 37 0 0 1 0
+563              563 sila Pita -Falafel 37 0 0 1 0
+564              564 ICED AMERICANO 9 0 0 1 0
+565              565 Sila Pita - Grilled chicken 37 0 0 1 0
+566              566 Antipodes Sparkling 500ml 9 0 0 1 0
+567              567 Soda Water 38 0 0 0 0
+568              568 Tonic Water 38 0 0 0 0
+569              569 Sparkling Water 38 0 0 1 0
+57               57 Tomato Sauce 18 0 0 1 0
+570              570 Lemonade/ Sprite 38 0 0 1 0
+571              571 Coco Cola 38 0 0 1 0
+572              572 MARAG POTATO 43 0 0 1 0
+573              573 Special Dessert Of the day 6 0 NULL 1 0
+574              574 Lahmacun 3 0 NULL 0 0
+575              575 WRAP MEDIUM - VEG. 19 0 0 0 0
+576              576 FALAFEL 34 0 0 1 0
+577              577 Sigara Borek 34 0 0 1 0
+578              578 TIRAMISU 6 0 0 1 0
+579              579 SCRAMBLED 5 0 0 1 0
+58               58 Garlic Aioli 18 0 0 1 0
+580              580 PARATHA X 3 5 0 0 1 0
+581              581 TA Sides 19 0 0 0 0
+582              582 UE-Sides 39 0 NULL 1 0
+583              583 Set Menu $30 40 0 NULL 0 0
+584              584 Heineken Zero- 0% 12 0 0 1 0
+585              585 Marag potato 34 0 0 1 0
+586              586 Menu Log Misc 19 0 NULL 0 0
+587              587 Special menu 19 0 0 1 0
+588              588 Spicy Aioli 24 0 0 1 0
+589              589 TAKEAWAY MISC 19 0 NULL 0 0
+59               59 Lamb Shish Kids 4 0 NULL 1 0
+590              590 UBER 29 0 0 0 0
+591              591 VIMTO DRINKS 38 0 0 1 0
+592              592 SAMBUSA  VEG 28 0 0 1 0
+593              593 SAMBUSA CHEESE 28 0 0 1 0
+594              594 SOUP LENTIL 28 0 0 1 0
+595              595 Turkish Delight 500gm Box 21 0 0 0 0
+596              596 MEZZE SHISH - COMBINATION 1 0 0 0 0
+597              597 Lemon lime bitters 9 0 0 1 0
+598              598 SILA HALLOUMI WRAP 37 0 0 1 0
+599              599 SILA CHICKEN SHISH WRAP 37 0 0 1 0
+6                6 Cardamom tea 35 0 0 0 0
+60               60 Chicken Shish Kids 4 0 0 1 0
+600              600 SILA PITA - HALLOUMI CHEESE 37 0 0 1 0
+601              601 EXTRA CHEESE 18 0 0 1 0
+602              602 white RICE 34 0 0 1 0
+603              603 ARABIC TABBOULEH 34 0 0 1 0
+604              604 BEETROOT 34 0 0 1 0
+605              605 Buffalo Ranch 24 0 0 1 0
+606              606 CACIK 34 0 0 1 0
+607              607 BABAGANUSH 34 0 0 1 0
+608              608 Mezza platter - 4 1 0 0 1 0
+609              609 LARGE - CIGARA BOREK CHEESE 3 0 0 1 0
+61               61 MINT WITH BLACK TEA 35 0 0 1 0
+610              610 LARGE - CIGARA BOREK MEAT 3 0 0 1 0
+611              611 Fried Kibbe 3 0 0 1 0
+612              612 Tomato Sauce 24 0 0 1 0
+613              613 BERRY OVERLORD 38 0 0 1 0
+614              614 sila pita - shish chicken 37 0 0 1 0
+615              615 Garlic yoghurt 24 0 0 1 0
+616              616 Sweet chilli 24 0 0 1 0
+617              617 Mayo 24 0 0 1 0
+618              618 BBQ 24 0 0 1 0
+619              619 Garlic Aioli 24 0 0 1 0
+62               62 Kabab Burger Kids 4 0 0 1 0
+620              620 special sauce 24 0 0 1 0
+621              621 TAHINI SAUCE 24 0 0 1 0
+622              622 HUMMUS 24 0 0 1 0
+623              623 hot chilli 24 0 0 1 0
+624              624 Chicken 37 0 0 1 0
+625              625 Lamb 37 0 0 1 0
+626              626 Falafel 37 0 0 1 0
+627              627 BEEF 20 0 0 1 0
+628              628 COMMANDO FRIES 5 0 0 1 0
+629              629 Roasted Vegetables 20 0 0 1 0
+63               63 Chicken Burger Kids 4 0 0 1 0
+630              630 Cacik 17 0 0 1 0
+631              631 Tabouleh 17 0 0 1 0
+632              632 Beetroot Dip 17 0 0 1 0
+633              633 Babaganush 17 0 0 1 0
+634              634 With Ice 38 0 0 1 0
+635              635 ON THE PLATE - NO BREAD 37 0 0 1 0
+636              636 Laban 9 0 0 1 0
+637              637 Extra - yought 20 0 0 1 0
+638              638 Laban with mint 9 0 0 1 0
+639              639 ADD  EXTRA CHEESE 20 0 0 1 0
+64               64 Chicken nuggets Kids 4 0 0 1 0
+640              640 London Porter 12 0 0 1 0
+641              641 Paynter's Alchemist Cider 12 0 0 1 0
+642              642 SHINING PEAK 12 0 0 1 0
+643              643 Duncan's pale Ale 12 0 0 1 0
+644              644 Emerson's Hazed & Confused 12 0 0 1 0
+645              645 Misc 100 0 0 1 0
+646              646 Service Charge 100 0 0 0 0
+647              647 Bread And Dips 28 0 0 1 0
+648              648 Hummus Beiruty 28 0 0 1 0
+649              649 GUACAMOLE WITH CORN CHIPS 28 0 0 1 0
+65               65 lamb shish - kids 4 0 0 1 0
+650              650 MUTABAL WITH KIBBE 28 0 0 1 0
+651              651 VINE LEAVES [ Dolma] 28 0 0 1 0
+652              652 CYPRUS MEATBALLS 28 0 0 1 0
+653              653 BATTATA HARRA 28 0 0 1 0
+654              654 PRAWNS SIGARA BÖREGI 28 0 0 1 0
+655              655 SPICY WINGS 28 0 0 1 0
+656              656 CRISPY DYNAMITE SHRIMPS 28 0 0 1 0
+657              657 ARAYES & CHEESE 28 0 0 1 0
+658              658 CAULIFLOWER FRITTERS 28 0 0 1 0
+659              659 Muhammara| 17 0 0 1 0
+66               66 Meat on Chips Kids 4 0 0 1 0
+660              660 Mutable| 17 0 0 1 0
+661              661 Tzatziki 17 0 0 1 0
+662              662 AVOCADO HALLOUMI 31 0 0 0 0
+663              663 CHICKEN AVOCADO SALAD 31 0 0 0 0
+664              664 FATTOUSH SALAD 31 0 0 0 0
+665              665 GRILLED HALLOUMI CHEESE 31 0 0 0 0
+666              666 VERDURA SALAD 31 0 0 0 0
+667              667 FALAFEL SALAD 31 0 0 0 0
+668              668 SHISH TAOUK TAVUK SIS) 30 0 0 1 0
+669              669 PERSIAN KOOBIDEH 30 0 0 1 0
+67               67 Garlic sauce -Toum 24 0 0 1 0
+670              670 LAHAM MESHWI 30 0 0 1 0
+671              671 MIXED GRILL 30 0 0 1 0
+672              672 ALI NAZIK 30 0 0 1 0
+673              673 GREEK EGGPLANT LAMB MOUSSAKA 30 0 0 1 0
+674              674 PENNE PASTA 30 0 0 1 0
+675              675 FETTUCCINE ALFREDO 30 0 0 1 0
+676              676 CHICKEN BOREKS 30 0 0 1 0
+677              677 HAMSA KUWAITI 30 0 0 1 0
+678              678 FISH OF THE DAY 30 0 0 1 0
+679              679 MIGHTY ANGUS BEEF BURGER 30 0 0 1 0
+68               68 Lamb 4 0 NULL 1 0
+680              680 CHICKEN BURGER 30 0 0 1 0
+681              681 VEGGIE BURGER 30 0 0 1 0
+682              682 KOOBIDEH SANDWICH 30 0 0 1 0
+683              683 SHISH TAOUK SANDWICH 30 0 0 1 0
+684              684 GEMÜSE BERLIN SANDWICH 30 0 0 1 0
+685              685 chicken 18 0 0 1 0
+686              686 steak 18 0 0 1 0
+687              687 Laham Meshwi 30 0 0 1 0
+688              688 Shish Taouk 30 0 0 1 0
+689              689 koobideh 30 0 0 1 0
+69               69 Chicken 4 0 NULL 1 0
+690              690 Halloumi 30 0 0 1 0
+691              691 Grill Chicken 30 0 0 1 0
+692              692 Grill Prawns 30 0 0 1 0
+693              693 VERDURA SPECIAL MEZZE PLATTER 32 0 0 1 0
+694              694 VERDURA GRILL PLATER 32 0 0 1 0
+695              695 VERDURA COUPLE PLATER 32 0 0 1 0
+696              696 VERDURA COMBO PLATER 32 0 0 1 0
+697              697 VERDURA FAMILY CHAR- GRILL PLA 32 0 0 1 0
+698              698 Meat Kibbeh 42 0 0 1 0
+699              699 Veg Sanbusak 42 0 0 1 0
+7                7 Shish Mix Grill 1 0 0 1 0
+70               70 Mix 4 0 NULL 1 0
+700              700 GARLIC PIDE 33 0 0 1 0
+701              701 GARLIC CHEESE PIDE 33 0 0 1 0
+702              702 CHEESE PIDE 33 0 0 1 0
+703              703 SPICY MUHAMMARA LOAF 33 0 0 1 0
+704              704 ZAATAR LOAF 33 0 0 1 0
+705              705 HALLOUMI LOAF 33 0 0 1 0
+706              706 LEBANESE LAHM BIL AJIN 33 0 0 1 0
+707              707 CLASSIC MARGHERITA PIZZA 33 0 0 1 0
+708              708 CHICKEN BALLISTA PIZZA 33 0 0 1 0
+709              709 VEGETARIAN BALLISTA PIZZA 33 0 0 1 0
+71               71 Sila Beef Steak Wrap 37 0 0 1 0
+710              710 PESTO CHICKEN PIZZA 33 0 0 1 0
+711              711 SEBZELI PIZZA 33 0 0 1 0
+712              712 SPICY MEDITERRANEAN PIZZA 33 0 0 1 0
+713              713 VERDURA PIZZA 33 0 0 1 0
+714              714 CHICKEN TOUMI Wrap 39 0 0 1 0
+715              715 STEAKMOUS Wrap 39 0 0 1 0
+716              716 STEAKWARMA Wrap 39 0 0 1 0
+717              717 BUFFALO CHICKEN Wrap 39 0 0 1 0
+718              718 GO FAJITA Wrap 39 0 0 1 0
+719              719 FALAFA - GUAC Fusion Wrap 39 0 0 1 0
+72               72 Chocolate Cake kids 5 0 0 1 0
+720              720 MEZZA WRAP 39 0 0 1 0
+721              721 MR DRAPER Wrap 39 0 0 1 0
+722              722 BEIRUT CHICKEN Wrap 39 0 0 1 0
+723              723 BEYOND Mr. Draper Wrap 39 0 0 1 0
+724              724 BEYOND STEAKMOUS Wrap 39 0 0 1 0
+725              725 BEYOND STEAKWARMA Wrap 39 0 0 1 0
+726              726 Steak 39 0 0 1 0
+727              727 Chicken 39 0 0 1 0
+728              728 Verdura Hummus 34 0 0 1 0
+729              729 Muhammara 34 0 0 1 0
+73               73 Warm Chocolate Brownie kids 5 0 0 1 0
+730              730 Tzatziki 34 0 0 1 0
+731              731 Flavoured rice 34 0 0 1 0
+732              732 Mutable 34 0 0 1 0
+733              733 HALLOUMI 34 0 0 1 0
+734              734 Turkish Pide Basket  full 34 0 0 1 0
+735              735 Chicken Skewer -ONE 20 0 0 1 0
+736              736 Lamb Skewer - ONE 20 0 0 1 0
+737              737 Green Salad 34 0 0 1 0
+738              738 Lokum Turkish Delight 6 0 0 1 0
+739              739 Yoghurt Bavarois 6 0 0 1 0
+74               74 Vanilla Ice Cream W Choc 5 0 NULL 1 0
+740              740 Trio Of Icecream 6 0 0 1 0
+741              741 Maple Syrup Walnut 6 0 0 1 0
+742              742 Vanilla Bean 6 0 0 1 0
+743              743 Roasted White Chocolate &amp; 6 0 0 1 0
+744              744 BREAD AND DIPS 41 0 0 1 0
+745              745 HUMMUS BEIRUTY 41 0 0 1 0
+746              746 GUACAMOLE WITH CORN CHIPS 41 0 0 1 0
+747              747 MUTABAL WITH KIBBE 41 0 0 1 0
+748              748 VINE LEAVES [ Dolma] 41 0 0 1 0
+749              749 CYPRUS MEATBALLS 41 0 0 1 0
+75               75 Vanilla Ice Cream W Caramel 5 0 NULL 1 0
+750              750 BATTATA HARRA 41 0 0 1 0
+751              751 PRAWNS SIGARA BÖREGI 41 0 0 1 0
+752              752 SPICY WINGS 41 0 0 1 0
+753              753 CRISPY DYNAMITE SHRIMPS 41 0 0 1 0
+754              754 ARAYES &CHEESE 41 0 0 1 0
+755              755 CAULIFLOWER FRITTERS 41 0 0 1 0
+756              756 AVOCADO HALLOUMI 41 0 0 1 0
+757              757 CHICKEN AVOCADO SALAD 41 0 0 1 0
+758              758 FATTOUSH SALAD 41 0 0 1 0
+759              759 GRILLED HALLOUMI CHEESE 41 0 0 1 0
+76               76 Baklava 6 0 0 1 0
+760              760 VERDURA SALAD 41 0 0 1 0
+761              761 FALAFEL SALAD/ PLATE 41 0 0 1 0
+762              762 SHISH TAOUK 41 0 0 1 0
+763              763 PERSIAN KOOBIDEH 41 0 0 1 0
+764              764 LAHAM MESHWI 41 0 0 1 0
+765              765 MIXED GRILL 41 0 0 1 0
+766              766 ALI NAZIK 41 0 0 1 0
+767              767 GREEK EGGPLANT LAMB MOUSSAKA 41 0 0 1 0
+768              768 PENNE PASTA WITH SHRIMPS AND P 41 0 0 1 0
+769              769 FETTUCCINE ALFREDO 41 0 0 1 0
+77               77 chocoLate brownie 6 0 0 1 0
+770              770 CHICKEN BOREKS 41 0 0 1 0
+771              771 HAMSA KUWAITI 41 0 0 1 0
+772              772 MIGHTY ANGUS BEEF BURGER 41 0 0 1 0
+773              773 CHICKEN BURGER 41 0 0 1 0
+774              774 VEGGIE BURGER 41 0 0 1 0
+775              775 KOOBIDEH SANDWICH 41 0 0 1 0
+776              776 SHISH TAOUK SANDWICH 41 0 0 1 0
+777              777 GEMÜSE BERLIN SANDWICH 41 0 0 1 0
+778              778 VERDURA SPECIAL MEZZE PLATTER 41 0 0 1 0
+779              779 VERDURA GRILL PLATER 41 0 0 1 0
+78               78 Turkish Delight 6 0 0 1 0
+780              780 VERDURA COUPLE PLATER 41 0 0 1 0
+781              781 VERDURA COMBO PLATER 41 0 0 1 0
+782              782 VERDURA FAMILY CHAR- GRILL PLA 41 0 0 1 0
+783              783 GARLIC PIDE 41 0 0 1 0
+784              784 GARLIC CHEESE PIDE 41 0 0 1 0
+785              785 CHEESE PIDE 41 0 0 1 0
+786              786 SPICY MUHAMMARA LOAF 41 0 0 1 0
+787              787 ZA'ATAR LOAF 41 0 0 1 0
+788              788 HALLOUMI LOAF 41 0 0 1 0
+789              789 LEBANESE LAHM BIL AJIN 41 0 0 1 0
+79               79 chocolate fondant 6 0 0 1 0
+790              790 CLASSIC MARGHERITA PIZZA 41 0 0 1 0
+791              791 CHICKEN BALLISTA PIZZA 41 0 0 1 0
+792              792 VEGETARIAN BALLISTA PIZZA 41 0 0 1 0
+793              793 PESTO CHICKEN PIZZA 41 0 0 1 0
+794              794 SEBZELI   PIZZA 41 0 0 1 0
+795              795 SPICY MEDITERRANEAN PIZZA 41 0 0 1 0
+796              796 VERDURA PIZZA 41 0 0 1 0
+797              797 CHICKEN TOUMI 41 0 0 1 0
+798              798 STEAKMOUS 41 0 0 1 0
+799              799 STEAKWARMA 41 0 0 1 0
+8                8 Meze Doner - Chicken 1 0 0 1 0
+80               80 Sticky Date Pudding 6 0 0 1 0
+800              800 BUFFALO CHICKEN 41 0 0 1 0
+801              801 GO FAJITA 41 0 0 1 0
+802              802 FALAFA - GUAC Fusion 41 0 0 1 0
+803              803 MEZZA WRAP 41 0 0 1 0
+804              804 MR DRAPER 41 0 0 1 0
+805              805 BEIRUT CHICKEN 41 0 0 1 0
+806              806 BEYOND Mr. Draper 41 0 0 1 0
+807              807 BEYOND STEAKMOUS 41 0 0 1 0
+808              808 BEYOND STEAKWARMA 41 0 0 1 0
+809              809 Hummus 41 0 0 1 0
+81               81 FELAFEL SHAWARMA /  SANDWICH 39 0 0 1 0
+810              810 Muhammara 41 0 0 1 0
+811              811 Fries 41 0 0 1 0
+812              812 Tzatziki 41 0 0 1 0
+813              813 White rice 41 0 0 1 0
+814              814 Flavoured rice 41 0 0 1 0
+815              815 Mutable 41 0 0 1 0
+816              816 Arabic Tabbouleh 41 0 0 1 0
+817              817 Turkish Pide Basket 41 0 0 1 0
+818              818 Mini Sigara Börek 41 0 0 1 0
+819              819 Chicken Skewer - ONE 41 0 0 1 0
+82               82 MEAT SHAWARMA 39 0 0 1 0
+820              820 Lamb Skewer - ONE 41 0 0 1 0
+821              821 Green Salad 41 0 0 1 0
+822              822 Turkish Pide Basket  half 34 0 0 1 0
+823              823 Chicken Maschboos 43 0 0 1 0
+824              824 SMALL 43 0 0 1 0
+83               83 LINDEAUR    BRUT-S  BOTTLE 15 0 0 1 0
+84               84 Sauvignon  Lirrle Angel  Glass 14 0 0 1 0
+85               85 Sauvignon  Lirrle Angel Bottle 14 0 0 1 0
+86               86 ROSE -  GEORGES ROAD  GLASS 14 0 0 1 0
+87               87 ROSE  GEORGES ROAD - BOTTLE 14 0 0 1 0
+88               88 CHARDONNAY    Ash Ridge  Glass 14 0 0 1 0
+89               89 CHARDONNAY   Ash Ridge  Bottle 14 0 0 1 0
+9                9 Meze Doner - LAMB 1 0 0 1 0
+90               90 Pinot Gris  Misty Cove  Bottle 14 0 0 1 0
+91               91 Pinot Gris  Misty Cove   Glass 14 0 0 1 0
+92               92 Pinot Noir   Goldfields  Glass 13 0 0 1 0
+93               93 Pinot Noir  Goldfields  Bottle 13 0 0 1 0
+94               94 Pinot Noir   Providore  Bottle 13 0 0 1 0
+95               95 Merlot Cabernet Te Awanga Bott 13 0 0 1 0
+96               96 Jack Daniel's 27 0 0 1 0
+97               97 Jameson's 27 0 0 1 0
+98               98 Canadian Clab 27 0 0 1 0
+99               99 Johnnie Walker Black Labal 27 0 0 1 0
+Deleted Deleted Deleted Stock Items 10000 0 NULL 0 0
+<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T><T>System.Object</T></TN><MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV><AI>0</AI><Nil /><PI>-1</PI><PC>-1</PC><T>Completed</T><SR>-1</SR><SD> </SD></PR></MS></Obj></Objs>

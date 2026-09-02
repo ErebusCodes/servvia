@@ -1,0 +1,12 @@
+SET NOCOUNT ON;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'MIGHTY ANGUS BEEF BURGER' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'Baklava' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'GARLIC CHEESE PIDE' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'HALLOUMI LOAF' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'PESTO CHICKEN PIZZA' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'SPICY MEDITERRANEAN PIZZA' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'GREEK EGGPLANT LAMB MOUSSAKA' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'CHICKEN AVOCADO SALAD' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'pita bread X 2' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'Kabab skewer-one' ORDER BY Code;
+SELECT Code, Description, DepartmentCode, Discontinue FROM dbo.StockItems WHERE Description = N'Chicken Maschboos' ORDER BY Code;
