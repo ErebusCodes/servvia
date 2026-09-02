@@ -1,9 +1,12 @@
 # DL-114 — Verdura infrastructure migration runbook
 
 **Status: S0 and S1 are COMPLETE and verified read-only on 2026-09-03.
-S2 is APPROVED and 5 of its 6 services are migrated and verified; the
-`VerduraAPI` step is blocked and S2 is NOT complete (§S2). Every other stage
-is PLANNING ONLY and UNAPPROVED — none has been executed.**
+S2 is COMPLETE at 6 of 6 — the deferred `VerduraAPI` step was executed inside
+the approved combined PostgreSQL maintenance window on 2026-09-03 (§S-PG-EXEC).
+S-PG is COMPLETE and verified: PostgreSQL now runs from
+`C:\Program Files\Verdura\PostgreSQL\18` against
+`C:\ProgramData\Verdura\postgres\data`. Every other stage is PLANNING ONLY
+and UNAPPROVED — none has been executed.**
 No uncompleted production-affecting stage may run without separate, explicit,
 per-stage approval and, where service lifecycle changes are involved, the
 maintenance-window controls defined in this runbook.
@@ -128,14 +131,14 @@ Scope: infrastructure relocation and `verduraBridge` retirement only. It does
 | --- | --- | --- |
 | **S0** | Immutable pre-migration baseline | **COMPLETE** — captured 2026-09-02 14:10:04–14:11:33; verified 2026-09-03 |
 | **S1** | `C:\ProgramData\Verdura\` runtime skeleton creation + permission validation | **COMPLETE** — created 2026-09-02 14:08:11; verified 2026-09-03 |
-| **S2** | Service stdout/stderr logging relocation to `C:\ProgramData\Verdura\logs\services\` | **APPROVED and PARTLY EXECUTED 2026-09-03 — 5 of 6 services complete and verified; `VerduraAPI` NOT migrated, blocked by a scope conflict (see §S2)** |
+| **S2** | Service stdout/stderr logging relocation to `C:\ProgramData\Verdura\logs\services\` | **COMPLETE 2026-09-03 — 6 of 6. The five frontends were migrated individually; `VerduraAPI` was completed inside the combined PostgreSQL window that already required its restart (§S-PG-EXEC)** |
 | **S3** | *Identity not established* | **UNAPPROVED** |
 | **S4** | Includes migration of the 8 live-critical ops scripts into `verdura_MVP\windows-deploy\ops\` | **UNAPPROVED** |
 | **S5** | *Identity not established* | **UNAPPROVED** |
 | **S6** | **Connector cutover** (targets `IPS.exe`) | **UNAPPROVED** |
 | **S7 – S9** | *Identities not established* | **UNAPPROVED** |
 | *(provisional)* | **Bridge cutover stage** — number not established; must precede S6 | **UNAPPROVED** |
-| *(provisional)* | **S-PG** — PostgreSQL data directory relocation to `ProgramData` | **UNAPPROVED** (newly planned) |
+| **S-PG** | PostgreSQL **binary** relocation to `C:\Program Files\Verdura\PostgreSQL\18` **and** data directory relocation to `C:\ProgramData\Verdura\postgres\data`, plus backup script/output migration off `verduraBridge` | **COMPLETE and verified 2026-09-03** (§S-PG-EXEC). Predecessor cluster retained under §S-PG.9 |
 | *(provisional)* | **`verduraBridge` retirement** — rename + soak; number not established | **UNAPPROVED** |
 | *(provisional)* | **`verduraBridge` deletion** — separate later approval | **UNAPPROVED** |
 
@@ -1039,3 +1042,146 @@ This was applied **on its own**, deliberately not combined with S2, service
 reconfiguration, any service lifecycle operation, the Bridge/Connector
 migration, the PostgreSQL relocation, or any deletion. **No stage was
 approved, begun or advanced by it.**
+
+---
+
+## 11. §S-PG-EXEC — combined PostgreSQL maintenance window, 2026-09-03
+
+**Executed and verified. Approved in-session with explicit acceptance of a
+controlled stop/start of the SCM-dependent service set, including
+`VerduraConnector`.** Evidence:
+`_bmad-output/implementation-artifacts/2026-09-03-dl-114-postgres-relocation/`.
+
+The window deliberately combined four changes that all required the same
+outage, because `VerduraPostgreSQL` has seven direct dependents and
+`VerduraAPI` six more — so any PostgreSQL restart is a full-stack restart, and
+splitting the work would have meant repeating the outage.
+
+### What changed
+
+| # | Change | From | To |
+| --- | --- | --- | --- |
+| 1 | PostgreSQL binaries | `Documents\VerduraPostgresBin\pgsql` | `C:\Program Files\Verdura\PostgreSQL\18` |
+| 2 | PostgreSQL data directory | `Documents\verduradb` | `C:\ProgramData\Verdura\postgres\data` |
+| 3 | `VerduraAPI` stdout/stderr (the deferred 1 of 6 of S2) | `verduraBridge\VerduraServerOps\api-*.log` | `C:\ProgramData\Verdura\logs\services\api-*.log` |
+| 4 | Backup script **and** output | `verduraBridge\VerduraServerOps\pg-backup.ps1` → `verduraBridge\verduradb-backups` | `verdura_MVP\windows-deploy\ops\pg-backup.ps1` → `C:\ProgramData\Verdura\postgres\backups` |
+
+### Why `Program Files`, not `ProgramData`, for the binaries
+
+`ProgramData` is application *data*. Executables there are a binary-planting
+exposure, and this runbook already records that the `ProgramData\Verdura`
+runtime root still grants `BUILTIN\Users` write by inheritance. `Program Files`
+inherits the correct model — `BUILTIN\Users` gets `ReadAndExecute` and **no**
+write — so no §0 rule 7 decision was required for the binary tree. The `18`
+segment allows a side-by-side major upgrade later.
+
+### Destination ACL model (§0 rule 7 for the new paths)
+
+`C:\ProgramData\Verdura\postgres` was created with inheritance **disabled and
+protected**, granting only `NT AUTHORITY\SYSTEM` and `BUILTIN\Administrators`
+FullControl `(OI)(CI)`. `data` inherits exactly that — which is what the
+LocalSystem postmaster needs and nothing more.
+
+`backups` inherits the same **plus one explicit ACE**:
+`DESKTOP-SOKKOQ7\Posmate:(OI)(CI)(M)`. This is required, not a relaxation:
+the `VerduraPostgresBackup` task runs as `Posmate` at **`RunLevel=Limited`**,
+so its token has `Administrators` filtered out and the inherited
+Administrators ACE does not apply. Granting the designated writer is the
+minimum that preserves existing behaviour; the alternative — raising the task
+to `RunLevel=Highest` — would have granted it full administrative rights and
+was rejected as the larger privilege increase.
+
+Verified after application: `BUILTIN\Users` absent, and all three
+`CodexSandbox*` identities absent, by `icacls /findsid` across the whole
+tree. **This is a net security improvement**: §4.5 recorded that the old data
+directory granted `CodexSandboxUsers` `ReadAndExecute` over raw database
+files, and the old backup directory carried the same ACE over production
+dumps. Neither survives the move.
+
+### Prerequisites, all satisfied before the first stop
+
+9/9 healthy; venue quiescent (newest order 1 d 17 h old, 0 non-idle backends,
+0 prepared transactions, no connector backlog); dependency/process/port map
+captured; the three rollback descriptors captured exactly; fresh `pg_dump`
+and — for the first time on this instance — `pg_dumpall --globals-only`
+taken and both validated; exact `COUNT(*)` captured for all 30 user tables;
+destination ACLs established and verified.
+
+The pre-relocation dump and globals are held at
+`C:\ProgramData\Verdura\postgres\backups\pre-relocation-20260903\`, **outside**
+the retention-pruned directory so the nightly 14-file prune cannot reach them.
+
+### Transfer integrity
+
+Services were stopped through SCM in dependency order — six leaves, then
+`VerduraAPI`, then `VerduraPostgreSQL`. No PID or process-name termination
+was used at any point.
+
+Before any file was touched, the PostgreSQL process tree was proven gone:
+captured PIDs 4156 and 5524 both absent, nothing listening on 5432,
+`postmaster.pid` absent, and `pg_controldata` reporting
+`Database cluster state: shut down`.
+
+The copy used `/COPY:DAT`, **not** `/COPYALL`, precisely so the §4.5 source
+ACL defect was not propagated. Independent SHA-256 manifests of both trees
+were then compared on relative path, size and hash:
+**1,454 files, zero differences.**
+
+### Verification after the change
+
+`SHOW data_directory` = `C:/ProgramData/Verdura/postgres/data`;
+`server_version` 18.6; `data_checksums`/`fsync`/`synchronous_commit` all on;
+**all 30 table counts identical pre → post**, checked before the API was
+started so no application write could mask a discrepancy.
+
+9/9 services Running; `/api/health` `{"status":"ok","db":"ok","redis":"ok"}`;
+five frontends 200; Bridge authenticated health 200 with
+`bridgeRunning`/`sqlConnected`/`assembliesLoaded` true; Connector heartbeat
+advancing across two samples 60 s apart; one process tree per role; **zero
+orphaned NSSM wrappers**; no process running from the old binary path.
+
+`VerduraAPI`'s new sink is live and growing while both old sinks are static
+and byte-identical across two samples. `AppRotateFiles` remains unset on all
+six services.
+
+The backup task ran manually to completion — `LastTaskResult = 0`, proving
+the `Limited` token can write to the hardened destination — producing a dump
+that validates with `pg_restore --list` at 260 TOC entries and 30 `TABLE DATA`
+entries. The old backup directory was not written to.
+
+### `tableAssignmentConfirmed` unchanged
+
+Bridge health still reports `tableAssignmentConfirmed:false`. **The DL-107
+certification gate was neither touched nor weakened by this window.**
+
+### Predecessor retention and the amended rollback descriptor
+
+`C:\Users\Posmate\Documents\verduradb` is **retained untouched** under
+§S-PG.9. It was re-verified byte-identical to the stopped-copy manifest
+*after* the cutover, proving nothing modified it.
+
+`Documents\VerduraPostgresBin` was **removed** after proving no live
+reference remained — no service, no scheduled task, no `PATH` entry, no
+running process — and after confirming the `Program Files` tree is
+byte-identical (20,448 files, 913,597,411 bytes, plus hash spot-checks of
+`pg_ctl.exe`, `postgres.exe` and `pg_dump.exe`).
+
+**Because that directory is gone, the originally captured `ImagePath` string
+is no longer a usable rollback target. Roll back with the `Program Files`
+binaries pointed at the retained predecessor cluster:**
+
+```
+"C:\Program Files\Verdura\PostgreSQL\18\bin\pg_ctl.exe" runservice -N "VerduraPostgreSQL" -D "C:\Users\Posmate\Documents\verduradb" -w
+```
+
+This is proven viable: `pg_controldata` from the new binaries reads the
+predecessor cluster cleanly. The other two rollback descriptors (API log
+values, backup task action) are recorded verbatim in
+`06-post-cutover-verification.txt`.
+
+### `verduraBridge` dependencies removed by this window
+
+The API log sinks, the backup script and the backup output directory no
+longer resolve into `verduraBridge`. What remains is recorded in §6 as the
+current dependency set — the Bridge and Connector service definitions
+themselves, and two scheduled tasks.

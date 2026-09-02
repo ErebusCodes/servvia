@@ -1,0 +1,43 @@
+﻿POST-CUTOVER EXACT TABLE COUNTS  2026-09-03 10:20:31 +12:00
+Pager usage is off.
+=== EXACT COUNT(*) FOR ALL USER TABLES ===
+ schema |           tbl           | exact_count 
+--------+-------------------------+-------------
+ public | AuditLog                |          65
+ public | Category                |          24
+ public | ConnectorCommand        |           3
+ public | ConnectorEnrollment     |           3
+ public | ConnectorInstallation   |           1
+ public | FloorPlan               |           0
+ public | KdsDeliveryRecord       |           3
+ public | MediaAsset              |           0
+ public | MenuItem                |         895
+ public | MenuItemVenueOverride   |           0
+ public | Order                   |           3
+ public | OrderItem               |           4
+ public | Organization            |           1
+ public | POSSyncRecord           |           3
+ public | Payment                 |           0
+ public | PaymentObservation      |           0
+ public | PaymentObservationEvent |           0
+ public | PosProductIdentity      |         228
+ public | Printer                 |           0
+ public | PrinterJob              |           0
+ public | Reservation             |           0
+ public | ReservationGuest        |           0
+ public | Staff                   |           8
+ public | Table                   |          18
+ public | Table19ValidationRun    |           0
+ public | TabletDevice            |           4
+ public | TabletEnrollment        |           4
+ public | Venue                   |           1
+ public | VenueAccess             |           1
+ public | _prisma_migrations      |          24
+(30 rows)
+
+=== TOTALS ===
+ user_tables 
+-------------
+          30
+(1 row)
+
