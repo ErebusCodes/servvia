@@ -3,7 +3,7 @@
 **Status: S0 and S1 are COMPLETE and verified read-only on 2026-09-03.
 S2 is COMPLETE at 6 of 6 — the deferred `VerduraAPI` step was executed inside
 the approved combined PostgreSQL maintenance window on 2026-09-03 (§S-PG-EXEC).
-`verduraBridge` has been RETIRED by rename and is in its 7-day soak (§13). The Bridge cutover is COMPLETE and verified — it runs from an immutable release under `ProgramData` (§12). S-PG is COMPLETE and verified: PostgreSQL now runs from
+`verduraBridge` has been RETIRED by rename and is in its 7-day soak (§13) — deletion remains BLOCKED pending both the soak and a separate approval (§14.4). **DL-114 Priority 1 is CLOSED: `VerduraAPI` was relocated off the git checkout and `Documents\verduradb` was deleted on 2026-09-03/04, and both exposed credentials were rotated (§14).** The Bridge cutover is COMPLETE and verified — it runs from an immutable release under `ProgramData` (§12). S-PG is COMPLETE and verified: PostgreSQL now runs from
 `C:\Program Files\Verdura\PostgreSQL\18` against
 `C:\ProgramData\Verdura\postgres\data`. Every other stage is PLANNING ONLY
 and UNAPPROVED — none has been executed.**
@@ -1425,3 +1425,228 @@ Only `verduradb` (RETIREMENT/SOAK under §S-PG.9), `verdura_MVP` (the approved
 repository location, not a migration target), and the renamed
 `verduraBridge.RETIRED-20260903`. **All five originally targeted
 `Documents`-root directories are now removed or in a retention gate.**
+
+---
+
+## 14. API relocation, `verduradb` deletion and credential rotation — 2026-09-03/04
+
+**Executed and verified.** This closes DL-114 Priority 1: no production
+component resolves runtime code, dependencies or configuration from the
+mutable git checkout any longer.
+
+### 14.1 `VerduraAPI` relocated off the checkout — the last one
+
+`VerduraAPI` was the eighth and final service still running from
+`verdura_MVP`. It is now:
+
+| | Before | After |
+| --- | --- | --- |
+| `Application` | `C:\Program Files\nodejs\node.exe` | unchanged |
+| `AppParameters` | `dist\src\main.js` | `C:\ProgramData\Verdura\releases\api\509d71e-asrun\apps\api\dist\src\main.js` |
+| `AppDirectory` | `verdura_MVP\apps\api` | `C:\ProgramData\Verdura\config\api` |
+
+**Three cwd-relative dependencies had to be handled, not just `.env`.** The
+previously recorded blocker was only the first of them:
+
+1. **`.env` from `process.cwd()`** — `main.js` checks for it and
+   `ConfigModule.forRoot()` defaults to `.env` relative to cwd. cwd is
+   therefore the governed secrets directory `config\api`, which is why
+   `AppDirectory` is a *config* path and not the release path. ACLs are
+   inherited from `config\` (SYSTEM / Administrators / Posmate), matching
+   `config\bridge`.
+2. **`MEDIA_STORAGE_PATH`** was the relative value `storage`, which
+   `media-storage.util.js` resolves against cwd. Changed to the absolute
+   `C:\ProgramData\Verdura\state\api\storage`. This was the ONLY line changed
+   in `.env`; all 23 keys were verified preserved, CRLF structure intact.
+3. **Menu-image writes.** `media.service.js` walks up from cwd looking for
+   `docker-compose.yml` (max 4 levels) and writes uploads to
+   `<projectRoot>\apps\*\public\menu-images`. **This was writing into the git
+   checkout in production.** No `docker-compose.yml` exists anywhere on the
+   walk from `config\api`, so `projectRoot` stays cwd; `config\api\apps` is an
+   NTFS **junction** to `state\api\apps`, so those writes now land in `state\`.
+   The 47 existing images per frontend were migrated there.
+
+**Known pre-existing behaviour, deliberately NOT changed:** the frontends are
+served from prebuilt `dist\`, so a newly uploaded menu image is not served
+until a frontend rebuild. That was already true before this relocation. It is
+a real defect but fixing it is a behaviour change, not a relocation.
+
+**Release provenance.** `releases\api\509d71e-asrun` is a byte-identical copy
+of what was already running — `dist\src\main.js` SHA-256 verified equal, 509
+dist files, and the resolved dependency closure (64,384 files / 643 MB) copied
+from the checkout root. The four npm-workspace junctions (`api`,
+`admin-console`, `customer-website`, `window-display`) were excluded with
+`robocopy /XJ` so nothing can resolve back into the checkout. The `-asrun`
+suffix is deliberate: HEAD is `509d71e` but the artifact was **not rebuilt**
+from it. `shared\table-config.json` is carried in the release and resolves via
+the `__dirname` fallback in `tables.service.js`.
+
+**Proof of independence:** the running API process loads 51 modules, **zero**
+of them from `verdura_MVP`; its three native modules
+(`msgpackr-extract`, `argon2`, `.prisma\query_engine-windows.dll.node`) all
+load from the governed release. `/api/health` returns
+`{"status":"ok","db":"ok","redis":"ok"}`.
+
+Rollback: `rollback\services-20260903-api-relocation\`.
+
+### 14.2 INCIDENT — dependent services stopped during the cutover
+
+`Stop-Service VerduraAPI -Force` was used to stop the API. **Six services
+declare a dependency on `VerduraAPI`** (`VerduraAdminConsole`,
+`VerduraCustomerWebsite`, `VerduraKitchenDisplay`, `VerduraOrderTablet`,
+`VerduraWindowDisplay`, `VerduraConnector`) and `-Force` stopped all of them.
+`Start-Service VerduraAPI` does **not** restart dependents, so the platform sat
+at 3/9 until detected and corrected. All six were restarted via SCM and
+verified; total exposure was under three minutes and no orphan was produced.
+
+**Binding rule added:** never use `Stop-Service -Force` on `VerduraAPI`.
+Enumerate `(Get-Service X).DependentServices` before any stop, and if
+dependents were stopped, restart them explicitly and re-verify 9/9. This is
+recorded here because the INC-001 rules covered orphan creation but did not
+cover dependency-cascade stops.
+
+### 14.3 `Documents\verduradb` DELETED
+
+The stale PostgreSQL cluster directory (1,454 files / 70.3 MB, `PG_VERSION`
+present, **no** `postmaster.pid`) was deleted after all gates passed.
+
+Dependency proof: zero Windows services, zero NSSM parameters across all eight
+NSSM services, zero scheduled tasks, zero running processes, zero ProgramData
+scripts or config referenced it. Live `SHOW data_directory` returns
+`C:/ProgramData/Verdura/postgres/data`.
+
+**Restore proof re-run tonight with durable evidence** —
+`rollback\postgres-restore-proof-20260903\`. The earlier proof left no durable
+artifact and its scratch DB had been dropped, so it was redone properly:
+
+- fresh dump taken with the **governed** `ops\pg-backup.ps1`;
+- disposable scratch DB `verdura_restore_proof_20260903` created and restored
+  into (`pg_restore` exit 0);
+- **30 / 30 tables exact row-count match, 0 mismatches**; 78/78 indexes;
+  69/69 foreign keys; no table present on only one side;
+- scratch DB dropped; production re-inventoried and **identical 30/30**,
+  confirming production was never modified. All production access was
+  `SELECT` / `pg_dump` only.
+
+Post-deletion: path absent, PostgreSQL Running, `data_directory` still under
+`ProgramData`, `MenuItem` 895 rows, `/api/health` ok, both governed scheduled
+tasks `LastTaskResult=0`, zero residual references.
+
+### 14.4 `verduraBridge.RETIRED-20260903` — NOT deleted, genuinely blocked
+
+Full assessment: `rollback\retired-bridge-deletion-gate-20260903\`.
+
+Every **dependency** gate passes — zero services, NSSM parameters, tasks,
+processes or runtime config reference the tree; Bridge and Connector both run
+from governed `ProgramData` releases. The blocker is **retention**, and it is
+this document, section 13, committed at `a9c2d8c`:
+
+> "Soak of at least 7 full days, retained intact. **Deletion is a separate
+> later approval and is not implied by this rename.**"
+
+together with the binding amended rollback, which makes the retired tree the
+rollback target for sections 12 and 13.
+
+**Earliest legitimate deletion requires BOTH** 7 full days from 2026-09-03
+(i.e. on or after 2026-09-10) **and** a separate explicit approval. Elapsed
+time alone does not unblock it.
+
+Two additional prerequisites found tonight that section 13 does not record:
+
+1. The **predecessor Bridge binary exists only inside the retired tree**.
+   `rollback\pre-migration-20260902` holds the Bridge config, state and hashes
+   but not the binary. The Connector predecessor *is* already independent
+   (`rollback\connector-publish-20260826`). Rollback must be made independent
+   before deletion — and must reuse the **authoritative external** state at
+   `state\bridge\bridge-state.sqlite`, not the copy frozen at 2026-09-01
+   inside the retired tree.
+2. `verduradb-backups\` inside the retired tree holds **14 production dumps
+   spanning 2026-08-26 to 2026-09-03**. `postgres\backups\` holds only
+   2026-09-03 dumps. Deleting the tree today would destroy roughly eight days
+   of unique backup history; it must be archived into `ProgramData` first.
+
+### 14.5 Credential rotation — both exposed credentials rotated
+
+Full record: `rollback\credential-rotation-20260903\`. No plaintext value was
+printed, logged, committed or placed on any command line; NSSM environment
+writes were made **directly to the registry** (`REG_MULTI_SZ`) rather than via
+`nssm set`, so nothing appeared in a process listing. `nssm dump` was not used.
+Identity is proven by SHA-256 fingerprint only.
+
+**`IDEALPOS_BRIDGE_API_KEY`** — authority is `Bridge:ApiKey` in the config
+**beside the exe** (`releases\bridge\abe301a\...exe.config`; .NET resolves
+`<exePath>.config`), mirrored to `config\bridge\`. Both updated by targeted
+attribute replacement: 14 appSettings and the `IpsConnection` connection
+string preserved, file still 5,616 bytes with its UTF-8 BOM.
+Verified: new key produced `/api/health` **200** with `bridgeRunning`,
+`sqlConnected`, `assembliesLoaded`, `orderProcessingPathAvailable` all true;
+**old key produced 401**. Rollback source is the fingerprint-verified
+`rollback\pre-migration-20260902\config\bridge-api-key.txt`.
+
+**`TRACER_CONNECTOR_CREDENTIAL`** — rotated through the API's own enrolment
+path (`POST venues/{id}/connector/enrollments` then `POST connector/enroll`),
+so the server-side argon2 hash and the client secret stay consistent by
+construction. The enrol transaction atomically marked the prior installation
+`replaced`. Verified: old installation `2d0993d4...` became `replaced` with
+`replacedByInstallationId` set; new installation `3277d472...` is `active`
+with `lastSeenAt` advancing across samples 30 s apart. Since
+`ConnectorService.authenticate()` returns null unless `status === 'active'`,
+the old credential is provably no longer a valid production credential.
+
+**Side effect:** the plaintext credential files in the retired tree
+(`VerduraServerOps\connector-credential.txt`, `bridge-api-key.txt`) are now
+inert. The `bridge-api-key.txt` copies remain the documented rollback source
+for the Bridge key and must not be deleted while that path is relied on.
+
+### 14.6 Final architecture sweep — `verdura_MVP` is source/development only
+
+Searched every production dependency surface: service `ImagePath`; NSSM
+`Application` / `AppDirectory` / `AppParameters` / `AppStdout` / `AppStderr`;
+NSSM environment blocks including secret-valued elements; **all** scheduled
+tasks on the host; running process image paths and command lines;
+Docker/Compose inputs; PostgreSQL paths; log and state paths.
+
+**Result: zero production runtime or configuration dependencies on
+`verdura_MVP`, and zero on any deleted or retired `Documents`-root path.**
+
+Correctly classified as **not** dependencies:
+
+- `MANIFEST.json` `sourceRepo` / `sourcePath` fields — build provenance.
+- `rollback\**` descriptors — they record pre-migration paths *by design*.
+- `README.md` and `archive\README*.md` prose.
+- The running `verdura-redis-1` container's compose labels point at
+  `C:\Users\Posmate\Desktop\verdura_MVP` — a path that **no longer exists**.
+  These are inert metadata baked in at container creation on 2026-08-13. The
+  governed `ops\ensure-verdura-redis.ps1` defaults `-ComposeFile` to
+  `ProgramData\Verdura\ops\docker-compose.redis.yml`; it ran at 14:06 with
+  `LastTaskResult=0` and the container was **not** recreated
+  (`RestartCount=0`, created 2026-08-13, started 2026-08-27).
+- The `Verdura Window Display` scheduled task (`npm run dev --workspace=...`)
+  is **Disabled**, has an empty `WorkingDirectory`, last failed on 2026-08-27,
+  and is superseded by the `VerduraWindowDisplay` NSSM service on port 5174.
+  It is a dormant legacy path, not a live dependency. **Recommend deleting
+  it** — deferred as it is a production task change outside tonight's scope.
+
+### 14.7 Final verification
+
+9/9 services Running; five frontends HTTP 200; `/api/health`
+`status/db/redis = ok`; authenticated Bridge health 200 with all flags true;
+Redis `PONG` with container identity preserved; PostgreSQL Running with
+`data_directory` under `ProgramData`; both governed tasks `LastTaskResult=0`;
+8/8 NSSM wrappers claimed by SCM with **zero** orphans, all parented to
+`services.exe`; exactly one listener on each of 3000, 5173-5177, 5588 and
+6379; Connector heartbeat advancing. Working tree clean apart from untracked
+`.claude/worktrees/`.
+
+### 14.8 Resulting target state
+
+```
+C:\Users\Posmate\Documents
+    verdura_MVP\                     SOURCE / DEVELOPMENT ONLY
+    verduraBridge.RETIRED-20260903\  retention gate until >= 2026-09-10 + approval
+
+C:\ProgramData\Verdura               governed production home
+    releases\  api\509d71e-asrun  bridge\abe301a
+               connector\9f17006  frontends\a9c2d8c
+```
+
