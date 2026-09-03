@@ -34,7 +34,11 @@
 param(
     [string]   $RepoRoot,
     [string]   $OpsDir       = 'C:\ProgramData\Verdura\ops',
-    [string[]] $ScriptNames  = @('ensure-verdura-redis.ps1', 'pg-backup.ps1'),
+    # docker-compose.redis.yml is not a script, but it is production input the
+    # ensure script reads at runtime, so it must be governed and hashed the
+    # same way -- otherwise the checkout dependency simply moves rather than
+    # being removed.
+    [string[]] $ScriptNames  = @('ensure-verdura-redis.ps1', 'pg-backup.ps1', 'docker-compose.redis.yml'),
     [string]   $TaskPrincipalSid = 'S-1-5-21-160777116-34683011-1598780446-1001'
 )
 
@@ -96,20 +100,26 @@ $records = foreach ($name in $ScriptNames) {
     if ($srcHash -ne $dstHash) { throw "SHA-256 mismatch after copy for '$name' ($srcHash vs $dstHash)." }
 
     Push-Location $RepoRoot
-    try { $fileCommit = (& git log -1 --format='%H' -- "windows-deploy/ops/$name").Trim() }
+    try { $fileCommit = (& git log -1 --format='%H' -- "windows-deploy/ops/$name" | Out-String).Trim() }
     finally { Pop-Location }
+
+    # A newly added file has no commit yet. Record that honestly instead of
+    # crashing on Substring of an empty string -- and make it visible, because
+    # deploying an uncommitted file is exactly what the dirty-tree warning is
+    # for.
+    $commitLabel = if ($fileCommit) { $fileCommit.Substring(0,9) } else { 'UNCOMMITTED' }
 
     # Write-Host, not Write-Output: this foreach is captured into $records, so
     # anything written to the success stream here would be serialised into the
     # manifest's files[] array alongside the real records.
-    Write-Host ("  {0,-28} {1}  <- {2}" -f $name, $dstHash.Substring(0,16), $fileCommit.Substring(0,9))
+    Write-Host ("  {0,-28} {1}  <- {2}" -f $name, $dstHash.Substring(0,16), $commitLabel)
 
     [pscustomobject]@{
         fileName        = $name
         sourcePath      = $src
         deployedPath    = $dst
         sha256          = $dstHash
-        sourceGitCommit = $fileCommit
+        sourceGitCommit = if ($fileCommit) { $fileCommit } else { $null }
         sizeBytes       = (Get-Item -LiteralPath $dst).Length
     }
 }
@@ -131,12 +141,12 @@ Write-Output ''
 Write-Output "Deployed to $OpsDir (manifest refreshed)."
 Write-Output 'Scheduled Tasks are NOT modified by this script. To repoint, set each task''s'
 Write-Output 'action arguments to (changing ONLY the -File path, never principal/trigger/run level):'
-foreach ($name in $ScriptNames) {
+foreach ($name in $ScriptNames | Where-Object { $_ -like '*.ps1' }) {
     Write-Output ("  -NoProfile -ExecutionPolicy Bypass -File `"{0}`"" -f (Join-Path $OpsDir $name))
 }
 
-# Residual dependency, deliberately surfaced rather than silently accepted:
 Write-Output ''
-Write-Output 'NOTE: ensure-verdura-redis.ps1 still reads docker-compose.yml from -RepoRoot'
-Write-Output '      (its default). Script EXECUTION is now governed; that compose file is'
-Write-Output '      still read from the working tree. Governing it is separate follow-up work.'
+Write-Output 'Non-script production input deployed alongside them (read at runtime, not launched):'
+foreach ($name in $ScriptNames | Where-Object { $_ -notlike '*.ps1' }) {
+    Write-Output ("  {0}" -f (Join-Path $OpsDir $name))
+}

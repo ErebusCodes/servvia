@@ -12,6 +12,15 @@
 # the separate native VerduraPostgreSQL Windows service and is never
 # touched here.
 #
+# Since 2026-09-03 that narrowness is structural, not just conventional: the
+# compose file is `docker-compose.redis.yml`, a governed minimal manifest
+# declaring only the `redis` service, deployed alongside this script in
+# ProgramData. It no longer reads docker-compose.yml from the git checkout,
+# so a branch checkout or `git clean` can no longer change what production
+# Redis runs. The redis service block there was proven to resolve to a
+# byte-identical `docker compose config` before cutover, so `up -d` adopts
+# the existing `verdura-redis-1` container rather than recreating it.
+#
 # Idempotent and safe to re-run: if Redis is already healthy, this exits 0
 # quickly without recreating or restarting anything.
 #
@@ -23,7 +32,7 @@
 
 [CmdletBinding()]
 param(
-    [string] $RepoRoot         = 'C:\Users\Posmate\Documents\verdura_MVP',
+    [string] $ComposeFile      = 'C:\ProgramData\Verdura\ops\docker-compose.redis.yml',
     [string] $LogPath          = 'C:\ProgramData\Verdura\logs\ops\ensure-verdura-redis.log',
     [string] $DockerDesktopExe = 'C:\Program Files\Docker\Docker\Docker Desktop.exe',
     [string] $DockerExe        = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe',
@@ -32,7 +41,9 @@ param(
 
 Set-StrictMode -Version Latest
 
-$ComposeFile = Join-Path $RepoRoot 'docker-compose.yml'
+if (-not (Test-Path -LiteralPath $ComposeFile)) {
+    throw "Compose file not found: $ComposeFile"
+}
 
 $EngineReadyTimeoutSeconds = 300
 $EngineReadyPollSeconds = 5
@@ -100,7 +111,7 @@ if (Test-DockerEngineReady) {
 }
 
 Write-Log "Running: docker compose -f `"$ComposeFile`" up -d redis"
-Push-Location $RepoRoot
+Push-Location (Split-Path -Parent $ComposeFile)
 & $DockerExe compose -f $ComposeFile up -d redis 2>&1 | ForEach-Object { Write-Log "[compose] $_" }
 $composeExit = $LASTEXITCODE
 Pop-Location

@@ -1,0 +1,49 @@
+# Governed production Redis compose file (DL-114 Priority 1).
+#
+# Purpose: `ensure-verdura-redis.ps1` previously read docker-compose.yml from
+# the mutable git checkout. Script execution was already governed; this
+# removes the last checkout dependency for production Redis.
+#
+# This file is DELIBERATELY minimal. It declares ONLY the `redis` service, so
+# it is structurally impossible for it to start the dev-only `postgres`
+# service or the `--profile host` API/frontend containers -- a guarantee the
+# ensure script previously had to make by convention alone.
+#
+# `name: verdura` is copied verbatim from the source file and is what keeps
+# the project identity (and therefore the existing `verdura-redis-1`
+# container and `verdura_verdura-redis` volume) unchanged. Do not alter it.
+#
+# The redis service block below is a verbatim copy of the source file's, and
+# was proven to resolve to a byte-identical `docker compose config` for that
+# service before this file was put into service. If you change either copy,
+# re-prove that equivalence or `up -d` will RECREATE the container and drop
+# production Redis.
+#
+# EXPECTED WARNING -- do not "fix" it:
+#   Found orphan containers (verdura-postgres-1) for this project.
+#   ... you can run this command with the --remove-orphans flag ...
+# That is the intended consequence of this file declaring only `redis` while
+# the project also contains the dev-only postgres container (Exited, no ports
+# bound; production PostgreSQL is the native VerduraPostgreSQL service on
+# 5432). NEVER add --remove-orphans to the ensure script: it would delete
+# containers this manifest deliberately does not describe. Removing that dev
+# container is a separate, explicit decision.
+
+name: verdura
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - verdura-redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  verdura-redis:
