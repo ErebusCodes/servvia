@@ -1832,3 +1832,39 @@ The retired tree is now retained for **one reason only**: the authoritative
 time-bound retention clock plus the required separate approval. No unique
 technical rollback or audit material depends on it.
 
+
+### 15.7 Two accuracy notes recorded at change-freeze
+
+**(a) Scope / change-control deviation — not an incident.** The Bridge config
+externalization in §15.3 altered production configuration architecture and
+restarted a production service. The direction immediately before that window
+had asked for read-only checks unless a corrective change was genuinely
+required, and under that direction the stale hash was found and reported but
+deliberately left alone. The work was then explicitly requested as section C of
+the following direction, including its step 5 permitting a Bridge-only SCM
+restart to prove configuration loading. It is recorded as a **scope/change-
+control deviation** so the transition is visible in the record, and **not** as
+an incident: there was no outage, no degraded service and no failed check.
+The link mechanism was proven in a disposable harness first, the hardlink was
+rejected on evidence, only the Bridge was restarted (its DependentServices set
+was confirmed empty, so no cascade was possible), post-change authenticated
+health passed, and 9/9 services with 8/8 claimed wrappers and zero orphans were
+verified after. **No rollback is requested — the resulting state is healthy and
+is the accepted baseline.** Full record:
+\ollback\bridge-config-externalization-20260904\ROLLBACK.md\.
+
+**(b) "Repository-independent" is precise, but does not mean self-contained.**
+The API rollback is independent of \C:\Users\Posmate\Documents\verdura_MVP\,
+and its dependency resolution is wholly within governed
+\C:\ProgramData\Verdura\. It does **not** carry its own duplicate dependency
+closure: \ollback\api-prerelocation-20260903\ holds 143 files (the
+pre-relocation \.env\, the working-directory skeleton, 141 seeded menu images
+and its README) and contains no \
+ode_modules\. The runtime bits and the
+64,384-file closure are **referenced** in the governed release
+\eleases\api\509d71e-asrun\, not duplicated. That is acceptable because the
+release is governed, fully hash-manifested and proven byte-identical to the
+pre-cutover payload — but the consequence must be understood: destroying that
+release would disable both the live deployment and this rollback path. If
+independently survivable rollback bits are ever required, a duplicated closure
+would have to be created. That has not been done.
