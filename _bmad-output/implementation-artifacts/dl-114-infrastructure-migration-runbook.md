@@ -1650,3 +1650,185 @@ C:\ProgramData\Verdura               governed production home
                connector\9f17006  frontends\a9c2d8c
 ```
 
+
+---
+
+## 15. Migration exception closure — 2026-09-04
+
+Section 14 closed DL-114 Priority 1 but left four technical exceptions. Three
+are now eliminated. The fourth is the retired-tree retention gate, which is
+time-bound and cannot mature before 2026-09-10.
+
+### 15.1 API rollback is now repository-independent
+
+Section 14 proved the API *runtime* independent of `verdura_MVP`, but the
+recorded rollback still pointed at `verdura_MVP\apps\api`, the root
+`node_modules` and the checkout `.env`. The repository therefore could not
+honestly be called unnecessary to production recovery. That is now fixed.
+
+New package: `rollback\api-prerelocation-20260903\`
+
+- `cwd\.env` — byte-identical to the pre-relocation checkout `.env`
+  (sha256 `61C75C00…FFCC5F`), all 23 keys, `MEDIA_STORAGE_PATH` still the
+  original relative `storage`.
+- `cwd\storage\` and `cwd\apps\*\public\menu-images\` — pre-created so the
+  original *relative* path semantics resolve inside ProgramData, and seeded
+  with the 47 images per frontend so a rollback loses no media.
+- `ROLLBACK.md` — exact SCM/NSSM steps, no secret values.
+- Runtime bits come from `releases\api\509d71e-asrun`, which is proven
+  byte-identical to what the service executed before the cutover (§15.2).
+
+ACLs break inheritance and grant SYSTEM, Administrators and the host owner
+only — verified identical to `rollback\pre-migration-20260902\config`. This
+matters: the wider `rollback\` tree inherits `BUILTIN\Users:ReadAndExecute`
+from `ProgramData`, so secret-bearing material placed there must break
+inheritance explicitly.
+
+> **icacls trap, hit twice tonight.** `icacls DIR /inheritance:r /grant
+> "X:(OI)(CI)F" /T` leaves **files with an empty ACL** — `(OI)(CI)` are
+> inheritance flags and do not apply to the file objects themselves, while
+> `/T` strips their inherited ACEs. Apply it to the directory **without** `/T`
+> and let children inherit.
+
+**Proof (no second API server was started, nothing bound a port):** a
+module-resolution smoke test with cwd set to the rollback cwd loaded
+`dist/src/app.module.js`:
+
+```
+modules resolved             = 2207
+resolved OUTSIDE ProgramData = 0
+resolved from verdura_MVP    = 0
+```
+
+`dotenv`, `@nestjs/core`, `@nestjs/config`, `@prisma/client`, `argon2` and
+`ioredis` all resolve inside the release; `shared\table-config.json` resolves
+to the release copy. The identical test from the live cwd returns the same
+figures.
+
+The one pre-cutover behaviour deliberately **not** reproduced is the defect
+where menu-image uploads were written into the git checkout — reproducing it
+would reintroduce the very dependency this package removes.
+
+The repository is **not** deleted and remains the canonical development source.
+
+### 15.2 API release integrity standardized
+
+`releases\api\509d71e-asrun\SHA256SUMS.txt` now carries **64,947 entries**,
+covering every file in the release. Verification:
+
+- coverage — 64,947 on disk vs 64,947 in manifest, **0 missing, 0 extra**;
+- all 563 non-`node_modules` files hash-verified, **0 mismatch**;
+- 400-file random sample across `node_modules`, **0 mismatch**.
+
+The single exclusion is `SHA256SUMS.txt` itself, which cannot contain its own
+hash. Nothing is excluded for convenience. `MANIFEST.json` was rewritten first
+and is covered.
+
+**Equivalence to the checkout is fully proven, not sampled** (`EQUIVALENCE.txt`
+in the release). An independent SHA-256 pass over the checkout hashed the entire
+`node_modules` closure and the whole application payload, then compared both
+directions:
+
+```
+checkout files compared            : 64,945
+  byte-identical in release        : 64,945
+  hash differs                     :      0
+  present in checkout, absent here :      0
+release files with no checkout counterpart (excl. release metadata) : 0
+```
+
+So the release is not merely *believed* to be what production was executing
+before the cutover — every byte of it is demonstrated to be.
+
+### 15.3 Bridge config externalized — the immutability defect is fixed, not papered over
+
+§14 recorded a real defect: rotating `Bridge:ApiKey` mutated a file inside a
+directory declared immutable, and `SHA256SUMS.txt` went stale on exactly that
+one entry. Re-hashing it would have hidden the problem rather than solved it.
+
+**Link semantics were proven before production was touched.** A purpose-built
+.NET Framework console app reading `ConfigurationManager` exactly as
+`BridgeConfig.cs` does was compiled into a disposable directory and driven
+through both mechanisms:
+
+| Mechanism | reads through link | sees external in-place edit | survives target delete+recreate |
+| --- | --- | --- | --- |
+| Symbolic link | yes | yes | **yes** |
+| Hard link | yes | yes | **NO — served stale content** |
+
+The hard link was rejected on that third result. Preconditions confirmed:
+`fsutil behavior query SymlinkEvaluation` reports local-to-local symlinks
+**enabled** (the service runs as LocalSystem), and `BridgeConfig.cs` only ever
+*reads* via `ConfigurationManager` — it never calls
+`OpenExeConfiguration(...).Save()`, so nothing writes through the link.
+
+Applied: `releases\bridge\abe301a\VerduraIdealposBridge.exe.config` is now a
+symbolic link to `config\bridge\VerduraIdealposBridge.exe.config`. The
+secret-bearing file physically exists **only** under protected ProgramData
+config. `SHA256SUMS.txt` now hashes the **10 immutable payload files** and
+`INTEGRITY.md` records the config as external mutable configuration that is
+excluded on purpose.
+
+All 10 payload hashes still equal their **original** recorded values — proof
+the rotation and this change touched the configuration and nothing else.
+
+Verified after restarting only the Bridge (it has no dependents, so no cascade
+was possible): authenticated `/api/health` **200** with `bridgeRunning`,
+`sqlConnected` (`sqlDetail` ok), `assembliesLoaded`, `ipsExeRunning` and
+`orderProcessingPathAvailable` all true; rotated key accepted; pre-rotation key
+**401**; unauthenticated **401**; Connector heartbeat advancing; 8/8 wrappers
+claimed, zero orphans.
+
+Rollback: `rollback\bridge-config-externalization-20260904\ROLLBACK.md`.
+
+### 15.4 Retired-tree deletion prerequisites are now independent
+
+The tree is **not** deleted and must not be. But nothing unique is trapped in
+it any more.
+
+1. **Predecessor Bridge binary** → `rollback\bridge-predecessor-20260831\`.
+   Nine payload files, every one SHA-256 verified equal to source, 0
+   mismatches. Frozen SQLite state was deliberately **not** copied — its
+   README mandates using the authoritative external
+   `state\bridge\bridge-state.sqlite` and warns that restoring the captured
+   config's *relative* `Bridge:StateDatabasePath` would silently fork
+   production state. The predecessor `exe.config` was **not** duplicated: it is
+   byte-identical to `pre-migration-20260902\config\bridge-exe.config`, already
+   under protected ProgramData, so the number of plaintext copies of the
+   pre-rotation key does not grow.
+2. **Fourteen unique historical dumps** → `archive\postgres-backups-pre-20260903\`.
+   14 of 14 SHA-256 match, original filenames and timestamps preserved.
+   Placed under `archive\`, **not** `postgres\backups\`, because
+   `pg-backup.ps1` prunes that directory to the newest 14 and would have
+   deleted this history within days.
+3. **`connector-credential.txt`** — **not copied, not read, not hashed.**
+   Hashing it would retain a fingerprint of a secret for no operational
+   benefit. Its credential is already superseded: installation
+   `2d0993d4…` is `replaced`, and `authenticate()` returns null unless status
+   is `active`. It must be **securely destroyed** with the tree at deletion
+   time, along with `bridge-api-key.txt` and `owner-token.txt` in that
+   directory — while the separate `pre-migration-20260902\config` copy of
+   `bridge-api-key.txt` **survives**, being the documented rollback source for
+   the key rotation.
+
+### 15.5 Exact retention deadline
+
+Anchor: commit `a9c2d8c` and its evidence file
+`2026-09-03-dl-114-connector-and-retirement\01-connector-and-retirement.txt`,
+both timestamped **2026-09-03 11:23:31 +12:00**.
+
+**Earliest legitimate deletion: 2026-09-10 11:23:31 +12:00 (NZST,
+Pacific/Auckland).** New Zealand daylight time does not begin until the last
+Sunday of September, so the offset is +12:00 on that date, not +13:00.
+
+**A separate explicit deletion approval is still required after that
+timestamp.** §13 states deletion "is a separate later approval and is not
+implied by this rename", so the clock expiring does not by itself authorise
+anything.
+
+### 15.6 Closure
+
+The retired tree is now retained for **one reason only**: the authoritative
+time-bound retention clock plus the required separate approval. No unique
+technical rollback or audit material depends on it.
+
