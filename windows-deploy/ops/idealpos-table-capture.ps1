@@ -104,6 +104,20 @@ New-Item -ItemType Directory -Force -Path $OutRoot | Out-Null
 # a fresh sitting never inherits a previous sitting's log positions -- that
 # would silently blank out the first step's log evidence.
 $runPointer = Join-Path $OutRoot 'current-run.txt'
+
+# A baseline is the "before" picture of a fresh sitting. Silently appending one
+# to a previous run's directory would date-mix the evidence and, worse, inherit
+# that run's log offsets so the baseline's log tail comes back near-empty. Make
+# that mistake impossible rather than merely documented.
+if ($Step -match '^00-baseline' -and -not $NewRun -and -not $RunId) {
+  if (Test-Path $runPointer) {
+    $existing = (Get-Content $runPointer -Raw).Trim()
+    throw ("A baseline must start a new run. Run '$existing' is already current.`n" +
+           "  Use:  -NewRun -Step $Step`n" +
+           "  Or, to deliberately re-baseline inside that run:  -RunId $existing -Step $Step")
+  }
+}
+
 if (-not $RunId) {
   if ($NewRun -or -not (Test-Path $runPointer)) {
     $RunId = 'run-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
@@ -145,14 +159,56 @@ function Invoke-ReadOnlyQuery {
   } finally { $conn.Close() }
 }
 
+# Project a DataTable to plain objects using its OWN column list.
+#
+# The previous implementation used
+#   Select-Object * -ExcludeProperty RowError, RowState, Table, ItemArray, HasErrors
+# to strip a DataRow's intrinsic members. That is name-based, and IdealPOS has
+# a column literally called [Table] -- TableActivity.Table, the table number.
+# So the exclusion silently deleted the single most important field in the
+# TableActivity captures while leaving row counts and every other column
+# intact, i.e. it looked completely healthy. Verified against a real capture
+# before this fix: ipstx.TableActivity.recent.json contained MapCode, Date,
+# Guests and SentOnline, and no table number at all.
+#
+# Enumerating $dt.Columns cannot collide with a DataRow member by name, so the
+# whole class of bug is gone rather than patched for this one column.
+function ConvertFrom-DataTable {
+  param($Table)
+  # `return $dt` from a function unrolls a DataTable into an Object[] of
+  # DataRows, so this must work for either shape. @() normalises both, and the
+  # column list is taken from a row's own parent table.
+  # An empty DataTable returns as $null once unrolled, so null-filter first.
+  $rows = @($Table | Where-Object { $null -ne $_ })
+  if ($rows.Count -eq 0) { return @() }
+  # $rows[0].Table would resolve to the COLUMN named 'Table' on a TableActivity
+  # row, not to the parent DataTable -- the same name collision that caused the
+  # original data loss. A [DataRow] cast is NOT enough: PowerShell's DataRow
+  # adapter still shadows the property with the column. .psbase drops to the
+  # raw .NET object, where Table unambiguously means the parent DataTable.
+  $parent = $rows[0].psbase.Table
+  $cols = @($parent.Columns | ForEach-Object { $_.ColumnName })
+  $out = New-Object System.Collections.Generic.List[object]
+  foreach ($row in $rows) {
+    $o = [ordered]@{}
+    foreach ($c in $cols) {
+      $v = $row[$c]
+      if ($v -is [System.DBNull]) { $v = $null }
+      $o[$c] = $v
+    }
+    [void]$out.Add([pscustomobject]$o)
+  }
+  return @($out.ToArray())
+}
+
 function Save-Table {
   param([string]$Name, [string]$Database, [string]$Sql)
   try {
     $dt = Invoke-ReadOnlyQuery -Database $Database -Sql $Sql
-    $rows = @($dt | Select-Object * -ExcludeProperty RowError, RowState, Table, ItemArray, HasErrors)
+    $rows = @(ConvertFrom-DataTable $dt)
     $rows | ConvertTo-Json -Depth 6 | Out-File (Join-Path $runDir "$Name.json") -Encoding utf8
     $rows | Format-Table -AutoSize | Out-String -Width 300 | Out-File (Join-Path $runDir "$Name.txt") -Encoding utf8
-    Write-Host ("  {0,-36} {1} row(s)" -f $Name, $dt.Rows.Count)
+    Write-Host ("  {0,-36} {1} row(s)" -f $Name, $rows.Count)
   } catch {
     $script:Failures++
     "ERROR: $($_.Exception.Message)" | Out-File (Join-Path $runDir "$Name.ERROR.txt") -Encoding utf8

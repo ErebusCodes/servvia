@@ -166,6 +166,89 @@ function Compare-Dataset {
   }
 }
 
+# -------------------------------------------------------- candidate summary
+# A flat roll-up of the structural changes this one action produced, gathered
+# from the SAME keyed comparison the detail section uses.
+#
+# It deliberately does NOT nominate which row "is Table 5". The whole point of
+# removing the Code filter was to stop the tooling asserting a keying premise;
+# reintroducing a guess here in friendlier wording would be the same mistake
+# with a nicer face. It reports what appeared and what changed, simultaneously,
+# and the human decides what that means against the physical action they just
+# performed and the docket in their hand.
+function Get-DeltaKeys {
+  param($FromRows, $ToRows, [string[]]$KeyFields)
+  $added = New-Object System.Collections.Generic.List[object]
+  $changed = New-Object System.Collections.Generic.List[object]
+  if ($null -eq $FromRows -or $null -eq $ToRows) {
+    return @{ Added = @(); Changed = @() }
+  }
+  $fromMap = @{}
+  foreach ($r in $FromRows) { $fromMap[(Get-KeyValue $r $KeyFields)] = $r }
+  foreach ($r in $ToRows) {
+    $k = Get-KeyValue $r $KeyFields
+    if (-not $fromMap.ContainsKey($k)) { [void]$added.Add($r); continue }
+    $a = $fromMap[$k]
+    foreach ($p in $r.PSObject.Properties) {
+      $old = $a.PSObject.Properties[$p.Name]
+      $oldVal = if ($null -eq $old) { '<absent>' } else { "$($old.Value)" }
+      if ($oldVal -ne "$($p.Value)") { [void]$changed.Add($r); break }
+    }
+  }
+  return @{ Added = @($added.ToArray()); Changed = @($changed.ToArray()) }
+}
+
+function Write-CandidateSummary {
+  param([string]$FromDir, [string]$ToDir)
+
+  $sections = @(
+    @{ Label = 'NEW IPSTransaction PendingSales';     Name = 'ipstx.PendingSales';        Key = @('ID');                                Show = @('ID','Code','POS','Status','OrderState','Label','Reference','Date'); Part = 'Added' }
+    @{ Label = 'CHANGED IPSTransaction PendingSales'; Name = 'ipstx.PendingSales';        Key = @('ID');                                Show = @('ID','Code','POS','Status','OrderState','Label','Reference'); Part = 'Changed' }
+    @{ Label = 'NEW POSServer PendingSales';          Name = 'posserver.PendingSales';    Key = @('ID');                                Show = @('ID','Code','Map','POS','Status','DateModified'); Part = 'Added' }
+    @{ Label = 'CHANGED POSServer PendingSales';      Name = 'posserver.PendingSales';    Key = @('ID');                                Show = @('ID','Code','Map','POS','Status','DateModified'); Part = 'Changed' }
+    @{ Label = 'CHANGED TableMapSetups rows';         Name = 'posserver.TableMapSetups';  Key = @('Code','ItemType','ItemIndex');       Show = @('Code','ItemType','ItemIndex','Status','Amount','GuestsSaved','StartTime'); Part = 'Changed' }
+    @{ Label = 'NEW IPSTransaction PendingSaleLines'; Name = 'ipstx.PendingSaleLines';    Key = @('PendingSaleID','Line');              Show = @('PendingSaleID','Line','Col1','Col2','Col3','Col4','Printed','OrderedTime'); Part = 'Added' }
+    @{ Label = 'CHANGED IPSTransaction PendingSaleLines'; Name = 'ipstx.PendingSaleLines'; Key = @('PendingSaleID','Line');             Show = @('PendingSaleID','Line','Col1','Col3','Col4','Printed','OrderedTime'); Part = 'Changed' }
+    @{ Label = 'NEW POSServer PendingSaleLines';      Name = 'posserver.PendingSaleLines'; Key = @('PendingSaleID','Line');             Show = @('PendingSaleID','Line','Col1','Col2','Col3','Col4','Printed','OrderedTime'); Part = 'Added' }
+    @{ Label = 'CHANGED POSServer PendingSaleLines';  Name = 'posserver.PendingSaleLines'; Key = @('PendingSaleID','Line');             Show = @('PendingSaleID','Line','Col1','Col3','Col4','Printed','OrderedTime'); Part = 'Changed' }
+    @{ Label = 'NEW TableActivity rows';              Name = 'ipstx.TableActivity.recent'; Key = @('Table','Date');                     Show = @('Table','MapCode','Date','Guests'); Part = 'Added' }
+    @{ Label = 'NEW Transactions rows';               Name = 'ipstx.Transactions.recent'; Key = @('Cons','POS');                        Show = @('Cons','POS','Date'); Part = 'Added' }
+    @{ Label = 'NEW TransactionReference rows';       Name = 'ipstx.TransactionReference'; Key = @('Cons','POS');                       Show = @('Cons','POS','Reference','UserDefinedText'); Part = 'Added' }
+  )
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $anything = $false
+  foreach ($s in $sections) {
+    $delta = Get-DeltaKeys (Get-Rows $FromDir $s['Name']) (Get-Rows $ToDir $s['Name']) $s['Key']
+    $rows = @($delta[$s['Part']])
+    if (-not $rows.Count) { continue }
+    $anything = $true
+    [void]$lines.Add(("  {0} ({1}):" -f $s['Label'], $rows.Count))
+    foreach ($r in $rows) {
+      $parts = @()
+      foreach ($f in $s['Show']) {
+        $p = $r.PSObject.Properties[$f]
+        if ($null -eq $p) { continue }
+        $v = "$($p.Value)".Trim(); if ($v -eq '') { $v = '-' }
+        $parts += "$f=$v"
+      }
+      [void]$lines.Add('      ' + ($parts -join '  '))
+    }
+  }
+
+  Emit ''
+  Emit '  ---------------- candidate-new-sale (delta only) ----------------'
+  if (-not $anything) {
+    Emit '  No structural change in any sale, line, map or activity dataset.'
+  } else {
+    foreach ($l in $lines) { Emit $l }
+    Emit ''
+    Emit '  This section reports WHAT CHANGED, simultaneously, and nominates'
+    Emit '  nothing as "the Table 5 sale". Decide that from the action you just'
+    Emit '  performed and the physical docket, not from this tool.'
+  }
+}
+
 function Compare-Step {
   param([string]$FromStep, [string]$ToStep)
 
@@ -201,6 +284,8 @@ function Compare-Step {
       Emit '  *** across this boundary as unsafe.                            ***'
     }
   }
+
+  Write-CandidateSummary -FromDir $fromDir -ToDir $toDir
 
   Emit ''
   $names = @(Get-ChildItem -Path $toDir -Filter '*.json' |
