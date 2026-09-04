@@ -1,9 +1,11 @@
 # IdealPOS native table-sale integration — vendor question and evidence package
 
 **Status: LOCAL INVESTIGATION EXHAUSTED ON THE SURFACES INSPECTED. Vendor answer required.**
-Prepared 2026-09-04 against the live DUNEDIN installation. Read-only throughout:
-no experimental write was made to IdealPOS, POSServer or IPSTransaction, and no
-undocumented protocol command was transmitted.
+Prepared 2026-09-04 against the live DUNEDIN installation; evidence item **B**
+corrected the same evening after further measurement withdrew an earlier
+reading. Read-only throughout: no experimental write was made to IdealPOS,
+POSServer or IPSTransaction, and no undocumented protocol command was
+transmitted.
 
 ---
 
@@ -126,11 +128,51 @@ not a statement about what IdealPOS supports.
 `IPSTransaction.PendingSales` shows our three orders as
 `ID 4522 Code 'WBORD-600002'`, `ID 4524 Code 'WBORD-600003'`, `ID 4523 Code 'WBORD'`.
 
-**B. Native table sales use the table number as `Code`.**
-Real sales in the same table: `ID 4527 Code '343'`, `4497 Code '190'`,
-`4486 Code '537'`. So `Code` is the discriminator, and a Verdura order never
-becomes a table sale. `ORD-600002` reached `WebPendingOrder.Processed = 1`
-(native IdealPOS consumed it) with no table sale ever created for it.
+**B. We have never yet observed a native table sale at rest, in either store.**
+
+*(This item was rewritten on 2026-09-04 evening. It previously asserted
+"native table sales use the table number as `Code`", citing `ID 4527 Code
+'343'`, `4497 Code '190'`, `4486 Code '537'`. Further read-only measurement
+disproved that reading. The original claim is withdrawn.)*
+
+The table map is `POSServer.TableMapSetups` `Code 1, ItemType 3,
+ItemIndex 1..19` — nineteen tables. `IPSTransaction.TableActivity` records
+real table use as `(Table 1..19, MapCode 1)` and holds 197 activities for
+Table 5 alone. So tables are numbered 1..19 and are used daily.
+
+Every numeric `IPSTransaction.PendingSales.Code` present — 343, 190, 537, 328,
+272, 32, 995, 994, 885, 608, 579, 550 — is **outside 1..19**. Each carries a
+customer-name or `MAKE IT NOW/TAKEWAY` value in `Label`, and the one with a
+live POSServer counterpart (`343`) sits at `POSServer.PendingSales.Map = 0`,
+the same map as the `WBORD` web rows. Sale 4527's nine lines all share one
+`OrderedTime` and are all `Printed = 1` — a single-round ticket. These are
+takeaway/phone ticket numbers, not table numbers.
+
+Two further structural facts follow:
+
+- `IPSTransaction.PendingSales` has **no `Map` column at all** (full column
+  list: ID, Code, POS, Date, CustomerID, ClerkID, Status, Label, Address1-2,
+  Suburb, State, Postcode, OrderDate, ReadyForPayment, Prepayment, OrderState,
+  SentOnline, Reference). It cannot by itself express which table map a sale
+  belongs to. `POSServer.PendingSales` can, and does.
+- Right now, with the venue closed, **no `PendingSales` row for any table
+  exists in either database**, and all 19 table-map rows are `Status 0`. The
+  only `Map 1` row in POSServer is `ID 99408, Code '0', ClerkID 0`, with zero
+  lines. So a native table sale appears to be **transient** in `PendingSales`:
+  it exists while open and does not survive close. `TableActivity` keeps the
+  durable trace, and it carries only table, map, time and guest count.
+
+**What this means for the questions below.** We cannot yet state how an open
+native table sale is keyed, which store is authoritative for it, or what
+identifier it exposes — so questions 5, 6 and 13 are asked from an explicitly
+unknown starting point rather than from an assumed one. A controlled two-round
+capture on Table 5 is scheduled to establish the observable facts; it cannot
+by itself answer what is *supported*, which is what we are asking you.
+
+What we can still state without reservation is that **a Verdura order never
+becomes a table sale**: `ORD-600002` reached `WebPendingOrder.Processed = 1`
+(native IdealPOS consumed it) with no table sale ever created for it, and our
+three orders remain `WBORD*` rows at `Map 0`.
 
 **C. `ISale.Table` / `TableMap` exist, but no local submit method was found.**
 `IdealposObjects.Sale` (CLSID `174C1477-…`, ProgID `IdealposObjects.Sale`) is
