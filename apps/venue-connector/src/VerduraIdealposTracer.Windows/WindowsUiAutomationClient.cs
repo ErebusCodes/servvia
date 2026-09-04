@@ -562,6 +562,59 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 diagnostics.Add($"Win32 child enumeration failed: {ex.GetType().Name}: {ex.Message}");
             }
 
+            // 3c) MSAA probes, UNCONDITIONAL and deep. Read-only: only
+            //     IAccessible GETTERS are called — never accDoDefaultAction,
+            //     accSelect or put_accValue.
+            //
+            //     The previous MSAA step was gated on mechanism == None, so on
+            //     the POS Screen it never ran at all; and even when it did it
+            //     read only the root's name and child count, never enumerating
+            //     children. That is the gap this closes.
+            //
+            //     Probed: the bound window (CLIENT and WINDOW objects), every
+            //     Win32 child of it, and the process's other VISIBLE windows —
+            //     because the sale controls need not be parented beneath the
+            //     POS Screen HWND.
+            var msaaProbes = new List<MsaaProbeResult>();
+            try
+            {
+                msaaProbes.Add(MsaaDiscovery.Probe(hwnd, chosen.ClassName, chosen.Title));
+                msaaProbes.Add(MsaaDiscovery.Probe(hwnd, chosen.ClassName, chosen.Title, useWindowObject: true));
+
+                foreach (var child in win32Controls)
+                {
+                    var childHandle = ParseHandle(child.Handle);
+                    if (childHandle != IntPtr.Zero)
+                        msaaProbes.Add(MsaaDiscovery.Probe(childHandle, child.ClassName, child.Text));
+                }
+
+                foreach (var other in topWindows.Where(w =>
+                             w.Visible && w.ProcessId == primary.Id && !string.Equals(w.Handle, chosen.Handle, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var otherHandle = ParseHandle(other.Handle);
+                    if (otherHandle != IntPtr.Zero)
+                        msaaProbes.Add(MsaaDiscovery.Probe(otherHandle, other.ClassName, other.Title));
+                }
+
+                foreach (var probe in msaaProbes)
+                {
+                    diagnostics.Add(probe.Reachable
+                        ? $"MSAA {probe.ObjectId} {probe.Handle} ({probe.WindowClassName}): {probe.TotalNodes} node(s), "
+                          + $"{probe.AddressableNodes} addressable."
+                        : $"MSAA {probe.ObjectId} {probe.Handle} ({probe.WindowClassName}): unreachable — {probe.FailureReason}");
+                }
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"MSAA probing failed: {ex.GetType().Name}: {ex.Message}");
+            }
+
+            var addressableAccessible = msaaProbes.Sum(p => p.AddressableNodes);
+            diagnostics.Add(
+                $"TOTAL addressable accessible nodes across {msaaProbes.Count} probe(s): {addressableAccessible}. "
+                + "A profile can only be populated if this is greater than zero AND the nodes correspond to real "
+                + "sale controls (table map, entry field, Save action, confirmation).");
+
             // 4) Win32 menu-bar enumeration.
             EnumerateWin32Menus(hwnd, menus);
 
@@ -598,6 +651,8 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 Mechanism = mechanism,
                 ClientNodeCount = clientNodeCount,
                 Win32Controls = win32Controls,
+                MsaaProbes = msaaProbes,
+                AddressableAccessibleNodes = addressableAccessible,
                 TopLevelWindows = topWindows,
                 Diagnostics = diagnostics,
             }.AsCompleted();
@@ -656,6 +711,11 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             Native.GetWindowThreadProcessId(h, out uint pid);
             if (pidToProc.TryGetValue((int)pid, out var proc))
             {
+                // Geometry decides whether a visible sibling window could
+                // plausibly be hosting the sale UI, or is a 0x0 helper.
+                var rect = new ActionNative.RECT();
+                var haveRect = ActionNative.GetWindowRect(h, ref rect);
+
                 results.Add(new TopLevelWindowInfo
                 {
                     Handle = "0x" + h.ToInt64().ToString("X"),
@@ -664,6 +724,10 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                     Visible = Native.IsWindowVisible(h),
                     ProcessName = proc.ProcessName,
                     ProcessId = proc.Id,
+                    Left = haveRect ? rect.Left : 0,
+                    Top = haveRect ? rect.Top : 0,
+                    Width = haveRect ? rect.Right - rect.Left : 0,
+                    Height = haveRect ? rect.Bottom - rect.Top : 0,
                 });
             }
             return true;

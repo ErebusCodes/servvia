@@ -48,6 +48,16 @@ public sealed record TopLevelWindowInfo
     public bool Visible { get; init; }
     public string? ProcessName { get; init; }
     public int ProcessId { get; init; }
+
+    // Screen geometry, added 2026-09-04. Needed to tell which visible window
+    // actually covers the sale area: if the POS Screen form is full-screen and
+    // the other visible windows are 0x0 or off-screen, the sale UI cannot be
+    // "hosted under another window" and the owner-drawn / windowless
+    // hypotheses are the only ones left.
+    public int Left { get; init; }
+    public int Top { get; init; }
+    public int Width { get; init; }
+    public int Height { get; init; }
 }
 
 /// <summary>Which binding mechanism actually produced the tree.</summary>
@@ -129,6 +139,33 @@ public sealed record IdealposControlTreeSnapshot
     /// selector model is actually derived from.
     /// </summary>
     public IReadOnlyList<Terminal.Win32ControlNode> Win32Controls { get; init; } = Array.Empty<Terminal.Win32ControlNode>();
+
+    /// <summary>
+    /// MSAA / <c>IAccessible</c> probes, run UNCONDITIONALLY on the bound
+    /// window, on each of its Win32 children, and on the process's other
+    /// visible windows.
+    ///
+    /// Added 2026-09-04 after the 14:19:52 capture showed the Win32 path is
+    /// insufficient: the POS Screen form has exactly one child window (the
+    /// <c>ThunderRT6PictureBoxDC</c> container, control id 1) and that
+    /// container has no children of its own. Nothing corresponding to a table
+    /// map, entry field or Save action is addressable as an HWND.
+    ///
+    /// VB6 lightweight controls create no HWND and appear only as accessible
+    /// CHILD IDs on their container, so this is the mechanism that can see
+    /// them if any can. Like every other capture path, it is strictly
+    /// read-only.
+    /// </summary>
+    public IReadOnlyList<MsaaProbeResult> MsaaProbes { get; init; } = Array.Empty<MsaaProbeResult>();
+
+    /// <summary>
+    /// Total MSAA nodes that look genuinely addressable (named or valued,
+    /// non-zero area, not invisible) across every probe. THIS, not
+    /// <see cref="Win32Controls"/> count, is the number that decides whether a
+    /// capture can populate a selector profile — a lone container control
+    /// satisfies "count > 0" while carrying nothing actionable.
+    /// </summary>
+    public int AddressableAccessibleNodes { get; init; }
 
     /// <summary>True only when a root window was actually walked — a fail-closed empty capture is not "captured".</summary>
     public bool HasRoot => Root is not null;
