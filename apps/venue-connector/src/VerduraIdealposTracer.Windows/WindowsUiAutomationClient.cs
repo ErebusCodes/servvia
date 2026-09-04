@@ -521,6 +521,47 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 }
             }
 
+            // 3b) ALWAYS enumerate the Win32 child-window tree, whatever UIA
+            //     produced. This is read-only: EnumChildWindows + GetClassName
+            //     + GetDlgCtrlID + WM_GETTEXT observe state and mutate nothing.
+            //
+            //     Unconditional because the either/or fallback provably misses
+            //     this application. In the 14:10:32 POS Screen capture, UIA
+            //     returned the ThunderRT6FormDC root, a TitleBar, and one EMPTY
+            //     ThunderRT6PictureBoxDC pane. That pane is not a TitleBar, so
+            //     IsChromeOnly said "not chrome-only", mechanism became
+            //     UiaFromHandle, and step 2 — gated on mechanism == None — never
+            //     ran. The real VB6 sale controls are native children beneath
+            //     that pane and went unseen. A lone empty container pane is
+            //     indistinguishable from real content by shape alone, so this
+            //     cannot be fixed by tightening the quality test.
+            IReadOnlyList<Win32ControlNode> win32Controls = Array.Empty<Win32ControlNode>();
+            try
+            {
+                win32Controls = Win32ControlDiscovery
+                    .Enumerate(hwnd)
+                    .Select(n => n with { Text = ControlTreeSanitizer.Sanitize(n.Text) })
+                    .ToList();
+
+                var visibleCount = win32Controls.Count(n => n.Visible);
+                diagnostics.Add(
+                    $"Win32 child enumeration (unconditional, read-only): {win32Controls.Count} control(s), "
+                    + $"{visibleCount} visible, "
+                    + $"{win32Controls.Select(n => n.ClassName).Distinct(StringComparer.OrdinalIgnoreCase).Count()} distinct class(es).");
+
+                if (win32Controls.Count == 0)
+                {
+                    diagnostics.Add(
+                        "WARNING: the bound window reports ZERO Win32 child windows. For a VB6 sale screen this is "
+                        + "not credible — either the window is not the rendered sale form, or it draws its controls "
+                        + "without child HWNDs (owner-drawn), in which case no Win32 selector can address them.");
+                }
+            }
+            catch (Exception ex)
+            {
+                diagnostics.Add($"Win32 child enumeration failed: {ex.GetType().Name}: {ex.Message}");
+            }
+
             // 4) Win32 menu-bar enumeration.
             EnumerateWin32Menus(hwnd, menus);
 
@@ -556,6 +597,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 SessionMismatch = mismatch,
                 Mechanism = mechanism,
                 ClientNodeCount = clientNodeCount,
+                Win32Controls = win32Controls,
                 TopLevelWindows = topWindows,
                 Diagnostics = diagnostics,
             }.AsCompleted();

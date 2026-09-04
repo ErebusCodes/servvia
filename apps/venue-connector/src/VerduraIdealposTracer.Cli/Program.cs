@@ -70,7 +70,8 @@ if (string.Equals(mode, "capture", StringComparison.OrdinalIgnoreCase))
         File.WriteAllText(capturePath, json);
         Console.WriteLine(
             $"Capture written to {capturePath} (root present: {snapshot.HasRoot}, nodes: {snapshot.NodeCount}, "
-            + $"CLIENT nodes: {snapshot.ClientNodeCount}, mechanism: {snapshot.Mechanism}, truncated: {snapshot.Truncated}).");
+            + $"CLIENT nodes: {snapshot.ClientNodeCount}, WIN32 controls: {snapshot.Win32Controls.Count}, "
+            + $"mechanism: {snapshot.Mechanism}, truncated: {snapshot.Truncated}).");
     }
     else
     {
@@ -86,6 +87,21 @@ if (string.Equals(mode, "capture", StringComparison.OrdinalIgnoreCase))
         Console.Error.WriteLine(
             $"CAPTURE FAILED: bound a window (root present: {snapshot.HasRoot}) but reached ZERO client-area "
             + "controls, so no selector can be derived from it.");
+        foreach (var diagnostic in snapshot.Diagnostics) Console.Error.WriteLine($"  - {diagnostic}");
+        return 1;
+    }
+
+    // Client content alone is NOT enough on this application. The 14:10:32
+    // POS Screen capture passed the check above with a single empty
+    // ThunderRT6PictureBoxDC pane and exited 0, yet carried nothing a
+    // selector could be built from. Selectors for this VB6 target come from
+    // the Win32 child tree, so that is what the gate must require.
+    if (snapshot.Win32Controls.Count == 0)
+    {
+        Console.Error.WriteLine(
+            $"CAPTURE INCOMPLETE: bound '{snapshot.RootWindowTitle}' and found {snapshot.ClientNodeCount} UIA "
+            + "client node(s), but ZERO Win32 child controls. Selectors for this VB6 application are derived from "
+            + "the Win32 tree, so this capture cannot populate a profile.");
         foreach (var diagnostic in snapshot.Diagnostics) Console.Error.WriteLine($"  - {diagnostic}");
         return 1;
     }

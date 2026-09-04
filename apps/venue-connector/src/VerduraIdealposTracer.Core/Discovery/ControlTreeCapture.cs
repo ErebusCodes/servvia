@@ -105,6 +105,31 @@ public sealed record IdealposControlTreeSnapshot
     /// </summary>
     public int ClientNodeCount { get; init; }
 
+    /// <summary>
+    /// The FULL Win32 child-window tree of the bound window, flattened, and
+    /// captured UNCONDITIONALLY — not only when UI Automation comes back
+    /// empty.
+    ///
+    /// Added 2026-09-04 after the 14:10:32 POS Screen capture. That capture
+    /// bound the correct window and UIA returned a 3-node tree: the
+    /// <c>ThunderRT6FormDC</c> root, a <c>TitleBar</c>, and ONE empty
+    /// <c>ThunderRT6PictureBoxDC</c> pane. Because that pane is not a
+    /// TitleBar, <see cref="ControlTreeQuality.IsChromeOnly"/> judged the
+    /// tree "not chrome-only", the mechanism was set to
+    /// <see cref="CaptureMechanism.UiaFromHandle"/>, and the Win32
+    /// <c>EnumChildWindows</c> fallback — which only ran
+    /// <c>if (mechanism == None)</c> — was skipped entirely. The real VB6
+    /// sale controls live as native children beneath that pane and were
+    /// never enumerated.
+    ///
+    /// A single empty container pane is technically "client content" and
+    /// structurally indistinguishable from real content, so the either/or
+    /// fallback could not be repaired by tightening the quality test alone.
+    /// This list is therefore always populated: it is the evidence the Win32
+    /// selector model is actually derived from.
+    /// </summary>
+    public IReadOnlyList<Terminal.Win32ControlNode> Win32Controls { get; init; } = Array.Empty<Terminal.Win32ControlNode>();
+
     /// <summary>True only when a root window was actually walked — a fail-closed empty capture is not "captured".</summary>
     public bool HasRoot => Root is not null;
 
