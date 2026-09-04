@@ -1,163 +1,194 @@
-# IdealPOS native table assignment — vendor question and evidence package
+# IdealPOS native table-sale integration — vendor question and evidence package
 
-**Status: LOCAL INVESTIGATION EXHAUSTED. External vendor answer required.**
-Prepared 2026-09-04 against the live DUNEDIN installation.
-
-The question is narrow and factual:
-
-> **Is there a supported IdealPOS entry point by which an external system can
-> create or submit a sale that carries a table assignment (`Table` /
-> `TableMap`), such that the sale appears in IdealPOS on that table?**
-
-Everything below is what we established locally so the vendor does not have
-to re-derive it, and so the question cannot be answered with something we
-have already ruled out.
+**Status: LOCAL INVESTIGATION EXHAUSTED ON THE SURFACES INSPECTED. Vendor answer required.**
+Prepared 2026-09-04 against the live DUNEDIN installation. Read-only throughout:
+no experimental write was made to IdealPOS, POSServer or IPSTransaction, and no
+undocumented protocol command was transmitted.
 
 ---
 
-## 1. What we need, in product terms
+## The question
 
-Verdura sends a dine-in order to IdealPOS. It must land **on the table the
-customer is sitting at**, without a staff member re-keying or manually
-assigning it. Today it does not: the order reaches IdealPOS, but as an
-unassigned web order.
+> **What is the supported IdealPOS integration mechanism for an external
+> application to open or use an existing native table sale, add PLUs through
+> IdealPOS's own pricing engine, send only newly-added lines to the kitchen,
+> append later rounds to the same native sale, correlate the resulting native
+> sale and lines back to an external idempotent request, and perform
+> authorized finish/cancel operations?**
 
-## 2. Installation under test
+We are **not** asking how to insert rows directly into `PendingSales`, and we
+are **not** asking to use undocumented internal protocols. We are asking which
+supported interface we should be using instead.
 
-| Item | Value |
-| --- | --- |
-| IdealPOS install path | `C:\Program Files (x86)\Idealpos Solutions\Idealpos` |
-| `IPS.exe` | 40,143,120 bytes, dated 2023-09-11 |
-| SQL instance | `localhost\IDEALSQL` |
-| Databases | `IPSTransaction`, `POSServer` |
-| Integration currently used | `IdealPos.Webit.Core.dll` (`WebOrder`) |
+### What we are building
 
-## 3. What we have already ruled out — please do not re-suggest these
+A tablet ordering frontend that must behave as a trustworthy frontend for the
+restaurant's **real native IdealPOS table sale**:
 
-### 3.1 `IdealPos.Webit.Core` `WebOrder` has no table field
+- Table 5, Round 1 → a native Table 5 sale, IdealPOS resolving all prices,
+  exactly one KOT for the Round 1 items, then reconciliation before we report
+  success to staff.
+- Table 5, Round 2 → **append** to the same native sale, exactly one new KOT
+  containing **only** the Round 2 items.
+- On retry/crash/timeout → never resend a round IdealPOS may already have
+  accepted.
+- Close/cancel → through real, permission-aware IdealPOS operations.
 
-Its complete field set is: `HostReference`, `OrderReference`, `Items`,
-`Customer`, `UseCustomerAddressing`, `DeliveryAddress`, `PostalAddress`,
-`DeliverTo`, `PriceMode`, `OrderedDate`, `DeliveryDate`,
-`TriggerPromotions`, `CalculatePoints`, `GiftOrder`, `PaymentDetail`, the
-four amount fields, `OrderDetail`, `GiftMessage`, `Message`, `DatebaseId`,
-`Processed`. `OrderDetail` is an `OrderMode` whose values are `None`,
-`Pickup`, `EatIn`, `Delivery`, `ErrorReport`.
+## Installation under test
 
-**There is no table field anywhere in the contract.** Encoding a table into
-`DeliverTo`, `Message`, or `OrderReference` was tried and rejected: those
-are not table fields, and two of them are actively harmful (`Message`
-prints a table on the kitchen docket that was never assigned; a rewritten
-`OrderReference` moves the pending-sale code that reconciliation anchors on).
+| Component | Version | Notes |
+| --- | --- | --- |
+| `IPS.exe` | **7.133.0200** | Native/unmanaged. Child of `IPSClient.exe`. Listens TCP 12183. |
+| `IPSClient.exe` | 8.0.0.5 | Managed. Launcher/parent of `IPS.exe`. Listens 5501/5502. |
+| `IPSWorker.exe` | 7.133.0200 | Native, `/WORKER`, child of `IPS.exe`. Listens 7983. |
+| `POSServer.exe` | 8.0.0.1 | Managed. Service `IdealposServer`, `NT AUTHORITY\NetworkService`, `/mode=service`. Listens TCP **11000**. |
+| `IPSPrinterServer.exe` | 8.00.0001 | Native. Child of `ipsdeploy.exe`. Listens TCP 11183. |
+| `IdealposService.exe` | 2.9.8 | Managed. Service, NetworkService. Outbound HTTPS only; no local listener. |
+| `ipsdeploy.exe` | 7.110.0001 | Native, `/startall`. Launcher/supervisor. |
+| `IdealPos.Licensing.exe` | 1.5.10.0 | WCF `net.tcp://localhost:808` — licensing contracts only. |
+| `IdealposObjects.dll` | 7.1.0.5 | COM-registered; contains `ISale` with `Table`/`TableMap`. |
+| `IdealPos.Webit.Core.dll` | 1.0.0.0 | The inbound web-order contract we use today. |
+| SQL | `localhost\IDEALSQL` | Databases `IPSTransaction`, `POSServer`. |
 
-**Live confirmation.** Order `ORD-600002` reached
-`WebPendingOrder.Processed = 1` — native IdealPOS definitely consumed it —
-and **no `PendingSales` row was ever created for it**. Consumed, but never
-placed on a table.
-
-### 3.2 `IdealposObjects.Sale` has `Table`/`TableMap` but cannot be submitted
-
-`IdealposObjects.dll` exposes a COM-visible `ISale` (IID
-`9DC1CBB4-BC88-4665-AA0D-CCC28BD017D1`) and class `Sale` (CLSID
-`174C1477-6C24-48D9-8DA8-591D7028D190`, ProgID `IdealposObjects.Sale`,
-registered under `HKLM\SOFTWARE\WOW6432Node\Classes\CLSID`). It carries
-`string Table` and `int TableMap`.
-
-**But it is a data object with no submission path:**
-
-- `ISale`'s only methods are `ConvertJson(string)` (deserialize) and
-  `SetupItem()` (return a sample JSON string). There is no `Save`, `Post`,
-  `Submit`, `Send` or `Commit`.
-- `IdealposObjects.IManager` — the only manager/factory in the assembly —
-  exposes only `Initialize`, `GetCustomerTransactionsJSONString`,
-  `GetCustomerAccountUpdatesJSONString`, `WriteCustomerTransactions`,
-  `GetCustomerTransactions`, `GetCustomerAccountUpdates`,
-  `GetCustomerTransactionsArray`. **No method accepts or returns a `Sale`.**
-- No other type in `IdealposObjects` takes or returns a `Sale`.
-- Across every IdealPOS assembly we decompiled, the only consumer of
-  `IdealposObjects` is `POSServer.Communication`, and it uses it
-  **exclusively for `CustomerTransaction`** (two call sites). Nothing in
-  the shipped product ever constructs a `Sale`.
-
-So `Sale.Table` appears to be an unused DTO field on this build. We are
-explicitly **not** assuming it is supported merely because the property
-exists.
-
-### 3.3 `IdealposTransactions` is outbound-only
-
-`IdealposTransactions.Sale` does carry `tableNumber`, and
-`IdealposTransactions.Manager` does expose `SendTransaction`. However
-`SendTransaction(string Cons, string POS, string url)` **reads an
-already-completed sale out of the IdealPOS database** (`GetSale` queries by
-`Cons`/`POS`) and **HTTP-POSTs it to a partner URL**. It is transaction
-export/reporting. It cannot create anything in IdealPOS.
-
-### 3.4 No other COM-exposed assembly pairs a table with a submission
-
-We reflected over every assembly shipped with a type library in the install
-directory — `idealPOS.NET`, `IdealposTransactions`, `IPSSupport`,
-`Idealpos.Webit.Core`, `IdealposObjects`, `IKM.API`, `SmartConnect`,
-`ResDiaryPOS`, `RTBSLive`, `IdealposAllotrac`, `IPS_EPay`, `IPSLabels`,
-`IdealposPAX`, `IdealposPLBPOS`, `IdealposSlyp`, `IdealposTenerum`,
-`idealposXeroAPI`, `CAAAffinity`, `FijiVatMonitor`, `FirstAmericanEftpos`,
-`ImagePrinter`, `PayLinqI`, `Syncro3Eftpos`, `variPad`,
-`IdealposLicensingLocal` — and found **no type exposing both a table member
-and a create/submit-style method**.
-
-### 3.5 Table state appears to be set by an internal terminal protocol
-
-In `POSServer.Communication`, table status is written by a `SENDSTAT` text
-packet handler (`UpdateStatus`) that terminals send to POSServer; it
-creates/updates `TableMaps` and `TableMapSetups` rows. This is an internal
-terminal-to-POSServer socket protocol, not a documented external API, and
-we are **not** going to reverse-engineer or write to it.
-
-### 3.6 We have not written anything
-
-All of the above is from read-only inspection: decompiled assemblies, COM
-registry reads, reflection, and `SELECT`-only SQL. **No experimental write
-has been made to IdealPOS, POSServer or IPSTransaction**, and we will not
-make one against a live restaurant database on a guess.
+Fields this question refers to:
+`IdealposObjects.ISale.Table` / `.TableMap`,
+`IPSTransaction.PendingSales.Reference`,
+`IPSTransaction.PendingSaleLines.Printed`,
+`IPSTransaction.PendingSaleLines.OrderedTime`,
+`IPSTransaction.TransactionReference.Reference` / `.UserDefinedText`.
 
 ---
 
-## 4. The exact questions for Idealpos Solutions
+## The 15 questions
 
-1. **Is there any supported way for an external system to create a sale on a
-   specific table in IdealPOS?** If yes, which interface, and is there
-   documentation or a sample?
+**Entry point**
 
-2. **What is `IdealposObjects.ISale.Table` / `TableMap` for?** It is
-   COM-registered and carries a table, but exposes no submission method and
-   is not consumed by any shipped IdealPOS code we can find. Is it dead, is
-   it consumed by a component we do not have, or does it require a licence
-   or module we do not have enabled?
+1. Is there a supported API/SDK/COM/service entry point for **creating or
+   opening a native table sale at a specified Table / TableMap**?
+2. If `IdealposObjects.ISale` is intended for this purpose, **what supported
+   component accepts or submits it?** Please name the assembly, interface,
+   method and required initialization sequence.
 
-3. **Is a table-carrying field planned or available for `Webit` `WebOrder`**
-   on a newer IdealPOS build than 2023-09-11? If so, which version?
+**Correlation**
 
-4. **If there is no such entry point**, what is the vendor-recommended way to
-   get a third-party dine-in order onto the correct table — for example a
-   licensed module, the handheld/`IdealHandheld` path, or a documented
-   POSServer API?
+3. Is `IPSTransaction.PendingSales.Reference` intended for third-party
+   correlation? If so, **through what supported API is it set?**
+4. Is there another external-reference / source / idempotency field intended
+   for integrating third-party orders with native table sales? We also found
+   `TransactionReference.Reference` and `TransactionReference.UserDefinedText`
+   (both unused here) — are those the intended mechanism?
+5. **What stable native identifier should an integration retain** for (a) the
+   table sale and (b) individual sale lines?
 
-5. **Is any part of the POSServer terminal protocol supported for
-   third-party use?** We assume not, and will not use it unless you tell us
-   it is supported.
+**Rounds and KOT**
 
-## 5. Where to send it
+6. How should an integration **append Round 2 to the existing native table
+   sale** rather than creating a second sale?
+7. What supported operation causes **only newly-added lines** to be sent to
+   the kitchen?
+8. Is `PendingSaleLines.Printed` the authoritative "already sent to kitchen"
+   state, or merely a persistence implementation detail?
+9. Is `OrderedTime` meaningful **per round**, per line, or only at initial
+   order creation?
+15. Is there a supported **KOT audit/result identifier** we can use to prove a
+    particular round was printed exactly once?
 
-Idealpos Solutions support / developer-integration channel:
+**Pricing — we specifically do not want to be the price authority**
 
-- Support portal / email: <https://www.idealpos.com.au/support/>
-- The installation's own support tooling: `IdealposSupport.FileTools`
-  (`SendFileToIdealposOnline`) and the Support menu inside IdealPOS, which
-  are the vendor's own supported channels for raising a case with the
-  installation's licensing ID attached.
+10. Does a supported API accept **PLU / quantity / modifiers and let IdealPOS
+    calculate the effective price itself**?
+11. How are table price levels, specials, modifiers, tax, discounts and
+    rounding resolved when an external integration adds a PLU?
 
-Include: the installation's licensing ID, the IdealPOS version, and
-sections 2–3 of this document.
+**Lifecycle and safety**
 
-**No authenticated Idealpos support channel is available to this
-engineering environment, so this question has not been sent. It needs to go
-from an account authorised on this installation.**
+12. What supported permission-aware operations exist for **finish / delete /
+    cancel / void**, and what staff/operator context must be supplied?
+13. What is the supported **idempotency/recovery mechanism after an ambiguous
+    timeout**? We must not resend a round IdealPOS may already have accepted.
+14. Is TCP 11000 / POSServer's `SENDSTAT` protocol supported for third
+    parties? **Our default assumption is NO** and we will not use it unless
+    you tell us otherwise.
+
+**Additional**: `IPS.exe` listens on TCP 12183 and its `Printing.log` records
+`wsPrinterError_DataArrival` / `Accepted Request` for HTTP traffic. Is this a
+supported interface, and if so what is it for? We have not sent anything to it.
+
+---
+
+## Evidence appendix
+
+All observations are from read-only inspection of this installation. **We do
+not claim vendor absence from local absence** — these are the facts we can see,
+not a statement about what IdealPOS supports.
+
+**A. Verdura's Webit orders become `WBORD-*` sales, not native table sales.**
+`IPSTransaction.PendingSales` shows our three orders as
+`ID 4522 Code 'WBORD-600002'`, `ID 4524 Code 'WBORD-600003'`, `ID 4523 Code 'WBORD'`.
+
+**B. Native table sales use the table number as `Code`.**
+Real sales in the same table: `ID 4527 Code '343'`, `4497 Code '190'`,
+`4486 Code '537'`. So `Code` is the discriminator, and a Verdura order never
+becomes a table sale. `ORD-600002` reached `WebPendingOrder.Processed = 1`
+(native IdealPOS consumed it) with no table sale ever created for it.
+
+**C. `ISale.Table` / `TableMap` exist, but no local submit method was found.**
+`IdealposObjects.Sale` (CLSID `174C1477-…`, ProgID `IdealposObjects.Sale`) is
+COM-registered and carries `Table`/`TableMap`, but its only methods are
+`ConvertJson` and `SetupItem`. `IdealposObjects.IManager` exposes only
+CustomerTransaction/CustomerAccountUpdate operations and takes no `Sale`. No
+type in any decompiled IdealPOS assembly takes or returns a `Sale`; the only
+consumer of `IdealposObjects` is `POSServer.Communication`, for
+`CustomerTransaction` only. No late-bound path exists either — the only
+`Activator.CreateInstance` sites are POSServer's packet factory and
+IdealposService's own-assembly plugin loader; there is no `CreateObject`,
+`GetTypeFromProgID`, `GetTypeFromCLSID` or `InvokeMember` against its GUIDs.
+
+**D. `PendingSales.Reference` exists but is unused here.**
+Populated in **0 of 47** pending sales. By contrast `Label` (staff free text,
+e.g. "HAJAR AT 5.30 PM") is populated in 43 of 47. `TransactionReference`
+— the completed-transaction reference table keyed `(Cons, POS)`, carrying
+`Reference varchar(255)` and `UserDefinedText varchar(max)` — is **empty
+(0 rows)**.
+
+**E. POSServer's table protocol carries table state, not line items.**
+Captured live in `POSServerClient.log`: `~SENDSTAT 11850204@@@`, and a close
+sequence `SENDSTAT(status) → SENDSTAT(zeroed) → ~DELETE 18 …@@@`. Matches the
+`UpdateStatus` handler. Fields are map, table, time, status, amount, guests —
+**no line items, no sale identifier, no KOT state, no correlation field**.
+`POSServer.PendingSales` also uses a **separate ID space** from IPSTransaction
+(the same live sale is `99697` in POSServer and `4527` in IPSTransaction).
+
+**F. IdealposService's installed plugin is outbound sync only.**
+Its log shows exactly one plugin loaded:
+`IdealposService.Online.SalesSync.IdealposSyncPlugin` ("Synchronize data").
+`LoadPlugins` scans only `Assembly.GetExecutingAssembly()`, so there is no
+third-party plugin extension point on this installation.
+
+**G. No durable KOT audit record found in the surfaces inspected.**
+No print-job/spool/KOT table with rows exists in `IPSTransaction` (only
+`QueuedPacket`, 0 rows). `IPSPrinterServer` logs record only process
+start/exit, not per-job detail. KOT routing itself is configured by
+`StockItems.PrintPend1..12` plus `PrintGroups` and `NetworkPrinters`
+(kitchen printer at an Ethernet address, port 9100). This does not rule out a
+runtime trace we have not yet used.
+
+**H. Native pricing is resolved from configuration, not supplied.**
+`StockItemsValue(StockItemID, Type, Level, Value)` with
+`StockItemsValueType` = {1 Price, 2 Points, 3 Tax} — i.e. price by item and
+price level. This is exactly the engine we want to keep authoritative.
+
+**I. Permission tokens governing table lifecycle exist.**
+`IPSTransaction.Security` (388 rows) includes `CP\Table Map\FINISH`,
+`CP\Table Map\DELETE`, `CP\Table Map\Can Override Locks`, `CP\POS\REFUND`.
+
+## Where to send this
+
+Idealpos Solutions support / developer-integration channel
+(<https://www.idealpos.com.au/support/>), or the Support tooling inside
+IdealPOS (`IdealposSupport.FileTools`), which attaches the installation's
+licensing ID. Include this document plus the installation's licensing ID.
+
+**No authenticated Idealpos support channel is available to this engineering
+environment, so this has not been sent.** It must go from an account
+authorised on this installation.
