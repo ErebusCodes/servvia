@@ -436,7 +436,11 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
     expect(syncRows[0].status).toBe(POSSyncStatus.submitted_awaiting_confirmation);
   });
 
-  it('confirms only after the connector reports a matching observed table code', async () => {
+  // FAIL-CLOSED (2026-09-04). The connector-mediated route is a second way to
+  // reach the same decision function, so it must fail closed identically:
+  // a matching observed table code is correlation, not causation, and an
+  // unrelated walk-in on the same table produces the same report.
+  it('a matching observed table code corroborates but never confirms', async () => {
     const { connector, svc, syncRows } = harness();
 
     await svc.sweepConfirm();
@@ -449,35 +453,68 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
 
     const r = await svc.sweepConfirm();
 
-    expect(r.confirmed).toBe(1);
-    expect(syncRows[0].status).toBe(POSSyncStatus.synced);
-    // The OBSERVED code is persisted, never the requested one.
-    expect(syncRows[0].posTableId).toBe('12');
+    expect(r.confirmed).toBe(0);
+    expect(r.unchanged).toBe(1);
+    expect(syncRows[0].status).toBe(POSSyncStatus.submitted_awaiting_confirmation);
+  });
+
+  it('no sequence of connector reports can reach synced', async () => {
+    const { connector, svc, syncRows } = harness();
+    const nonRejecting = [
+      'received',
+      'validated',
+      'submitted_to_idealpos',
+      'pending_idealpos_processing',
+      'processed',
+      'anchored_in_idealpos',
+      'assigned_to_table',
+      'uncertain',
+      'paid',
+      'closed',
+    ];
+
+    for (const status of nonRejecting) {
+      await svc.sweepConfirm();
+      const latest = connector.latest;
+      if (latest.status === ConnectorCommandStatus.pending) {
+        connector.report(
+          latest.id,
+          ConnectorCommandStatus.succeeded,
+          IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS,
+          { body: assignedBody({ status }) },
+        );
+      }
+      await svc.sweepConfirm();
+      expect(syncRows[0].status).not.toBe(POSSyncStatus.synced);
+    }
   });
 
   it('repeated sweeps after confirmation are idempotent and cannot regress a terminal state', async () => {
     const { connector, svc, syncRows } = harness();
     await svc.sweepConfirm();
+    // A real terminal outcome: an explicit Bridge rejection. (Table
+    // corroboration deliberately no longer transitions anything, so it cannot
+    // be used to drive a record terminal in this test.)
+    connector.report(
+      connector.latest.id,
+      ConnectorCommandStatus.succeeded,
+      IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS,
+      { body: bridgeBody({ status: 'rejected', lastError: 'bad PLU' }) },
+    );
+    await svc.sweepConfirm();
+
+    // A later, contradicting report arrives; the record is already terminal.
     connector.report(
       connector.latest.id,
       ConnectorCommandStatus.succeeded,
       IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS,
       { body: assignedBody() },
     );
-    await svc.sweepConfirm();
-
-    // Bridge now reports a rejection; the record is already terminal.
-    connector.report(
-      connector.latest.id,
-      ConnectorCommandStatus.succeeded,
-      IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS,
-      { body: bridgeBody({ status: 'rejected', lastError: 'too late' }) },
-    );
 
     const r = await svc.sweepConfirm();
 
     expect(r.examined).toBe(0); // no longer selected at all
-    expect(syncRows[0].status).toBe(POSSyncStatus.synced);
+    expect(syncRows[0].status).toBe(POSSyncStatus.failed);
   });
 
   it('a mismatched observed table never confirms', async () => {
@@ -530,7 +567,7 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
     const { connector, svc, syncRows } = harness();
     await svc.sweepConfirm();
     const probeId = connector.latest.id;
-    const payload = { body: assignedBody() };
+    const payload = { body: bridgeBody({ status: 'rejected', lastError: 'bad PLU' }) };
     connector.report(probeId, ConnectorCommandStatus.succeeded, IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS, payload);
 
     const first = await svc.sweepConfirm();
@@ -538,27 +575,27 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
     connector.report(probeId, ConnectorCommandStatus.succeeded, IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS, payload);
     const second = await svc.sweepConfirm();
 
-    expect(first.confirmed).toBe(1);
-    expect(second.confirmed).toBe(0);
+    expect(first.failed).toBe(1);
+    expect(second.failed).toBe(0);
     expect(second.examined).toBe(0);
-    expect(syncRows[0].status).toBe(POSSyncStatus.synced);
+    expect(syncRows[0].status).toBe(POSSyncStatus.failed);
   });
 
-  it('concurrent sweeps confirm exactly once', async () => {
+  it('concurrent sweeps apply a terminal transition exactly once', async () => {
     const { connector, svc, syncRows } = harness();
     await svc.sweepConfirm();
     connector.report(
       connector.latest.id,
       ConnectorCommandStatus.succeeded,
       IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS,
-      { body: assignedBody() },
+      { body: bridgeBody({ status: 'rejected', lastError: 'bad PLU' }) },
     );
 
     const [a, b] = await Promise.all([svc.sweepConfirm(), svc.sweepConfirm()]);
 
-    expect(a.confirmed + b.confirmed).toBe(1);
+    expect(a.failed + b.failed).toBe(1);
     expect(a.raced + b.raced).toBe(1);
-    expect(syncRows[0].status).toBe(POSSyncStatus.synced);
+    expect(syncRows[0].status).toBe(POSSyncStatus.failed);
   });
 
   it('a Bridge outage across many sweeps never manufactures a confirmation', async () => {

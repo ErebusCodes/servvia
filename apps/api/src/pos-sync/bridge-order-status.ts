@@ -124,11 +124,39 @@ function normalise(value: string | null | undefined): string {
 /**
  * Maps a Bridge read onto a POSSyncRecord transition.
  *
- * Only ONE path reaches `synced`, and it requires three independent things to
- * agree: the Bridge's own terminal `assigned_to_table` status, an explicit
- * `tableMatchesRequest === true`, and a non-empty observed
- * `posServerPendingSaleCode` that equals the table Verdura requested. Any
- * disagreement leaves the record awaiting rather than guessing.
+ * FAIL-CLOSED POLICY (2026-09-04). NO path in this function reaches `synced`.
+ *
+ * `synced` is what the tablet renders as full confirmation, so it may be
+ * claimed only from a CAUSAL native identity — evidence that ties this
+ * specific Verdura order to a specific native IdealPOS sale. No such identity
+ * exists on this installation today, and none of the following is a
+ * substitute. Each is explicitly disqualified:
+ *
+ *   - connector acceptance alone         (the connector durably took the job;
+ *                                         says nothing about IdealPOS)
+ *   - WebOrder `processed` alone         (native IdealPOS consumed the web
+ *                                         order; no table, no sale identity)
+ *   - the requested table echoed back    (`body.table` is Verdura's own input)
+ *   - POSServer table-code correlation   (a walk-in on the same table is
+ *                                         indistinguishable — see the
+ *                                         assigned_to_table branch)
+ *   - absence of an error                (silence is not success)
+ *   - timeout / retry exhaustion         (exhaustion is not delivery)
+ *
+ * This function previously promoted on the fourth of those. It no longer
+ * does: `assigned_to_table` with a matching code now records
+ * `tableCorroborated: true` and leaves the record awaiting, so the
+ * corroboration is still visible to operators and telemetry without being
+ * mistaken for confirmation.
+ *
+ * Consequently `synced` is once again unreachable by any code path, which is
+ * what POSSyncStatus's own enum doc has always said. It becomes reachable
+ * again only when a real causal identity exists — which is a vendor-dependent
+ * question (see the vendor package's questions 3, 4, 5 and 13), not something
+ * this module can resolve on its own.
+ *
+ * `failed` is unaffected: an explicit Bridge `rejected`/`failed` is a real,
+ * attempted-and-rejected outcome and remains terminal.
  */
 export function decideConfirmation(
   outcome: BridgeStatusReadOutcome,
@@ -229,9 +257,26 @@ export function decideConfirmation(
       };
     }
 
+    // CORROBORATION, NOT CONFIRMATION — this branch deliberately does not
+    // promote. See FAIL-CLOSED POLICY on decideConfirmation below.
+    //
+    // Everything checked above is satisfied identically by a staff-created
+    // walk-in on the same table. `Reconciliation.SelectTableSale` matches a
+    // POSServer row on `Code == requestedTable` at `Pos == 1` and nothing
+    // else, and no column in POSServer.PendingSales or PendingSaleLines
+    // references a web order — so this evidence is table-code correlation,
+    // never causation. Read-only measurement of the live venue on 2026-09-04
+    // sharpened that: SelectTableSale ignores `Map`, the column that actually
+    // separates a table-map sale (Map 1) from a takeaway/web ticket (Map 0),
+    // and observed takeaway ticket numbers include 32 — so ticket numbers and
+    // table numbers occupy overlapping ranges. A takeaway ticket numbered
+    // 1..19 would satisfy every check above.
     return {
-      nextStatus: POSSyncStatus.synced,
-      reason: `bridge observed POSServer table sale '${observed}' matching the requested table`,
+      nextStatus: null,
+      reason:
+        `bridge observed POSServer table sale '${observed}' matching the requested table — ` +
+        'table-code corroboration only, not causal proof that THIS order produced that sale; ' +
+        'leaving awaiting confirmation',
       observedTableCode: observed,
       tableCorroborated: true,
     };

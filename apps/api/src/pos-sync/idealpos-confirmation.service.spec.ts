@@ -33,11 +33,29 @@ const assignedBody = (over: Record<string, unknown> = {}) =>
   });
 
 describe('decideConfirmation', () => {
-  it('assigned_to_table with a matching observed code confirms', () => {
+  // FAIL-CLOSED (2026-09-04). This is the case that used to promote to
+  // `synced`. A staff-created walk-in on the same table produces a
+  // byte-identical Bridge body, so the evidence is table-code correlation,
+  // never causation.
+  it('assigned_to_table with a matching observed code CORROBORATES but does NOT confirm', () => {
     const d = decideConfirmation({ kind: 'ok', body: assignedBody() }, '12');
-    expect(d.nextStatus).toBe(POSSyncStatus.synced);
+    expect(d.nextStatus).toBeNull();
     expect(d.observedTableCode).toBe('12');
     expect(d.tableCorroborated).toBe(true);
+    expect(d.reason).toContain('corroboration only');
+  });
+
+  it('an unrelated walk-in on the requested table is indistinguishable and stays awaiting', () => {
+    // Nothing in the Bridge contract ties a POSServer table sale to a web
+    // order, so this body is exactly what a walk-in produces. The point of the
+    // test is that the decision is identical either way -- which is precisely
+    // why neither may confirm.
+    const walkIn = decideConfirmation(
+      { kind: 'ok', body: assignedBody({ externalOrderId: 'ORD-UNRELATED' }) },
+      '12',
+    );
+    expect(walkIn.nextStatus).toBeNull();
+    expect(walkIn.tableCorroborated).toBe(true);
   });
 
   it('assigned_to_table with tableMatchesRequest null does NOT confirm', () => {
@@ -127,7 +145,101 @@ describe('decideConfirmation', () => {
       { kind: 'ok', body: assignedBody({ posServerPendingSaleCode: ' t12 ' }) },
       'T12',
     );
-    expect(d.nextStatus).toBe(POSSyncStatus.synced);
+    // Still only corroboration -- normalisation decides whether the codes
+    // MATCH, never whether a match is sufficient to confirm.
+    expect(d.nextStatus).toBeNull();
+    expect(d.tableCorroborated).toBe(true);
+  });
+});
+
+/**
+ * The policy this module exists to enforce, asserted as a property rather than
+ * trusted to a doc comment: no Bridge read of any shape may produce `synced`
+ * while no causal native identity exists.
+ */
+describe('decideConfirmation fail-closed policy', () => {
+  const everyNonRejectingStatus = [
+    'received',
+    'validated',
+    'submitted_to_idealpos',
+    'pending_idealpos_processing',
+    'processed',
+    'anchored_in_idealpos',
+    'assigned_to_table',
+    'uncertain',
+    'paid',
+    'closed',
+  ];
+
+  it.each(everyNonRejectingStatus)('never reaches synced on bridge status %s', (status) => {
+    for (const requested of ['12', 'T12', '', null]) {
+      for (const matches of [true, false, null]) {
+        const d = decideConfirmation(
+          {
+            kind: 'ok',
+            body: assignedBody({
+              status,
+              tableMatchesRequest: matches,
+              posServerPendingSaleCode: '12',
+            }),
+          },
+          requested,
+        );
+        expect(d.nextStatus).not.toBe(POSSyncStatus.synced);
+      }
+    }
+  });
+
+  it('never reaches synced on any non-ok read outcome', () => {
+    const outcomes: BridgeStatusReadOutcome[] = [
+      { kind: 'notFound' },
+      { kind: 'unavailable', reason: 'ECONNREFUSED' },
+      { kind: 'malformed', reason: 'not json' },
+    ];
+    for (const o of outcomes) {
+      expect(decideConfirmation(o, '12').nextStatus).not.toBe(POSSyncStatus.synced);
+    }
+  });
+
+  // The grounds named as individually insufficient. Each is expressed as the
+  // Bridge body that would carry it, and each must leave the record awaiting.
+  it('rejects every individually-insufficient ground for confirmation', () => {
+    const insufficient: Array<[string, BridgeStatusReadOutcome]> = [
+      // WebOrder processed alone -- native IdealPOS consumed the web order,
+      // but that says nothing about a table or a sale identity.
+      [
+        'processed alone',
+        { kind: 'ok', body: bridgeBody({ status: 'processed', processed: true }) },
+      ],
+      // Anchored in IdealPOS -- a real anchor row, still not a table sale.
+      ['anchor alone', { kind: 'ok', body: bridgeBody({ status: 'anchored_in_idealpos' }) }],
+      // The requested table echoed back. body.table is Verdura's own input.
+      [
+        'requested table echoed',
+        { kind: 'ok', body: bridgeBody({ status: 'validated', table: '12' }) },
+      ],
+      // Absence of an error is not success.
+      [
+        'no error reported',
+        { kind: 'ok', body: bridgeBody({ status: 'submitted_to_idealpos', lastError: null }) },
+      ],
+      // Heuristic Bridge states, documented as inferred rather than proven.
+      ['heuristic paid', { kind: 'ok', body: bridgeBody({ status: 'paid' }) }],
+      ['heuristic closed', { kind: 'ok', body: bridgeBody({ status: 'closed' }) }],
+      // Genuinely ambiguous by construction.
+      ['uncertain', { kind: 'ok', body: bridgeBody({ status: 'uncertain' }) }],
+    ];
+    for (const [label, outcome] of insufficient) {
+      const d = decideConfirmation(outcome, '12');
+      expect([label, d.nextStatus]).toEqual([label, null]);
+    }
+  });
+
+  it('an explicit bridge rejection is still terminal -- fail-closed is not fail-silent', () => {
+    for (const status of ['rejected', 'failed']) {
+      const d = decideConfirmation({ kind: 'ok', body: bridgeBody({ status }) }, '12');
+      expect(d.nextStatus).toBe(POSSyncStatus.failed);
+    }
   });
 });
 
@@ -181,7 +293,7 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
     );
   });
 
-  it('assigned_to_table advances to synced and records the OBSERVED table code', async () => {
+  it('assigned_to_table leaves the record awaiting and writes NOTHING', async () => {
     const prisma = makePrisma(oneRecord);
     const svc = new IdealposConfirmationService(
       prisma as never,
@@ -190,18 +302,51 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
 
     const r = await svc.sweepConfirm();
 
-    expect(r.confirmed).toBe(1);
-    const call = prisma.pOSSyncRecord.updateMany.mock.calls[0][0];
-    expect(call.data.status).toBe(POSSyncStatus.synced);
-    expect(call.data.posTableId).toBe('12');
-    expect(call.data.syncedAt).toBeInstanceOf(Date);
+    expect(r.confirmed).toBe(0);
+    expect(r.unchanged).toBe(1);
+    expect(prisma.pOSSyncRecord.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('repeated sweeps over the same corroborated record never transition it', async () => {
+    const prisma = makePrisma(oneRecord);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: assignedBody({ posServerPendingSaleCode: '12' }) }),
+    );
+
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+
+    expect(prisma.pOSSyncRecord.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('concurrent sweeps produce at most one terminal transition', async () => {
+    // Two sweeps race on the same record with a real terminal outcome. The
+    // guarded updateMany means the loser sees count 0 and reports `raced`,
+    // never a second transition.
+    const prisma = makePrisma(oneRecord);
+    let calls = 0;
+    prisma.pOSSyncRecord.updateMany = jest.fn().mockImplementation(() => {
+      calls += 1;
+      return Promise.resolve({ count: calls === 1 ? 1 : 0 });
+    });
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: bridgeBody({ status: 'rejected' }) }),
+    );
+
+    const [a, b] = await Promise.all([svc.sweepConfirm(), svc.sweepConfirm()]);
+
+    expect(a.failed + b.failed).toBe(1);
+    expect(a.raced + b.raced).toBe(1);
   });
 
   it('every write is guarded on the record still being awaiting — terminal states cannot regress', async () => {
     const prisma = makePrisma(oneRecord);
     const svc = new IdealposConfirmationService(
       prisma as never,
-      reader({ kind: 'ok', body: assignedBody() }),
+      reader({ kind: 'ok', body: bridgeBody({ status: 'rejected' }) }),
     );
 
     await svc.sweepConfirm();
@@ -217,31 +362,33 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
     const prisma = makePrisma(oneRecord, '12', /* updateCount */ 0);
     const svc = new IdealposConfirmationService(
       prisma as never,
-      reader({ kind: 'ok', body: assignedBody() }),
+      reader({ kind: 'ok', body: bridgeBody({ status: 'rejected' }) }),
     );
 
     const r = await svc.sweepConfirm();
 
     expect(r.raced).toBe(1);
     expect(r.confirmed).toBe(0);
+    expect(r.failed).toBe(0);
   });
 
   it('repeated polling is idempotent: a second identical read applies nothing new', async () => {
-    // First sweep applies; the row is no longer selected afterwards.
+    // First sweep applies a real terminal outcome; the row is no longer
+    // selected afterwards because it left `submitted_awaiting_confirmation`.
     const prisma = makePrisma(oneRecord);
     const svc = new IdealposConfirmationService(
       prisma as never,
-      reader({ kind: 'ok', body: assignedBody() }),
+      reader({ kind: 'ok', body: bridgeBody({ status: 'rejected' }) }),
     );
 
     const first = await svc.sweepConfirm();
-    expect(first.confirmed).toBe(1);
+    expect(first.failed).toBe(1);
 
-    prisma.pOSSyncRecord.findMany.mockResolvedValue([]); // already synced
+    prisma.pOSSyncRecord.findMany.mockResolvedValue([]); // already terminal
     const second = await svc.sweepConfirm();
 
     expect(second.examined).toBe(0);
-    expect(second.confirmed).toBe(0);
+    expect(second.failed).toBe(0);
     expect(prisma.pOSSyncRecord.updateMany).toHaveBeenCalledTimes(1);
   });
 
@@ -296,7 +443,7 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
       read: jest
         .fn()
         .mockRejectedValueOnce(new Error('socket hang up'))
-        .mockResolvedValueOnce({ kind: 'ok', body: assignedBody() }),
+        .mockResolvedValueOnce({ kind: 'ok', body: bridgeBody({ status: 'rejected' }) }),
     };
     const svc = new IdealposConfirmationService(prisma as never, throwingReader);
 
@@ -304,7 +451,7 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
 
     expect(r.examined).toBe(2);
     expect(r.unchanged).toBe(1); // the thrower
-    expect(r.confirmed).toBe(1); // the healthy one still processed
+    expect(r.failed).toBe(1); // the healthy one still processed
   });
 
   it('an order whose table is unmapped (no posTableCode) is never confirmed', async () => {
@@ -340,11 +487,11 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
     const prisma = makePrisma(oneRecord);
     const svc = new IdealposConfirmationService(
       prisma as never,
-      reader({ kind: 'ok', body: assignedBody() }),
+      reader({ kind: 'ok', body: bridgeBody({ status: 'rejected' }) }),
     );
 
     const r = await svc.sweepConfirm();
-    expect(r.confirmed).toBe(1);
+    expect(r.failed).toBe(1);
     expect(prisma.pOSSyncRecord.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { status: POSSyncStatus.submitted_awaiting_confirmation } }),
     );
