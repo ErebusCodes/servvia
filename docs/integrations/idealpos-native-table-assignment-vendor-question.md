@@ -141,26 +141,40 @@ real table use as `(Table 1..19, MapCode 1)` and holds 197 activities for
 Table 5 alone. So tables are numbered 1..19 and are used daily.
 
 Every numeric `IPSTransaction.PendingSales.Code` present — 343, 190, 537, 328,
-272, 32, 995, 994, 885, 608, 579, 550 — is **outside 1..19**. Each carries a
-customer-name or `MAKE IT NOW/TAKEWAY` value in `Label`, and the one with a
-live POSServer counterpart (`343`) sits at `POSServer.PendingSales.Map = 0`,
-the same map as the `WBORD` web rows. Sale 4527's nine lines all share one
-`OrderedTime` and are all `Printed = 1` — a single-round ticket. These are
-takeaway/phone ticket numbers, not table numbers.
+272, 32, 995, 994, 885, 608, 579, 550 — is **outside 1..19**, and each carries
+a customer-name or `MAKE IT NOW/TAKEWAY` value in `Label`. Sale 4527's nine
+lines all share one `OrderedTime` and are all `Printed = 1` — a single-round
+ticket. They do not look like table numbers.
 
-Two further structural facts follow:
+**On `Map`, stated only where observed.** `POSServer.PendingSales` holds three
+rows in total, so only two IPSTransaction rows have an observable counterpart
+today:
+
+| IPSTransaction | POSServer counterpart | Observed `Map` |
+| --- | --- | --- |
+| `4527 Code '343'` | `99697 Code '343'` | **0** |
+| `4523 Code 'WBORD'` | `99410 Code 'WBORD'` | **0** |
+| `4522 'WBORD-600002'`, `4524 'WBORD-600003'`, and the other 43 rows | *(none present)* | **not observed** |
+
+The remaining historical IPSTransaction rows have **no current POSServer
+counterpart**, so no `Map` value can be attributed to them. We do not infer
+one. The third POSServer row is `99408 Code '0', Map 1, ClerkID 0`, with zero
+lines — the only `Map 1` row present.
+
+Two further structural facts:
 
 - `IPSTransaction.PendingSales` has **no `Map` column at all** (full column
   list: ID, Code, POS, Date, CustomerID, ClerkID, Status, Label, Address1-2,
   Suburb, State, Postcode, OrderDate, ReadyForPayment, Prepayment, OrderState,
   SentOnline, Reference). It cannot by itself express which table map a sale
   belongs to. `POSServer.PendingSales` can, and does.
-- Right now, with the venue closed, **no `PendingSales` row for any table
-  exists in either database**, and all 19 table-map rows are `Status 0`. The
-  only `Map 1` row in POSServer is `ID 99408, Code '0', ClerkID 0`, with zero
-  lines. So a native table sale appears to be **transient** in `PendingSales`:
-  it exists while open and does not survive close. `TableActivity` keeps the
-  durable trace, and it carries only table, map, time and guest count.
+- **No native table-sale `PendingSales` row is present at the current
+  closed/idle snapshot**, in either database, and all 19 table-map rows are
+  `Status 0`. Its lifetime and keying remain to be established by the
+  controlled capture. We are specifically *not* claiming such a row is
+  transient — we have not observed one at all, and whether it is created on
+  table-open, on first item, on Send, or at some other transition is exactly
+  what the capture is designed to determine.
 
 **What this means for the questions below.** We cannot yet state how an open
 native table sale is keyed, which store is authoritative for it, or what

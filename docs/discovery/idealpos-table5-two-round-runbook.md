@@ -8,7 +8,8 @@ by a human on the IdealPOS terminal. Nothing in this runbook automates the UI.
 writes to IdealPOS, POSServer or IPSTransaction, never sends anything to any
 IdealPOS port, and never changes printer routing. The only state change in the
 whole procedure is the one the operator makes by hand on the till, which is an
-ordinary table sale that is then closed normally.
+ordinary table sale, opened and sent to. Closing, finishing, paying,
+deleting, cancelling and voiding are NOT part of this procedure (see §5a).
 
 ---
 
@@ -32,7 +33,15 @@ item B of the vendor package. The honest position going into tomorrow is:
 
 > We do not know where an open native table sale lives, how it is keyed, or
 > what identifier it exposes. Tables 1–19 exist and are used daily, yet no
-> `PendingSales` row for any table exists in either database at rest.
+> native table-sale `PendingSales` row is present at the current closed/idle
+> snapshot in either database. Its lifetime and keying remain to be
+> established by this capture.
+
+In particular, this run determines at which transition a `PendingSales` row is
+created — **on table-open** (`01-open`), **on first item** (`02-add-A`), **on
+Send** (`03-send-R1`), or at some other point. Until one of those steps shows
+a row appearing, no claim about the row's lifetime is supported. "Transient"
+is a hypothesis we are explicitly not asserting.
 
 The capture is therefore deliberately **unfiltered** on both `PendingSales`
 stores. A filter built on a guess would return zero rows and waste the window.
@@ -44,7 +53,7 @@ stores. A filter built on a guess would return zero rows and waste the window.
 | # | Check | How |
 | --- | --- | --- |
 | 1 | Restaurant not yet in service; Table 5 free and will stay free for ~20 min | Visual |
-| 2 | Operator authorised to open, send and close a table sale on this till | Staff |
+| 2 | Operator authorised to open a table sale and send rounds on this till | Staff |
 | 3 | Kitchen aware that up to **two KOTs will print for Table 5** and are to be discarded | Tell them first |
 | 4 | Preflight passes | `.\idealpos-table-capture.ps1 -Preflight -NewRun -TableCode 5` → `verdict : READY` |
 | 5 | No other table is open, and none opens mid-run | `posserver.TableMapSetups` all `Status 0` in the preflight output |
@@ -92,8 +101,13 @@ cd C:\Users\Posmate\Documents\verdura_MVP\windows-deploy\ops
 | 8 | `.\idealpos-table-capture.ps1 -Step 04-add-B -TableCode 5` | |
 | 9 | | **Send round 2.** |
 | 10 | `.\idealpos-table-capture.ps1 -Step 05-send-R2 -TableCode 5` | |
-| 11 | | **Close Table 5** normally (finish/pay as staff would). |
-| 12 | `.\idealpos-table-capture.ps1 -Step 06-close -TableCode 5` | |
+
+**The authorized sequence ends here, at `05-send-R2`.**
+
+Close, finish, pay, delete, cancel and void are **not** part of this run and
+are **not authorized**. Do not perform any of them as a matter of course, and
+do not describe this procedure as running "through close". Table 5 is left
+open at the end of the authorized sequence; see §5 for how to stand it down.
 
 `-NewRun` appears **only on step 0**. Every later step joins the same run, so
 the log deltas chain correctly. If you forget it, the steps still work but may
@@ -138,7 +152,6 @@ attributable to the operator's action, not to background churn.
 | `02-add-A → 03-send-R1` | Which rows flip `Printed`? Does `OrderedTime` set at add or at send? What does `Printing.log` show? | 7, 8, 9 |
 | `03-send-R1 → 04-add-B` | **Does round 2 append to the same sale ID, or create a second sale?** This is the load-bearing one. | 6 |
 | `04-add-B → 05-send-R2` | Does the second send touch **only** the new line's `Printed`, or re-flip round 1? Cross-check against the physical KOT. | 7, 8, 15 |
-| `05-send-R2 → 06-close` | Does the `PendingSales` row vanish? Does a `Transactions`/`TransactionsLine` row appear? Does `TransactionReference` gain its **first ever row**? Does *any* identifier survive the close? | 5, 13 |
 
 Record answers into the vendor package's evidence appendix as **observed**
 facts, clearly separated from anything the vendor confirms as **supported**.
@@ -186,15 +199,37 @@ dockets; a capture reports `query error(s)`; or the diff report warns that the
 IdealPOS process set changed between steps (a component restarted, and
 in-memory conclusions across that boundary are unsafe).
 
-**Rollback:** the only artefact is one ordinary Table 5 sale. If you abort
-mid-sequence, close or void it through the normal till workflow exactly as
-staff would for a mistaken order. There is nothing else to undo — the capture
-tooling wrote nothing. The evidence directory can be deleted or kept; a
-partial run is still worth analysing for the steps it did complete.
+**Standing the table down.** The authorized sequence leaves Table 5 open with
+two sent rounds. Clearing it is an ordinary staff operation, performed at the
+venue's discretion by whoever normally clears a mistaken order — it is not a
+step of this procedure and produces no evidence we are relying on. There is
+nothing else to undo: the capture tooling wrote nothing.
 
-**If the sale must be voided rather than paid,** capture a `06-void` step
-instead of `06-close` and label it plainly. Void and close are different
-lifecycle paths and must not be recorded as the same evidence.
+A partial run is still worth analysing for the steps it did complete; the
+evidence directory can be kept or deleted.
+
+---
+
+## 5a. OPTIONAL — lifecycle capture, SEPARATELY AUTHORIZED
+
+**Not authorized as of 2026-09-04. Do not perform without explicit,
+per-occasion authorization recorded against this document.**
+
+Close, finish, pay, delete, cancel and void are distinct lifecycle paths with
+distinct evidence, and they are the only steps in this area that destroy
+state. They would answer vendor questions 5 and 13 — whether the
+`PendingSales` row disappears, whether a `Transactions`/`TransactionsLine` row
+appears, whether `TransactionReference` gains its first ever row, and whether
+*any* identifier survives — but that value does not authorize them.
+
+If and when authorization is given:
+
+- capture the step under a name matching the operation actually performed
+  (`06-close`, `06-void`, `06-delete` — never a generic label), and
+- record who authorized it, when, and which operation, in the run directory
+  alongside the capture.
+
+Close and void must never be recorded as the same evidence.
 
 ---
 

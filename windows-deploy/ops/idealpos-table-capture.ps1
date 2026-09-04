@@ -26,15 +26,21 @@
       ItemIndex 1..19, and TableActivity records real table use as
       (Table 1..19, MapCode 1). Table 5 has 197 recorded activities.
     * Every numeric IPSTransaction.PendingSales.Code present (343, 190, 537,
-      328, 272, 32, 995, 994, 885, 608, 579, 550) is OUTSIDE 1..19, carries a
-      customer-name / "TAKEAWAY" Label, and its POSServer counterpart sits at
-      Map 0 -- the same map as the WBORD web rows. These are ticket numbers,
-      not table numbers.
+      328, 272, 32, 995, 994, 885, 608, 579, 550) is OUTSIDE 1..19 and carries
+      a customer-name / "TAKEAWAY" Label. They do not look like table numbers.
+    * Map, where observable: POSServer holds only 3 rows, so exactly ONE
+      numeric IPSTransaction row has a POSServer counterpart today -- 4527
+      '343' <-> POSServer 99697 '343', Map 0 -- alongside 4523 'WBORD' <->
+      99410 'WBORD', Map 0. The other IPSTransaction rows have no current
+      POSServer counterpart and therefore NO observed Map value. Map is not
+      inferred for them.
     * IPSTransaction.PendingSales has NO Map column at all, so it cannot by
       itself express which table map a sale belongs to.
-    * No PendingSales row for ANY table exists in either store right now,
-      although tables are used daily -- so a native table sale is transient in
-      PendingSales and we have never yet observed one at rest.
+    * No native table-sale PendingSales row is present at the current
+      closed/idle snapshot, in either store. Its lifetime and keying remain to
+      be established by the controlled capture -- specifically whether a row is
+      created on table-open, on first item, on Send, or at some other
+      transition. Nothing here asserts that such a row is transient.
 
   We therefore do not know how an open Table 5 sale is keyed. A filter built
   on a guess would return zero rows tomorrow and waste a one-shot live window.
