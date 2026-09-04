@@ -3,6 +3,12 @@
 **Prepared:** 2026-09-05 (offline). **Nothing was rebased, merged, pushed or
 rewritten.** This is a plan, not an operation.
 
+**Snapshot warning.** The SHAs below are exact as of `0b2f50a` (18 commits
+ahead of `main`). This document was first written at 14 commits and has already
+been revised once because the branch moved under it. Re-derive with
+`git log --oneline --reverse main..HEAD` before running anything; if the count
+does not match, the sequences are stale.
+
 ---
 
 ## 1. Ancestry
@@ -31,7 +37,11 @@ be replayed onto `7f4906b` (or any later `main`) without a merge.
   ├─ 56a0beb  fix(sync)    fail closed — no path reaches `synced`
   ├─ 6f90fca  docs(tablet) multi-round data-model gap analysis
   ├─ d193945  docs(pos)    static investigation C/D/E/F + vendor disclosure
-  └─ ccc1fd7  test(limit)  measure every quantity in the committed-then-lost retry  ← HEAD
+  ├─ ccc1fd7  test(limit)  measure every quantity in the committed-then-lost retry
+  ├─ 933ce5d  docs(git)    this document
+  ├─ 98c8e67  docs(pos)    decompile IKM.API; withdraw the OrderAcknowledge overstatement
+  ├─ 32d1fa3  docs(disc)   close six live-discovery checklist items
+  └─ 0b2f50a  fix(pos)     write current-run.txt without a BOM  ← HEAD
 ```
 
 ## 2. Categories
@@ -82,6 +92,10 @@ removes the only `synced` transition; lifting it alone onto a base without
 | `8aec95a` | fixes the dropped `Table` column; adds `candidate-new-sale`; baseline guard | `2fcec29` |
 | `6f90fca` | multi-round data-model gap analysis (+15 lines into the truth-table doc) | `56a0beb` (touches its doc) |
 | `d193945` | static investigation C/D/E/F; vendor disclosure; runbook qty-2 change | `b8e4374`, `2fcec29`, `a73292b` |
+| `933ce5d` | this document | — |
+| `98c8e67` | `IKM.API` decompilation; withdraws the `OrderAcknowledge` overstatement | `d193945` |
+| `32d1fa3` | closes six live-discovery checklist items; records the reverse-engineering tension | `98c8e67` |
+| `0b2f50a` | `current-run.txt` BOM fix in the capture script | `8aec95a` |
 
 Note `6f90fca` is categorised here as analysis, but it **also edits
 `docs/integrations/idealpos-confirmation-truth-table.md`**, which category B's
@@ -102,7 +116,7 @@ experiments behind:
 
 ```bash
 git cherry-pick 454e098 a6957e0 f66f925 56a0beb ccc1fd7
-git cherry-pick b8e4374 2fcec29 a73292b 8aec95a d193945 6f90fca
+git cherry-pick b8e4374 2fcec29 a73292b 8aec95a 0b2f50a d193945 98c8e67 32d1fa3 6f90fca 933ce5d
 ```
 
 **Order matters.** `6f90fca` is moved to last because it edits the truth-table
@@ -117,7 +131,7 @@ one document, which the ordering resolves.
 ```bash
 git cherry-pick 8f9dfb5 0055c99 969e5c5 454e098 a6957e0 f66f925 \
                 b8e4374 2fcec29 a73292b 8aec95a 56a0beb 6f90fca \
-                d193945 ccc1fd7
+                d193945 ccc1fd7 933ce5d 98c8e67 32d1fa3 0b2f50a
 ```
 
 Identical to the current branch content. Equivalent to a fast-forward, and only
@@ -126,7 +140,7 @@ worth doing if the base has moved.
 ### 3c. Evidence and tooling only — for a docs/tooling PR
 
 ```bash
-git cherry-pick b8e4374 2fcec29 a73292b 8aec95a d193945
+git cherry-pick b8e4374 2fcec29 a73292b 8aec95a 0b2f50a d193945 98c8e67 32d1fa3
 ```
 
 Deliberately excludes `6f90fca`, which depends on `56a0beb`'s document. If the

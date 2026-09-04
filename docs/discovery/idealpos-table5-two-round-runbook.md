@@ -56,10 +56,31 @@ stores. A filter built on a guess would return zero rows and waste the window.
 | 2 | Operator authorised to open a table sale and send rounds on this till | Staff |
 | 3 | Kitchen aware that up to **two KOTs will print for Table 5** and are to be discarded | Tell them first |
 | 4 | Preflight passes | `.\idealpos-table-capture.ps1 -Preflight -NewRun -TableCode 5` → `verdict : READY` |
+| 4a | You know which evidence directories are rehearsals, not evidence | see the note below |
 | 5 | No other table is open, and none opens mid-run | `posserver.TableMapSetups` all `Status 0` in the preflight output |
 
 > **Item 3 is the only real-world side effect of this procedure.** Two live
 > kitchen dockets will print. Do not run it during service.
+
+### Rehearsal directories already present — do not analyse these
+
+`C:\ProgramData\Verdura\evidence\idealpos-table-capture\` already contains
+runs from the 2026-09-04/05 offline rehearsal, captured against an **idle,
+closed** venue with no till action of any kind:
+
+- `00-harness-validation`, `00-harness-validation-v2` — the earliest harness
+  validation, written before the run-directory scheme existed.
+- `run-20260904-234203` — preflight, an idle control pair, and the capture that
+  proved the `Table` column was being dropped.
+- `run-20260905-002920`, `run-20260905-002955` — end-to-end tooling rehearsals.
+  Note `run-20260905-002920` contains a step literally named `01-open` at which
+  **no table was opened**; it is a naming rehearsal, not evidence.
+
+Tomorrow's `-NewRun` creates a fresh, date-stamped directory, so nothing here
+is at risk of being overwritten or appended to. But when you come to analyse,
+work only in the run whose `00-baseline` you took on site. Deleting the
+rehearsal directories first is a reasonable way to remove the ambiguity
+entirely.
 
 ### Choosing items A and B
 
