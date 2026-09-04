@@ -144,9 +144,13 @@ its table-KOT send sequence.
     `Enqueue(IOrder)` as POS→monitor; our question concerns the **inbound**
     `ORDER` packet path that raises `EnqueueOrderToPOS` on the POS host, and
     `OrderType.HHS` / `TableOrder`.
-17. What are the semantics of `SendOrderToPOS` / `InsertOrderForPOS`, and what
-    does `POSOrderType.PendingSale` do — create a pending sale, or append to an
-    existing one?
+17. What are the semantics of the inbound `ORDER` path, and what does
+    `OrderType.PendingSale` / `TableOrder` do — create a sale, or append to an
+    existing one? Specifically: **`IItem.SaleAmount` is settable.** If an
+    external caller supplies an order this way, does IdealPOS **recalculate
+    the price from its own configuration**, or does the supplied `SaleAmount`
+    win? We want IdealPOS to be the price authority and would rather not send
+    a price at all — is that possible?
 18. We can see that `OrderAcknowledge` carries only a sender-generated `id`
     GUID and a `discarded` flag, and that receipt merely clears the sender's
     outstanding-packet list — so it acknowledges **delivery**, not native

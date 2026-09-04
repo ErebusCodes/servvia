@@ -371,6 +371,71 @@ what licence, is **unknown** and **vendor-dependent**.
   was invoked, and none of it will be.
 - **Not endorsed.** Presence is not permission.
 
+### F matrix — each promising module against the capabilities we need
+
+Columns are the capability questions the integration must answer. Every cell is
+graded. **Nothing here was invoked**; this is read from installed artifacts and
+COM registration only.
+
+#### `IKM.API.dll` — the only module with a full order contract
+
+| Capability | Evidence | Grade |
+| --- | --- | --- |
+| Exact artifact | `C:\Program Files (x86)\Idealpos Solutions\Idealpos\IKM.API.dll`, 114,688 bytes, 2022-09-12, managed, ships with `.pdb` and `.tlb` | proved |
+| Installed / registered | `IKMAPI.COMServer` (class GUID `320dd65b-962f-49f2-967e-215236384258`), plus `IKMAPI.Item`, `.Items`, `.Customer`, `.Notification`, `.KitchenMonitorStartupForm` | proved |
+| Licence clues | `IKMPOSMode` enum = `None`, `Demo`, `Expiry`, `FullLicense`, surfaced as `IOrder.POSMode`. Queryable — through an interface we did **not** call | proved (existence) / unknown (this venue's value) |
+| Active on this venue | No IKM configuration anywhere under `C:\ProgramData\Idealpos Solutions\Idealpos`. But `ips.exe`'s KOT path logs `Finished sending to IKM`, so the POS side is wired | unknown / strongly suggested |
+| Direction | Outbound `ICOMServer.Enqueue(IOrder)` = POS→monitor. Inbound: the parser accepts `ORDER` packets, and any non-`OrderAck` inbound packet is passed to `InsertOrderForPOS`, raising `EnqueueOrderToPOS` on the POS host | proved (both directions exist) |
+| Table identity | `IOrder.Code`, `IOrder.Type = OrderType.TableOrder`, `IOrder.Adults`/`Children` (guests), `IOrder.Server` (clerk) | proved (fields exist) / unknown (whether inbound `Code` *targets* a table) |
+| PLU | `IItem.StockCode` — a stock code, the same identifier space `PendingSaleLines.Col1` uses | proved |
+| **Native pricing** | **`IItem.SaleAmount` is settable, and `IItem.AverageCost` too.** On the docket reading that is the price the POS already computed. But it means the contract *permits* a caller to supply a price — the opposite of "let IdealPOS be the price authority". Whether the POS recomputes on the inbound path is not determinable from this assembly | proved (field is settable) / **unknown (who wins)** — this is the single most important open question for us |
+| Append / round 2 | `POSOrderOperation` = `None`, `Normal`, `DeleteAll`, `DeleteLine`, `ReplaceLine`, on `IOrder.OrderOperation`; plus `IOrder.ResetOrder` and `IItem.Line` | proved (line-level operations exist) / unknown (semantics against a native sale) |
+| KOT send | `IItem.KitchenPrint` (per line), `IItem.PrintGroup`, `IItem.Away` (course/hold), `IItem.Seat`, `IOrder.PrinterName`, `PrintStyle.RunnerDocket`, `ICOMServer.SetPrinterNames`, `ICOMServer.RedirectPrinting` | proved |
+| External correlation | `IOrder.OrderNumber`, `IOrder.Audit`, `IOrder.POSIdentifier`; `OrderAcknowledge.id` is a **sender-generated** GUID cleared from `mSent` on receipt. **No native sale identifier is returned anywhere** | proved — and this is the gap |
+| Interaction with IPS / POSServer | `ICOMServer.SetIPAddresses` / `SetPorts` / `StartServer` / `TestConnection(ip, port, pos)`, and an `int POS` property. `ips.exe` logs `Finished sending to IKM` between `Ready to Print!` and `Finished setting Printed Flags` | proved |
+
+#### `VariPad.dll` — file-drop ingestion
+
+| Capability | Evidence | Grade |
+| --- | --- | --- |
+| Exact artifact | `VariPad.dll`, 10,752 bytes, 2022-03-23, managed, with `.pdb` and `variPad.tlb` | proved |
+| Installed / registered | `VariPad.VariPadManager`; interfaces `IVariPadManager`, `IVariPadManagerEvents` | proved |
+| Licence clues | none found in the assembly | unknown |
+| Active on this venue | no VariPad configuration under `ProgramData`; `VariPad` appears **nowhere** in `ips.exe` | unknown, and notably absent from the POS binary |
+| Direction | inbound, file-based: `ImportVariPadOrderFile`, `ProcessVariPadOrders`, `GetFiles`, `GetApplicationDataDirectory` | proved |
+| Table identity | not determinable — the order shape lives in the file format, which we do not have | unknown |
+| PLU / pricing | `stockItem` and `OrderItem` types are referenced; contents not inspected | unknown |
+| Append / KOT / correlation | nothing observable without the file contract | unknown |
+| Interaction with IPS / POSServer | none visible; presumably IPS polls a directory | unknown |
+
+#### The rest — ruled out for ordering
+
+| Module | Why it is not the lead |
+| --- | --- |
+| `SmartConnect.dll` | `ISmartConnectManager`, `GetBaseURL`, `AppSettings`, and types `SmartPayObject`, `SmartPayRequest`, `SmartPayTransaction`. This is **payment**, not ordering. Outbound. |
+| `ResDiaryPOS.dll` + `ResDiary.EposServiceConsumer.Helpers.dll` | `ResDiaryManager`, `Transaction`, `Business_Objects.Item/Receipt`. Bookings. Already recorded as booking-only. |
+| `IdealPos.Webit.Core.dll` | the inbound web-order contract Verdura already uses. Produces `WBORD-*` sales at `Map 0`; observed never to become a table sale. |
+| `IdealHandheldMenus.xml` / `IdealHandheldMenuItems.xml` | ADO persisted-recordset menu exports dated **2014-05-06** — product defaults, not venue configuration. A previous handheld generation. |
+| Doshii | absent. The string does not occur in `ips.exe`, and no assembly is installed. |
+
+#### What the matrix says overall
+
+`IKM.API` is the only installed module with a complete order contract, and it
+has line-level operations (`ReplaceLine`, `DeleteLine`) of exactly the shape
+round 2 needs. Two things stop that being good news yet:
+
+1. **`IItem.SaleAmount` is settable.** Verdura's entire pricing position is that
+   IdealPOS must be the price authority. A contract that carries a caller-set
+   price is at best ambiguous on that point and at worst the opposite of what
+   we need. Question 17 must ask it directly.
+2. **Nothing returns a native sale identifier.** `OrderAcknowledge` carries a
+   GUID the sender invented. So even if this interface were supported and
+   table-aware, it would not on its own supply the causal identity the
+   fail-closed confirmation policy requires. Question 18 must ask it directly.
+
+Neither is a reason to discount the module. Both are reasons the vendor
+question has to be precise rather than open-ended.
+
 ### The vendor question changes shape
 
 The package currently asks an open question: *"what is the supported
