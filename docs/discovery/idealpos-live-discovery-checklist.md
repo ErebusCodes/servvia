@@ -2,7 +2,7 @@
 
 **Created:** 2026-08-16
 **Expanded:** 2026-08-16 (session 2, story `9-2` — added §J); 2026-08-17 (session 3 — static-only assessment of the copied Idealpos installation materials, item I and item J's module-enumeration bullet updated with deeper evidence; no existing item was answered from live observation in any session).
-**Status:** Not started — no item has live-observation or vendor-response evidence. All evidence to date is static-file evidence recorded in `idealpos.md` §12/§12.4/§12.5, which does not satisfy this checklist for any item (see "How to use this checklist" below).
+**Status:** Partially answered from live observation as of 2026-09-05 — see §K, which closes six items against the running DUNEDIN installation. No item has vendor-response evidence: **the vendor package has never been sent.** Everything outside §K remains static-file evidence recorded in `idealpos.md` §12/§12.4/§12.5, which does not satisfy this checklist for any item (see "How to use this checklist" below).
 **Owner:** Product/technical owner of the Idealpos relationship, in coordination with venue staff and, where needed, Idealpos/Oolio/the reseller of record (per DL-064).
 **Governs:** unblocking [DL-064](../decisions-log.md#dl-064-idealpos-vendor-discovery-decision-record-formal) beyond the truthfulness fix already shipped in story 9-1; unblocking the tracer bullet story [`9-2-idealpos-uibridge-tracer`](../../_bmad-output/implementation-artifacts/9-2-idealpos-uibridge-tracer.md); resolving the KDS/KOT duplicate-print decision in [`idealpos.md` §18](../integrations/idealpos.md#18--kdskot-duplicate-print-blocking-decision).
 
@@ -14,6 +14,17 @@ This checklist is executed against a **real or demo Windows machine with Idealpo
 - Do not perform any action against a real production venue database unless explicitly scoped as a "real venue" item below and separately authorized.
 - Prefer a demo/cloned/sandbox Idealpos install for anything destructive or exploratory (creating test transactions, toggling settings).
 - Do not attempt undocumented DLL/COM calls, direct database writes, or reverse engineering as part of this discovery — if a question can only be answered that way, record it as `BLOCKED — requires vendor/reseller answer`, not attempted independently.
+
+  > **Recorded tension, 2026-09-05.** The offline session that produced §K read
+  > string tables out of `ips.exe` and decompiled `IKM.API.dll` with `ilspycmd`.
+  > That is static inspection of installed artifacts, not a call into them — no
+  > COM object was instantiated, no method invoked, no database write made — but
+  > it sits close enough to the "reverse engineering" line in this bullet that
+  > it should not be recorded silently. It was explicitly directed for that
+  > session. The bullet stands as the default; §K's findings are flagged so a
+  > later reader can discount them if that default is reasserted. Note also
+  > that the resulting findings are used **only** to ask the vendor better
+  > questions — nothing in §K authorises building against any of it.
 - Any reseller/vendor conversation about UI automation must record their position as evidence (approve / object / no position), not be treated as tacit approval by default.
 
 ## How to use this checklist
@@ -100,3 +111,87 @@ Added to cover this session's governing brief for story `9-2`'s discovery matrix
 ## Completion gate
 
 This work package is **complete** only when every item above is answered from direct observation or a recorded vendor/reseller response (not left blank, not inferred). A `BLOCKED — <reason>` entry is a valid, honest interim answer for tracking purposes, but **it does not, by itself, satisfy this work package for any purpose** — in particular, a `BLOCKED` entry on any of items A, C (open/unpaid and searchability sub-items), E, F, G, or I does **not** satisfy story `9-2`'s corresponding blocking condition, which requires "direct observation or recorded vendor/reseller response" verbatim. Marking this checklist "complete" with `BLOCKED` entries on any gating item does not unblock story 9-2 or DL-064 for those items — only a substantive answer does. The remainder of the items (outside 9-2's named gating subset) gate the broader DL-064 vendor-discovery decision and production-scale adapter work.
+
+---
+
+## K — Answered by direct observation, 2026-09-04/05 offline session
+
+Added under the same rule as sections A–J: **only direct observation of the
+running installation or a written vendor response may close an item.**
+Everything below is direct observation of the live DUNEDIN host, read-only. It
+closes items that were previously `BLOCKED_REQUIRES_LIVE_WINDOWS`; it closes
+nothing that requires a vendor position, and the entries say which is which.
+
+### Closed by observation
+
+- [x] **A — Windows version and architecture of the host.** `VERIFIED`:
+  Windows 10 Home 10.0.19045, x64. The Verdura repository, the IdealPOS
+  installation and `MSSQL$IDEALSQL` are all on this one host.
+- [x] **A — Which IdealPOS processes run, and their state.** `VERIFIED`, all
+  running concurrently: `IPS.exe`, `IPSClient.exe`, `IPSWorker.exe`,
+  `POSServer.exe`, `ipsdeploy.exe`, `IPSPrinterServer.exe`,
+  `IdealposService.exe`, `IdealposUpgradeService.exe`, `IdealPos.Licensing.exe`.
+  Windows services present and running: `MSSQL$IDEALSQL`, `SQLBrowser`,
+  `SQLWriter`. Stopped: `SQLAgent$IDEALSQL`, `MSSQLServerADHelper100`.
+  Listeners: 5501 (`IPSClient`), 7983 (`IPSWorker`), 11000 (`POSServer`),
+  11183 (`IPSPrinterServer`), 12183 (`IPS`).
+- [x] **J — Installation paths on the real host.** `VERIFIED`:
+  program directory `C:\Program Files (x86)\Idealpos Solutions\Idealpos`
+  (317 entries); data directory `C:\ProgramData\Idealpos Solutions\Idealpos`;
+  SQL data logs `C:\ProgramData\Ideal Business Software\IPS\SqlDataLogs`.
+- [x] **J — Available audit/event/log evidence.** `VERIFIED`. Per-day
+  `IPSClient<yyyymmdd>.log`, plus `IPSDeploy.log`, `IPSError.log` (and monthly
+  `IPSError<yyyymm>.log`), `Printing.log`, `POSServerClient.log`,
+  `IPSPrinterServer.LOG`, `IpsSqlData.log`. **Negative finding:** `ips.exe`
+  references a `PrintJobs.Log` that does **not** exist on this installation, so
+  per-print-job detail is not being recorded here. How to enable it is
+  `BLOCKED_REQUIRES_VENDOR`.
+- [x] **J — Supported import/watch-folder ingestion mechanisms.** Previously
+  `BLOCKED_REQUIRES_VENDOR` on the grounds that none was found in the static
+  copy. **One now observed on the real host:** `VariPad.dll`
+  (COM-registered as `VariPad.VariPadManager`) exposes `IVariPadManager` with
+  `ImportVariPadOrderFile`, `ProcessVariPadOrders` and `GetFiles` — a file-drop
+  order ingestion mechanism. Existence is `VERIFIED`; whether it is a supported
+  third-party path, and its file contract, remain `BLOCKED_REQUIRES_VENDOR`
+  (vendor questions 19–21).
+- [x] **J — Enumeration of installed vendor-integration modules.** `VERIFIED`
+  as *present and COM-registered on this host*: `IKM.API.dll`
+  (`IKMAPI.COMServer`), `VariPad.dll` (`VariPad.VariPadManager`),
+  `SmartConnect.dll` (`SmartConnect.SmartConnectManager`, plus `SmartPay*`
+  types indicating payment rather than ordering), `ResDiaryPOS.dll`
+  (`ResDiaryPOS.ResDiaryManager`) with
+  `ResDiary.EposServiceConsumer.Helpers.dll`, `IdealPos.Webit.Core.dll`, and
+  2014-dated `IdealHandheldMenus.xml` / `IdealHandheldMenuItems.xml`.
+  `Doshii` appears nowhere in `ips.exe`.
+
+  **Which are licensed/enabled remains `BLOCKED_REQUIRES_VENDOR`.** COM
+  registration happens at install time and proves nothing about entitlement,
+  and no IKM / VariPad / handheld / SmartConnect configuration exists anywhere
+  under `C:\ProgramData\Idealpos Solutions\Idealpos`. `IKM.API` does expose an
+  `IKMPOSMode` enum (`None`, `Demo`, `Expiry`, `FullLicense`), so licence state
+  is queryable through an interface we have deliberately **not invoked**.
+
+### Explicitly still open
+
+- **G — Accessibility/UI Automation support on the order-entry screens.**
+  Unchanged. Note that the 2026-09-05 findings make UI automation the fallback
+  rather than the plan: if `IKM.API`'s inbound `ORDER` path or `VariPad`'s file
+  import is supported, this item may be moot.
+- **F — kitchen-print suppression by terminal/clerk/source.**
+  `BLOCKED_REQUIRES_VENDOR`, unchanged. The static work establishes that
+  `PendingSaleLines.Printed` is set *after* the send and *before* any printer
+  acknowledgement, so a lost KOT after `Printed=1` and a duplicate KOT on
+  operator retry are both possible. That sharpens why this item matters; it
+  does not answer it.
+- **I — vendor/reseller position.** Unchanged: **not yet asked.** The vendor
+  package has never been sent. No `BLOCKED` entry here may be read as a vendor
+  "no position", and the risk-acceptance clause in section I therefore does not
+  apply.
+
+### Correction to the record
+
+The 2026-09-04 vendor package stated that nothing had been sent to TCP 12183.
+That was false: four PowerShell `GET / HTTP/1.1` requests reached it on
+2026-09-04 at 12:29:59, and they constitute the entire recorded contents of
+`Printing.log`. The vendor package now discloses this. Recorded here too so the
+checklist and the package cannot drift apart.
