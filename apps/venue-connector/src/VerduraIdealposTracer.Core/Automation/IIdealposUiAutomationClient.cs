@@ -115,4 +115,70 @@ public interface IIdealposUiAutomationClient
 public sealed record IdealposVerifiedProfile(
     string ExpectedProcessName,
     string ExpectedMainWindowTitleContains,
-    string ProfileVersion);
+    string ProfileVersion)
+{
+    // --- Sale-screen window selection -------------------------------------
+    // Added 2026-09-04. The three positional fields above cannot express
+    // "the POS Screen, NOT the back-office MDI frame", which is why the
+    // 13:07:59 capture bound the wrong window: the hint "Idealpos" is
+    // contained in "...DUNEDIN - BACKOFFICE(1)" but not in "POS Screen".
+
+    /// <summary>Exact title of the sale window, e.g. <c>"POS Screen"</c>. Outranks every other signal.</summary>
+    public string? SaleScreenWindowTitleEquals { get; init; }
+
+    /// <summary>Title substrings that DISQUALIFY a window outright, e.g. <c>["BACKOFFICE"]</c>.</summary>
+    public IReadOnlyList<string> SaleScreenWindowTitleExcludes { get; init; } = Array.Empty<string>();
+
+    /// <summary>Window classes that indicate the sale window, e.g. <c>["ThunderRT6FormDC"]</c>.</summary>
+    public IReadOnlyList<string> SaleScreenWindowPreferredClassNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>Window classes that disqualify outright, e.g. <c>["ThunderRT6MDIForm"]</c>.</summary>
+    public IReadOnlyList<string> SaleScreenWindowExcludedClassNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>Refuse to bind an invisible sale window (a chrome-only tree is what the failed capture produced).</summary>
+    public bool SaleScreenRequireVisible { get; init; } = true;
+
+    // --- Win32 control selectors ------------------------------------------
+    // These replace the previous five AutomationId fields, which this
+    // VB6/ThunderRT6 application cannot supply (zero AutomationIds across
+    // 57 captured nodes).
+
+    public Win32ControlSelector? TableMapControl { get; init; }
+    public string? TableCellTemplate { get; init; }
+    public Win32ControlSelector? PluEntryField { get; init; }
+    public Win32ControlSelector? SaveToTableAction { get; init; }
+
+    /// <summary>Control whose post-action presence PROVES the table assignment. Without it, success cannot be earned.</summary>
+    public Win32ControlSelector? TableAssignmentConfirmationControl { get; init; }
+
+    public string? ModalDialogWindowClassNamePattern { get; init; }
+
+    /// <summary>Projects the profile's window rules into the selection criteria the discovery layer consumes.</summary>
+    public WindowSelectionCriteria BuildSaleScreenCriteria() => new()
+    {
+        TitleEquals = SaleScreenWindowTitleEquals,
+        TitleContains = ExpectedMainWindowTitleContains,
+        TitleExcludes = SaleScreenWindowTitleExcludes,
+        PreferredClassNames = SaleScreenWindowPreferredClassNames,
+        ExcludedClassNames = SaleScreenWindowExcludedClassNames,
+        RequireVisible = SaleScreenRequireVisible,
+    };
+
+    /// <summary>
+    /// Projects the profile into the Core, testable selector shape. With the
+    /// shipped placeholder profile every control selector is null and the
+    /// version is a placeholder, so <see cref="TerminalSelectorReadiness"/>
+    /// refuses live execution — by design.
+    /// </summary>
+    public TerminalUiSelectors BuildTerminalSelectors() => new()
+    {
+        SaleScreenWindow = BuildSaleScreenCriteria(),
+        TableMapControl = TableMapControl,
+        TableCellTemplate = TableCellTemplate,
+        PluEntryField = PluEntryField,
+        SaveToTableAction = SaveToTableAction,
+        TableAssignmentConfirmationControl = TableAssignmentConfirmationControl,
+        ModalDialogClassNamePattern = ModalDialogWindowClassNamePattern,
+        ProfileVersion = ProfileVersion,
+    };
+}

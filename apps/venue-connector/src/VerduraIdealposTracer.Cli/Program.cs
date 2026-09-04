@@ -46,7 +46,10 @@ var profilePath = Environment.GetEnvironmentVariable("TRACER_PROFILE_PATH")
 
 var expectedProfile = JsonSerializer.Deserialize<IdealposVerifiedProfile>(File.ReadAllText(profilePath))
     ?? throw new InvalidOperationException($"Could not parse profile at {profilePath}.");
-var windowsSettings = new WindowsAutomationSettings(expectedProfile.ExpectedProcessName, expectedProfile.ExpectedMainWindowTitleContains);
+// Thread the WHOLE profile through — every Win32 selector and the profile's
+// own ProfileVersion. The previous two-argument construction discarded both,
+// which made TerminalSelectorReadiness unreachable by configuration.
+var windowsSettings = WindowsAutomationSettings.FromProfile(expectedProfile);
 
 var automationClient = new WindowsUiAutomationClient(windowsSettings);
 var localLog = new DurableLocalLog(storePath);

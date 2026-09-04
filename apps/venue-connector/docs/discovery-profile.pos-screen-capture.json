@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "READ-ONLY CAPTURE PROFILE — targets the POS Screen sale window, not the back-office frame.",
+    "The ProfileVersion below deliberately still contains 'PENDING', so this profile can never",
+    "pass TerminalSelectorReadiness and can never be mistaken for live-ready. It exists only to",
+    "aim a passive control-tree capture at the correct window.",
+    "",
+    "Window selection is now declarative rather than a single title hint. The 2026-09-04 13:07:59",
+    "capture bound 'Idealpos v7.1 Build 33  Sila Restaurant  DUNEDIN - BACKOFFICE(1)'",
+    "(class ThunderRT6MDIForm, IsWindowVisible=false) because that title contains the hint",
+    "'Idealpos' while the real sale window 'POS Screen' (class ThunderRT6FormDC, visible) does not."
+  ],
+
+  "ExpectedProcessName": "IPS",
+  "ExpectedMainWindowTitleContains": "Idealpos",
+
+  "SaleScreenWindowTitleEquals": "POS Screen",
+  "SaleScreenWindowTitleExcludes": [ "BACKOFFICE" ],
+  "SaleScreenWindowPreferredClassNames": [ "ThunderRT6FormDC" ],
+  "SaleScreenWindowExcludedClassNames": [ "ThunderRT6MDIForm" ],
+  "SaleScreenRequireVisible": true,
+
+  "ProfileVersion": "ips-vb6-native-target-corrected-2026-09-02__control-selectors-PENDING-runtime-capture"
+}

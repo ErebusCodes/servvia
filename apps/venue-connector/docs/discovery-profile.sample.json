@@ -1,5 +1,61 @@
 {
+  "_comment": [
+    "Sample discovery profile. Copy, complete, and point TRACER_PROFILE_PATH at the copy.",
+    "",
+    "The ProfileVersion below contains 'PENDING' on purpose: TerminalSelectorReadiness treats",
+    "PENDING / UNSET / TBD / PLACEHOLDER / SESSION1 / DISCOVERY / EXAMPLE / CHANGEME as placeholder",
+    "markers, so this file as shipped can never enable live execution. Replace it with a real",
+    "version string only once the control selectors below carry values from a genuine capture.",
+    "",
+    "SELECTOR MODEL — Win32, not UI Automation. IdealPOS (IPS.exe) is VB6/ThunderRT6. A Session-1",
+    "capture on 2026-09-04 walked 57 nodes and found ZERO non-empty AutomationIds: UI Automation",
+    "returns only window chrome, and the Win32 EnumChildWindows fallback is the only mechanism that",
+    "yields content. Controls are therefore addressed by class name, VB6 control id (GetDlgCtrlID),",
+    "caption, and ancestor class path. Never record an HWND here — handles are re-issued on every",
+    "form load, so identity is resolved at runtime, never persisted.",
+    "",
+    "A selector needs at least one NON-POSITIONAL discriminator (ClassName, ControlId, TextEquals or",
+    "TextContains). Ordinal and ClassPath may refine a selector but never constitute one, because",
+    "they follow a layout change silently. A selector that matches zero or more than one control",
+    "fails closed — it is never narrowed by taking the first match."
+  ],
+
   "ExpectedProcessName": "IPS",
   "ExpectedMainWindowTitleContains": "Idealpos",
+
+  "_comment_window": [
+    "Which top-level window is the sale screen. A bare title hint is NOT sufficient: the back-office",
+    "MDI frame's title contains 'Idealpos' and the sale window's title ('POS Screen') does not, so a",
+    "hint alone selects exactly the wrong window. TitleEquals outranks every other signal; excludes",
+    "are absolute; a tie at the top score fails closed as ambiguous rather than guessing."
+  ],
+  "SaleScreenWindowTitleEquals": "POS Screen",
+  "SaleScreenWindowTitleExcludes": [ "BACKOFFICE" ],
+  "SaleScreenWindowPreferredClassNames": [ "ThunderRT6FormDC" ],
+  "SaleScreenWindowExcludedClassNames": [ "ThunderRT6MDIForm" ],
+  "SaleScreenRequireVisible": true,
+
+  "_comment_selectors": [
+    "PENDING a correctly-bound POS Screen capture. Each null below is why readiness refuses.",
+    "Shape, once populated:",
+    "  { \"ClassName\": \"ThunderRT6TextBox\", \"ControlId\": 4102, \"TextEquals\": null,",
+    "    \"TextContains\": null, \"ClassPath\": [\"ThunderRT6Frame\", \"ThunderRT6TextBox\"],",
+    "    \"Ordinal\": null, \"RequireVisible\": true, \"RequireEnabled\": true }"
+  ],
+  "TableMapControl": null,
+  "TableCellTemplate": null,
+  "PluEntryField": null,
+  "SaveToTableAction": null,
+
+  "_comment_verification": [
+    "TableAssignmentConfirmationControl is REQUIRED. The action layer proves a table assignment by",
+    "re-reading this control after the action and requiring its text to carry the requested table",
+    "code. Without it there is no way to earn success, so readiness refuses — an action that can act",
+    "but cannot verify must never be enabled."
+  ],
+  "TableAssignmentConfirmationControl": null,
+
+  "ModalDialogWindowClassNamePattern": null,
+
   "ProfileVersion": "ips-vb6-native-target-corrected-2026-09-02__control-selectors-PENDING-runtime-capture"
 }

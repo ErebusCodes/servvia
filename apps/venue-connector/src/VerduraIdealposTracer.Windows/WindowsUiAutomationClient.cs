@@ -235,12 +235,130 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                     + "Live execution is intentionally not enabled until Session-1 discovery populates real selectors.", plan));
             }
 
-            // Selectors present but the live-action steps are intentionally
-            // NOT implemented in this scaffold commit — still refuse to act.
-            return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
-                "selectors present, but native Save-to-Table execution is not enabled in this scaffold "
-                + "(no click/SetValue/Send has been implemented yet); this commit is fail-closed by design.", plan));
+            // 5. LAYER A — DISCOVERY (read-only). Bind the sale window
+            //    strictly: NoCandidate or Ambiguous both refuse. This is where
+            //    "wrong window" fails closed rather than acting on the
+            //    back-office frame.
+            var pidMap = new Dictionary<int, Process> { [process.Id] = process };
+            var topWindows = EnumerateTopLevelWindows(pidMap);
+            var windowChoice = WindowSelection.Select(topWindows, selectors.SaleScreenWindow!, process.Id);
+            if (!windowChoice.IsSelected)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                    $"sale window not bound ({windowChoice.Status}): {windowChoice.Reason}", plan));
+            }
+
+            var windowHandle = ParseHandle(windowChoice.Window!.Handle);
+            if (windowHandle == IntPtr.Zero)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                    $"sale window handle '{windowChoice.Window!.Handle}' could not be parsed", plan));
+            }
+
+            var controls = Win32ControlDiscovery.Enumerate(windowHandle);
+            if (controls.Count == 0)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                    $"bound window {windowChoice.Window!.Title} exposed zero child controls — not the sale screen", plan));
+            }
+
+            // Resolve every control BEFORE acting on any of them, so a missing
+            // or ambiguous Save button cannot be discovered halfway through a
+            // partially-applied round.
+            var pluField = Win32ControlResolver.Resolve(controls, selectors.PluEntryField!);
+            if (!pluField.IsResolved)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                    $"PLU entry field did not resolve ({pluField.Status}): {pluField.Reason}", plan));
+            }
+
+            var saveAction = Win32ControlResolver.Resolve(controls, selectors.SaveToTableAction!);
+            if (!saveAction.IsResolved)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                    $"Save-to-Table action did not resolve ({saveAction.Status}): {saveAction.Reason}", plan));
+            }
+
+            // 6. IDEMPOTENCY. If the confirmation control already shows this
+            //    table, the round is already applied — return success WITHOUT
+            //    acting again, so a retry after a lost response cannot
+            //    double-apply.
+            var already = Win32ActionVerification.ProveTableAssigned(
+                windowHandle, selectors.TableAssignmentConfirmationControl!, request.TableCode);
+            if (already.Proven)
+            {
+                return Task.FromResult(new TerminalSaveToTableResult
+                {
+                    Outcome = TerminalExecutionOutcome.Success,
+                    RoundId = request.RoundId,
+                    TableCode = request.TableCode,
+                    SendBoundaryCrossed = false,
+                    Mutated = false,
+                    ActionPlan = plan,
+                    Diagnostics = new[] { $"idempotent no-op: {already.Reason}" },
+                });
+            }
+
+            // 7. LAYER B — ACTION. The only mutating steps, both bounded.
+            var pluHandle = ParseHandle(pluField.Node!.Handle);
+            var setText = Win32NativeAction.SetText(pluHandle, request.TableCode);
+            if (!setText.Issued)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                    $"could not enter the table code into the PLU field: {setText.Detail}", plan));
+            }
+
+            var saveHandle = ParseHandle(saveAction.Node!.Handle);
+            var click = Win32NativeAction.Click(saveHandle);
+            if (!click.Issued)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                    $"Save-to-Table action was not issued: {click.Detail}", plan));
+            }
+
+            // 8. LAYER C — VERIFICATION. Past this point the send boundary HAS
+            //    been crossed, so every exit below reports it. Success is
+            //    earned only by observing IdealPOS in the expected state —
+            //    issuing BM_CLICK proves nothing on its own.
+            var proof = Win32ActionVerification.ProveTableAssigned(
+                windowHandle, selectors.TableAssignmentConfirmationControl!, request.TableCode);
+
+            if (!proof.Proven)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
+                    $"the Save-to-Table action was issued but its effect could not be verified: {proof.Reason}. "
+                    + "Reporting fail-closed: the send boundary was crossed, so this round must NOT be blindly retried.",
+                    plan) with
+                {
+                    SendBoundaryCrossed = true,
+                    Mutated = true,
+                });
+            }
+
+            return Task.FromResult(new TerminalSaveToTableResult
+            {
+                Outcome = TerminalExecutionOutcome.Success,
+                RoundId = request.RoundId,
+                TableCode = request.TableCode,
+                SendBoundaryCrossed = true,
+                Mutated = true,
+                ActionPlan = plan,
+                Diagnostics = new[]
+                {
+                    $"window: {windowChoice.Reason}",
+                    $"plu field: {pluField.Reason}",
+                    $"save action: {saveAction.Reason}",
+                    $"verified: {proof.Reason}",
+                },
+            });
         }
         finally
         {
@@ -291,7 +409,21 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             var topWindows = EnumerateTopLevelWindows(pidToProc);
             diagnostics.Add($"EnumWindows found {topWindows.Count} top-level window(s) for candidate process(es) on this desktop.");
 
-            var chosen = WindowSelection.Choose(topWindows, settings.ExpectedMainWindowTitleContains, primary.Id);
+            // Criteria-based, so a profile can disqualify the back-office MDI
+            // frame by title and class. With a bare "Idealpos" hint the
+            // 13:07:59 capture bound "...DUNEDIN - BACKOFFICE(1)" — whose
+            // title contains the hint — while the visible sale window
+            // "POS Screen" (class ThunderRT6FormDC), enumerated in the same
+            // pass, does not contain it and could never win.
+            var saleScreenCriteria = settings.SaleScreenWindow with
+            {
+                TitleContains = string.IsNullOrWhiteSpace(settings.SaleScreenWindow.TitleContains)
+                    ? settings.ExpectedMainWindowTitleContains
+                    : settings.SaleScreenWindow.TitleContains,
+            };
+            var strictChoice = WindowSelection.Select(topWindows, saleScreenCriteria, primary.Id);
+            diagnostics.Add($"Window selection: {strictChoice.Status} — {strictChoice.Reason}");
+            var chosen = WindowSelection.Choose(topWindows, saleScreenCriteria, primary.Id);
 
             if (chosen is null)
             {
@@ -457,6 +589,22 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
     }
 
     // ── Win32 / MSAA / EnumWindows helpers (all read-only) ──
+
+    /// <summary>
+    /// Turns the "0x1405F6" runtime handle string back into an HWND. Handles
+    /// are re-issued on every form load, so they are parsed here for immediate
+    /// use and never round-tripped into a persisted selector.
+    /// </summary>
+    private static IntPtr ParseHandle(string? handle)
+    {
+        if (string.IsNullOrWhiteSpace(handle)) return IntPtr.Zero;
+        var text = handle.Trim();
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) text = text[2..];
+        return long.TryParse(text, System.Globalization.NumberStyles.HexNumber,
+            System.Globalization.CultureInfo.InvariantCulture, out var value)
+            ? new IntPtr(value)
+            : IntPtr.Zero;
+    }
 
     private static List<TopLevelWindowInfo> EnumerateTopLevelWindows(Dictionary<int, Process> pidToProc)
     {

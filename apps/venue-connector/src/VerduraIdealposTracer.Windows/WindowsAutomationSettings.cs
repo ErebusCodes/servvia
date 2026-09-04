@@ -1,58 +1,82 @@
+using VerduraIdealposTracer.Core.Automation;
+using VerduraIdealposTracer.Core.Discovery;
 using VerduraIdealposTracer.Core.Terminal;
 
 namespace VerduraIdealposTracer.Windows;
 
 /// <summary>
-/// Windows/Idealpos-specific UI Automation identifiers — deliberately kept
-/// separate from Core's platform-agnostic <c>IdealposVerifiedProfile</c>.
-/// Every value here is a placeholder pending live discovery (checklist
-/// item G: "Accessibility/UI Automation support... do the relevant
-/// screens... expose usable Automation IDs/accessible names, or would the
-/// Bridge need to fall back to control handles/coordinates?"). This class
-/// must be populated from a real discovery session before
-/// <see cref="WindowsUiAutomationClient"/> is used against a real
-/// installation — see docs/operator-runbook.md's evidence-capture step.
+/// Windows/Idealpos-specific automation settings — deliberately kept separate
+/// from Core's platform-agnostic <c>IdealposVerifiedProfile</c>.
+///
+/// <b>Re-based on Win32 identity, 2026-09-04.</b> The five <c>*AutomationId</c>
+/// fields this record used to carry were unpopulatable: the application is
+/// VB6/ThunderRT6 and exposes zero AutomationIds. They are replaced by
+/// <see cref="Win32ControlSelector"/> values and a
+/// <see cref="WindowSelectionCriteria"/> for the sale window.
+///
+/// Every selector still defaults to null and the version still defaults to a
+/// placeholder, so an unconfigured instance is refused by
+/// <see cref="TerminalSelectorReadiness"/> — see <see cref="FromProfile"/> for
+/// the only path that populates real values.
 /// </summary>
 public sealed record WindowsAutomationSettings(
     string ExpectedProcessName,
     string ExpectedMainWindowTitleContains,
-    /// <summary>AutomationId of a control whose presence confirms "no modal dialog is blocking the main window" — TBD by live discovery.</summary>
+    /// <summary>AutomationId of a control whose presence confirms "no modal dialog is blocking the main window".</summary>
     string? MainWindowStatusControlAutomationId = null,
-    /// <summary>Window class name pattern Idealpos uses for modal dialogs, if consistent — TBD by live discovery.</summary>
+    /// <summary>Window class name pattern Idealpos uses for modal dialogs, if consistent.</summary>
     string? ModalDialogWindowClassNamePattern = null,
     /// <summary>Timeout for any single UI Automation operation.</summary>
     int OperationTimeoutMs = 5000,
-    /// <summary>AutomationId of the native sale screen window — TBD by Session-1 discovery.</summary>
-    string? SaleScreenWindowAutomationId = null,
-    /// <summary>AutomationId of the table-map control — TBD by Session-1 discovery.</summary>
-    string? TableMapControlAutomationId = null,
-    /// <summary>Template locating a specific table cell (e.g. by name) — TBD by Session-1 discovery.</summary>
-    string? TableCellTemplate = null,
-    /// <summary>AutomationId of the PLU entry field — TBD by Session-1 discovery.</summary>
-    string? PluEntryFieldAutomationId = null,
-    /// <summary>AutomationId of the Save-to-Table / Send action — TBD by Session-1 discovery.</summary>
-    string? SaveToTableActionAutomationId = null,
     /// <summary>The profile version the terminal selectors were captured under.</summary>
     string TerminalProfileVersion = "UNSET-PENDING-session1-discovery")
 {
+    /// <summary>How to pick the sale window among the process's top-level windows.</summary>
+    public WindowSelectionCriteria SaleScreenWindow { get; init; } = new();
+
+    public Win32ControlSelector? TableMapControl { get; init; }
+    public string? TableCellTemplate { get; init; }
+    public Win32ControlSelector? PluEntryField { get; init; }
+    public Win32ControlSelector? SaveToTableAction { get; init; }
+    public Win32ControlSelector? TableAssignmentConfirmationControl { get; init; }
+
     public static WindowsAutomationSettings Placeholder => new(
         ExpectedProcessName: "IPS",
         ExpectedMainWindowTitleContains: "Idealpos");
 
     /// <summary>
-    /// Projects the terminal-driving selectors into the Core, testable
-    /// <see cref="TerminalUiSelectors"/> shape. With the shipped
-    /// placeholders every field is null and the version is a placeholder,
-    /// so <see cref="TerminalSelectorReadiness"/> refuses live execution —
-    /// by design, until Session-1 discovery populates real values.
+    /// The single wiring point from the operator-supplied profile. Every
+    /// selector field AND the profile version are threaded through here.
+    ///
+    /// Before 2026-09-04 <c>Cli/Program.cs</c> built this record with two
+    /// arguments only, so every selector defaulted to null and
+    /// <c>TerminalProfileVersion</c> kept its placeholder default — meaning
+    /// the profile's own <c>ProfileVersion</c> was silently discarded and no
+    /// edit to any JSON file could ever have made readiness pass.
     /// </summary>
+    public static WindowsAutomationSettings FromProfile(IdealposVerifiedProfile profile) => new(
+        ExpectedProcessName: profile.ExpectedProcessName,
+        ExpectedMainWindowTitleContains: profile.ExpectedMainWindowTitleContains,
+        ModalDialogWindowClassNamePattern: profile.ModalDialogWindowClassNamePattern,
+        TerminalProfileVersion: profile.ProfileVersion)
+    {
+        SaleScreenWindow = profile.BuildSaleScreenCriteria(),
+        TableMapControl = profile.TableMapControl,
+        TableCellTemplate = profile.TableCellTemplate,
+        PluEntryField = profile.PluEntryField,
+        SaveToTableAction = profile.SaveToTableAction,
+        TableAssignmentConfirmationControl = profile.TableAssignmentConfirmationControl,
+    };
+
+    /// <summary>Projects the terminal-driving selectors into the Core, testable shape.</summary>
     public TerminalUiSelectors BuildTerminalSelectors() => new()
     {
-        SaleScreenWindowAutomationId = SaleScreenWindowAutomationId,
-        TableMapControlAutomationId = TableMapControlAutomationId,
+        SaleScreenWindow = SaleScreenWindow,
+        TableMapControl = TableMapControl,
         TableCellTemplate = TableCellTemplate,
-        PluEntryFieldAutomationId = PluEntryFieldAutomationId,
-        SaveToTableActionAutomationId = SaveToTableActionAutomationId,
+        PluEntryField = PluEntryField,
+        SaveToTableAction = SaveToTableAction,
+        TableAssignmentConfirmationControl = TableAssignmentConfirmationControl,
         ModalDialogClassNamePattern = ModalDialogWindowClassNamePattern,
         ProfileVersion = TerminalProfileVersion,
     };
