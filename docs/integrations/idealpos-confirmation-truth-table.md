@@ -130,6 +130,21 @@ the evidence was equally consistent with a stranger sitting at that table.
 `synced` becomes reachable again only when a causal native identity exists —
 vendor questions 3, 4, 5 and 13. It is not something this module can resolve.
 
+### Known side effect: the tablet keeps polling
+
+`OrderTabletPage.TERMINAL_POS_SYNC_STATES` includes `synced`, and the 3-second
+status poll stops only on a terminal state. With `synced` unreachable, a
+successfully delivered order now polls `GET /pos-sync` every 3 seconds for as
+long as staff keep that order selected. The interval is cleared when the
+selected order changes or the component unmounts, so it is bounded by screen
+time rather than leaking — but it no longer stops on its own.
+
+This was **not** changed tonight. It is arguably correct: the record genuinely
+is still awaiting, and a future causal identity could transition it, so
+continuing to check is honest. If the cadence proves wasteful in service, the
+fix is a backoff on the awaiting state, not re-adding a terminal state that
+does not exist.
+
 ## 6. Tests proving it
 
 `src/pos-sync/idealpos-confirmation.service.spec.ts` and
