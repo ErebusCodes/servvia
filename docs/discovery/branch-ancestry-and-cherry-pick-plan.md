@@ -18,7 +18,7 @@ main    7f4906b  docs(dl-114): record change-freeze accuracy notes as section 15
                  └── merge-base with HEAD (main is a strict ancestor; no divergence)
 ```
 
-`order-tablet-production-readiness` is **14 commits ahead of `main`, 0 behind**.
+`order-tablet-production-readiness` is **18 commits ahead of `main`, 0 behind**.
 The branch is a clean linear descendant, so every cherry-pick sequence below can
 be replayed onto `7f4906b` (or any later `main`) without a merge.
 
@@ -80,7 +80,7 @@ The production source changes. Everything here touches `apps/api/src` and/or
 removes the only `synced` transition; lifting it alone onto a base without
 `a6957e0`/`f66f925` has nothing to modify.
 
-### C — IdealPOS evidence, tooling and analysis (6 commits)
+### C — IdealPOS evidence, tooling and analysis (10 commits)
 
 `docs/` and `windows-deploy/ops/` only. No application source.
 

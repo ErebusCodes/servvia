@@ -62,6 +62,15 @@ stores. A filter built on a guess would return zero rows and waste the window.
 > **Item 3 is the only real-world side effect of this procedure.** Two live
 > kitchen dockets will print. Do not run it during service.
 
+**The preflight lands in its own throwaway run directory.** It is run with
+`-NewRun`, and so is step 0 of the sequence, so they create two different
+`run-<stamp>` directories. That is intended: the preflight is a health check,
+not evidence, and giving step 0 its own fresh run is what guarantees the
+baseline reads the log files from a clean offset rather than inheriting the
+preflight's. Read precondition 5 (`posserver.TableMapSetups` all `Status 0`)
+out of the **preflight** directory, then forget it — the evidence run is the
+one step 0 creates.
+
 ### Rehearsal directories already present — do not analyse these
 
 `C:\ProgramData\Verdura\evidence\idealpos-table-capture\` already contains
