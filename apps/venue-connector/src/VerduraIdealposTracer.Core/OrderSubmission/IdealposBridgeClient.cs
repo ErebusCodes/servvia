@@ -33,6 +33,33 @@ public enum BridgeSubmitOutcome
 public sealed record BridgeSubmitResult(BridgeSubmitOutcome Outcome, bool? Duplicate, string? SanitizedDetail, int? HttpStatusCode);
 
 /// <summary>
+/// The four distinct things a read of <c>GET /api/orders/{id}</c> can tell
+/// us. Kept separate on purpose — see GetOrderStatusAsync's doc comment.
+/// None of them is itself a confirmation: the server-side
+/// <c>decideConfirmation</c> adjudicates the record.
+/// </summary>
+public enum BridgeStatusOutcome
+{
+    /// <summary>2xx with a parseable order-record object. Forwarded verbatim; NOT interpreted here.</summary>
+    Ok,
+
+    /// <summary>404 — Bridge genuinely has no record of this externalOrderId. A real answer, never evidence of failure.</summary>
+    NotFound,
+
+    /// <summary>2xx whose body was absent or not a JSON object. Bridge spoke, but unintelligibly — refused rather than guessed at.</summary>
+    Unreadable,
+
+    /// <summary>Could not reach Bridge, it timed out, or it returned a non-2xx/non-404 status. We learned nothing.</summary>
+    UnreachableOrFailed,
+}
+
+public sealed record BridgeStatusResult(
+    BridgeStatusOutcome Outcome,
+    Dictionary<string, object?>? Body,
+    string? SanitizedDetail,
+    int? HttpStatusCode);
+
+/// <summary>
 /// Thrown when the outcome genuinely cannot be determined — specifically,
 /// this client's own request timeout fired after the request was already
 /// sent to Bridge. Bridge may have already accepted and processed the
@@ -71,6 +98,115 @@ public sealed class IdealposBridgeClient(HttpClient httpClient, string apiKey, T
     // Response-size sanity (Phase 6): never buffer an unbounded body just to
     // extract a `duplicate` flag or an error message.
     private const int MaxResponseChars = 64 * 1024;
+
+    /// <summary>
+    /// Reads <c>GET /api/orders/{externalOrderId}</c> — a pure read that
+    /// creates, modifies and assigns nothing. One attempt per call, exactly
+    /// like <see cref="SubmitOrderAsync"/>; retry ownership belongs to the
+    /// command protocol's re-poll cycle.
+    ///
+    /// The four outcomes are deliberately NOT collapsed. A 404 is a real
+    /// answer ("Bridge has no record") and must stay distinguishable from an
+    /// unreachable Bridge ("we learned nothing"), because the server-side
+    /// decision logic must never turn an outage into evidence about an
+    /// order, nor a 404 into a failed order — Bridge's SQLite state can be
+    /// lost and rebuilt.
+    ///
+    /// The <paramref name="externalOrderId"/> is URL-escaped before it is
+    /// placed in the path, so an id can never traverse to a different
+    /// endpoint.
+    /// </summary>
+    public async Task<BridgeStatusResult> GetOrderStatusAsync(string externalOrderId, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"api/orders/{Uri.EscapeDataString(externalOrderId)}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A read timing out is not ambiguous the way a submission is —
+            // nothing was created — so it is simply "no answer".
+            return new BridgeStatusResult(BridgeStatusOutcome.UnreachableOrFailed, null,
+                Sanitize($"IdealposBridge did not respond within {timeout.TotalSeconds:0}s to the status read."), null);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new BridgeStatusResult(BridgeStatusOutcome.UnreachableOrFailed, null,
+                Sanitize($"Could not connect to IdealposBridge: {ex.GetType().Name}"), null);
+        }
+
+        using (response)
+        {
+            var status = (int)response.StatusCode;
+            var body = await ReadBoundedBodyAsync(response, cancellationToken);
+
+            if (status == 404)
+            {
+                return new BridgeStatusResult(BridgeStatusOutcome.NotFound, null, null, status);
+            }
+
+            if (status is >= 200 and <= 299)
+            {
+                // A 2xx whose body we cannot parse into an object is NOT a
+                // success we can act on. Reported as unreadable rather than
+                // silently degraded into an empty record, which the server
+                // would then reason about as though Bridge had spoken.
+                var parsed = TryParseObject(body);
+                return parsed is null
+                    ? new BridgeStatusResult(BridgeStatusOutcome.Unreadable, null,
+                        Sanitize($"Bridge returned HTTP {status} with an unparseable or non-object body."), status)
+                    : new BridgeStatusResult(BridgeStatusOutcome.Ok, parsed, null, status);
+            }
+
+            return new BridgeStatusResult(BridgeStatusOutcome.UnreachableOrFailed, null,
+                Sanitize($"Bridge returned HTTP {status} to the status read."), status);
+        }
+    }
+
+    /// <summary>
+    /// Parses the body into a plain dictionary for verbatim forwarding. The
+    /// connector deliberately does NOT interpret the record — every
+    /// confirmation rule lives server-side in <c>decideConfirmation</c>, so
+    /// this client must not pre-judge, normalise or drop fields.
+    /// </summary>
+    private static Dictionary<string, object?>? TryParseObject(string? body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+            var result = new Dictionary<string, object?>();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                result[prop.Name] = ToClrValue(prop.Value);
+            }
+            return result;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static object? ToClrValue(JsonElement element) => element.ValueKind switch
+    {
+        JsonValueKind.String => element.GetString(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+        JsonValueKind.Array => element.EnumerateArray().Select(ToClrValue).ToList(),
+        JsonValueKind.Object => element.EnumerateObject().ToDictionary(p => p.Name, p => ToClrValue(p.Value)),
+        _ => null,
+    };
 
     public async Task<BridgeSubmitResult> SubmitOrderAsync(BridgeOrderRequest orderRequest, CancellationToken cancellationToken)
     {

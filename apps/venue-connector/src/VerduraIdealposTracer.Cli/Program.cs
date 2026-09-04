@@ -209,12 +209,15 @@ static async Task<int> RunAlwaysOnHostAsync(
         automationClient, expectedProfile, localLog, sp.GetRequiredService<ConnectorCommandProtocolClient>()));
     builder.Services.AddSingleton(sp => new IdealposOrderSubmissionService(
         sp.GetRequiredService<IdealposBridgeClient>(), localLog, sp.GetRequiredService<ConnectorCommandProtocolClient>()));
+    builder.Services.AddSingleton(sp => new IdealposOrderStatusService(
+        sp.GetRequiredService<IdealposBridgeClient>(), localLog, sp.GetRequiredService<ConnectorCommandProtocolClient>()));
     builder.Services.AddSingleton<IConnectorHostLog>(sp => new LoggerConnectorHostLog(
         sp.GetRequiredService<ILogger<ConnectorPollingLoop>>()));
     builder.Services.AddSingleton(sp => new ConnectorPollingLoop(
         sp.GetRequiredService<ConnectorCommandProtocolClient>(),
         sp.GetRequiredService<DiscoveryTracerService>(),
         sp.GetRequiredService<IdealposOrderSubmissionService>(),
+        sp.GetRequiredService<IdealposOrderStatusService>(),
         sp.GetRequiredService<IConnectorHostLog>(),
         TimeSpan.FromMilliseconds(pollIntervalMs),
         TimeSpan.FromMilliseconds(pollErrorBackoffMs)));

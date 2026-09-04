@@ -1,7 +1,9 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { POSSyncStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  BRIDGE_ORDER_STATUS_READER,
   BridgeOrderStatusReader,
   BridgeStatusReadOutcome,
   decideConfirmation,
@@ -59,14 +61,54 @@ export interface ConfirmationSweepResult {
  *    Bridge status transport is deliberately configured.
  */
 @Injectable()
-export class IdealposConfirmationService {
+export class IdealposConfirmationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IdealposConfirmationService.name);
   private readonly batchSize = 50;
+  private confirmTimer: NodeJS.Timeout | null = null;
+  private readonly sweepIntervalMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
-    @Optional() private readonly reader?: BridgeOrderStatusReader,
-  ) {}
+    // Reader stays the SECOND parameter: the existing unit suite constructs
+    // this service positionally as `new IdealposConfirmationService(prisma,
+    // reader)`, and those tests are the evidence for every confirmation
+    // rule. Config is appended last so that contract is untouched.
+    @Optional()
+    @Inject(BRIDGE_ORDER_STATUS_READER)
+    private readonly reader?: BridgeOrderStatusReader,
+    @Optional() config?: ConfigService,
+  ) {
+    this.sweepIntervalMs = Number(
+      config?.get<string>('IDEALPOS_CONFIRM_SWEEP_INTERVAL_MS') ?? 15_000,
+    );
+  }
+
+  onModuleInit(): void {
+    // Same rationale as IdealposOrderDispatcherService: a periodic timer
+    // running during the automated suite could mutate other test files'
+    // fixture rows in the shared local dev database. Tests call
+    // sweepConfirm() directly.
+    if (process.env.NODE_ENV === 'test') return;
+    // With no reader bound the sweep is inert by construction, so there is
+    // nothing to schedule and no timer is created at all.
+    if (!this.reader) {
+      this.logger.log('confirmation sweep not scheduled: no BridgeOrderStatusReader is bound');
+      return;
+    }
+    this.confirmTimer = setInterval(() => {
+      this.sweepConfirm().catch((err: unknown) => {
+        this.logger.error(
+          `Confirmation sweep tick failed: ${err instanceof Error ? err.message : String(err)}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      });
+    }, this.sweepIntervalMs);
+    this.confirmTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.confirmTimer) clearInterval(this.confirmTimer);
+  }
 
   async sweepConfirm(): Promise<ConfirmationSweepResult> {
     const result: ConfirmationSweepResult = {

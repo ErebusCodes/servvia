@@ -39,6 +39,7 @@ public sealed class ConnectorPollingLoop(
     ConnectorCommandProtocolClient protocolClient,
     DiscoveryTracerService discoveryService,
     IdealposOrderSubmissionService orderSubmissionService,
+    IdealposOrderStatusService orderStatusService,
     IConnectorHostLog log,
     TimeSpan pollInterval,
     TimeSpan errorBackoff)
@@ -57,6 +58,7 @@ public sealed class ConnectorPollingLoop(
     {
         [DiscoveryTracerService.CommandType] = true,
         [IdealposOrderSubmissionService.CommandType] = true,
+        [IdealposOrderStatusService.CommandType] = true,
     };
 
     /// <summary>
@@ -170,6 +172,16 @@ public sealed class ConnectorPollingLoop(
                 log.Info(
                     $"commandId={command.Id} type={command.CommandType} externalOrderId={result.ExternalOrderId ?? "n/a"} " +
                     $"reportedOutcome={result.ReportedOutcome ?? "none"} failClosedReason={result.FailClosedReason ?? "none"}");
+                return;
+            }
+
+            if (command.CommandType == IdealposOrderStatusService.CommandType)
+            {
+                var result = await orderStatusService.RunCloudModeAsync(command, stoppingToken);
+                log.Info(
+                    $"commandId={command.Id} type={command.CommandType} externalOrderId={result.ExternalOrderId ?? "n/a"} " +
+                    $"reportedOutcome={result.ReportedOutcome ?? "none"} resultType={result.ReportedResultType ?? "none"} " +
+                    $"bridgeHttpStatus={result.BridgeHttpStatusCode?.ToString() ?? "n/a"} failClosedReason={result.FailClosedReason ?? "none"}");
                 return;
             }
 

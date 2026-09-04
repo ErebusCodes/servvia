@@ -1,9 +1,61 @@
-# STAGED — Bridge read-only POSServer config delta
+# Bridge read-only POSServer config delta
 
-**Status: PREPARED, NOT APPLIED.** Staged 2026-09-04, after the production
-change freeze. No production config, service or release was touched.
+**Status: APPLIED 2026-09-04 22:33, WITH TWO CORRECTIONS.** See
+"Corrections found on application" immediately below before reading the rest
+of this document — as originally staged, this delta would have been a silent
+no-op.
 
-Apply only in an approved change window.
+---
+
+## Corrections found on application
+
+### Correction 1 — wrong config section (would have been a silent no-op)
+
+The delta below said to add an `<appSettings>` key
+`Bridge:PosServerConnection`. `BridgeConfig.cs` actually reads
+`ConfigurationManager.ConnectionStrings["PosServerConnection"]` — a
+`<connectionStrings>` entry. The staged text had trusted a stale comment in
+`OrderLifecycleWatcher.cs` ("Null unless Bridge:PosServerConnection is
+configured") rather than the loader. Applying it verbatim would have
+changed nothing and left `_posServerRepo` null while appearing to succeed.
+
+**What was actually applied** (into `<connectionStrings>`):
+
+```xml
+<add name="PosServerConnection"
+     connectionString="Server=localhost\IDEALSQL;Database=POSServer;Trusted_Connection=True;"
+     providerName="System.Data.SqlClient" />
+```
+
+### Correction 2 — the deployed binary has no cross-store code at all
+
+More fundamentally: the Bridge running in production is built from commit
+`abe301a`, and **cross-store reconciliation does not exist in it**.
+`PosServerReadRepository.cs`, `BridgeConfig.PosServerConnectionString` and
+`OrderLifecycleWatcher.ObserveTableLink` were all added later, in `8d0cd1a`
+(with `4b2a394` and `442a7c4` after it). Verified three ways: the file is
+absent from `git ls-tree abe301a`; `git show abe301a:.../BridgeConfig.cs`
+contains no `PosServer` symbol; and the live Bridge log after restart emits
+neither `watcher_cross_store_disabled` nor any POSServer line, because
+neither exists in that build.
+
+**Consequence: the connection string applied above is INERT today.** It is
+correct and validated, but it activates only when a Bridge built from a
+commit containing `8d0cd1a` is deployed. That deployment has NOT been done —
+it is a larger change than this config delta, and it grants a live
+connection to a production restaurant database as `NT AUTHORITY\SYSTEM`
+(see "Permission caveat" below, which is why least-privilege hardening
+should land with it rather than after it).
+
+### What DID take effect
+
+The `ExpectedIpsExePath` correction is honoured by the deployed binary
+(`BridgeConfig.cs` line 82 at `abe301a`), and `/api/health` went from
+`ipsExePathExists: false` to `true`.
+
+---
+
+## Original staged delta (retained for the record — see corrections above)
 
 ---
 

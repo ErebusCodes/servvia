@@ -5,6 +5,8 @@ import { PosSyncRecordsService } from './pos-sync-records.service';
 import { PosSyncDispatcherService } from './pos-sync-dispatcher.service';
 import { IdealposOrderDispatcherService } from './idealpos-order-dispatcher.service';
 import { IdealposConfirmationService } from './idealpos-confirmation.service';
+import { ConnectorBridgeOrderStatusReader } from './connector-bridge-order-status.reader';
+import { BRIDGE_ORDER_STATUS_READER } from './bridge-order-status';
 import { PosCatalogController } from './pos-catalog.controller';
 import { PosCatalogService } from './pos-catalog.service';
 import { AuthModule } from '../auth/auth.module';
@@ -29,11 +31,14 @@ import { OrdersModule } from '../orders/orders.module';
     PosSyncDispatcherService,
     IdealposOrderDispatcherService,
     // Advances submitted_awaiting_confirmation records using a real read of
-    // IdealposBridge's GET /api/orders/{externalOrderId}. Registered with no
-    // BridgeOrderStatusReader bound, so it is INERT: sweepConfirm() reports
-    // `disabled: true` and touches nothing until a reader is deliberately
-    // provided. That keeps shipping it a no-op until the Bridge status
-    // transport is configured, rather than a silent behaviour change.
+    // IdealposBridge's GET /api/orders/{externalOrderId}, obtained through
+    // the Venue Connector rather than by the API calling Bridge directly —
+    // the API therefore never holds Bridge's URL or bearer key. Binding the
+    // reader is what activates the sweep; leaving BRIDGE_ORDER_STATUS_READER
+    // unbound remains a supported configuration in which sweepConfirm()
+    // reports `disabled: true` and touches nothing.
+    ConnectorBridgeOrderStatusReader,
+    { provide: BRIDGE_ORDER_STATUS_READER, useExisting: ConnectorBridgeOrderStatusReader },
     IdealposConfirmationService,
     PosCatalogService,
   ],

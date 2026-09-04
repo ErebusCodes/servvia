@@ -208,6 +208,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
         var bridgeClient = new IdealposBridgeClient(bridgeHttpClient, "test-key", TimeSpan.FromSeconds(2));
         var log_ = new DurableLocalLog(Path.Combine(_tempDir, $"{Guid.NewGuid()}.ndjson"));
         var orderSubmissionService = new IdealposOrderSubmissionService(bridgeClient, log_, protocolClient);
+        var orderStatusService = new IdealposOrderStatusService(bridgeClient, log_, protocolClient);
 
         var automationClient = new FakeIdealposUiAutomationClient(FakeScenario.HappyPath);
         var profile = new IdealposVerifiedProfile(ExpectedProcessName: "IPSClient", ExpectedMainWindowTitleContains: "Idealpos", ProfileVersion: "test-v1");
@@ -219,6 +220,7 @@ public sealed class ConnectorPollingLoopTests : IDisposable
             protocolClient,
             discoveryService,
             orderSubmissionService,
+            orderStatusService,
             inMemoryLog,
             pollInterval ?? TimeSpan.FromMilliseconds(20),
             errorBackoff ?? TimeSpan.FromMilliseconds(20));

@@ -82,6 +82,15 @@ export type BridgeStatusReadOutcome =
   | { kind: 'unavailable'; reason: string }
   | { kind: 'malformed'; reason: string };
 
+/**
+ * DI token for the port below. A TypeScript interface cannot itself be an
+ * injection token (it does not survive to runtime), so the optional
+ * dependency in IdealposConfirmationService is bound through this symbol.
+ * Leaving it unbound is a supported configuration: the confirmation sweep
+ * then reports `disabled: true` and touches nothing.
+ */
+export const BRIDGE_ORDER_STATUS_READER = Symbol('BRIDGE_ORDER_STATUS_READER');
+
 /** Port. Kept narrow so the reconciliation logic is transport-agnostic and unit-testable. */
 export interface BridgeOrderStatusReader {
   /** MUST NOT throw: a transport failure is an outcome, not an exception. */
