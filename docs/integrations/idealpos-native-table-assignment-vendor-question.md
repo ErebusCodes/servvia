@@ -112,9 +112,53 @@ Fields this question refers to:
     parties? **Our default assumption is NO** and we will not use it unless
     you tell us otherwise.
 
-**Additional**: `IPS.exe` listens on TCP 12183 and its `Printing.log` records
-`wsPrinterError_DataArrival` / `Accepted Request` for HTTP traffic. Is this a
-supported interface, and if so what is it for? We have not sent anything to it.
+**Additional — TCP 12183, withdrawn as a question and disclosed as an error.**
+We previously asked whether `IPS.exe`'s TCP 12183 listener was a supported
+interface, and stated we had not sent anything to it. **Both were wrong, and we
+correct them here.**
+
+We did send to it: four `GET / HTTP/1.1` requests from a PowerShell HTTP client
+on 2026-09-04 at 12:29:59, which constitute the entire recorded contents of
+`Printing.log`. We apologise for the unsolicited traffic to an undocumented
+port on a live installation, and we have stopped.
+
+Its own response tells us what it is: it logged our well-formed HTTP request as
+`Estranged Data` and returned nothing. String inspection of `ips.exe` shows
+`wsPrinterError` is an `MSWinsockLib.Winsock` control on form
+`frmIPSPrintServerComms`, with handlers `wsPrinterError_ConnectionRequest` /
+`_DataArrival` / `_Close`, adjacent to `Printer ERROR!`, `Paper Out/Cover
+Open`, `Printer Turned Off`, `Throwing Retry Screen` and `Giving User
+decision...`. We classify it as an internal printer-error channel, not an
+integration surface, and we are not asking about it further.
+
+**Additional — the questions we should have been asking.** This installation
+carries COM-registered `IKMAPI.COMServer` (`IKM.API.dll`, exposing
+`SendOrderToPOS`, `InsertOrderForPOS`, `OrderAcknowledge`, and a `POSOrderType`
+of `PendingSale`/`NormalSale`) and `VariPad.VariPadManager` (`VariPad.dll`,
+exposing `ImportVariPadOrderFile` / `ProcessVariPadOrders`). `ips.exe` itself
+logs `Handheld Order successfully added to Pending Sales.` immediately before
+its table-KOT send sequence.
+
+16. Is `IKM.API` (`IKMAPI.COMServer`) a supported third-party integration
+    surface, or strictly internal to Ideal Kitchen Monitor?
+17. What are the semantics of `SendOrderToPOS` / `InsertOrderForPOS`, and what
+    does `POSOrderType.PendingSale` do — create a pending sale, or append to an
+    existing one?
+18. Does `OrderAcknowledge` return a durable native identifier an integration
+    may retain for reconciliation? This is precisely the correlation key
+    questions 3–5 are asking for.
+19. Is `VariPad`'s order-file import a supported ingestion path, and what is
+    the file contract?
+20. What licence entitlement do IKM API, VariPad and handheld ordering require,
+    and is any of them enabled on this installation?
+21. Which of these, if any, can target a table/map, append to an existing table
+    sale, and send only newly-added lines to the kitchen?
+22. `ips.exe` references a `PrintJobs.Log` that is not written on this
+    installation. How is per-job print logging enabled, and does it record KOT
+    content?
+
+We have not invoked any of these interfaces and will not do so without your
+confirmation that doing so is supported.
 
 ---
 

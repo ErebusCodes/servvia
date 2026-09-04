@@ -69,8 +69,15 @@ analysis joins on `StockItems.Code`, which is what `PendingSaleLines.Col1`
 holds. Do not use an item with modifiers or a set-menu component for this
 first pass; keep the two rounds trivially distinguishable.
 
-- Item A code: `________`  description: `________________`
-- Item B code: `________`  description: `________________`
+- Item A code: `________`  description: `________________`  **quantity 1**
+- Item B code: `________`  description: `________________`  **quantity 2**
+
+**Item B must be quantity 2.** Every sale line ever observed on this
+installation has `Col3 = 1`, which makes `Col4` numerically identical under
+both readings — unit price and extended price. The static analysis proved
+`Col4` equals the configured Level-1 price exactly for eight lines, but at
+quantity 1 that cannot distinguish the two. A single qty-2 line separates them
+in one observation (`Col4 = unit` vs `Col4 = unit x 2`) and costs nothing.
 
 ---
 
@@ -97,7 +104,7 @@ cd C:\Users\Posmate\Documents\verdura_MVP\windows-deploy\ops
 | 4 | `.\idealpos-table-capture.ps1 -Step 02-add-A -TableCode 5` | |
 | 5 | | **Send round 1** to the kitchen, the way staff normally do. |
 | 6 | `.\idealpos-table-capture.ps1 -Step 03-send-R1 -TableCode 5` | |
-| 7 | | **Re-open Table 5 and add item B** (qty 1). Do **not** send. |
+| 7 | | **Re-open Table 5 and add item B, QUANTITY 2.** Do **not** send. |
 | 8 | `.\idealpos-table-capture.ps1 -Step 04-add-B -TableCode 5` | |
 | 9 | | **Send round 2.** |
 | 10 | `.\idealpos-table-capture.ps1 -Step 05-send-R2 -TableCode 5` | |
