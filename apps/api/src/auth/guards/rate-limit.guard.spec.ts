@@ -394,6 +394,67 @@ describe('RateLimitGuard', () => {
       expect(model.zset.size).toBe(1);
     });
 
+    // The full ledger for the dangerous interleaving, measured rather than
+    // argued: cardinality at each step, the value the script returns, and the
+    // limiter's verdict. This is the test that would fail if ZADD ever stopped
+    // being an upsert, or if the sweep boundary became inclusive of `now`.
+    it('committed-then-lost retry: every quantity measured end to end', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      const model = makeRedisModel(120);
+
+      // Three pre-existing members in the window, so N = 3 rather than 0 --
+      // the identity must hold at arbitrary occupancy, not just an empty set.
+      const t0 = Date.now();
+      model.zset.set('prior-1', t0);
+      model.zset.set('prior-2', t0);
+      model.zset.set('prior-3', t0);
+
+      const cardinalityBefore = model.zset.size;
+      let firstReturn: [number, number, number?] | undefined;
+      let cardinalityAfterFirst = -1;
+
+      evalMock.mockImplementationOnce((...args: unknown[]) => {
+        firstReturn = model.run(...(args as Parameters<typeof model.run>));
+        cardinalityAfterFirst = model.zset.size; // committed server-side...
+        return Promise.reject(new Error('Command timed out')); // ...reply lost
+      });
+
+      let retryReturn: [number, number, number?] | undefined;
+      evalMock.mockImplementationOnce((...args: unknown[]) => {
+        retryReturn = model.run(...(args as Parameters<typeof model.run>));
+        return Promise.resolve(retryReturn);
+      });
+
+      const verdict = await guard.canActivate(
+        createMockContext('127.0.0.1', {}, '/api/connector/commands/poll'),
+      );
+
+      const cardinalityAfterRetry = model.zset.size;
+
+      // 1. cardinality before
+      expect(cardinalityBefore).toBe(3);
+      // 2. cardinality after the first, committed command: exactly one added
+      expect(cardinalityAfterFirst).toBe(4);
+      // 3. cardinality after the retry: UNCHANGED. The retry consumed no slot.
+      expect(cardinalityAfterRetry).toBe(4);
+      expect(cardinalityAfterRetry - cardinalityBefore).toBe(1);
+
+      // 4. returned command count. The first run saw N=3 and returned 3+1=4.
+      //    The retry saw N=4 (its own member already present, and the sweep
+      //    cannot evict a member scored exactly `now`) and returned 4+1=5 --
+      //    the documented, harmless over-report by one.
+      expect(firstReturn).toEqual([0, 4]);
+      expect(retryReturn).toEqual([0, 5]);
+      expect((retryReturn as [number, number])[1]).toBe(
+        (firstReturn as [number, number])[1] + 1,
+      );
+
+      // 5. limiter decision: allowed, from result[0] only. The over-reported
+      //    counter is never read, which is why it cannot affect a verdict.
+      expect((retryReturn as [number, number])[0]).toBe(0);
+      expect(verdict).toBe(true);
+    });
+
     it('stays conservative at the limit: a committed-then-lost EVAL at capacity still yields 429', async () => {
       getAllAndOverrideMock.mockReturnValue({ limit: 2, windowSeconds: 60 });
       const model = makeRedisModel(2);
