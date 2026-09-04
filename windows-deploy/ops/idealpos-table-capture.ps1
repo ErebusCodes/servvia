@@ -121,7 +121,11 @@ if ($Step -match '^00-baseline' -and -not $NewRun -and -not $RunId) {
 if (-not $RunId) {
   if ($NewRun -or -not (Test-Path $runPointer)) {
     $RunId = 'run-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
-    Set-Content -Path $runPointer -Value $RunId -Encoding utf8
+    # WriteAllText, not Set-Content -Encoding utf8: PowerShell 5.1 writes a BOM
+    # for utf8, and this pointer is read by whatever tool an analyst reaches for.
+    # PowerShell strips the BOM on its own read, so the bug stays invisible here
+    # and surfaces as a mangled path in anything else.
+    [System.IO.File]::WriteAllText($runPointer, $RunId, (New-Object System.Text.UTF8Encoding($false)))
   } else {
     $RunId = (Get-Content $runPointer -Raw).Trim()
   }
