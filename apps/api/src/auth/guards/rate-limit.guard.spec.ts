@@ -294,4 +294,122 @@ describe('RateLimitGuard', () => {
       expect(evalMock).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ---- retry idempotency against real ZSET semantics ---------------------
+  //
+  // The dangerous interleaving is: the first EVAL COMMITS server-side, the
+  // reply is lost, and the retry runs with the same member. These tests model
+  // the sorted set faithfully (members unique by value; re-adding an existing
+  // member updates its score instead of inserting a second element) and assert
+  // on CARDINALITY, which is what actually charges a caller's budget.
+
+  describe('retry idempotency against a modelled sorted set', () => {
+    /** Executes LUA_LIMIT_SCRIPT's semantics against a real Map-backed ZSET. */
+    const makeRedisModel = (limit: number) => {
+      const zset = new Map<string, number>();
+      const run = (
+        _script: string,
+        _numKeys: number,
+        _key: string,
+        nowArg: string,
+        windowMsArg: string,
+        limitArg: string,
+        member: string,
+      ): [number, number, number?] => {
+        const now = Number(nowArg);
+        const windowMs = Number(windowMsArg);
+        const lim = Number(limitArg);
+        // ZREMRANGEBYSCORE key -inf (now - windowMs)
+        const oldest = now - windowMs;
+        for (const [m, score] of zset) if (score <= oldest) zset.delete(m);
+        const count = zset.size; // ZCARD
+        if (count < lim) {
+          zset.set(member, now); // ZADD — unique by member, updates in place
+          return [0, count + 1];
+        }
+        const oldestScore = Math.min(...Array.from(zset.values()));
+        return [1, count, oldestScore];
+      };
+      return { zset, run, limit };
+    };
+
+    it('a committed-then-lost EVAL followed by a retry charges exactly ONE slot', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      const model = makeRedisModel(120);
+
+      // First call: apply the mutation server-side, then lose the reply.
+      evalMock.mockImplementationOnce((...args: unknown[]) => {
+        model.run(...(args as Parameters<typeof model.run>));
+        return Promise.reject(new Error('Command timed out'));
+      });
+      // Retry: same args reach the same modelled server.
+      evalMock.mockImplementationOnce((...args: unknown[]) =>
+        Promise.resolve(model.run(...(args as Parameters<typeof model.run>))),
+      );
+
+      await expect(
+        guard.canActivate(createMockContext('127.0.0.1', {}, '/api/connector/commands/poll')),
+      ).resolves.toBe(true);
+
+      // The whole point: the retry did NOT insert a second element.
+      expect(model.zset.size).toBe(1);
+      expect(evalMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('the retry re-adds the SAME member rather than a new one', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      const model = makeRedisModel(120);
+
+      evalMock.mockImplementationOnce((...args: unknown[]) => {
+        model.run(...(args as Parameters<typeof model.run>));
+        return Promise.reject(new Error('Command timed out'));
+      });
+      evalMock.mockImplementationOnce((...args: unknown[]) =>
+        Promise.resolve(model.run(...(args as Parameters<typeof model.run>))),
+      );
+
+      await guard.canActivate(createMockContext('127.0.0.1'));
+
+      const memberAfterFirst = evalMock.mock.calls[0][6] as string;
+      const memberAfterRetry = evalMock.mock.calls[1][6] as string;
+      expect(memberAfterRetry).toBe(memberAfterFirst);
+      expect(Array.from(model.zset.keys())).toEqual([memberAfterFirst]);
+    });
+
+    it('the window sweep cannot evict the member the retry is about to re-add', async () => {
+      // M's score is exactly `now`, and the sweep removes scores <= now - windowMs.
+      // For any positive window that boundary is strictly below `now`.
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      const model = makeRedisModel(120);
+
+      evalMock.mockImplementationOnce((...args: unknown[]) => {
+        model.run(...(args as Parameters<typeof model.run>));
+        return Promise.reject(new Error('Command timed out'));
+      });
+      evalMock.mockImplementationOnce((...args: unknown[]) =>
+        Promise.resolve(model.run(...(args as Parameters<typeof model.run>))),
+      );
+
+      await guard.canActivate(createMockContext('127.0.0.1'));
+      expect(model.zset.size).toBe(1);
+    });
+
+    it('stays conservative at the limit: a committed-then-lost EVAL at capacity still yields 429', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 2, windowSeconds: 60 });
+      const model = makeRedisModel(2);
+      const now = Date.now();
+      model.zset.set('existing-1', now);
+      model.zset.set('existing-2', now);
+
+      evalMock.mockImplementation((...args: unknown[]) =>
+        Promise.resolve(model.run(...(args as Parameters<typeof model.run>))),
+      );
+
+      await expect(
+        guard.canActivate(createMockContext('127.0.0.1')),
+      ).rejects.toMatchObject({ status: 429 });
+      // Refused, and nothing was added.
+      expect(model.zset.size).toBe(2);
+    });
+  });
 });

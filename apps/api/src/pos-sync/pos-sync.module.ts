@@ -4,6 +4,7 @@ import { PosSyncRecordsController } from './pos-sync-records.controller';
 import { PosSyncRecordsService } from './pos-sync-records.service';
 import { PosSyncDispatcherService } from './pos-sync-dispatcher.service';
 import { IdealposOrderDispatcherService } from './idealpos-order-dispatcher.service';
+import { IdealposConfirmationService } from './idealpos-confirmation.service';
 import { PosCatalogController } from './pos-catalog.controller';
 import { PosCatalogService } from './pos-catalog.service';
 import { AuthModule } from '../auth/auth.module';
@@ -27,7 +28,15 @@ import { OrdersModule } from '../orders/orders.module';
     PosSyncRecordsService,
     PosSyncDispatcherService,
     IdealposOrderDispatcherService,
+    // Advances submitted_awaiting_confirmation records using a real read of
+    // IdealposBridge's GET /api/orders/{externalOrderId}. Registered with no
+    // BridgeOrderStatusReader bound, so it is INERT: sweepConfirm() reports
+    // `disabled: true` and touches nothing until a reader is deliberately
+    // provided. That keeps shipping it a no-op until the Bridge status
+    // transport is configured, rather than a silent behaviour change.
+    IdealposConfirmationService,
     PosCatalogService,
   ],
+  exports: [IdealposConfirmationService],
 })
 export class PosSyncModule {}

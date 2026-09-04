@@ -59,9 +59,38 @@ const LUA_LIMIT_SCRIPT = `
  *    rate-limit decision is an `HttpException` and is rethrown untouched.
  *  - If Redis cannot answer twice, the guard still fails closed with 503. The
  *    gate is never opened on error.
- *  - The Lua script is atomic server-side, so a retry after a client-side
- *    timeout can at worst consume a second slot of the caller's own budget.
- *    That errs toward MORE limiting, never less.
+ *
+ * RETRY IDEMPOTENCY — the exact server-side semantics, since this is the one
+ * thing that could silently corrupt the count:
+ *
+ * The retry re-sends `now` and `uniqueMember` UNCHANGED (they are computed
+ * once, outside the loop). Consider the dangerous interleaving: the first
+ * `EVAL` commits server-side, the reply is lost, and the retry runs.
+ *
+ *   1. First EVAL: `ZCARD` = N, N < limit, so `ZADD key <now> <member M>`
+ *      adds M. Cardinality N+1. The reply never reaches the client.
+ *   2. Retry: `ZREMRANGEBYSCORE key -inf (now - windowMs)` cannot evict M,
+ *      because M's score is exactly `now` and `now - windowMs < now` for any
+ *      positive window. `ZCARD` therefore returns N+1 — M is counted.
+ *   3. `ZADD key <now> <M>` runs again. A ZSET member is unique by value:
+ *      re-adding an existing member UPDATES its score rather than inserting a
+ *      second element, and the score here is byte-identical. **Cardinality
+ *      stays N+1.**
+ *
+ * So the retry consumes NO additional slot — it is exactly idempotent against
+ * the ZSET, not merely "conservative". The earlier claim in this comment that
+ * it could "at worst consume a second slot" was wrong, and contradicted the
+ * deliberate reuse of `uniqueMember` a few lines below.
+ *
+ * One real divergence remains and is harmless: step 3 returns `{0, count + 1}`
+ * where `count` already included M, so the returned counter over-reports by
+ * one. Nothing reads it — the guard uses only `result[0]` (the verdict) and
+ * `result[2]` (the oldest score, for `Retry-After`) — so it cannot affect a
+ * decision. It is left alone rather than "fixed", because changing the script's
+ * return shape is a wire change for zero behavioural gain.
+ *
+ * If instead the first EVAL never reached Redis, the retry is simply the first
+ * execution and adds M once. Either way the caller is charged exactly one slot.
  */
 const TRANSIENT_RETRY_ATTEMPTS = 1;
 const TRANSIENT_RETRY_DELAY_MS = 50;
