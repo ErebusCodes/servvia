@@ -140,13 +140,21 @@ logs `Handheld Order successfully added to Pending Sales.` immediately before
 its table-KOT send sequence.
 
 16. Is `IKM.API` (`IKMAPI.COMServer`) a supported third-party integration
-    surface, or strictly internal to Ideal Kitchen Monitor?
+    surface, or strictly internal to Ideal Kitchen Monitor? We read
+    `Enqueue(IOrder)` as POS→monitor; our question concerns the **inbound**
+    `ORDER` packet path that raises `EnqueueOrderToPOS` on the POS host, and
+    `OrderType.HHS` / `TableOrder`.
 17. What are the semantics of `SendOrderToPOS` / `InsertOrderForPOS`, and what
     does `POSOrderType.PendingSale` do — create a pending sale, or append to an
     existing one?
-18. Does `OrderAcknowledge` return a durable native identifier an integration
-    may retain for reconciliation? This is precisely the correlation key
-    questions 3–5 are asking for.
+18. We can see that `OrderAcknowledge` carries only a sender-generated `id`
+    GUID and a `discarded` flag, and that receipt merely clears the sender's
+    outstanding-packet list — so it acknowledges **delivery**, not native
+    persistence. Is there any packet or return value on this protocol that
+    yields a **durable native identifier** (a `PendingSales.ID`, a table-sale
+    reference, or similar) that an integration may retain for reconciliation?
+    That is the correlation key questions 3–5 are asking for, and we have not
+    found it.
 19. Is `VariPad`'s order-file import a supported ingestion path, and what is
     the file contract?
 20. What licence entitlement do IKM API, VariPad and handheld ordering require,
