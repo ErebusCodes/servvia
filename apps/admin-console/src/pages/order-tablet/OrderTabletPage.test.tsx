@@ -266,10 +266,12 @@ beforeEach(() => {
   resetTabletDeviceAuth();
   useLiveOrdersMock.mockReturnValue({ data: [], isRealtimeConnected: true, ordersDataIsAuthoritative: true });
   // The pending-submission marker (see PENDING_SUBMISSION_STORAGE_KEY in
-  // OrderTabletPage.tsx) is real, persisted sessionStorage — without this,
+  // OrderTabletPage.tsx) is real, persisted localStorage — without this,
   // one test's simulated dropped-response leaves the next test's fresh
-  // render permanently blocked from submitting, since jsdom's sessionStorage
-  // is shared process-wide across tests in this file.
+  // render permanently blocked from submitting, since jsdom's storage
+  // is shared process-wide across tests in this file. sessionStorage is
+  // cleared too because the legacy-migration path still reads it.
+  localStorage.clear();
   sessionStorage.clear();
 });
 
@@ -277,6 +279,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   resetTabletDeviceAuth();
+  localStorage.clear();
   sessionStorage.clear();
 });
 
@@ -980,13 +983,13 @@ describe('OrderTabletPage — unresolved-submission safety net (ambiguous networ
     // just retryable. That durable record (not this first error message) is
     // what the rest of this test verifies.
     await waitFor(() => expect(screen.getByText(/Failed to fetch/i)).toBeInTheDocument());
-    expect(sessionStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeTruthy();
+    expect(localStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeTruthy();
 
-    // Simulate the app reloading (all React state is lost; sessionStorage is not).
+    // Simulate the app reloading (all React state is lost; localStorage is not).
     unmount();
     renderTablet();
 
-    // The banner is visible on a fresh mount purely from sessionStorage —
+    // The banner is visible on a fresh mount purely from localStorage —
     // no order/table selection needed to discover it.
     expect(await screen.findByTestId('pending-submission-banner')).toBeInTheDocument();
     expect(within(screen.getByTestId('pending-submission-banner')).getByText(/Takeaway/)).toBeInTheDocument();
@@ -1010,7 +1013,7 @@ describe('OrderTabletPage — unresolved-submission safety net (ambiguous networ
       return new Response(JSON.stringify({}), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);
-    sessionStorage.setItem(
+    localStorage.setItem(
       'verdura-order-tablet-pending-submission-v1',
       JSON.stringify({ context: 'Takeaway', submittedAt: new Date().toISOString() }),
     );
@@ -1020,6 +1023,62 @@ describe('OrderTabletPage — unresolved-submission safety net (ambiguous networ
     fireEvent.click(clearButton);
 
     expect(screen.queryByTestId('pending-submission-banner')).not.toBeInTheDocument();
+    expect(localStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeNull();
+  });
+
+  // Real defect closed 2026-09-04. The marker used to live in sessionStorage,
+  // which is discarded when the tab closes or the device restarts -- so the
+  // guard failed open in exactly the "standalone device restart" case its own
+  // comment named it for, and that is the worst case: after a restart staff
+  // have lost all on-screen context and are most likely to re-enter and
+  // resubmit the same takeaway cart, creating a second real Order, a second
+  // POSSyncRecord and a second ConnectorCommand with a different
+  // externalOrderId that the Bridge's dedup provably cannot catch.
+  it('the pending-submission block survives a DEVICE RESTART, not just a tab reload', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/tax-config')) return new Response(JSON.stringify(NZ_SUPPORTED_TAX_CONFIG), { status: 200 });
+      if (url.includes('/tables') && !url.includes('orders')) {
+        return new Response(JSON.stringify([{ id: 'real-table-1', tableNumber: '1', name: null, capacity: 4 }]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    localStorage.setItem(
+      'verdura-order-tablet-pending-submission-v1',
+      JSON.stringify({ context: 'Takeaway', submittedAt: new Date().toISOString() }),
+    );
+    // A device/browser restart destroys sessionStorage and keeps localStorage.
+    sessionStorage.clear();
+
+    renderTablet();
+
+    expect(await screen.findByTestId('pending-submission-banner')).toBeInTheDocument();
+  });
+
+  it('migrates a legacy sessionStorage marker so a deploy cannot drop an unresolved submission', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/tax-config')) return new Response(JSON.stringify(NZ_SUPPORTED_TAX_CONFIG), { status: 200 });
+      if (url.includes('/tables') && !url.includes('orders')) {
+        return new Response(JSON.stringify([{ id: 'real-table-1', tableNumber: '1', name: null, capacity: 4 }]), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // Written by the previous build, which used sessionStorage.
+    sessionStorage.setItem(
+      'verdura-order-tablet-pending-submission-v1',
+      JSON.stringify({ context: 'Table 7', submittedAt: new Date().toISOString() }),
+    );
+
+    renderTablet();
+
+    expect(await screen.findByTestId('pending-submission-banner')).toBeInTheDocument();
+    // Promoted to durable storage and the legacy copy removed.
+    expect(localStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeTruthy();
     expect(sessionStorage.getItem('verdura-order-tablet-pending-submission-v1')).toBeNull();
   });
 

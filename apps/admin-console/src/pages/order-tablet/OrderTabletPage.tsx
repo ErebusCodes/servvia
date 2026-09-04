@@ -86,18 +86,57 @@ const TERMINAL_POS_SYNC_STATES = new Set([
 // human confirms the real state (KDS/recent orders), never auto-resolved.
 const PENDING_SUBMISSION_STORAGE_KEY = 'verdura-order-tablet-pending-submission-v1';
 
+// Real defect closed here (order-tablet production-readiness audit,
+// 2026-09-04): this marker was held in `sessionStorage`, which does NOT
+// survive the two cases the comment above explicitly names it for.
+// `sessionStorage` is scoped to a single tab session and is discarded when
+// that tab closes or the browser/device restarts; only a same-tab reload
+// preserves it. So the guard covered the reload case and silently failed
+// open in exactly the "standalone device restart" case it was written to
+// protect -- the worst of the three, because a restart is precisely when
+// staff have lost all on-screen context and are most likely to re-enter and
+// resubmit the same takeaway cart.
+//
+// `localStorage` is durable across tab close, browser restart and device
+// restart, which is what "this device has an unresolved submission" actually
+// means. It cannot wedge the tablet permanently: the banner rendered for a
+// set marker carries an explicit staff dismissal that clears it after they
+// check Kitchen Display / recent orders, and any definite HTTP response --
+// success OR error -- clears it automatically. Only a thrown exception (no
+// response at all) leaves it set, which is the genuinely ambiguous case.
+//
+// Sharing across tabs on the same origin is correct rather than incidental:
+// the marker is a property of the DEVICE's submission state, not of one tab.
+const LEGACY_PENDING_SUBMISSION_SESSION_KEY = PENDING_SUBMISSION_STORAGE_KEY;
+
 interface PendingSubmissionMarker {
   context: string;
   submittedAt: string;
 }
 
+function parsePendingSubmissionMarker(raw: string | null): PendingSubmissionMarker | null {
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as Partial<PendingSubmissionMarker>;
+  if (typeof parsed.context !== 'string' || typeof parsed.submittedAt !== 'string') return null;
+  return { context: parsed.context, submittedAt: parsed.submittedAt };
+}
+
 function readPendingSubmissionMarker(): PendingSubmissionMarker | null {
   try {
-    const raw = sessionStorage.getItem(PENDING_SUBMISSION_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PendingSubmissionMarker>;
-    if (typeof parsed.context !== 'string' || typeof parsed.submittedAt !== 'string') return null;
-    return { context: parsed.context, submittedAt: parsed.submittedAt };
+    const durable = parsePendingSubmissionMarker(localStorage.getItem(PENDING_SUBMISSION_STORAGE_KEY));
+    if (durable) return durable;
+
+    // One-time migration: a marker written by the previous build lives in
+    // sessionStorage. Honour it rather than dropping an unresolved
+    // submission on the deploy that fixes this.
+    const legacy = parsePendingSubmissionMarker(
+      sessionStorage.getItem(LEGACY_PENDING_SUBMISSION_SESSION_KEY),
+    );
+    if (legacy) {
+      localStorage.setItem(PENDING_SUBMISSION_STORAGE_KEY, JSON.stringify(legacy));
+      sessionStorage.removeItem(LEGACY_PENDING_SUBMISSION_SESSION_KEY);
+    }
+    return legacy;
   } catch {
     // Storage unavailable/corrupt (private browsing, quota, malformed JSON
     // from a previous build) -- fail closed would mean blocking every
@@ -111,7 +150,7 @@ function readPendingSubmissionMarker(): PendingSubmissionMarker | null {
 function writePendingSubmissionMarker(context: string): void {
   try {
     const marker: PendingSubmissionMarker = { context, submittedAt: new Date().toISOString() };
-    sessionStorage.setItem(PENDING_SUBMISSION_STORAGE_KEY, JSON.stringify(marker));
+    localStorage.setItem(PENDING_SUBMISSION_STORAGE_KEY, JSON.stringify(marker));
   } catch {
     // Best-effort only -- see readPendingSubmissionMarker's doc comment.
   }
@@ -119,7 +158,10 @@ function writePendingSubmissionMarker(context: string): void {
 
 function clearPendingSubmissionMarker(): void {
   try {
-    sessionStorage.removeItem(PENDING_SUBMISSION_STORAGE_KEY);
+    localStorage.removeItem(PENDING_SUBMISSION_STORAGE_KEY);
+    // Clear any legacy copy too, so a stale sessionStorage marker cannot
+    // resurrect itself through the migration path above.
+    sessionStorage.removeItem(LEGACY_PENDING_SUBMISSION_SESSION_KEY);
   } catch {
     // Best-effort only.
   }

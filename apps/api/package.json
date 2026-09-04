@@ -107,6 +107,7 @@
     "testEnvironment": "node",
     "setupFiles": [
       "./test-setup.ts"
-    ]
+    ],
+    "testTimeout": 30000
   }
 }

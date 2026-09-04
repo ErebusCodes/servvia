@@ -210,4 +210,88 @@ describe('RateLimitGuard', () => {
       '900',
     );
   });
+
+  // ---- transient Redis blocking -----------------------------------------
+  //
+  // Redis is single-threaded and is shared with BullMQ here. Its slow log on
+  // 2026-09-04 carried a 1,501,581 us command against the client's 1500 ms
+  // commandTimeout, which is exactly how a valid connector poll was rejected
+  // with 503. One bounded retry absorbs that without opening the gate.
+
+  describe('transient Redis fault handling', () => {
+    it('retries once when the command times out, then allows a permitted request', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      evalMock
+        .mockRejectedValueOnce(new Error('Command timed out'))
+        .mockResolvedValueOnce([0, 3]);
+
+      const context = createMockContext('127.0.0.1', {}, '/api/connector/commands/poll');
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(evalMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('still fails closed with 503 when the retry also times out', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      evalMock.mockRejectedValue(new Error('Command timed out'));
+
+      const context = createMockContext('127.0.0.1', {}, '/api/connector/commands/poll');
+
+      await expect(guard.canActivate(context)).rejects.toMatchObject({ status: 503 });
+      expect(evalMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry more than once', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      evalMock.mockRejectedValue(new Error('Command timed out'));
+
+      await expect(
+        guard.canActivate(createMockContext('127.0.0.1')),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(evalMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('reuses the same window arguments on the retry', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
+      evalMock
+        .mockRejectedValueOnce(new Error('Command timed out'))
+        .mockResolvedValueOnce([0, 1]);
+
+      await guard.canActivate(createMockContext('127.0.0.1'));
+
+      const [first, second] = evalMock.mock.calls;
+      // now, windowMs, limit, uniqueMember, windowSeconds must all be identical
+      expect(second.slice(2)).toEqual(first.slice(2));
+    });
+
+    it('NEVER retries a genuine rate-limit decision', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 5, windowSeconds: 60 });
+      evalMock.mockResolvedValueOnce([1, 5, Date.now() - 30_000]);
+
+      await expect(
+        guard.canActivate(createMockContext('192.168.1.1')),
+      ).rejects.toMatchObject({ status: 429 });
+      expect(evalMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry a non-transient Redis failure', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 5, windowSeconds: 60 });
+      evalMock.mockRejectedValue(new Error('WRONGTYPE Operation against a key'));
+
+      await expect(
+        guard.canActivate(createMockContext('192.168.1.1')),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(evalMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry a malformed reply', async () => {
+      getAllAndOverrideMock.mockReturnValue({ limit: 5, windowSeconds: 60 });
+      evalMock.mockResolvedValueOnce([0]);
+
+      await expect(
+        guard.canActivate(createMockContext('192.168.1.1')),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(evalMock).toHaveBeenCalledTimes(1);
+    });
+  });
 });
