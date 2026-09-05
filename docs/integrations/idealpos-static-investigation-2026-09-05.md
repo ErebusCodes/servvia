@@ -1,5 +1,30 @@
 # IdealPOS static investigation — 2026-09-05 (offline session)
 
+---
+
+> ## SUPERSEDED IN PART — 2026-09-05, later the same day
+>
+> The section below titled **"Why `IKM.API` is the lead"** is **withdrawn**.
+> Fuller decompilation established that `IKM.API` has **no inbound-order path
+> to any COM host at all**: the class carrying `EnqueueOrderToPOS` is
+> `[ComVisible(false)]`, the COM event interface `ICOMServerEvents` exposes
+> only `StatusUpdate` and `CommunicationsError`, and `COMServer.Incoming()`
+> processes only `Status` packets — every inbound `Order` is dequeued and
+> discarded. `IKM.API` is a kitchen-monitor **docket display** transport,
+> outbound from the POS, not an ingress.
+>
+> The native ingress family is **Ideal Handheld / WaiterPad** — a
+> licence-gated Winsock listener inside `IPS.exe`, with `VariPad.dll` as a
+> first-party file-drop adapter.
+>
+> See **[`idealpos-native-ingress-2026-09-05.md`](./idealpos-native-ingress-2026-09-05.md)**,
+> which supersedes the IKM sections of this document. Everything else here —
+> the module inventory, the KOT log ordering, the licence observations —
+> stands.
+
+---
+
+
 **Method:** read-only. Binary/string inspection of installed artifacts, COM
 registration reads, `SELECT`-only schema and data queries, and already-recorded
 log files. **No network connection was opened to any IdealPOS port, and no
