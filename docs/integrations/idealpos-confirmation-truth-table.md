@@ -87,6 +87,22 @@ explicitly disallowed. It is not causal:
   numbers include **32** — so ticket numbers and table numbers occupy
   overlapping ranges. A takeaway ticket numbered 1–19 satisfied every check.
 
+**Live confirmation, 2026-09-05** (`run-20260905-125814`, see
+[the Table 5 result](../discovery/idealpos-table5-two-round-result-2026-09-05.md)):
+a natively created Table 5 sale was observed as `Code='5'`, **`Map=1`**,
+`POS=1`, while the operating till header read POS 2. Two consequences for this
+selector:
+
+- **`row.Pos != 1 → skip` is CORRECT**, not a bug — POSServer wrote `POS=1`
+  even though the till was POS 2.
+- **Ignoring `Map` is a real defect**, now demonstrated rather than argued:
+  table sales sit at `Map=1` and web/takeaway tickets (including Verdura's own
+  `WBORD` rows) at `Map=0`, and the selector cannot tell them apart.
+
+Neither is changed here — the fail-closed policy makes the selector's output
+non-confirming either way, so there is no urgency and no reason to edit live
+matching logic on the strength of one capture.
+
 The file's own header comment already said this evidence was correlation-grade
 and that "nothing here sets any table assignment confirmed claim". The code
 then set exactly that claim. Doc and behaviour disagreed; the doc was right.

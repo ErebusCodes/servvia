@@ -669,7 +669,23 @@ though it does not yet prove it.
 
 ---
 
-## 7. What tomorrow's Table 5 capture should now settle
+## 7. What the Table 5 capture settled — RESULTS IN, 2026-09-05
+
+**The live run happened the same day. Results:
+[`idealpos-table5-two-round-result-2026-09-05.md`](../discovery/idealpos-table5-two-round-result-2026-09-05.md).**
+Against the five questions below:
+
+| # | Question | Outcome |
+| --- | --- | --- |
+| 1 | delete-and-rewrite or append? | **Both, at different layers.** Round 2 **appends** lines to the same sale (proved); the sale row itself is **delete-and-rewritten** under a new surrogate ID (strongly suggested — observed 4 IDs for one sale, once with no action on the table). Per-line identity is therefore the line **ordinal + `OrderedTime`**, never `PendingSaleID`. |
+| 2 | `Map` for a Table 5 sale vs `Map 0` for `WBORD-*`? | **`Map = 1`.** Proved. Confirms `Map` separates table sales from web/takeaway tickets, and that `SelectTableSale` ignoring `Map` is a real defect. |
+| 3 | What does `TableMapSetups.code` hold? | Reframed by the data: the table is keyed `Code`(map)=1 / `ItemType`=3 / `ItemIndex`=5, and **`Caption` is empty for every table row**. |
+| 4 | Does `Printed` flip per round? | **No — it is `True` on arrival for every line.** There is no unprinted state in POSServer at all. The round marker is **`OrderedTime`**. |
+| 5 | Does round 2 mutate or replace the `PendingSales` row? | Replaced (new ID), contents appended and preserved. **The surrogate ID is disqualified as a causal anchor.** |
+
+The original list is kept below for provenance.
+
+### Original questions (superseded by the table above)
 
 Reordered by what tonight changed:
 
