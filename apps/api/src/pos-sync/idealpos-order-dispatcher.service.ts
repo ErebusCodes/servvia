@@ -12,6 +12,15 @@ import {
   IDEALPOS_SUBMIT_ORDER_SCHEMA_VERSION,
   IDEALPOS_SUBMIT_ORDER_RESULT_TYPE,
 } from './idealpos-order-dispatch.constants';
+import {
+  DINE_IN_ROUTE_CONFIG_KEY,
+  DineInPosRoute,
+  IDEALPOS_NATIVE_TABLE_ROUND_COMMAND_TYPE,
+  IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY,
+  IDEALPOS_NATIVE_TABLE_ROUND_SCHEMA_VERSION,
+  resolveDineInRoute,
+  routeOfCommandType,
+} from './dine-in-route';
 
 export interface IdealposDispatchSweepResult {
   eligible: number;
@@ -42,6 +51,14 @@ export interface IdealposReconcileSweepResult {
 }
 
 const MAX_ERROR_MESSAGE_LENGTH = 500;
+
+/**
+ * The round id the API submits for an order's initial (and, today, only)
+ * native round. The multi-round model is written but unwired, so every order
+ * currently has exactly one round; this constant is the single place that
+ * changes when it is wired.
+ */
+const ROUND_ONE_ID = 'round-1';
 
 /**
  * Durably delivers eligible Verdura orders to IdealposBridge via the
@@ -115,6 +132,14 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
   private readonly retryMaxDelayMs: number;
   private readonly unknownRecoveryGraceMs: number;
 
+  /**
+   * The RAW configured dine-in route value, kept unparsed on purpose.
+   * `resolveDineInRoute` owns interpretation — including rejecting an
+   * unrecognized value — so there is exactly one place where a string becomes
+   * a route, and it is a pure function that can be tested without a module.
+   */
+  private readonly dineInRouteConfiguredValue: string;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly connectorCommandService: ConnectorCommandService,
@@ -148,6 +173,11 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       'IDEALPOS_UNKNOWN_RECOVERY_GRACE_MS',
       10 * 60_000,
     );
+    // Unset in production, and unset is the documented default meaning WEBIT.
+    // Read once at construction so a mid-flight configuration change cannot
+    // reroute orders inside a single process lifetime either — belt and braces
+    // alongside the per-order stickiness rule.
+    this.dineInRouteConfiguredValue = config.get<string>(DINE_IN_ROUTE_CONFIG_KEY, '');
   }
 
   /**
@@ -247,7 +277,19 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       },
       orderBy: { createdAt: 'asc' },
       take: this.batchSize,
-      select: { id: true, orderId: true, venueId: true, attemptCount: true },
+      // connectorSubmitCommandId is selected because it is where this order's
+      // ROUTE durably lives: the command's type is the record of which
+      // transport this order was committed to. A retried record keeps it (the
+      // transient-retry path returns the row to not_synced WITHOUT clearing
+      // it), which is exactly what makes the route survive restarts and
+      // configuration changes.
+      select: {
+        id: true,
+        orderId: true,
+        venueId: true,
+        attemptCount: true,
+        connectorSubmitCommandId: true,
+      },
     });
 
     const result: IdealposDispatchSweepResult = {
@@ -277,7 +319,13 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
   }
 
   private async processDispatchCandidate(
-    candidate: { id: string; orderId: string; venueId: string; attemptCount: number },
+    candidate: {
+      id: string;
+      orderId: string;
+      venueId: string;
+      attemptCount: number;
+      connectorSubmitCommandId?: string | null;
+    },
     result: IdealposDispatchSweepResult,
   ): Promise<void> {
     const { id, orderId, venueId, attemptCount } = candidate;
@@ -395,18 +443,84 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
         ? `idealpos-submit-order:${order.id}`
         : `idealpos-submit-order:${order.id}:retry:${attemptCount}`;
 
-    const command = await this.connectorCommandService.createCommand({
-      organizationId: order.venue.organizationId,
-      venueId,
-      commandType: IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE,
-      schemaVersion: IDEALPOS_SUBMIT_ORDER_SCHEMA_VERSION,
-      payload: payload,
-      idempotencyKey,
-      requiredCapability: IDEALPOS_SUBMIT_ORDER_REQUIRED_CAPABILITY,
-      sourceAggregateType: 'Order',
-      sourceRecordId: order.id,
-      correlationId: order.id,
+    // ── THE DINE-IN ROUTING SEAM ──
+    // This is the narrowest point at which the route can be chosen: exactly
+    // one ConnectorCommand is created per record here, under the
+    // `status: not_synced` compare-and-swap below. Choosing above this point
+    // would leave two creation sites; choosing below it would be after the
+    // command already exists.
+    //
+    // The decision consults DURABLE STATE FIRST (this record's existing
+    // command type) and configuration only for an order that has never been
+    // dispatched. That ordering is the whole safety property: an order already
+    // committed to a route cannot be moved to the other one by a restart or a
+    // flag flip, and therefore cannot end up with a docket on both transports.
+    const routing = resolveDineInRoute({
+      configuredValue: this.dineInRouteConfiguredValue,
+      existingCommandType: await this.commandTypeOf(candidate.connectorSubmitCommandId),
     });
+
+    if (routing.decision === 'refuse') {
+      // Not a route, and specifically NOT a fallback to the other route.
+      // Nothing is dispatched; the record stays retryable so fixing the
+      // configuration is enough to recover it.
+      await this.holdUndispatched(id, orderId, venueId, `dine-in route not resolved: ${routing.reason}`);
+      result.ineligible++;
+      return;
+    }
+
+    if (routing.route === DineInPosRoute.NATIVE_IDEALPOS_TABLE) {
+      // Second, independent gate. Even a venue whose configuration selected
+      // NATIVE gets nothing until its connector actually reports the native
+      // capability — and no connector build does today.
+      //
+      // This check is deliberately PRE-BOUNDARY: it happens before any command
+      // exists, so refusing here cannot have left anything half-done on a
+      // table. There is no equivalent check after the boundary, and there must
+      // never be one: past the send boundary the only safe action is the
+      // connector's own read-only reconciliation, never a fallback.
+      const nativeReady = await this.venueReportsNativeCapability(venueId);
+      if (!nativeReady) {
+        await this.holdUndispatched(
+          id,
+          orderId,
+          venueId,
+          `dine-in route ${DineInPosRoute.NATIVE_IDEALPOS_TABLE} selected but this venue's connector does not report ` +
+            `capability '${IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY}' — not dispatched. This order will NOT ` +
+            'be sent via Webit instead: the two routes are mutually exclusive and falling back is how one order ' +
+            'becomes two dockets.',
+        );
+        result.ineligible++;
+        return;
+      }
+    }
+
+    const command =
+      routing.route === DineInPosRoute.NATIVE_IDEALPOS_TABLE
+        ? await this.connectorCommandService.createCommand({
+            organizationId: order.venue.organizationId,
+            venueId,
+            commandType: IDEALPOS_NATIVE_TABLE_ROUND_COMMAND_TYPE,
+            schemaVersion: IDEALPOS_NATIVE_TABLE_ROUND_SCHEMA_VERSION,
+            payload: this.buildNativeRoundPayload(order.id, payload),
+            idempotencyKey,
+            requiredCapability: IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY,
+            sourceAggregateType: 'Order',
+            sourceRecordId: order.id,
+            correlationId: order.id,
+          })
+        : await this.connectorCommandService.createCommand({
+            organizationId: order.venue.organizationId,
+            venueId,
+            commandType: IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE,
+            schemaVersion: IDEALPOS_SUBMIT_ORDER_SCHEMA_VERSION,
+            payload: payload,
+            idempotencyKey,
+            requiredCapability: IDEALPOS_SUBMIT_ORDER_REQUIRED_CAPABILITY,
+            sourceAggregateType: 'Order',
+            sourceRecordId: order.id,
+            correlationId: order.id,
+          });
 
     const dispatched = await this.prisma.pOSSyncRecord.updateMany({
       where: { id, status: POSSyncStatus.not_synced },
@@ -430,6 +544,111 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
     // not_synced between our SELECT and this write. The ConnectorCommand
     // we just created-or-fetched is still correct and idempotently safe
     // (same idempotencyKey) — no cleanup needed, no duplicate risk.
+  }
+
+  /**
+   * The command type currently associated with this record, or null when it
+   * has never been dispatched. This is the durable route lookup — the reason
+   * a route survives restarts without any new column: the command type was
+   * written once and cannot change.
+   */
+  private async commandTypeOf(connectorSubmitCommandId: string | null | undefined): Promise<string | null> {
+    if (!connectorSubmitCommandId) return null;
+    const command = await this.prisma.connectorCommand.findUnique({
+      where: { id: connectorSubmitCommandId },
+      select: { commandType: true },
+    });
+    return command?.commandType ?? null;
+  }
+
+  /**
+   * Whether this venue's connector actually reports the native table-round
+   * capability. Server-controlled and evidence-based: the connector says what
+   * it can do in its heartbeat, and the server believes only that.
+   *
+   * No connector build reports this capability today, so this returns false
+   * everywhere — which is precisely why the native route stays inert even if
+   * somebody sets the flag.
+   */
+  private async venueReportsNativeCapability(venueId: string): Promise<boolean> {
+    const installation = await this.prisma.connectorInstallation.findFirst({
+      where: { venueId },
+      select: { reportedCapabilities: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const reported = installation?.reportedCapabilities;
+    if (reported == null) return false;
+    if (Array.isArray(reported)) {
+      return reported.some((c) => c === IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY);
+    }
+    if (typeof reported === 'object') {
+      const value = (reported as Record<string, unknown>)[IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY];
+      return value === true || value === 'true';
+    }
+    return false;
+  }
+
+  /**
+   * Leaves the record UNDISPATCHED and retryable, having created no command of
+   * either route.
+   *
+   * This is the only shape a pre-boundary routing refusal may take. It is not
+   * `failed` (nothing was deterministically wrong with the ORDER — the
+   * configuration or the connector's capability was not ready) and it is not a
+   * dispatch down the other route. Fixing the cause makes the record eligible
+   * again on the next sweep with no operator data-repair.
+   */
+  private async holdUndispatched(
+    id: string,
+    orderId: string,
+    venueId: string,
+    reason: string,
+  ): Promise<void> {
+    const nextRetryAt = this.computeNextRetryAt(0, new Date());
+    const updated = await this.prisma.pOSSyncRecord.updateMany({
+      where: { id, status: POSSyncStatus.not_synced },
+      data: {
+        nextRetryAt,
+        errorMessage: reason.slice(0, MAX_ERROR_MESSAGE_LENGTH),
+      },
+    });
+    if (updated.count > 0) {
+      this.logger.warn(`posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} not dispatched: ${reason}`);
+      await this.broadcastPosSyncUpdate(orderId, venueId);
+    }
+  }
+
+  /**
+   * The native table-round payload.
+   *
+   * It reuses the SAME `externalOrderId` the Webit payload carries — the
+   * order's own id — so the identity IdealPOS-side work is keyed on does not
+   * change across the cutover. Together with `roundId` this is exactly the
+   * `(ExternalOrderId, RoundId)` pair TerminalRoundService uses as its durable
+   * idempotency key, so an order dispatched natively is idempotent end to end
+   * without a translation step that could drift.
+   *
+   * `roundId` is fixed at ROUND_ONE_ID because the API models exactly one
+   * round per order today: the multi-round domain core
+   * (orders/rounds/order-round.model.ts) is written but deliberately unwired,
+   * pending the native append mechanism. When it is wired, this is the single
+   * place that changes.
+   *
+   * No price is carried, in either direction — the native contract has nowhere
+   * to put one, and IdealPOS remains the pricing authority.
+   */
+  private buildNativeRoundPayload(
+    externalOrderId: string,
+    webitPayload: { table: string; items: { productCode: string; quantity: number }[]; notes?: string | null },
+  ): Record<string, unknown> {
+    return {
+      externalOrderId,
+      roundId: ROUND_ONE_ID,
+      roundKind: 'FirstRound',
+      orderReference: externalOrderId,
+      tableCode: webitPayload.table,
+      items: webitPayload.items.map((i) => ({ nativeCode: i.productCode, quantity: i.quantity })),
+    };
   }
 
   /**
@@ -728,6 +947,46 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
         result.failed++;
         this.logger.error(
           `posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} exhausted unknown-recovery budget (${attemptCount} attempts) — native IdealPOS outcome remains UNPROVEN, requires manual review`,
+        );
+        await this.broadcastPosSyncUpdate(orderId, venueId);
+      }
+      return;
+    }
+
+    // ── No cross-route recovery, ever. ──
+    // This path used to hardcode the Webit command type. That was a latent
+    // post-boundary fallback: a NATIVE command that ended `unknown` would have
+    // been "recovered" by creating a WEBIT command — the order re-sent down the
+    // other transport while a native round may already have crossed the send
+    // boundary and put a docket on the table. Exactly one order, two dockets.
+    //
+    // A native command in `unknown` is not recoverable by the server at all.
+    // The connector owns that reconciliation (read-only, against native state,
+    // never a resend), so the only correct server action is to stop and say so.
+    if (routeOfCommandType(command.commandType) === DineInPosRoute.NATIVE_IDEALPOS_TABLE) {
+      const updated = await this.prisma.pOSSyncRecord.updateMany({
+        where: {
+          id,
+          status: POSSyncStatus.queued_for_connector,
+          connectorSubmitCommandId: command.id,
+        },
+        data: {
+          status: POSSyncStatus.failed,
+          failedAt: new Date(),
+          retryExhaustedAt: new Date(),
+          errorMessage: (
+            `Native table-round command ${command.id} ended in status "unknown". The native outcome is UNPROVEN: ` +
+            'the round may already have crossed the send boundary. This order will NOT be re-sent, and will NOT ' +
+            'be dispatched via Webit — reconcile against native IdealPOS state before any further action.'
+          ).slice(0, MAX_ERROR_MESSAGE_LENGTH),
+          responsePayload: (command.resultPayload as Prisma.InputJsonValue | null) ?? undefined,
+        },
+      });
+      if (updated.count > 0) {
+        result.failed++;
+        this.logger.error(
+          `posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} native round command ${command.id} is ` +
+            'unknown — requires native reconciliation, never a resend and never a Webit fallback',
         );
         await this.broadcastPosSyncUpdate(orderId, venueId);
       }
