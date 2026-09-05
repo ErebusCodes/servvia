@@ -3,11 +3,29 @@
 **Prepared:** 2026-09-05 (offline). **Nothing was rebased, merged, pushed or
 rewritten.** This is a plan, not an operation.
 
-**Snapshot warning.** The SHAs below are exact as of `0b2f50a` (18 commits
-ahead of `main`). This document was first written at 14 commits and has already
-been revised once because the branch moved under it. Re-derive with
+**Snapshot warning — THIS DOCUMENT IS NOW STALE.** The SHAs and sequences below
+are exact as of `0b2f50a` (18 commits ahead of `main`). **HEAD is now `68f3f52`,
+27 commits ahead**, so every sequence below is incomplete. This document was
+first written at 14 commits, revised at 18, and has been overtaken again — the
+branch has moved under it three times. Re-derive with
 `git log --oneline --reverse main..HEAD` before running anything; if the count
-does not match, the sequences are stale.
+does not match 27, the sequences are stale.
+
+The six commits added on 2026-09-05 after `a5deecb`, for reference:
+
+| SHA | Category | Depends on |
+| --- | --- | --- |
+| `d7db838` | **evidence/docs** — two wording corrections to the confirmation audit | `56a0beb` (its doc) |
+| `2e98219` | **source** — fail-closed sweep-starvation fix + stale doc + spec comment corrections | `56a0beb`, `f66f925`; pairs with `d7db838` |
+| `f3ddec1` | **source** — vendor-independent round domain model (new files only, nothing imports it) | none |
+| `7237c90` | **evidence/docs** — multi-round implementable design + tablet round-state design | `f3ddec1` (describes it), `6f90fca` |
+| `9adbb70` | **evidence/docs** — IKM withdrawal + handheld/WaiterPad ingress investigation | `d193945`, `98c8e67` (banners them) |
+| `68f3f52` | **evidence/docs** — runbook precondition 5 relaxation + PLU staff gate | `2fcec29`, `6a44eb6` |
+
+`f3ddec1` is the only one of the six with **no dependency at all** — it adds two
+new files under `apps/api/src/orders/rounds/` that nothing imports, so it
+cherry-picks cleanly onto any base. `2e98219` is the only one that changes
+behaviour.
 
 ---
 
