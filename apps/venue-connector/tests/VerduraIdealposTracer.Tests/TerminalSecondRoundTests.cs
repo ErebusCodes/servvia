@@ -22,7 +22,8 @@ public sealed class TerminalSecondRoundTests : IDisposable
         var tableState = new FakeTerminalTableState();
         var ui = new FakeIdealposUiAutomationClient(FakeScenario.HappyPath, FakeTerminalScenario.Success, tableState);
         var confirm = new FakePosServerConfirmationClient(tableState);
-        var service = new TerminalRoundService(ui, NewStore(), confirm);
+        var reader = new FakeNativeTableStateReader(tableState);
+        var service = new TerminalRoundService(ui, NewStore(), reader, confirm);
 
         var first = new TerminalRoundRequest
         {

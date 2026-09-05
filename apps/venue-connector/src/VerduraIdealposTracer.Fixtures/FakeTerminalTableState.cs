@@ -27,6 +27,20 @@ public sealed class FakeTerminalTableState
         lines.AddRange(items);
     }
 
+    /// <summary>
+    /// Removes ONE line carrying <paramref name="nativeCode"/>, modelling a
+    /// concurrent human voiding a line on the table between our snapshots.
+    /// Test-support only — nothing in the agent may remove a native line.
+    /// </summary>
+    public bool RemoveLine(string tableCode, string nativeCode)
+    {
+        if (!_tables.TryGetValue(tableCode.Trim(), out var lines)) return false;
+        var index = lines.FindIndex(l => string.Equals(l.NativeCode.Trim(), nativeCode.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return false;
+        lines.RemoveAt(index);
+        return true;
+    }
+
     public TableSaleFingerprint? Fingerprint(string tableCode)
     {
         var key = tableCode.Trim();

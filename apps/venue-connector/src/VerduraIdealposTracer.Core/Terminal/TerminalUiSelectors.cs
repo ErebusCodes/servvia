@@ -4,53 +4,85 @@ namespace VerduraIdealposTracer.Core.Terminal;
 
 /// <summary>
 /// The concrete UI selectors a real driver needs before it may drive the
-/// native sale screen.
+/// native workflow.
 ///
-/// <b>Re-based on Win32 identity, 2026-09-04.</b> The previous shape required
-/// five <c>*AutomationId</c> strings. That model was incompatible with the
-/// application: the Session-1 capture of <c>IPS.exe</c> walked 57 nodes and
-/// found <b>zero non-empty AutomationIds</b> — the process is VB6/ThunderRT6,
-/// UI Automation returns only window chrome, and the Win32
-/// <c>EnumChildWindows</c> fallback is the only mechanism yielding content.
-/// No capture of this application, however well targeted, could ever have
-/// populated the old fields with genuine values; the only way to make that
-/// model "ready" was to invent strings that match nothing.
+/// <b>Remodelled 2026-09-05 against the proven workflow.</b> The previous
+/// shape described a workflow IdealPOS does not have: a PLU field, a
+/// "Save-to-Table" button, and a confirmation control. The 2026-09-05 Table 5
+/// experiment proved the real sequence is
+/// <c>enter items → TABLE MAP → select Table N</c>, where selecting the table
+/// IS the send and there is no Save button at all. The fields below name the
+/// screens and controls that sequence actually needs.
 ///
 /// Every field is still nullable and defaults to null precisely so an
 /// unpopulated set is, by construction, not ready — there is no value that
-/// both "looks configured" and "is a placeholder."
+/// both "looks configured" and "is a placeholder". None of these can be
+/// populated until a passive capture of the real native Table Map exists;
+/// deriving them from any other machine's UI is explicitly out of bounds.
 /// </summary>
 public sealed record TerminalUiSelectors
 {
-    /// <summary>
-    /// How to pick the sale window among the process's top-level windows.
-    /// A criteria object rather than a bare title hint because a bare hint is
-    /// what bound the back-office MDI frame instead of "POS Screen".
-    /// </summary>
+    // --- screens ----------------------------------------------------------
+
+    /// <summary>How to pick the native sale-entry window (VB6 <c>frmSale</c>, title "POS Screen").</summary>
     public WindowSelectionCriteria? SaleScreenWindow { get; init; }
 
-    /// <summary>The table-map / table-grid control inside the sale window.</summary>
-    public Win32ControlSelector? TableMapControl { get; init; }
+    /// <summary>
+    /// How to pick the native Table Map window (VB6 <c>frmTables</c>). This is
+    /// a SEPARATE top-level window from the sale screen, which is why a single
+    /// "sale screen" criteria set was never sufficient.
+    /// </summary>
+    public WindowSelectionCriteria? TableMapWindow { get; init; }
+
+    /// <summary>
+    /// How to pick the native Table Details window (VB6 <c>frmTableDetails</c>).
+    /// Required for a second round, which reaches the POS screen through it.
+    /// </summary>
+    public WindowSelectionCriteria? TableDetailsWindow { get; init; }
+
+    // --- table selection --------------------------------------------------
 
     /// <summary>
     /// Template naming a specific table cell, e.g. <c>"Table {code}"</c>. Must
-    /// contain the <c>{code}</c> placeholder so a table code can be
-    /// substituted; a template without it cannot address a specific table.
+    /// contain the <c>{code}</c> placeholder. Matching against a rendered
+    /// template is token-exact via <see cref="TableIdentity"/> — never a
+    /// substring test, so table 5 can never resolve table 15.
     /// </summary>
     public string? TableCellTemplate { get; init; }
 
-    /// <summary>The PLU / item entry field.</summary>
-    public Win32ControlSelector? PluEntryField { get; init; }
-
-    /// <summary>The Save-to-Table / Send action control.</summary>
-    public Win32ControlSelector? SaveToTableAction { get; init; }
+    /// <summary>
+    /// The class/shape of one table-map cell. Combined with
+    /// <see cref="TableCellTemplate"/> to address a specific table.
+    /// </summary>
+    public Win32ControlSelector? TableCellControl { get; init; }
 
     /// <summary>
-    /// Control whose presence after the action PROVES the table was assigned.
-    /// Without it the action layer cannot earn success and must fail closed —
-    /// see <see cref="TerminalSelectorReadiness"/>.
+    /// The controls on the Table Map that are NOT tables and whose activation
+    /// would be destructive — Pay, Finished, Transfer, Cancel. The static
+    /// analysis showed these share the form with the table cells, so the
+    /// driver must be able to positively assert that a resolved cell is none
+    /// of them before acting (directive §29).
     /// </summary>
-    public Win32ControlSelector? TableAssignmentConfirmationControl { get; init; }
+    public IReadOnlyList<Win32ControlSelector> DestructiveControls { get; init; } = Array.Empty<Win32ControlSelector>();
+
+    // --- item entry -------------------------------------------------------
+
+    /// <summary>The native PLU / stock-code entry control. NEVER receives a table code.</summary>
+    public Win32ControlSelector? PluEntryField { get; init; }
+
+    /// <summary>The native quantity control.</summary>
+    public Win32ControlSelector? QuantityEntryField { get; init; }
+
+    /// <summary>
+    /// The staged sale-line control, read back before the send so the round's
+    /// items can be verified against what IdealPOS actually staged.
+    /// </summary>
+    public Win32ControlSelector? StagedLinesControl { get; init; }
+
+    /// <summary>The control that navigates from sale entry to the Table Map.</summary>
+    public Win32ControlSelector? TableMapCommand { get; init; }
+
+    // --- safety -----------------------------------------------------------
 
     /// <summary>Window class name pattern Idealpos uses for modal dialogs.</summary>
     public string? ModalDialogClassNamePattern { get; init; }
@@ -69,12 +101,10 @@ public sealed record TerminalUiSelectors
 /// safety rule is exercised by cross-platform unit tests, not merely
 /// asserted to hold on a machine nobody runs the tests on.
 ///
-/// The gate was RE-EXPRESSED for the Win32 model, not relaxed: it still
-/// demands a real profile version plus five populated required selectors, and
-/// it now additionally demands that each one survive
-/// <see cref="Win32SelectorValidation"/> and that a post-action verification
-/// selector exist — so a profile can no longer be "ready" for an action whose
-/// success could not be proven.
+/// Re-expressed 2026-09-05 for the workflow-shaped selector set. It was
+/// tightened, not relaxed: it now also demands a Table Map window, a
+/// quantity control, a staged-line read-back control, and a non-empty list of
+/// destructive controls to distinguish from table cells.
 /// </summary>
 public static class TerminalSelectorReadiness
 {
@@ -86,7 +116,7 @@ public static class TerminalSelectorReadiness
     /// </summary>
     private static readonly string[] PlaceholderMarkers =
     {
-        "PENDING", "UNSET", "TBD", "PLACEHOLDER", "SESSION1", "DISCOVERY", "EXAMPLE", "CHANGEME",
+        "PENDING", "UNSET", "TBD", "PLACEHOLDER", "SESSION1", "DISCOVERY", "EXAMPLE", "CHANGEME", "UNUSED",
     };
 
     private static bool LooksPlaceholder(string? value)
@@ -107,7 +137,7 @@ public static class TerminalSelectorReadiness
     {
         if (criteria is null)
         {
-            why = "no sale-screen window criteria supplied";
+            why = "no window criteria supplied";
             return false;
         }
 
@@ -118,7 +148,7 @@ public static class TerminalSelectorReadiness
 
         if (!hasPositive)
         {
-            why = "sale-screen window criteria carry no real title or class discriminator";
+            why = "window criteria carry no real title or class discriminator";
             return false;
         }
 
@@ -146,10 +176,20 @@ public static class TerminalSelectorReadiness
             return false;
         }
 
-        if (!IsUsableWindowCriteria(selectors.SaleScreenWindow, out var windowWhy))
+        var requiredWindows = new (string Field, WindowSelectionCriteria? Criteria)[]
         {
-            reason = $"required selector '{nameof(TerminalUiSelectors.SaleScreenWindow)}' is unusable: {windowWhy}";
-            return false;
+            (nameof(TerminalUiSelectors.SaleScreenWindow), selectors.SaleScreenWindow),
+            (nameof(TerminalUiSelectors.TableMapWindow), selectors.TableMapWindow),
+            (nameof(TerminalUiSelectors.TableDetailsWindow), selectors.TableDetailsWindow),
+        };
+
+        foreach (var (field, criteria) in requiredWindows)
+        {
+            if (!IsUsableWindowCriteria(criteria, out var windowWhy))
+            {
+                reason = $"required selector '{field}' is unusable: {windowWhy}";
+                return false;
+            }
         }
 
         if (LooksPlaceholder(selectors.TableCellTemplate))
@@ -168,10 +208,11 @@ public static class TerminalSelectorReadiness
 
         var required = new (string Field, Win32ControlSelector? Selector)[]
         {
-            (nameof(TerminalUiSelectors.TableMapControl), selectors.TableMapControl),
+            (nameof(TerminalUiSelectors.TableCellControl), selectors.TableCellControl),
             (nameof(TerminalUiSelectors.PluEntryField), selectors.PluEntryField),
-            (nameof(TerminalUiSelectors.SaveToTableAction), selectors.SaveToTableAction),
-            (nameof(TerminalUiSelectors.TableAssignmentConfirmationControl), selectors.TableAssignmentConfirmationControl),
+            (nameof(TerminalUiSelectors.QuantityEntryField), selectors.QuantityEntryField),
+            (nameof(TerminalUiSelectors.StagedLinesControl), selectors.StagedLinesControl),
+            (nameof(TerminalUiSelectors.TableMapCommand), selectors.TableMapCommand),
         };
 
         foreach (var (field, selector) in required)
@@ -185,6 +226,24 @@ public static class TerminalSelectorReadiness
             if (!Win32SelectorValidation.IsValid(selector, out var why))
             {
                 reason = $"required selector '{field}' is invalid: {why}";
+                return false;
+            }
+        }
+
+        // Without a known set of destructive controls the driver cannot prove
+        // that the thing it resolved as "Table 5" is not the Pay button.
+        if (selectors.DestructiveControls.Count == 0)
+        {
+            reason = $"required selector '{nameof(TerminalUiSelectors.DestructiveControls)}' is empty — "
+                     + "the driver cannot distinguish a table cell from Pay/Finished/Transfer without it";
+            return false;
+        }
+
+        foreach (var destructive in selectors.DestructiveControls)
+        {
+            if (!Win32SelectorValidation.IsValid(destructive, out var why))
+            {
+                reason = $"a '{nameof(TerminalUiSelectors.DestructiveControls)}' entry is invalid: {why}";
                 return false;
             }
         }

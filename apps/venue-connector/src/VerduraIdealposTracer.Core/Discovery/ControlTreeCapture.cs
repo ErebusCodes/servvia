@@ -49,6 +49,28 @@ public sealed record TopLevelWindowInfo
     public string? ProcessName { get; init; }
     public int ProcessId { get; init; }
 
+    /// <summary>
+    /// The full path of the executable that owns this window, or null when
+    /// it could not be read (access denied, a 32/64-bit boundary, or the
+    /// process exiting mid-enumeration).
+    ///
+    /// A process NAME is not identity. "IPS" is satisfied by IPS.exe, by a
+    /// renamed build, and by anything else a venue happens to have called
+    /// IPS — which is exactly why the Front-desk binding question
+    /// (HWND → PID → executable → session → class/title) needs this field
+    /// and cannot be answered by <see cref="ProcessName"/>.
+    /// </summary>
+    public string? ExecutablePath { get; init; }
+
+    /// <summary>
+    /// The Windows terminal-services session this window's process belongs
+    /// to, or null when unreadable. A window in another session is invisible
+    /// to automation no matter how correct the selectors are, so the session
+    /// belongs in the per-window evidence and not only in the snapshot-level
+    /// summary.
+    /// </summary>
+    public int? SessionId { get; init; }
+
     // Screen geometry, added 2026-09-04. Needed to tell which visible window
     // actually covers the sale area: if the POS Screen form is full-screen and
     // the other visible windows are 0x0 or off-screen, the sale UI cannot be
@@ -104,6 +126,28 @@ public sealed record IdealposControlTreeSnapshot
     // ── How the tree was obtained, and every top-level window seen ──
     public CaptureMechanism Mechanism { get; init; } = CaptureMechanism.None;
     public IReadOnlyList<TopLevelWindowInfo> TopLevelWindows { get; init; } = Array.Empty<TopLevelWindowInfo>();
+
+    /// <summary>
+    /// EVERY visible top-level window on the tracer's desktop, not only those
+    /// owned by a process whose name we already expected — read-only, and
+    /// deliberately unfiltered.
+    ///
+    /// <see cref="TopLevelWindows"/> is pre-filtered to the configured
+    /// candidate process names, which makes it the right input to window
+    /// SELECTION and the wrong input to the binding QUESTION: if the native
+    /// Table Map turns out to be owned by something other than the expected
+    /// executable, a filtered enumeration cannot report that — it reports
+    /// "nothing found", which reads as "IdealPOS is not running" and quietly
+    /// preserves the assumption it was supposed to test.
+    ///
+    /// This inventory exists so the Front-desk capture can establish
+    /// HWND → PID → executable → session → class/title for whatever actually
+    /// owns the visible native UI, and so a contradiction with the expected
+    /// executable is surfaced as evidence rather than swallowed as absence.
+    /// It feeds <c>NativeTerminalBindingEvidence</c>; it never feeds window
+    /// selection or binding.
+    /// </summary>
+    public IReadOnlyList<TopLevelWindowInfo> DesktopWindowInventory { get; init; } = Array.Empty<TopLevelWindowInfo>();
 
     /// <summary>
     /// How many nodes represent real CLIENT-AREA content, excluding the root

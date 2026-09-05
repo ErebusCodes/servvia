@@ -143,13 +143,29 @@ public sealed record IdealposVerifiedProfile(
     // VB6/ThunderRT6 application cannot supply (zero AutomationIds across
     // 57 captured nodes).
 
-    public Win32ControlSelector? TableMapControl { get; init; }
-    public string? TableCellTemplate { get; init; }
-    public Win32ControlSelector? PluEntryField { get; init; }
-    public Win32ControlSelector? SaveToTableAction { get; init; }
+    /// <summary>
+    /// How to pick the native Table Map window (VB6 <c>frmTables</c>) — a
+    /// SEPARATE top-level window from the sale screen. Supplied as a nested
+    /// criteria object rather than another set of flat fields.
+    /// </summary>
+    public WindowSelectionCriteria? TableMapWindow { get; init; }
 
-    /// <summary>Control whose post-action presence PROVES the table assignment. Without it, success cannot be earned.</summary>
-    public Win32ControlSelector? TableAssignmentConfirmationControl { get; init; }
+    /// <summary>How to pick the native Table Details window (VB6 <c>frmTableDetails</c>).</summary>
+    public WindowSelectionCriteria? TableDetailsWindow { get; init; }
+
+    public string? TableCellTemplate { get; init; }
+    public Win32ControlSelector? TableCellControl { get; init; }
+    public Win32ControlSelector? PluEntryField { get; init; }
+    public Win32ControlSelector? QuantityEntryField { get; init; }
+    public Win32ControlSelector? StagedLinesControl { get; init; }
+    public Win32ControlSelector? TableMapCommand { get; init; }
+
+    /// <summary>
+    /// Table Map controls that are NOT tables and whose activation would be
+    /// destructive (Pay, Finished, Transfer, Cancel). Required so the driver
+    /// can prove a resolved cell is a table and not one of these.
+    /// </summary>
+    public IReadOnlyList<Win32ControlSelector> DestructiveControls { get; init; } = Array.Empty<Win32ControlSelector>();
 
     public string? ModalDialogWindowClassNamePattern { get; init; }
 
@@ -173,11 +189,15 @@ public sealed record IdealposVerifiedProfile(
     public TerminalUiSelectors BuildTerminalSelectors() => new()
     {
         SaleScreenWindow = BuildSaleScreenCriteria(),
-        TableMapControl = TableMapControl,
+        TableMapWindow = TableMapWindow,
+        TableDetailsWindow = TableDetailsWindow,
         TableCellTemplate = TableCellTemplate,
+        TableCellControl = TableCellControl,
         PluEntryField = PluEntryField,
-        SaveToTableAction = SaveToTableAction,
-        TableAssignmentConfirmationControl = TableAssignmentConfirmationControl,
+        QuantityEntryField = QuantityEntryField,
+        StagedLinesControl = StagedLinesControl,
+        TableMapCommand = TableMapCommand,
+        DestructiveControls = DestructiveControls,
         ModalDialogClassNamePattern = ModalDialogWindowClassNamePattern,
         ProfileVersion = ProfileVersion,
     };

@@ -168,24 +168,48 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
     }
 
     /// <summary>
-    /// Fail-closed native "Save to Table" scaffold. This method is a REAL
-    /// scaffold — it verifies the process, the window, and the absence of a
-    /// blocking modal, and it builds the intended action plan — but it
-    /// performs NO mutating UI action whatsoever. There is deliberately not
-    /// a single Invoke/SetValue/Select/SendInput/SetForegroundWindow/
-    /// WM_COMMAND call in this method's body or its helpers.
+    /// Fail-closed native round driver.
     ///
-    /// Until the authorised Session-1 discovery run populates real,
-    /// non-placeholder selectors in <see cref="WindowsAutomationSettings"/>,
-    /// <see cref="TerminalSelectorReadiness"/> returns not-ready and this
-    /// method returns a fail-closed <see cref="TerminalSaveToTableResult"/>.
-    /// No placeholder selector can fall through into a live action, because
-    /// the live actions do not exist here yet — this scaffold ends at the
-    /// readiness gate.
+    /// <b>Rewritten 2026-09-05 against the proven workflow.</b> The previous
+    /// implementation is described in the Phase 1 audit; three of its defects
+    /// are structurally impossible here:
+    ///
+    /// <list type="bullet">
+    /// <item><b>D1</b> — it wrote <c>request.TableCode</c> into the PLU field.
+    /// The plan model keeps the two on different step kinds and
+    /// <see cref="NativeRoundPlan.Validate"/> rejects a plan that mixes
+    /// them.</item>
+    /// <item><b>D2</b> — it never read <c>request.Items</c> at all, so it
+    /// could not have produced a native round. The plan is now BUILT from the
+    /// items, and a plan missing any requested item fails validation before
+    /// anything is bound.</item>
+    /// <item><b>D5</b> — it treated "the table already shows this code" as
+    /// success and returned without sending, which would have silently
+    /// no-opped every second round against an open table. That short-circuit
+    /// is gone: an already-active table is a precondition observation, never
+    /// a confirmation.</item>
+    /// </list>
+    ///
+    /// What remains is a real gate, not a stub: it validates the request,
+    /// validates the plan, binds and verifies the process INCLUDING its
+    /// executable, binds the window, refuses on a modal, and then refuses at
+    /// the selector-readiness gate. It performs NO mutating action, and it
+    /// cannot: the action layer was deleted from this assembly (see
+    /// <c>Win32ReadOnlyObservation</c>) and will not return until a passive
+    /// capture of the real native Table Map proves which input mechanism the
+    /// VB6 <c>cmd</c> control array actually honours.
+    ///
+    /// Every exit below leaves <c>SendBoundaryCrossed = false</c>, which is
+    /// true by construction rather than by assertion.
     /// </summary>
     public Task<TerminalSaveToTableResult> AttemptSaveToTableAsync(TerminalRoundRequest request, CancellationToken cancellationToken)
     {
-        var plan = TerminalActionPlan.Build(request);
+        // Build the plan FIRST, from the round's items. Everything downstream
+        // is driven by these steps rather than by ad-hoc field access, which
+        // is what makes "the items are ignored" a test failure instead of a
+        // silent behaviour.
+        var steps = NativeRoundPlan.Build(request);
+        var plan = NativeRoundPlan.Describe(steps);
 
         var validationErrors = request.Validate();
         if (validationErrors.Count > 0)
@@ -195,7 +219,18 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 "invalid request: " + string.Join("; ", validationErrors), plan));
         }
 
-        // 1. verify IPS process (read-only)
+        // Structural invariants of the plan itself: every requested item is
+        // present, no table code rides on an item step, exactly one send
+        // boundary, nothing mutating after it.
+        var planErrors = NativeRoundPlan.Validate(request, steps);
+        if (planErrors.Count > 0)
+        {
+            return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                "the native round plan is not well-formed, refusing to drive it: " + string.Join("; ", planErrors), plan));
+        }
+
+        // 1. verify the IPS process (read-only)
         var candidates = Process.GetProcessesByName(settings.ExpectedProcessName);
         try
         {
@@ -207,6 +242,32 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                     $"IPS process '{settings.ExpectedProcessName}' with a visible main window was not found (are you in the interactive session?)", plan));
             }
 
+            // 1b. verify the EXECUTABLE, not merely the process name.
+            //     A process name is not identity: IPSClient, a renamed build,
+            //     or an unrelated process could satisfy it. Directive §7A
+            //     requires the executable path be verified, and an unreadable
+            //     path is a refusal rather than a shrug.
+            string? executablePath;
+            try
+            {
+                executablePath = process.MainModule?.FileName;
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                    $"could not read the executable path of pid {process.Id} ({ex.GetType().Name}) — refusing to drive a process whose identity is unverified", plan));
+            }
+
+            if (string.IsNullOrWhiteSpace(executablePath)
+                || !executablePath.EndsWith(settings.ExpectedExecutableFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
+                    $"bound process pid {process.Id} runs '{executablePath ?? "(unreadable)"}', which is not the expected "
+                    + $"'{settings.ExpectedExecutableFileName}' — refusing", plan));
+            }
+
             // 2. verify expected window (read-only)
             var mainWindow = FindMainWindowElement(process.Id);
             if (mainWindow is null)
@@ -216,7 +277,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                     $"main window for process id {process.Id} not found via UI Automation", plan));
             }
 
-            // 3. verify no unexpected modal (read-only)
+            // 3. verify no unexpected modal (read-only). Never dismissed.
             if (HasModalChildWindow(mainWindow))
             {
                 return Task.FromResult(TerminalSaveToTableResult.FailClosed(
@@ -224,141 +285,31 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                     "a modal dialog is blocking the main window", plan));
             }
 
-            // 4. require real, non-placeholder Session-1 selectors — the
-            //    fail-closed gate this scaffold ends at.
+            // 4. require real, non-placeholder selectors — the fail-closed
+            //    gate. With the workflow-shaped selector set these cannot be
+            //    populated from anything but a capture of the real native
+            //    Table Map, so this is where execution stops today.
             var selectors = settings.BuildTerminalSelectors();
             if (!TerminalSelectorReadiness.IsReadyForLiveExecution(selectors, out var reason))
             {
                 return Task.FromResult(TerminalSaveToTableResult.FailClosed(
                     TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
                     $"terminal selectors not ready for live execution: {reason}. "
-                    + "Live execution is intentionally not enabled until Session-1 discovery populates real selectors.", plan));
+                    + "Live execution is intentionally not enabled until a passive capture of the real native "
+                    + "Table Map populates them.", plan));
             }
 
-            // 5. LAYER A — DISCOVERY (read-only). Bind the sale window
-            //    strictly: NoCandidate or Ambiguous both refuse. This is where
-            //    "wrong window" fails closed rather than acting on the
-            //    back-office frame.
-            var pidMap = new Dictionary<int, Process> { [process.Id] = process };
-            var topWindows = EnumerateTopLevelWindows(pidMap);
-            var windowChoice = WindowSelection.Select(topWindows, selectors.SaleScreenWindow!, process.Id);
-            if (!windowChoice.IsSelected)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
-                    $"sale window not bound ({windowChoice.Status}): {windowChoice.Reason}", plan));
-            }
-
-            var windowHandle = ParseHandle(windowChoice.Window!.Handle);
-            if (windowHandle == IntPtr.Zero)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
-                    $"sale window handle '{windowChoice.Window!.Handle}' could not be parsed", plan));
-            }
-
-            var controls = Win32ControlDiscovery.Enumerate(windowHandle);
-            if (controls.Count == 0)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.UnexpectedScreen, request.RoundId, request.TableCode,
-                    $"bound window {windowChoice.Window!.Title} exposed zero child controls — not the sale screen", plan));
-            }
-
-            // Resolve every control BEFORE acting on any of them, so a missing
-            // or ambiguous Save button cannot be discovered halfway through a
-            // partially-applied round.
-            var pluField = Win32ControlResolver.Resolve(controls, selectors.PluEntryField!);
-            if (!pluField.IsResolved)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
-                    $"PLU entry field did not resolve ({pluField.Status}): {pluField.Reason}", plan));
-            }
-
-            var saveAction = Win32ControlResolver.Resolve(controls, selectors.SaveToTableAction!);
-            if (!saveAction.IsResolved)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
-                    $"Save-to-Table action did not resolve ({saveAction.Status}): {saveAction.Reason}", plan));
-            }
-
-            // 6. IDEMPOTENCY. If the confirmation control already shows this
-            //    table, the round is already applied — return success WITHOUT
-            //    acting again, so a retry after a lost response cannot
-            //    double-apply.
-            var already = Win32ActionVerification.ProveTableAssigned(
-                windowHandle, selectors.TableAssignmentConfirmationControl!, request.TableCode);
-            if (already.Proven)
-            {
-                return Task.FromResult(new TerminalSaveToTableResult
-                {
-                    Outcome = TerminalExecutionOutcome.Success,
-                    RoundId = request.RoundId,
-                    TableCode = request.TableCode,
-                    SendBoundaryCrossed = false,
-                    Mutated = false,
-                    ActionPlan = plan,
-                    Diagnostics = new[] { $"idempotent no-op: {already.Reason}" },
-                });
-            }
-
-            // 7. LAYER B — ACTION. The only mutating steps, both bounded.
-            var pluHandle = ParseHandle(pluField.Node!.Handle);
-            var setText = Win32NativeAction.SetText(pluHandle, request.TableCode);
-            if (!setText.Issued)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
-                    $"could not enter the table code into the PLU field: {setText.Detail}", plan));
-            }
-
-            var saveHandle = ParseHandle(saveAction.Node!.Handle);
-            var click = Win32NativeAction.Click(saveHandle);
-            if (!click.Issued)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
-                    $"Save-to-Table action was not issued: {click.Detail}", plan));
-            }
-
-            // 8. LAYER C — VERIFICATION. Past this point the send boundary HAS
-            //    been crossed, so every exit below reports it. Success is
-            //    earned only by observing IdealPOS in the expected state —
-            //    issuing BM_CLICK proves nothing on its own.
-            var proof = Win32ActionVerification.ProveTableAssigned(
-                windowHandle, selectors.TableAssignmentConfirmationControl!, request.TableCode);
-
-            if (!proof.Proven)
-            {
-                return Task.FromResult(TerminalSaveToTableResult.FailClosed(
-                    TerminalExecutionOutcome.ControlNotFound, request.RoundId, request.TableCode,
-                    $"the Save-to-Table action was issued but its effect could not be verified: {proof.Reason}. "
-                    + "Reporting fail-closed: the send boundary was crossed, so this round must NOT be blindly retried.",
-                    plan) with
-                {
-                    SendBoundaryCrossed = true,
-                    Mutated = true,
-                });
-            }
-
-            return Task.FromResult(new TerminalSaveToTableResult
-            {
-                Outcome = TerminalExecutionOutcome.Success,
-                RoundId = request.RoundId,
-                TableCode = request.TableCode,
-                SendBoundaryCrossed = true,
-                Mutated = true,
-                ActionPlan = plan,
-                Diagnostics = new[]
-                {
-                    $"window: {windowChoice.Reason}",
-                    $"plu field: {pluField.Reason}",
-                    $"save action: {saveAction.Reason}",
-                    $"verified: {proof.Reason}",
-                },
-            });
+            // 5. Past the readiness gate there is deliberately no executor.
+            //    The step mechanics — whether a table cell honours a posted
+            //    message at all, and whether MouseDown rather than Click is
+            //    required — are unproven, and inventing them would be exactly
+            //    the guess directive §29 forbids. Refuse, explicitly, without
+            //    having touched anything.
+            return Task.FromResult(TerminalSaveToTableResult.FailClosed(
+                TerminalExecutionOutcome.SendNotReached, request.RoundId, request.TableCode,
+                "selectors are ready but no native step executor exists yet: the input mechanism for the Table Map "
+                + "cell array is unproven (IPS.exe exposes frmTables.cmd_MouseDown with no cmd_Click handler). "
+                + "Refusing to guess an input mechanism. Nothing was sent and no round was started.", plan));
         }
         finally
         {
@@ -380,6 +331,24 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
         int tracerSession = SafeSessionId(Process.GetCurrentProcess());
         var diagnostics = new List<string>();
 
+        // The unfiltered desktop inventory is taken FIRST, before any
+        // "is the expected process running?" short-circuit. That ordering is
+        // the point: the case worth capturing is precisely the one where the
+        // expected executable is absent and something else owns the native
+        // terminal, and a short-circuit above this line would discard exactly
+        // that evidence.
+        var desktopInventory = EnumerateDesktopWindowInventory();
+        var binding = NativeTerminalBindingEvidence.Summarize(desktopInventory, settings.ExpectedExecutableFileName);
+        diagnostics.Add($"Desktop window inventory: {desktopInventory.Count} visible top-level window(s).");
+        diagnostics.Add("Native terminal binding evidence: " + binding.Verdict);
+        if (binding.ContradictsExpectedExecutable)
+        {
+            diagnostics.Add(
+                "ACTION REQUIRED: this capture contradicts the configured executable binding. Do NOT force the "
+                + $"implementation back to '{settings.ExpectedExecutableFileName}' — re-decide the binding from the "
+                + "owners listed above before any selector work proceeds.");
+        }
+
         // Probe the configured terminal AND IPSClient, so the capture never
         // silently depends on which one owns the sale-screen window.
         var probeNames = new[] { settings.ExpectedProcessName, "IPS", "IPSClient" }
@@ -394,8 +363,11 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             var live = procs.Where(p => { try { return !p.HasExited; } catch { return false; } }).ToList();
             if (live.Count == 0)
             {
-                return Task.FromResult(EmptySnapshot(tracerSession, null, false,
-                    "No IPS/IPSClient process is running."));
+                diagnostics.Add("No IPS/IPSClient process is running.");
+                return Task.FromResult(EmptySnapshot(tracerSession, null, false, diagnostics) with
+                {
+                    DesktopWindowInventory = desktopInventory,
+                });
             }
 
             var primary = live.FirstOrDefault(p => string.Equals(p.ProcessName, settings.ExpectedProcessName, StringComparison.OrdinalIgnoreCase)) ?? live[0];
@@ -440,6 +412,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                     SessionMismatch = mismatch,
                     Mechanism = CaptureMechanism.None,
                     TopLevelWindows = topWindows,
+                    DesktopWindowInventory = desktopInventory,
                     NodeCount = 0,
                     Root = null,
                     Diagnostics = diagnostics,
@@ -654,6 +627,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
                 MsaaProbes = msaaProbes,
                 AddressableAccessibleNodes = addressableAccessible,
                 TopLevelWindows = topWindows,
+                DesktopWindowInventory = desktopInventory,
                 Diagnostics = diagnostics,
             }.AsCompleted();
         }
@@ -663,7 +637,8 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
         }
     }
 
-    private static IdealposControlTreeSnapshot EmptySnapshot(int tracerSession, int? targetSession, bool mismatch, string reason) => new()
+    private static IdealposControlTreeSnapshot EmptySnapshot(
+        int tracerSession, int? targetSession, bool mismatch, IReadOnlyList<string> diagnostics) => new()
     {
         CapturedAtUtc = DateTimeOffset.UtcNow,
         NodeCount = 0,
@@ -672,7 +647,7 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
         TargetSessionId = targetSession,
         SessionMismatch = mismatch,
         Mechanism = CaptureMechanism.None,
-        Diagnostics = new[] { reason },
+        Diagnostics = diagnostics,
     };
 
     private static int SafeSessionId(Process p)
@@ -711,28 +686,92 @@ public sealed class WindowsUiAutomationClient(WindowsAutomationSettings settings
             Native.GetWindowThreadProcessId(h, out uint pid);
             if (pidToProc.TryGetValue((int)pid, out var proc))
             {
-                // Geometry decides whether a visible sibling window could
-                // plausibly be hosting the sale UI, or is a 0x0 helper.
-                var rect = new ActionNative.RECT();
-                var haveRect = ActionNative.GetWindowRect(h, ref rect);
-
-                results.Add(new TopLevelWindowInfo
-                {
-                    Handle = "0x" + h.ToInt64().ToString("X"),
-                    Title = ControlTreeSanitizer.Sanitize(GetWinText(h)),
-                    ClassName = GetWinClass(h),
-                    Visible = Native.IsWindowVisible(h),
-                    ProcessName = proc.ProcessName,
-                    ProcessId = proc.Id,
-                    Left = haveRect ? rect.Left : 0,
-                    Top = haveRect ? rect.Top : 0,
-                    Width = haveRect ? rect.Right - rect.Left : 0,
-                    Height = haveRect ? rect.Bottom - rect.Top : 0,
-                });
+                results.Add(DescribeWindow(h, proc.ProcessName, proc.Id, proc));
             }
             return true;
         }, IntPtr.Zero);
         return results;
+    }
+
+    /// <summary>
+    /// EVERY visible top-level window on this desktop, regardless of which
+    /// process owns it. Read-only: EnumWindows + GetWindowText/GetClassName/
+    /// GetWindowRect/IsWindowVisible and a process lookup — no message is
+    /// posted, nothing is focused, nothing is changed.
+    ///
+    /// <see cref="EnumerateTopLevelWindows"/> is filtered to the process
+    /// names we already expect, which is correct for choosing a window and
+    /// useless for discovering one: if the native Table Map is owned by
+    /// something other than the configured executable, the filtered pass
+    /// reports an absence rather than the owner. This pass is what makes the
+    /// Front-desk binding question answerable.
+    /// </summary>
+    private static List<TopLevelWindowInfo> EnumerateDesktopWindowInventory()
+    {
+        var results = new List<TopLevelWindowInfo>();
+        var processCache = new Dictionary<int, Process?>();
+
+        Native.EnumWindows((h, l) =>
+        {
+            if (!Native.IsWindowVisible(h)) return true; // an invisible window owns no visible native UI
+
+            Native.GetWindowThreadProcessId(h, out uint rawPid);
+            var pid = (int)rawPid;
+
+            if (!processCache.TryGetValue(pid, out var proc))
+            {
+                try { proc = Process.GetProcessById(pid); }
+                catch { proc = null; } // exited, or not ours to inspect
+                processCache[pid] = proc;
+            }
+
+            results.Add(DescribeWindow(h, proc?.ProcessName, pid, proc));
+            return true;
+        }, IntPtr.Zero);
+
+        foreach (var p in processCache.Values) p?.Dispose();
+        return results;
+    }
+
+    /// <summary>
+    /// Builds one window's evidence row. Every field is read-only, and each
+    /// unreadable field becomes null rather than an assumption — an
+    /// unreadable executable path is a stated gap in the evidence, not a
+    /// licence to fall back on the process name.
+    /// </summary>
+    private static TopLevelWindowInfo DescribeWindow(IntPtr h, string? processName, int processId, Process? proc)
+    {
+        // Geometry decides whether a visible sibling window could
+        // plausibly be hosting the sale UI, or is a 0x0 helper.
+        var rect = new ActionNative.RECT();
+        var haveRect = ActionNative.GetWindowRect(h, ref rect);
+
+        string? executablePath = null;
+        int? sessionId = null;
+        if (proc is not null)
+        {
+            try { executablePath = proc.MainModule?.FileName; }
+            catch { executablePath = null; }
+
+            var session = SafeSessionId(proc);
+            if (session >= 0) sessionId = session;
+        }
+
+        return new TopLevelWindowInfo
+        {
+            Handle = "0x" + h.ToInt64().ToString("X"),
+            Title = ControlTreeSanitizer.Sanitize(GetWinText(h)),
+            ClassName = GetWinClass(h),
+            Visible = Native.IsWindowVisible(h),
+            ProcessName = processName,
+            ProcessId = processId,
+            ExecutablePath = executablePath,
+            SessionId = sessionId,
+            Left = haveRect ? rect.Left : 0,
+            Top = haveRect ? rect.Top : 0,
+            Width = haveRect ? rect.Right - rect.Left : 0,
+            Height = haveRect ? rect.Bottom - rect.Top : 0,
+        };
     }
 
     private static string GetWinText(IntPtr h)

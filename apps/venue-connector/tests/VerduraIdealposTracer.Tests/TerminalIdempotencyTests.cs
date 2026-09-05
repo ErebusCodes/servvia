@@ -35,7 +35,7 @@ public sealed class TerminalIdempotencyTests : IDisposable
         var ui = new FakeIdealposUiAutomationClient(FakeScenario.HappyPath, FakeTerminalScenario.Success, tableState);
         var confirm = new FakePosServerConfirmationClient(tableState);
         var store = new TerminalRoundStateStore(log);
-        var service = new TerminalRoundService(ui, store, confirm);
+        var service = new TerminalRoundService(ui, store, new FakeNativeTableStateReader(tableState), confirm);
 
         var first = await service.ExecuteRoundAsync(Round(), CancellationToken.None);
         var second = await service.ExecuteRoundAsync(Round(), CancellationToken.None);
@@ -55,13 +55,14 @@ public sealed class TerminalIdempotencyTests : IDisposable
         // First service crashes exactly at the SEND_INITIATED boundary,
         // AFTER that state is durably persisted but BEFORE the UI is driven.
         CrashHook crash = phase => { if (phase == "send_initiated") throw new InvalidOperationException("simulated crash at send boundary"); };
-        var crashingService = new TerminalRoundService(ui, store, confirmationClient: null, crashHook: crash);
+        var crashingService = new TerminalRoundService(
+            ui, store, new FakeNativeTableStateReader(ui.TableState), confirmationClient: null, crashHook: crash);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => crashingService.ExecuteRoundAsync(Round(), CancellationToken.None));
         Assert.Equal(0, ui.SaveToTableExecuteCount); // crash happened before the drive
 
         // A fresh service replays against the same durable store.
-        var replayService = new TerminalRoundService(ui, store);
+        var replayService = new TerminalRoundService(ui, store, new FakeNativeTableStateReader(ui.TableState));
         var replayed = await replayService.ExecuteRoundAsync(Round(), CancellationToken.None);
 
         Assert.Equal(TerminalRoundStatus.SEND_INITIATED, replayed.Status); // returns existing uncertain state
@@ -76,7 +77,7 @@ public sealed class TerminalIdempotencyTests : IDisposable
         var ui = new FakeIdealposUiAutomationClient(FakeScenario.HappyPath, FakeTerminalScenario.ControlNotFound, tableState);
         var confirm = new FakePosServerConfirmationClient(tableState);
         var store = new TerminalRoundStateStore(log);
-        var service = new TerminalRoundService(ui, store, confirm);
+        var service = new TerminalRoundService(ui, store, new FakeNativeTableStateReader(tableState), confirm);
 
         var failed = await service.ExecuteRoundAsync(Round(), CancellationToken.None);
         Assert.Equal(TerminalRoundStatus.FAILED_BEFORE_SEND, failed.Status);

@@ -8,6 +8,7 @@ using VerduraIdealposTracer.Core.Hosting;
 using VerduraIdealposTracer.Core.OrderSubmission;
 using VerduraIdealposTracer.Core.Persistence;
 using VerduraIdealposTracer.Core.Protocol;
+using VerduraIdealposTracer.Core.Terminal;
 using VerduraIdealposTracer.Windows;
 
 // Story 9-2 / DL-095 real operator-facing entry point. UNVERIFIED against a
@@ -211,6 +212,33 @@ static async Task<int> RunAlwaysOnHostAsync(
         sp.GetRequiredService<IdealposBridgeClient>(), localLog, sp.GetRequiredService<ConnectorCommandProtocolClient>()));
     builder.Services.AddSingleton(sp => new IdealposOrderStatusService(
         sp.GetRequiredService<IdealposBridgeClient>(), localLog, sp.GetRequiredService<ConnectorCommandProtocolClient>()));
+    // ── Native table-round pipeline: constructed, and deliberately inert. ──
+    //
+    // The whole graph is real — the durable state store, the round service and
+    // its idempotency/reconciliation lifecycle are the same objects the native
+    // route will use. Only the two pieces that genuinely do not exist yet are
+    // stand-ins, and they REFUSE rather than answer:
+    //
+    //   * UnavailableNativeTableStateReader makes a native round stop at
+    //     FAILED_BEFORE_SEND (pre-send, retryable, driver never invoked),
+    //     because a round with no baseline could never be attributed.
+    //   * UnavailablePosServerConfirmationClient makes confirmation impossible
+    //     to fake, so nothing can reach CONFIRMED on this build.
+    //
+    // Nothing dispatches to TerminalRoundService: ConnectorPollingLoop handles
+    // no native command type and its SupportedCapabilities set does not
+    // advertise one, so the server's capability gate never opens. Registering
+    // the graph here proves it composes without activating it, and leaves
+    // exactly one seam to change when the Front-desk capture lands.
+    builder.Services.AddSingleton(sp => new TerminalRoundStateStore(localLog));
+    builder.Services.AddSingleton<INativeTableStateReader>(sp => new UnavailableNativeTableStateReader());
+    builder.Services.AddSingleton<IPosServerConfirmationClient>(sp => new UnavailablePosServerConfirmationClient());
+    builder.Services.AddSingleton(sp => new TerminalRoundService(
+        automationClient,
+        sp.GetRequiredService<TerminalRoundStateStore>(),
+        sp.GetRequiredService<INativeTableStateReader>(),
+        sp.GetRequiredService<IPosServerConfirmationClient>()));
+
     builder.Services.AddSingleton<IConnectorHostLog>(sp => new LoggerConnectorHostLog(
         sp.GetRequiredService<ILogger<ConnectorPollingLoop>>()));
     builder.Services.AddSingleton(sp => new ConnectorPollingLoop(

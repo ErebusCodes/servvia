@@ -62,6 +62,15 @@ public sealed class ConnectorPollingLoop(
     };
 
     /// <summary>
+    /// The advertised capability names, exposed so the set itself can be
+    /// asserted. It is the connector's half of the server's routing gate: the
+    /// API refuses to create a native table-round command for a venue whose
+    /// connector does not report that capability, so what this set contains
+    /// decides whether the native route can open at all.
+    /// </summary>
+    public static IReadOnlyCollection<string> AdvertisedCapabilityNames => SupportedCapabilities.Keys;
+
+    /// <summary>
     /// Runs until <paramref name="stoppingToken"/> is cancelled. Never
     /// throws <see cref="OperationCanceledException"/> — a cancellation
     /// requested mid-poll, mid-command, or mid-delay is treated as a clean

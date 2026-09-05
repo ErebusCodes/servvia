@@ -33,11 +33,15 @@ public sealed class DiscoveryProfileDeserializationTests
       "SaleScreenWindowPreferredClassNames": [ "ThunderRT6FormDC" ],
       "SaleScreenWindowExcludedClassNames": [ "ThunderRT6MDIForm" ],
       "SaleScreenRequireVisible": true,
-      "TableMapControl": null,
+      "TableMapWindow": null,
+      "TableDetailsWindow": null,
       "TableCellTemplate": null,
+      "TableCellControl": null,
       "PluEntryField": null,
-      "SaveToTableAction": null,
-      "TableAssignmentConfirmationControl": null,
+      "QuantityEntryField": null,
+      "StagedLinesControl": null,
+      "TableMapCommand": null,
+      "DestructiveControls": [],
       "ProfileVersion": "ips-vb6-native-target-corrected-2026-09-02__control-selectors-PENDING-runtime-capture"
     }
     """;
@@ -50,11 +54,19 @@ public sealed class DiscoveryProfileDeserializationTests
       "SaleScreenWindowTitleEquals": "POS Screen",
       "SaleScreenWindowTitleExcludes": [ "BACKOFFICE" ],
       "SaleScreenWindowPreferredClassNames": [ "ThunderRT6FormDC" ],
-      "TableMapControl": { "ClassName": "MSFlexGridWndClass", "ControlId": 4101 },
+      "TableMapWindow": { "TitleEquals": "Table Map", "PreferredClassNames": [ "ThunderRT6FormDC" ] },
+      "TableDetailsWindow": { "TitleContains": "Table Details", "PreferredClassNames": [ "ThunderRT6FormDC" ] },
       "TableCellTemplate": "Table {code}",
+      "TableCellControl": { "ClassName": "ThunderRT6CommandButton", "ControlId": 4101 },
       "PluEntryField": { "ClassName": "ThunderRT6TextBox", "ControlId": 4102 },
-      "SaveToTableAction": { "ClassName": "ThunderRT6CommandButton", "TextEquals": "Save to Table" },
-      "TableAssignmentConfirmationControl": { "ClassName": "ThunderRT6Label", "ControlId": 4110 },
+      "QuantityEntryField": { "ClassName": "ThunderRT6TextBox", "ControlId": 4103 },
+      "StagedLinesControl": { "ClassName": "TrueOleDBGrid80.TDBGrid", "ControlId": 4104 },
+      "TableMapCommand": { "ClassName": "ThunderRT6CommandButton", "TextEquals": "TABLE MAP" },
+      "DestructiveControls": [
+        { "ClassName": "ThunderRT6CommandButton", "TextEquals": "Pay" },
+        { "ClassName": "ThunderRT6CommandButton", "TextEquals": "Finished" },
+        { "ClassName": "ThunderRT6CommandButton", "TextEquals": "Transfer" }
+      ],
       "ProfileVersion": "verified-2026-09-05-real-capture"
     }
     """;
@@ -101,7 +113,9 @@ public sealed class DiscoveryProfileDeserializationTests
 
         Assert.Equal("ThunderRT6TextBox", selectors.PluEntryField!.ClassName);
         Assert.Equal(4102, selectors.PluEntryField.ControlId);
-        Assert.Equal("Save to Table", selectors.SaveToTableAction!.TextEquals);
+        Assert.Equal("TABLE MAP", selectors.TableMapCommand!.TextEquals);
+        Assert.Equal("Table Map", selectors.TableMapWindow!.TitleEquals);
+        Assert.Equal(3, selectors.DestructiveControls.Count);
         Assert.Equal("verified-2026-09-05-real-capture", selectors.ProfileVersion);
 
         Assert.True(TerminalSelectorReadiness.IsReadyForLiveExecution(selectors, out var reason), reason);
@@ -112,9 +126,21 @@ public sealed class DiscoveryProfileDeserializationTests
     /// any single required selector puts it back to refusing.
     /// </summary>
     [Fact]
-    public void RemovingTheVerificationSelector_MakesAReadyProfileUnready()
+    public void RemovingTheStagedLineReadback_MakesAReadyProfileUnready()
     {
-        var profile = Parse(PopulatedProfileJson) with { TableAssignmentConfirmationControl = null };
+        var profile = Parse(PopulatedProfileJson) with { StagedLinesControl = null };
+
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(profile.BuildTerminalSelectors(), out _));
+    }
+
+    /// <summary>
+    /// The Table Map is a separate window; a profile that loses it can no
+    /// longer reach the send boundary and must stop being ready.
+    /// </summary>
+    [Fact]
+    public void RemovingTheTableMapWindow_MakesAReadyProfileUnready()
+    {
+        var profile = Parse(PopulatedProfileJson) with { TableMapWindow = null };
 
         Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(profile.BuildTerminalSelectors(), out _));
     }

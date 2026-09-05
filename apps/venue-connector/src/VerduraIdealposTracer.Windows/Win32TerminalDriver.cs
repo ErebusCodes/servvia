@@ -10,9 +10,11 @@ namespace VerduraIdealposTracer.Windows;
 /// resolver in Core can match selectors against it.
 ///
 /// Nothing in this class sends input, posts a message, sets text, clicks, or
-/// foregrounds a window. It is deliberately a separate type from
-/// <see cref="Win32NativeAction"/> so "can observe" and "can mutate" are
-/// distinguishable at a glance and in review.
+/// foregrounds a window.
+///
+/// As of 2026-09-05 this assembly contains NO action layer at all — see the
+/// note above <see cref="Win32ReadOnlyObservation"/> — so every type here is
+/// observation-only.
 /// </summary>
 internal static class Win32ControlDiscovery
 {
@@ -90,98 +92,89 @@ internal static class Win32ControlDiscovery
     }
 }
 
-/// <summary>The outcome of one bounded native action.</summary>
-internal sealed record NativeActionResult(bool Issued, string Detail);
-
-/// <summary>
-/// LAYER B — ACTION. The ONLY type in this assembly permitted to mutate the
-/// target application, and the only one holding message-sending interop.
-///
-/// Critically, every method here reports whether the message was ISSUED —
-/// never whether it SUCCEEDED. A posted message that returns zero tells you
-/// nothing about whether IdealPOS did what you wanted. Proof of success is
-/// the exclusive job of <see cref="Win32ActionVerification"/>, and the caller
-/// must not treat <see cref="NativeActionResult.Issued"/> as success.
-/// </summary>
-internal static class Win32NativeAction
-{
-    /// <summary>Sets a control's text via WM_SETTEXT. Issued-only; verify separately.</summary>
-    public static NativeActionResult SetText(IntPtr control, string text)
-    {
-        if (control == IntPtr.Zero) return new NativeActionResult(false, "null control handle");
-        if (!ActionNative.IsWindowEnabled(control)) return new NativeActionResult(false, "control is disabled");
-
-        var rc = ActionNative.SendMessageSetText(control, ActionNative.WM_SETTEXT, IntPtr.Zero, text);
-        return new NativeActionResult(rc != IntPtr.Zero, $"WM_SETTEXT returned {rc}");
-    }
-
-    /// <summary>Clicks a button via BM_CLICK. Issued-only; verify separately.</summary>
-    public static NativeActionResult Click(IntPtr control)
-    {
-        if (control == IntPtr.Zero) return new NativeActionResult(false, "null control handle");
-        if (!ActionNative.IsWindowEnabled(control)) return new NativeActionResult(false, "control is disabled");
-        if (!ActionNative.IsWindowVisible(control)) return new NativeActionResult(false, "control is not visible");
-
-        ActionNative.SendMessage(control, ActionNative.BM_CLICK, IntPtr.Zero, IntPtr.Zero);
-        return new NativeActionResult(true, "BM_CLICK issued");
-    }
-}
-
-/// <summary>Why a post-action verification passed or failed.</summary>
+/// <summary>Why a read-only observation matched or did not match.</summary>
 internal sealed record VerificationOutcome(bool Proven, string Reason);
 
 /// <summary>
-/// LAYER C — VERIFICATION. Re-reads the application's own state after an
-/// action and decides whether the intended effect is OBSERVABLE.
+/// READ-ONLY OBSERVATION.
 ///
-/// This is what lets the connector report a table assignment truthfully:
-/// success is earned by observing IdealPOS in the expected state, never by
-/// the fact that a message was sent.
+/// <b>The action layer was deleted on 2026-09-05.</b> This assembly used to
+/// carry a <c>Win32NativeAction</c> type holding <c>WM_SETTEXT</c> and
+/// <c>BM_CLICK</c>. It is gone, deliberately, for two reasons:
+///
+/// <list type="number">
+/// <item>Its only caller drove a workflow IdealPOS does not have — it typed
+/// the TABLE code into the PLU field and pressed a "Save" button that does
+/// not exist (see the Phase 1 audit, defects D1–D3).</item>
+/// <item>The static analysis of <c>IPS.exe</c> recovered
+/// <c>frmTables.cmd_MouseDown</c> for the table-map cells and no
+/// <c>cmd_Click</c> handler. A posted <c>BM_CLICK</c> raises <c>Click</c>,
+/// not <c>MouseDown</c>, so the primitive we had may not have driven the
+/// application at all — and keeping a plausible-looking but unproven click
+/// primitive around is worse than having none.</item>
+/// </list>
+///
+/// No action primitive will be reintroduced until the passive capture of the
+/// real native Table Map establishes which mechanism actually works. Until
+/// then this assembly physically cannot mutate IdealPOS.
 /// </summary>
-internal static class Win32ActionVerification
+internal static class Win32ReadOnlyObservation
 {
     /// <summary>
-    /// Proves a table assignment by re-enumerating the bound window and
-    /// requiring that the profile's confirmation control resolves to exactly
-    /// one node whose text carries the expected table code.
+    /// Observes whether a control carries the expected table code, matching
+    /// on WHOLE TOKENS via <see cref="TableIdentity"/>.
     ///
-    /// Any other outcome — control gone, ambiguous, or showing a different
-    /// table — is NOT proven, and the caller must fail closed.
+    /// The predecessor used <c>text.Contains(code)</c>, under which table "5"
+    /// matched "15", "25", "50" and "Table 5 of 19". That is the wrong-table
+    /// hazard directive §29 requires a stop for, so the substring test is
+    /// gone.
+    ///
+    /// This is an OBSERVATION, not a confirmation: seeing a table code on
+    /// screen says nothing about who put it there. Causal confirmation is the
+    /// exclusive job of the native delta reconciliation.
     /// </summary>
-    public static VerificationOutcome ProveTableAssigned(
+    public static VerificationOutcome ObserveTableCarried(
         IntPtr window,
-        Win32ControlSelector confirmationSelector,
+        Win32ControlSelector selector,
         string expectedTableCode)
     {
-        var after = Win32ControlDiscovery.Enumerate(window);
-        var resolved = Win32ControlResolver.Resolve(after, confirmationSelector);
+        var nodes = Win32ControlDiscovery.Enumerate(window);
+        var resolved = Win32ControlResolver.Resolve(nodes, selector);
 
         if (!resolved.IsResolved)
-            return new VerificationOutcome(false, $"confirmation control did not resolve after the action: {resolved.Reason}");
+            return new VerificationOutcome(false, $"control did not resolve: {resolved.Reason}");
 
         var text = resolved.Node!.Text ?? string.Empty;
-        if (!text.Contains(expectedTableCode, StringComparison.OrdinalIgnoreCase))
+        if (!TableIdentity.TextCarriesTable(text, expectedTableCode))
         {
             return new VerificationOutcome(
                 false,
-                $"confirmation control resolved but shows '{text}', which does not carry the requested table '{expectedTableCode}'");
+                $"control resolved but shows '{text}', which does not carry table '{expectedTableCode}' as a whole token");
         }
 
-        return new VerificationOutcome(true, $"confirmation control shows '{text}', carrying table '{expectedTableCode}'");
+        return new VerificationOutcome(true, $"control shows '{text}', carrying table '{expectedTableCode}' as a whole token");
     }
 }
 
 /// <summary>
-/// Interop for the discovery and action layers. Kept apart from the capture's
-/// read-only <c>Native</c> class so that the message-sending entry points —
-/// the only ones that can change the target application — are not mixed into
-/// a type documented as observation-only.
+/// Interop for the discovery layer.
+///
+/// <b>Every entry point here is a reader.</b> The mutating imports
+/// (<c>WM_SETTEXT</c>, <c>BM_CLICK</c>, and the generic
+/// <c>SendMessage</c>/<c>SendMessageSetText</c> that carried them) were
+/// removed on 2026-09-05 along with the action layer. The one remaining
+/// message send is <c>WM_GETTEXT</c>, which retrieves a control's caption and
+/// changes nothing — VB6 controls hosted on another thread return empty from
+/// <c>GetWindowText</c> but answer <c>WM_GETTEXT</c>, so it is required for
+/// observation.
+///
+/// Keeping the mutating imports out of the file entirely — rather than
+/// merely not calling them — means a future edit cannot reintroduce a click
+/// by accident.
 /// </summary>
 internal static class ActionNative
 {
-    public const uint WM_SETTEXT = 0x000C;
     public const uint WM_GETTEXT = 0x000D;
-    public const uint BM_CLICK = 0x00F5;
 
     private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
@@ -199,12 +192,7 @@ internal static class ActionNative
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
-    [DllImport("user32.dll")]
-    public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
-    public static extern IntPtr SendMessageSetText(IntPtr hWnd, uint msg, IntPtr wParam, string lParam);
-
+    /// <summary>WM_GETTEXT only — retrieves a caption, mutates nothing.</summary>
     [DllImport("user32.dll", EntryPoint = "SendMessageW", CharSet = CharSet.Unicode)]
     public static extern int SendMessageGetText(IntPtr hWnd, uint msg, int wParam, StringBuilder lParam);
 

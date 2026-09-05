@@ -4,16 +4,22 @@ namespace VerduraIdealposTracer.Fixtures;
 
 /// <summary>
 /// A fake native-confirmation client backed by <see cref="FakeTerminalTableState"/>.
-/// It captures a per-table "last confirmed" fingerprint so a second round
-/// is evaluated against the real prior state (the delta), and always
+/// It reads the CURRENT table fingerprint as the "after" term and always
 /// delegates the decision to the pure
 /// <see cref="TerminalConfirmationEvaluator"/> — never inventing its own.
 /// UNIT_OR_MOCK evidence only; not a real POSServer reader.
+///
+/// It deliberately does NOT keep a "last confirmed" fingerprint of its own.
+/// An earlier version did, and silently substituted that cached snapshot
+/// whenever the caller passed <c>beforeFingerprint: null</c> — which made a
+/// second round look CONFIRMED even though the orchestrator had supplied no
+/// baseline at all. That is a capability no real POSServer client has (the
+/// pre-send state is knowable only to whoever captured it before the send),
+/// so the fixture must not have it either: the baseline now comes from the
+/// caller or the round is honestly unattributable.
 /// </summary>
 public sealed class FakePosServerConfirmationClient(FakeTerminalTableState tableState) : IPosServerConfirmationClient
 {
-    private readonly Dictionary<string, TableSaleFingerprint> _lastConfirmed = new(StringComparer.OrdinalIgnoreCase);
-
     public Task<TerminalConfirmationResult> ConfirmRoundAsync(
         TerminalRoundKind roundKind,
         string requestedTable,
@@ -22,23 +28,9 @@ public sealed class FakePosServerConfirmationClient(FakeTerminalTableState table
         IReadOnlyList<TerminalRoundItem> expectedNewItems,
         CancellationToken cancellationToken)
     {
-        var key = requestedTable.Trim();
         var after = tableState.Fingerprint(requestedTable);
-
-        // Prefer an explicit before-fingerprint; otherwise use the snapshot
-        // captured at this table's previous confirmation.
-        TableSaleFingerprint? before = beforeFingerprint;
-        if (before is null && roundKind == TerminalRoundKind.SecondRound)
-        {
-            _lastConfirmed.TryGetValue(key, out before);
-        }
-
-        var result = TerminalConfirmationEvaluator.Evaluate(roundKind, requestedTable, before, after, expectedNewItems);
-
-        if (after is not null)
-        {
-            _lastConfirmed[key] = after;
-        }
+        var result = TerminalConfirmationEvaluator.Evaluate(
+            roundKind, requestedTable, beforeFingerprint, after, expectedNewItems);
         return Task.FromResult(result);
     }
 }

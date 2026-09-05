@@ -27,7 +27,7 @@ public sealed class TerminalFirstRoundTests : IDisposable
     };
 
     [Fact]
-    public void DryRunPlan_ForTable5Plu708_ProducesTenStepPlan_AndNoMutation()
+    public void DryRunPlan_ForTable5Plu708_DescribesTheNativeWorkflow_AndNoMutation()
     {
         var request = FirstRound();
         var plan = TerminalActionPlan.Build(request);
@@ -36,9 +36,15 @@ public sealed class TerminalFirstRoundTests : IDisposable
         Assert.Equal(TerminalExecutionOutcome.DryRun, result.Outcome);
         Assert.False(result.Mutated);
         Assert.False(result.SendBoundaryCrossed);
-        Assert.Equal(10, plan.Count);
+
+        // The plan's length is not the property worth asserting — its shape
+        // is. It must name the table, name the PLU, end at the table-map
+        // commit, and never mention a Save button, which the native workflow
+        // does not have.
         Assert.Contains(plan, s => s.Contains("Table 5"));
         Assert.Contains(plan, s => s.Contains("PLU 708"));
+        Assert.Contains(plan, s => s.Contains("TABLE MAP", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(plan, s => s.Contains("Save", StringComparison.OrdinalIgnoreCase));
         result.AssertHonestFailClosed();
     }
 
@@ -56,7 +62,8 @@ public sealed class TerminalFirstRoundTests : IDisposable
         var tableState = new FakeTerminalTableState();
         var ui = new FakeIdealposUiAutomationClient(FakeScenario.HappyPath, FakeTerminalScenario.Success, tableState);
         var confirm = new FakePosServerConfirmationClient(tableState);
-        var service = new TerminalRoundService(ui, NewStore(), confirm);
+        var reader = new FakeNativeTableStateReader(tableState);
+        var service = new TerminalRoundService(ui, NewStore(), reader, confirm);
 
         var state = await service.ExecuteRoundAsync(FirstRound(), CancellationToken.None);
 
@@ -72,7 +79,7 @@ public sealed class TerminalFirstRoundTests : IDisposable
     public async Task ModalBlocks_FailsClosed_BeforeSend_Retryable()
     {
         var ui = new FakeIdealposUiAutomationClient(FakeScenario.HappyPath, FakeTerminalScenario.ModalBlocks);
-        var service = new TerminalRoundService(ui, NewStore());
+        var service = new TerminalRoundService(ui, NewStore(), new FakeNativeTableStateReader(ui.TableState));
 
         var state = await service.ExecuteRoundAsync(FirstRound(), CancellationToken.None);
 

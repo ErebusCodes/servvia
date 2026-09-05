@@ -48,6 +48,14 @@ public enum FakeTerminalScenario
     PluMismatch,
     SendNotReached,
     Timeout,
+
+    /// <summary>
+    /// The critical §23H case: the native action WAS applied but the
+    /// response never came back. The fixture appends the round to its table
+    /// state and then reports Timeout, so the orchestrator sees an uncertain
+    /// outcome over a table that has genuinely already changed.
+    /// </summary>
+    LostResponseAfterNativeApply,
 }
 
 public sealed class FakeIdealposUiAutomationClient(
@@ -170,6 +178,21 @@ public sealed class FakeIdealposUiAutomationClient(
                     Mutated = false,
                     ActionPlan = plan,
                     FailClosedReason = "fixture: timed out driving the sale screen",
+                });
+            case FakeTerminalScenario.LostResponseAfterNativeApply:
+                // The native side really did apply the round...
+                TableState.AppendRound(request.TableCode, request.Items);
+                // ...and then the answer was lost. The caller learns nothing
+                // about whether it worked.
+                return Result(new TerminalSaveToTableResult
+                {
+                    Outcome = TerminalExecutionOutcome.Timeout,
+                    RoundId = request.RoundId,
+                    TableCode = request.TableCode,
+                    SendBoundaryCrossed = true,
+                    Mutated = true,
+                    ActionPlan = plan,
+                    FailClosedReason = "fixture: the native round was applied but the response was lost",
                 });
         }
 

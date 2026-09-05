@@ -30,9 +30,11 @@ subclass keyed by a 9-character `Identifier`. The complete set that writes `Pend
 
 Two things follow immediately, and both matter more than they look.
 
-**`POSServer.dbo.PendingSales` is a replica, not a system of record.** It is maintained entirely by
-pushes from POS terminals. Nothing in the protocol lets an outside party register a sale into it; the
-only writers are these handlers, and the only senders are Idealpos's own terminals.
+**`POSServer.dbo.PendingSales` is a downstream representation of native table state, not a store
+an outside party can author into.** It is maintained entirely by pushes from POS terminals. Nothing
+in the protocol lets an outside party register a sale into it; the only writers are these handlers,
+and the only senders are Idealpos's own terminals. Which store upstream of those terminals is
+authoritative is **not established here** — see the 2026-09-05 native-invocation decision §1.
 
 **Its row IDs are not durable.** `TABLEDATA` regenerates a table's ID on *every ordinary update*, and
 `SYSDATA` regenerates every ID in the store. The IDs observed live in DL-112 §A4b (99408 / 99410 /

@@ -10,10 +10,11 @@ namespace VerduraIdealposTracer.Tests;
 /// selector is placeholder, empty, structurally invalid, or the profile
 /// version is unset/stale.
 ///
-/// Re-expressed for the Win32 selector model on 2026-09-04. The gate was NOT
-/// relaxed: it still demands a real profile version plus a full set of
-/// required selectors, and it now additionally demands that each survive
-/// structural validation and that a post-action verification selector exist.
+/// Re-expressed for the workflow-shaped selector model on 2026-09-05. The
+/// gate was TIGHTENED, not relaxed: it now also requires a Table Map window,
+/// a Table Details window, a quantity control, a staged-line read-back
+/// control, and a non-empty set of destructive controls to distinguish from
+/// table cells.
 /// </summary>
 public sealed class TerminalSelectorSafetyTests
 {
@@ -28,11 +29,28 @@ public sealed class TerminalSelectorSafetyTests
             PreferredClassNames = new[] { "ThunderRT6FormDC" },
             TitleExcludes = new[] { "BACKOFFICE" },
         },
-        TableMapControl = Sel("MSFlexGridWndClass", 4101),
+        TableMapWindow = new WindowSelectionCriteria
+        {
+            TitleEquals = "Table Map",
+            PreferredClassNames = new[] { "ThunderRT6FormDC" },
+        },
+        TableDetailsWindow = new WindowSelectionCriteria
+        {
+            TitleContains = "Table Details",
+            PreferredClassNames = new[] { "ThunderRT6FormDC" },
+        },
         TableCellTemplate = "Table {code}",
+        TableCellControl = Sel("ThunderRT6CommandButton", 4101),
         PluEntryField = Sel("ThunderRT6TextBox", 4102),
-        SaveToTableAction = new Win32ControlSelector { ClassName = "ThunderRT6CommandButton", TextEquals = "Save to Table" },
-        TableAssignmentConfirmationControl = Sel("ThunderRT6Label", 4110),
+        QuantityEntryField = Sel("ThunderRT6TextBox", 4103),
+        StagedLinesControl = Sel("TrueOleDBGrid80.TDBGrid", 4104),
+        TableMapCommand = new Win32ControlSelector { ClassName = "ThunderRT6CommandButton", TextEquals = "TABLE MAP" },
+        DestructiveControls = new[]
+        {
+            new Win32ControlSelector { ClassName = "ThunderRT6CommandButton", TextEquals = "Pay" },
+            new Win32ControlSelector { ClassName = "ThunderRT6CommandButton", TextEquals = "Finished" },
+            new Win32ControlSelector { ClassName = "ThunderRT6CommandButton", TextEquals = "Transfer" },
+        },
         ProfileVersion = version,
     };
 
@@ -50,12 +68,45 @@ public sealed class TerminalSelectorSafetyTests
         Assert.Contains("version", reason);
     }
 
+    /// <summary>
+    /// The deployed connector profile carries ProfileVersion
+    /// "DUNEDIN-CLOUD-MODE-UNUSED". It must be refused too.
+    /// </summary>
+    [Fact]
+    public void UnusedMarkerInProfileVersion_IsNotReady()
+    {
+        var s = Full(version: "DUNEDIN-CLOUD-MODE-UNUSED");
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
+        Assert.Contains("version", reason);
+    }
+
     [Fact]
     public void MissingSaleScreenWindowCriteria_IsNotReady()
     {
         var s = Full() with { SaleScreenWindow = null };
         Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
         Assert.Contains(nameof(TerminalUiSelectors.SaleScreenWindow), reason);
+    }
+
+    /// <summary>
+    /// The Table Map is a separate top-level window (VB6 frmTables). A
+    /// profile that only knows the sale screen cannot reach the send
+    /// boundary, so it must not be ready.
+    /// </summary>
+    [Fact]
+    public void MissingTableMapWindowCriteria_IsNotReady()
+    {
+        var s = Full() with { TableMapWindow = null };
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
+        Assert.Contains(nameof(TerminalUiSelectors.TableMapWindow), reason);
+    }
+
+    [Fact]
+    public void MissingTableDetailsWindowCriteria_IsNotReady()
+    {
+        var s = Full() with { TableDetailsWindow = null };
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
+        Assert.Contains(nameof(TerminalUiSelectors.TableDetailsWindow), reason);
     }
 
     [Fact]
@@ -75,17 +126,45 @@ public sealed class TerminalSelectorSafetyTests
     }
 
     [Fact]
+    public void MissingQuantityField_IsNotReady()
+    {
+        var s = Full() with { QuantityEntryField = null };
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
+        Assert.Contains(nameof(TerminalUiSelectors.QuantityEntryField), reason);
+    }
+
+    /// <summary>
+    /// Without a staged-line read-back the driver cannot verify the item it
+    /// entered before committing it — directive §7D.
+    /// </summary>
+    [Fact]
+    public void MissingStagedLinesControl_IsNotReady()
+    {
+        var s = Full() with { StagedLinesControl = null };
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
+        Assert.Contains(nameof(TerminalUiSelectors.StagedLinesControl), reason);
+    }
+
+    [Fact]
+    public void MissingTableMapCommand_IsNotReady()
+    {
+        var s = Full() with { TableMapCommand = null };
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
+        Assert.Contains(nameof(TerminalUiSelectors.TableMapCommand), reason);
+    }
+
+    [Fact]
     public void PlaceholderMarkerInsideSelector_IsNotReady()
     {
-        var s = Full() with { SaveToTableAction = new Win32ControlSelector { ClassName = "TBD-by-discovery" } };
+        var s = Full() with { TableMapCommand = new Win32ControlSelector { ClassName = "TBD-by-discovery" } };
         Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
-        Assert.Contains(nameof(TerminalUiSelectors.SaveToTableAction), reason);
+        Assert.Contains(nameof(TerminalUiSelectors.TableMapCommand), reason);
     }
 
     [Fact]
     public void PositionalOnlySelector_IsNotReady()
     {
-        var s = Full() with { TableMapControl = new Win32ControlSelector { Ordinal = 3 } };
+        var s = Full() with { TableCellControl = new Win32ControlSelector { Ordinal = 3 } };
         Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
         Assert.Contains("positional", reason);
     }
@@ -107,15 +186,27 @@ public sealed class TerminalSelectorSafetyTests
     }
 
     /// <summary>
-    /// The action layer cannot claim success without being able to verify it,
-    /// so a profile with no confirmation control must never be ready.
+    /// The Table Map carries Pay/Finished/Transfer beside the table cells. A
+    /// driver that cannot name them cannot prove the control it resolved is a
+    /// table, so an empty destructive-control list must never be ready.
     /// </summary>
     [Fact]
-    public void NoVerificationSelector_IsNotReady()
+    public void NoDestructiveControlsDeclared_IsNotReady()
     {
-        var s = Full() with { TableAssignmentConfirmationControl = null };
+        var s = Full() with { DestructiveControls = Array.Empty<Win32ControlSelector>() };
         Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
-        Assert.Contains(nameof(TerminalUiSelectors.TableAssignmentConfirmationControl), reason);
+        Assert.Contains(nameof(TerminalUiSelectors.DestructiveControls), reason);
+    }
+
+    [Fact]
+    public void InvalidDestructiveControlEntry_IsNotReady()
+    {
+        var s = Full() with
+        {
+            DestructiveControls = new[] { new Win32ControlSelector { Ordinal = 2 } },
+        };
+        Assert.False(TerminalSelectorReadiness.IsReadyForLiveExecution(s, out var reason));
+        Assert.Contains(nameof(TerminalUiSelectors.DestructiveControls), reason);
     }
 
     [Fact]

@@ -34,11 +34,24 @@ public sealed record WindowsAutomationSettings(
     /// <summary>How to pick the sale window among the process's top-level windows.</summary>
     public WindowSelectionCriteria SaleScreenWindow { get; init; } = new();
 
-    public Win32ControlSelector? TableMapControl { get; init; }
+    /// <summary>
+    /// The executable the driver is permitted to drive, matched against the
+    /// bound process's real module path. A process NAME is not identity —
+    /// IPSClient, a renamed build, or an unrelated process could satisfy a
+    /// name check — so the driver verifies this and refuses when the path is
+    /// unreadable. Directive §6 fixes the target as IPS.exe.
+    /// </summary>
+    public string ExpectedExecutableFileName { get; init; } = "IPS.exe";
+
+    public WindowSelectionCriteria? TableMapWindow { get; init; }
+    public WindowSelectionCriteria? TableDetailsWindow { get; init; }
     public string? TableCellTemplate { get; init; }
+    public Win32ControlSelector? TableCellControl { get; init; }
     public Win32ControlSelector? PluEntryField { get; init; }
-    public Win32ControlSelector? SaveToTableAction { get; init; }
-    public Win32ControlSelector? TableAssignmentConfirmationControl { get; init; }
+    public Win32ControlSelector? QuantityEntryField { get; init; }
+    public Win32ControlSelector? StagedLinesControl { get; init; }
+    public Win32ControlSelector? TableMapCommand { get; init; }
+    public IReadOnlyList<Win32ControlSelector> DestructiveControls { get; init; } = Array.Empty<Win32ControlSelector>();
 
     public static WindowsAutomationSettings Placeholder => new(
         ExpectedProcessName: "IPS",
@@ -61,22 +74,30 @@ public sealed record WindowsAutomationSettings(
         TerminalProfileVersion: profile.ProfileVersion)
     {
         SaleScreenWindow = profile.BuildSaleScreenCriteria(),
-        TableMapControl = profile.TableMapControl,
+        TableMapWindow = profile.TableMapWindow,
+        TableDetailsWindow = profile.TableDetailsWindow,
         TableCellTemplate = profile.TableCellTemplate,
+        TableCellControl = profile.TableCellControl,
         PluEntryField = profile.PluEntryField,
-        SaveToTableAction = profile.SaveToTableAction,
-        TableAssignmentConfirmationControl = profile.TableAssignmentConfirmationControl,
+        QuantityEntryField = profile.QuantityEntryField,
+        StagedLinesControl = profile.StagedLinesControl,
+        TableMapCommand = profile.TableMapCommand,
+        DestructiveControls = profile.DestructiveControls,
     };
 
     /// <summary>Projects the terminal-driving selectors into the Core, testable shape.</summary>
     public TerminalUiSelectors BuildTerminalSelectors() => new()
     {
         SaleScreenWindow = SaleScreenWindow,
-        TableMapControl = TableMapControl,
+        TableMapWindow = TableMapWindow,
+        TableDetailsWindow = TableDetailsWindow,
         TableCellTemplate = TableCellTemplate,
+        TableCellControl = TableCellControl,
         PluEntryField = PluEntryField,
-        SaveToTableAction = SaveToTableAction,
-        TableAssignmentConfirmationControl = TableAssignmentConfirmationControl,
+        QuantityEntryField = QuantityEntryField,
+        StagedLinesControl = StagedLinesControl,
+        TableMapCommand = TableMapCommand,
+        DestructiveControls = DestructiveControls,
         ModalDialogClassNamePattern = ModalDialogWindowClassNamePattern,
         ProfileVersion = TerminalProfileVersion,
     };

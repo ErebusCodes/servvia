@@ -26,11 +26,11 @@ The live run showed something the static analysis had not: **`IPSTransaction`
 and repeatedly re-created the sale. Re-reading `IPS.exe` explains it.
 
 ```
-IPS.exe  ── master table sale ──┐
+IPS.exe  ── native table sale ──┐
    GetSingleTableToServerMessage(LineCount=…)
    SendTableDatatoServer   →  ~TABLEDATA   ┐
    SendNewlinesToServer    →  ~NEWLINES    ├──►  POSServerClient  ──►  POSServer (SQL)
-   SetPrintedFlags  … WHERE Code=…         ┘         (a REPLICA)
+   SetPrintedFlags  … WHERE Code=…         ┘   (a downstream representation)
    ~SENDSTAT (table status)                ┘
 ```
 
@@ -48,30 +48,43 @@ Supporting strings, verbatim:
 
 Three consequences, each grade-marked:
 
-1. **POSServer is a downstream replica, not the system of record.**
-   **STRONGLY SUGGESTED.** `IPS.exe` serialises a whole table
+1. **POSServer behaves as a downstream/native table-state representation in
+   this observed workflow, and `IPS.exe` demonstrably serialises native table
+   data to POSServer. `POSServer.PendingSales.ID` is therefore unsuitable as
+   durable identity. The authoritative upstream store/mechanism is not yet
+   proved.**
+   **STRONGLY SUGGESTED** for the representation claim; the ID finding itself is
+   **PROVED**. `IPS.exe` serialises a whole table
    (`GetSingleTableToServerMessage LineCount=`) and pushes it as `~TABLEDATA`,
-   with a separate `~NEWLINES` path for incremental lines. That is exactly what
-   the observed behaviour looks like from the other end: the sale re-appearing
-   under four surrogate IDs with byte-identical content and frozen
-   `DateModified` — a replica being replaced wholesale while the master holds
-   the truth.
+   with a separate `~NEWLINES` path for incremental lines. That matches the
+   observed behaviour from the other end: the sale re-appearing under four
+   surrogate IDs with byte-identical content and frozen `DateModified` — a
+   representation rewritten wholesale by a producer whose own store we have not
+   observed.
 
-2. **The master table sale is very likely in Access (`ips.mdb`), which we never
-   captured.** **STRONGLY SUGGESTED.** `WHERE Code LIKE 'WB*'` is Jet/Access
-   wildcard syntax, not T-SQL (`%`). `SetPrintedFlags` operates on
-   `PendingSaleLines WHERE Code=` — keyed by **Code**, not by a surrogate ID.
-   The SQL-Server `IPSTransaction.PendingSales` we captured is a different store
-   and stayed inert all day.
+2. **The inspected `IPS.exe` SQL syntax is consistent with Jet/Access semantics
+   and makes an Access-backed upstream store a strong candidate, but the actual
+   authoritative pending-sale store has not yet been demonstrated.**
+   **SUGGESTED.** `WHERE Code LIKE 'WB*'` is Jet/Access wildcard syntax, not
+   T-SQL (`%`). `SetPrintedFlags` operates on `PendingSaleLines WHERE Code=` —
+   keyed by **Code**, not by a surrogate ID. The SQL-Server
+   `IPSTransaction.PendingSales` we captured is a different store and stayed
+   inert all day. What none of that shows is *which* store the strings are
+   executed against, or whether the pending sale is durably stored at all before
+   it reaches POSServer.
 
-3. **`Printed` is set on the master by `Code`, then replicated.** **STRONGLY
-   SUGGESTED**, and it explains the live observation that every POSServer line
-   arrived already `Printed=True` with zero printer-log bytes.
+3. **`Printed` is set upstream by `Code`, before the row reaches POSServer.**
+   **STRONGLY SUGGESTED**, and it explains the live observation that every
+   POSServer line arrived already `Printed=True` with zero printer-log bytes.
+   Which store carries that upstream write is part of the open question in (2).
 
-**This reframes the integration target.** Writing to, or reading identity from,
-POSServer was never going to work — not because the ID churns (that is a
-symptom), but because **POSServer is not where the sale lives**. Any supported
-path must go through `IPS.exe`.
+**This reframes the integration target.** Reading durable identity from
+POSServer was never going to work — not because the ID churns alone (that is a
+symptom), but because **POSServer holds a rewritten representation produced by
+the native engine**. Any supported path must enter the native IdealPOS
+table-sale engine/workflow rather than writing POSServer directly. Whether that
+supported entry point is `IPS.exe` itself, a handheld subsystem, VariPad, or
+another vendor-supported interface remains unresolved.
 
 ## 2. Candidate reassessment against the observed workflow
 
@@ -80,7 +93,7 @@ contracts against the field-level result captured this afternoon.
 
 ### 2.1 Field-for-field
 
-Observed POSServer result (the replica) as the reference:
+Observed POSServer result (the downstream representation) as the reference:
 
 | Observed field | Value seen | VariPad `WPPacket` | WaiterPad protocol | `IKM.API` `IOrder`/`IItem` |
 | --- | --- | --- | --- | --- |
@@ -184,8 +197,9 @@ WaiterPad TCP is the same packet family with a live ACK/NAK and a native
 6. **Is there a supported read-back interface** to fetch a table's current line
    set with `OrderedTime` and `Printed`, so a submitted round can be reconciled
    against a native delta?
-7. **Where is the master sale** (§1) — `ips.mdb`? — and is any supported
-   interface offered over it, or is it strictly internal?
+7. **Where is the authoritative pending sale held** (§1) — `ips.mdb`, or
+   somewhere else entirely? — and is any supported interface offered over it, or
+   is it strictly internal?
 8. **The exact `Map` value** an external submission must supply for the table
    map, and whether it is ever anything but `1`.
 9. **`~SENDSTAT` / `~TABLEDATA` / `~NEWLINES`** — are these documented, and is
@@ -218,9 +232,9 @@ native side effect.
 5. **Recording native observation as tiered evidence** (`correlated` /
    `causal`), with today's fields — `Code`, `Map`, `OrderedTime`, line ordinal —
    stored as **reconstruction evidence only**.
-6. **Extending the read-only capture harness** to include the Access master
-   store, so a future authorised run can see where the sale actually lives.
-   Read-only, offline-buildable.
+6. **Extending the read-only capture harness** to cover the candidate upstream
+   store(s), so a future authorised run can establish where the sale actually
+   lives. Read-only, offline-buildable.
 
 ## 6. D. What must remain blocked until vendor confirmation
 
