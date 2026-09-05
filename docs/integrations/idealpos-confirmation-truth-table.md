@@ -1,8 +1,14 @@
 # IdealPOS confirmation — end-to-end truth table
 
 **Audited:** 2026-09-04/05, by tracing the actual code, not the intended design.
-**Outcome:** one violation found and closed. `synced` is now unreachable by any
-code path, by policy, until a causal native identity exists.
+**Outcome:** one violation found and closed in source. `synced` is now
+unreachable by any code path, by policy, until a causal native identity exists.
+
+**Status: implemented and committed; not deployed.** This change exists as
+committed source on branch `order-tablet-production-readiness` only. It has not
+been merged, pushed, released or deployed to any environment. No running
+service currently enforces the policy described below. Every statement in this
+document is a statement about the source tree, not about production behaviour.
 
 ---
 
@@ -61,8 +67,20 @@ explicitly disallowed. It is not causal:
   `Code == requestedTable` at `Pos == 1` and nothing else. No column in
   `POSServer.PendingSales` or `PendingSaleLines` references a web order, so the
   Bridge structurally cannot tie a table sale to *this* order.
-- A staff-created walk-in seated at the same table produces a byte-identical
-  Bridge body. The decision was the same either way.
+- A staff-created walk-in seated at the same table is **modelled** to produce
+  an indistinguishable Bridge body, and the decision is the same either way.
+  **This is a source-derived inference plus a constructed unit test, not a live
+  walk-in observation.** No walk-in was ever created on a live table and no
+  Bridge body was ever captured from one. The inference is: `SelectTableSale`
+  (`apps/idealpos-bridge/Orders/Reconciliation.cs:115-142`) filters candidates
+  on `row.Pos == 1` and a trimmed, case-insensitive `row.Code == requestedTable`
+  and reads no other column; no column in `POSServer.PendingSales` or
+  `PendingSaleLines` references a web order. A selector that reads only those
+  two fields cannot vary its output on a distinction it never reads. The
+  constructed test is `idealpos-confirmation.service.spec.ts`'s "an unrelated
+  walk-in on the requested table is indistinguishable" case, which feeds a
+  synthetic body with `externalOrderId: 'ORD-UNRELATED'`. **Strength: STRONGLY
+  SUGGESTED by source reading — not live-observed.**
 - Read-only measurement of the live venue on 2026-09-04 sharpened it further:
   `SelectTableSale` ignores `Map`, the column that separates a table-map sale
   (`Map 1`) from a takeaway/web ticket (`Map 0`), and observed takeaway ticket
@@ -153,6 +171,7 @@ does not exist.
 
 - matching table but no causal identity → remains awaiting, `tableCorroborated: true`, **no write at all**
 - an unrelated walk-in on the requested table is indistinguishable → remains awaiting
+  (constructed body, not a live walk-in capture — see §3)
 - malformed result → remains awaiting
 - unavailable result → remains awaiting
 - `notFound` → remains awaiting
@@ -164,4 +183,5 @@ does not exist.
 - **property test** (connector route): no sequence of connector reports reaches `synced`
 - an explicit Bridge rejection is still terminal — fail-closed is not fail-silent
 
-Nothing was deployed.
+Nothing was deployed. The change is **implemented and committed; not
+deployed** — see the status banner at the top of this document.
