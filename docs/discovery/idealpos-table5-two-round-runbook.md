@@ -52,15 +52,56 @@ stores. A filter built on a guess would return zero rows and waste the window.
 
 | # | Check | How |
 | --- | --- | --- |
-| 1 | Restaurant not yet in service; Table 5 free and will stay free for ~20 min | Visual |
+| 1 | **Table 5 idle** at the start, and will stay free for ~20 min | Visual + `posserver.TableMapSetups` Code 5 `Status 0` in the preflight |
 | 2 | Operator authorised to open a table sale and send rounds on this till | Staff |
 | 3 | Kitchen aware that up to **two KOTs will print for Table 5** and are to be discarded | Tell them first |
 | 4 | Preflight passes | `.\idealpos-table-capture.ps1 -Preflight -NewRun -TableCode 5` → `verdict : READY` |
 | 4a | You know which evidence directories are rehearsals, not evidence | see the note below |
-| 5 | No other table is open, and none opens mid-run | `posserver.TableMapSetups` all `Status 0` in the preflight output |
+| 5 | **No operator action on Table 5 except this test.** Other tables may operate normally | Brief the floor: Table 5 is reserved for the test until it is closed out |
+| 6 | Concurrent activity on other tables is *recorded*, not prevented | `posserver.TableMapSetups` is captured in full at every step; `ipstx.TableActivity.recent` attributes activity per table |
 
 > **Item 3 is the only real-world side effect of this procedure.** Two live
-> kitchen dockets will print. Do not run it during service.
+> kitchen dockets will print.
+
+### Precondition 5 was relaxed on 2026-09-05 — and why that is safe
+
+It previously read *"No other table is open, and none opens mid-run"*. That was
+unnecessarily strict, and once the restaurant is operating it would be
+unmeetable: it would require blocking service to get a clean capture.
+
+**It is not technically necessary, because the capture already isolates Table 5
+by simultaneous delta analysis rather than by exclusion.** Verified by reading
+`windows-deploy/ops/idealpos-table-capture.ps1`:
+
+| Dataset | Scope | Consequence |
+| --- | --- | --- |
+| `posserver.PendingSales` | **every row, unfiltered** | another table's sale appears as its own row, never merged into Table 5's |
+| `posserver.PendingSaleLines` | **every row, unfiltered** | line-level deltas are attributable by `PendingSaleID` |
+| `posserver.TableMapSetups` | **all 19 map rows, at every step** | "Table 5 changed and nothing else did" is directly readable; so is "Table 5 changed AND table 9 changed", which is still an unambiguous read |
+| `ipstx.TableActivity.recent` | TOP 60 by `[Date] DESC`, **all tables** | the script's own comment: captured for every table *"so concurrent activity on other tables is attributable"* |
+
+Every dataset is a full before/after snapshot at each step, so a concurrent
+change on another table shows up as a **separate, identifiable row delta** and
+is excluded analytically. Requiring an idle restaurant would buy a marginally
+smaller diff at the cost of shutting the business.
+
+**What genuinely does matter, and is what precondition 5 now says:** nothing
+must touch **Table 5** other than this test. A second operator adding a line to
+Table 5 mid-run would be indistinguishable from our own round and would
+invalidate the result.
+
+**Two limits to watch if the venue is busy**, both in the capture script:
+
+- `ipstx.TableActivity.recent` is `TOP 60` ordered by date. During heavy
+  service, 60 rows may cover only a short window. If the run spans a busy
+  period, note the earliest `[Date]` present in the first and last snapshot and
+  confirm the run is fully inside the window; raise the `TOP` if not.
+- `ipstx.PendingSaleLines` is scoped to the `TOP 60` most recent
+  `PendingSales.ID`. Ample for this venue (47 rows total today), but confirm
+  Table 5's `PendingSaleID` is present in the captured set before analysing.
+
+Neither limit affects `posserver.*`, which is unfiltered — and `posserver` is
+where the table-map and table-sale evidence lives.
 
 **The preflight lands in its own throwaway run directory.** It is run with
 `-NewRun`, and so is step 0 of the sequence, so they create two different
@@ -92,6 +133,21 @@ rehearsal directories first is a reasonable way to remove the ambiguity
 entirely.
 
 ### Choosing items A and B
+
+**Confirm both PLUs with floor/kitchen staff before the run. Do not decide
+them in advance from the catalogue alone.** The choice has two real-world
+consequences that only staff can rule on:
+
+1. **Kitchen routing.** The item must actually route to a kitchen printer or
+   monitor, or no KOT fires and step 5 of the analysis proves nothing. Which
+   items route where is venue configuration, and staff know it.
+2. **Test acceptability.** Two live dockets will be produced and discarded.
+   Staff must agree the chosen items are acceptable to waste-print — not, for
+   example, an item that triggers a prep alert, a stock decrement they care
+   about, or a set-menu component.
+
+No product is chosen here on purpose. The blanks below are filled in on site,
+with staff, immediately before the run.
 
 Pick two **different, cheap, non-prepared** PLUs that go to a kitchen printer
 (so the KOT actually fires). Write down their PLU codes before starting — the
