@@ -9,6 +9,7 @@ using VerduraIdealposTracer.Core.OrderSubmission;
 using VerduraIdealposTracer.Core.Persistence;
 using VerduraIdealposTracer.Core.Protocol;
 using VerduraIdealposTracer.Core.Terminal;
+using VerduraIdealposTracer.Core.Terminal.PosServer;
 using VerduraIdealposTracer.Windows;
 
 // Story 9-2 / DL-095 real operator-facing entry point. UNVERIFIED against a
@@ -231,8 +232,34 @@ static async Task<int> RunAlwaysOnHostAsync(
     // the graph here proves it composes without activating it, and leaves
     // exactly one seam to change when the Front-desk capture lands.
     builder.Services.AddSingleton(sp => new TerminalRoundStateStore(localLog));
-    builder.Services.AddSingleton<INativeTableStateReader>(sp => new UnavailableNativeTableStateReader());
-    builder.Services.AddSingleton<IPosServerConfirmationClient>(sp => new UnavailablePosServerConfirmationClient());
+
+    // Native readback is gated on explicit configuration that production does
+    // not set. With it unset the fail-closed stand-ins remain, exactly as
+    // before; with it set AND a registered provider, the real read-only
+    // POSServer reader is used instead. Every failure path keeps the stand-ins
+    // — none of them throws, and none half-enables anything.
+    var readbackDecision = NativeReadbackGate.Decide(
+        Environment.GetEnvironmentVariable(NativeReadbackGate.ConnectionStringVariable),
+        Environment.GetEnvironmentVariable(NativeReadbackGate.ProviderVariable),
+        name => System.Data.Common.DbProviderFactories.GetFactory(name));
+
+    // Stated at startup either way: an operator who set the variable and still
+    // sees refusals needs to know the gate said no, and why.
+    Console.WriteLine($"Native POSServer readback: {(readbackDecision.Enabled ? "ENABLED" : "disabled")} — {readbackDecision.Reason}");
+
+    if (readbackDecision.Enabled)
+    {
+        var factory = readbackDecision.ConnectionFactory!;
+        builder.Services.AddSingleton(sp => new PosServerTableStateReader(factory));
+        builder.Services.AddSingleton<INativeTableStateReader>(sp => sp.GetRequiredService<PosServerTableStateReader>());
+        builder.Services.AddSingleton<IPosServerConfirmationClient>(sp =>
+            new PosServerConfirmationClient(sp.GetRequiredService<PosServerTableStateReader>()));
+    }
+    else
+    {
+        builder.Services.AddSingleton<INativeTableStateReader>(sp => new UnavailableNativeTableStateReader());
+        builder.Services.AddSingleton<IPosServerConfirmationClient>(sp => new UnavailablePosServerConfirmationClient());
+    }
     builder.Services.AddSingleton(sp => new TerminalRoundService(
         automationClient,
         sp.GetRequiredService<TerminalRoundStateStore>(),
