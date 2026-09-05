@@ -389,6 +389,13 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
     const prisma = {
       ...makePrisma(connector),
       pOSSyncRecord: {
+        // Faithful `count` over the same in-memory rows the sweep pages
+        // through -- it drives the rotating offset (see sweepConfirm). With a
+        // single awaiting row the sweep stays on the skip:0 path, so these
+        // end-to-end assertions are unaffected by rotation.
+        count: jest.fn(async () =>
+          syncRows.filter((r) => r.status === POSSyncStatus.submitted_awaiting_confirmation).length,
+        ),
         findMany: jest.fn(async () =>
           syncRows
             .filter((r) => r.status === POSSyncStatus.submitted_awaiting_confirmation)
@@ -439,7 +446,8 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
   // FAIL-CLOSED (2026-09-04). The connector-mediated route is a second way to
   // reach the same decision function, so it must fail closed identically:
   // a matching observed table code is correlation, not causation, and an
-  // unrelated walk-in on the same table produces the same report.
+  // unrelated walk-in on the same table is modelled (from source, not from a
+  // live capture) to produce the same report.
   it('a matching observed table code corroborates but never confirms', async () => {
     const { connector, svc, syncRows } = harness();
 

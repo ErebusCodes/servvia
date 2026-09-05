@@ -11,7 +11,15 @@ import {
 
 export interface ConfirmationSweepResult {
   examined: number;
-  /** Advanced to `synced` — a table sale matching the requested table was observed. */
+  /**
+   * Advanced to `synced`.
+   *
+   * STRUCTURALLY ALWAYS 0 since the fail-closed change (2026-09-04):
+   * `decideConfirmation` has no path to `synced`, so nothing can increment
+   * this. The counter is retained deliberately — if it is ever non-zero, a
+   * confirmation path was reintroduced and the fail-closed property has been
+   * broken. Treat a non-zero value as an alarm, not as good news.
+   */
   confirmed: number;
   /** Advanced to `failed` — the Bridge reported a real rejection. */
   failed: number;
@@ -37,13 +45,27 @@ export interface ConfirmationSweepResult {
  * never treats it as such. Every transition below comes from a fresh read of
  * the Bridge, never from the dispatch outcome.
  *
- * WHAT `synced` MEANS HERE, precisely. Only `assigned_to_table` with
- * `tableMatchesRequest === true` and an observed `posServerPendingSaleCode`
- * equal to the requested table reaches it — see `decideConfirmation`. That is
- * still correlation-grade: POSServer has no column tying a table sale to a web
- * order, so it proves "a table sale exists on the requested table", not "this
- * order is on it". The gap is documented in `bridge-order-status.ts` and is a
- * vendor-contract limitation, not something this service can close.
+ * WHAT `synced` MEANS HERE, precisely: NOTHING REACHES IT.
+ *
+ * This paragraph previously said `assigned_to_table` + `tableMatchesRequest`
+ * + a matching observed `posServerPendingSaleCode` reached `synced`. That was
+ * true until 2026-09-04 and is now FALSE. The fail-closed change removed that
+ * path because it was correlation-grade, not causal: POSServer has no column
+ * tying a table sale to a web order, so the evidence proved "a table sale
+ * exists on the requested table", never "this order is on it".
+ *
+ * `decideConfirmation` now has NO path to `synced` at all. This service can
+ * therefore only ever move a record to `failed` (an explicit Bridge
+ * rejection) or leave it `submitted_awaiting_confirmation`. That is the
+ * intended, documented behaviour — see
+ * `docs/integrations/idealpos-confirmation-truth-table.md`. Reinstating a
+ * `synced` path requires a causal native identity, which does not exist
+ * locally today.
+ *
+ * CONSEQUENCE FOR THIS SWEEP: the awaiting set no longer drains on success,
+ * only on explicit rejection. See `sweepConfirm`'s rotation comment — a
+ * FIFO-frozen candidate window would starve newer records once the awaiting
+ * set exceeds one batch.
  *
  * SAFETY PROPERTIES:
  *  - Every write is a guarded `updateMany` filtered on the record still being
@@ -64,6 +86,15 @@ export interface ConfirmationSweepResult {
 export class IdealposConfirmationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IdealposConfirmationService.name);
   private readonly batchSize = 50;
+  /**
+   * Rotating offset into the awaiting set — see `sweepConfirm`.
+   *
+   * In-memory only, deliberately: it is a fairness hint, not state anything
+   * depends on for correctness. A restart resets it to 0, which is safe (the
+   * sweep simply begins from the start of the set again) and is why no schema
+   * column was added for it.
+   */
+  private sweepCursor = 0;
   private confirmTimer: NodeJS.Timeout | null = null;
   private readonly sweepIntervalMs: number;
 
@@ -125,11 +156,44 @@ export class IdealposConfirmationService implements OnModuleInit, OnModuleDestro
       return result;
     }
 
+    // ROTATION — real defect closed here (fail-closed regression audit,
+    // 2026-09-05).
+    //
+    // This query used to be `orderBy: { updatedAt: 'asc' }, take: batchSize`
+    // with no offset. That was safe while `synced` was reachable, because a
+    // confirmed record left the awaiting set and freed its slot. Since the
+    // fail-closed change (2026-09-04) nothing reaches `synced`, so records
+    // leave this set ONLY on an explicit Bridge rejection.
+    //
+    // A record that stays awaiting is never written to — `processCandidate`
+    // returns before `updateMany` when the decision is "no change" — so its
+    // `updatedAt` is frozen. Frozen `updatedAt` + `orderBy updatedAt asc` +
+    // `take 50` means the same 50 oldest records are re-examined on every
+    // tick, forever, and once 50 permanently-awaiting records accumulate,
+    // NEWER records are never examined at all. An explicit Bridge rejection
+    // arriving for order 51 would never be seen.
+    //
+    // Fixed by paging through the set with a rotating offset over a stable
+    // ordering, so every awaiting record is examined within
+    // ceil(total / batchSize) ticks regardless of how many are stuck. `id` is
+    // used rather than `updatedAt` because the offset is only meaningful over
+    // an ordering that does not shift as rows are examined.
+    const awaitingCount = await this.prisma.pOSSyncRecord.count({
+      where: { status: POSSyncStatus.submitted_awaiting_confirmation },
+    });
+    if (awaitingCount === 0) {
+      this.sweepCursor = 0;
+      return result;
+    }
+    const skip = awaitingCount <= this.batchSize ? 0 : this.sweepCursor % awaitingCount;
+    this.sweepCursor = awaitingCount <= this.batchSize ? 0 : skip + this.batchSize;
+
     const candidates = await this.prisma.pOSSyncRecord.findMany({
       where: { status: POSSyncStatus.submitted_awaiting_confirmation },
       select: { id: true, orderId: true, venueId: true, posTableId: true },
       take: this.batchSize,
-      orderBy: { updatedAt: 'asc' },
+      skip,
+      orderBy: { id: 'asc' },
     });
 
     for (const candidate of candidates) {

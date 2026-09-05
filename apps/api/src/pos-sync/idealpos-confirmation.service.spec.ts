@@ -34,9 +34,11 @@ const assignedBody = (over: Record<string, unknown> = {}) =>
 
 describe('decideConfirmation', () => {
   // FAIL-CLOSED (2026-09-04). This is the case that used to promote to
-  // `synced`. A staff-created walk-in on the same table produces a
-  // byte-identical Bridge body, so the evidence is table-code correlation,
-  // never causation.
+  // `synced`. A staff-created walk-in on the same table is MODELLED to produce
+  // an indistinguishable Bridge body -- inferred from reading
+  // Reconciliation.SelectTableSale, which reads only Pos and Code, and NOT
+  // from any live walk-in observation. On that inference the evidence is
+  // table-code correlation, never causation.
   it('assigned_to_table with a matching observed code CORROBORATES but does NOT confirm', () => {
     const d = decideConfirmation({ kind: 'ok', body: assignedBody() }, '12');
     expect(d.nextStatus).toBeNull();
@@ -47,9 +49,10 @@ describe('decideConfirmation', () => {
 
   it('an unrelated walk-in on the requested table is indistinguishable and stays awaiting', () => {
     // Nothing in the Bridge contract ties a POSServer table sale to a web
-    // order, so this body is exactly what a walk-in produces. The point of the
-    // test is that the decision is identical either way -- which is precisely
-    // why neither may confirm.
+    // order, so this CONSTRUCTED body is what the source says a walk-in would
+    // produce. It is not a captured live walk-in. The point of the test is
+    // that the decision is identical either way -- which is precisely why
+    // neither may confirm.
     const walkIn = decideConfirmation(
       { kind: 'ok', body: assignedBody({ externalOrderId: 'ORD-UNRELATED' }) },
       '12',
@@ -250,6 +253,10 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
     updateCount = 1,
   ) => ({
     pOSSyncRecord: {
+      // `count` drives the rotating offset (see sweepConfirm). Defaulting it
+      // to the fixture size keeps every pre-existing test on the skip:0 path
+      // it was written for; the rotation tests below override it.
+      count: jest.fn().mockResolvedValue(records.length),
       findMany: jest.fn().mockResolvedValue(records),
       updateMany: jest.fn().mockResolvedValue({ count: updateCount }),
     },
@@ -495,5 +502,123 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
     expect(prisma.pOSSyncRecord.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { status: POSSyncStatus.submitted_awaiting_confirmation } }),
     );
+  });
+
+  // ── Rotation: fail-closed regression guard (2026-09-05) ──────────────────
+  //
+  // Since nothing reaches `synced`, records leave the awaiting set only on an
+  // explicit rejection. These tests prove the sweep cannot starve newer
+  // records behind a wall of permanently-awaiting ones.
+
+  it('does not page while the awaiting set fits in one batch', async () => {
+    const prisma = makePrisma(oneRecord);
+    prisma.pOSSyncRecord.count = jest.fn().mockResolvedValue(1);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: assignedBody() }),
+    );
+
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+
+    for (const call of prisma.pOSSyncRecord.findMany.mock.calls) {
+      expect(call[0].skip).toBe(0);
+    }
+  });
+
+  it('rotates the offset so a large awaiting set is fully covered', async () => {
+    // 130 permanently-awaiting records, batch size 50: three ticks must cover
+    // offsets 0, 50 and 100 — i.e. every record is examined within
+    // ceil(130/50) = 3 sweeps. Before the fix every tick used offset 0 and
+    // records 51..130 were NEVER examined.
+    const prisma = makePrisma(oneRecord);
+    prisma.pOSSyncRecord.count = jest.fn().mockResolvedValue(130);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: assignedBody() }),
+    );
+
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+
+    expect(prisma.pOSSyncRecord.findMany.mock.calls.map((c) => c[0].skip)).toEqual([0, 50, 100]);
+  });
+
+  it('wraps the offset back to the start of the set', async () => {
+    const prisma = makePrisma(oneRecord);
+    prisma.pOSSyncRecord.count = jest.fn().mockResolvedValue(60);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: assignedBody() }),
+    );
+
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+    await svc.sweepConfirm();
+
+    // 60 awaiting, batch 50: offsets 0, 50, then 100 % 60 = 40. Never stuck.
+    expect(prisma.pOSSyncRecord.findMany.mock.calls.map((c) => c[0].skip)).toEqual([0, 50, 40]);
+  });
+
+  it('pages over a STABLE ordering, never the mutable updatedAt', async () => {
+    // Offsetting into an ordering that shifts as rows are examined would skip
+    // records silently. `id` is immutable; `updatedAt` is not.
+    const prisma = makePrisma(oneRecord);
+    prisma.pOSSyncRecord.count = jest.fn().mockResolvedValue(130);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: assignedBody() }),
+    );
+
+    await svc.sweepConfirm();
+
+    expect(prisma.pOSSyncRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { id: 'asc' }, take: 50 }),
+    );
+  });
+
+  it('short-circuits and resets the cursor when nothing is awaiting', async () => {
+    const prisma = makePrisma([]);
+    prisma.pOSSyncRecord.count = jest.fn().mockResolvedValue(0);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: assignedBody() }),
+    );
+
+    const r = await svc.sweepConfirm();
+
+    expect(r.examined).toBe(0);
+    expect(r.disabled).toBe(false);
+    expect(prisma.pOSSyncRecord.findMany).not.toHaveBeenCalled();
+  });
+
+  it('an explicit rejection is still terminal for a record deep in the set', async () => {
+    // The whole point of rotation: a rejection arriving for a record that is
+    // not at the head of the queue must still be actioned.
+    const prisma = makePrisma(oneRecord);
+    prisma.pOSSyncRecord.count = jest.fn().mockResolvedValue(500);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: bridgeBody({ status: 'rejected' }) }),
+    );
+
+    const r = await svc.sweepConfirm();
+
+    expect(r.failed).toBe(1);
+    expect(r.confirmed).toBe(0);
+  });
+
+  it('`confirmed` is structurally unreachable — a non-zero value would mean fail-closed broke', async () => {
+    const prisma = makePrisma(oneRecord);
+    const svc = new IdealposConfirmationService(
+      prisma as never,
+      reader({ kind: 'ok', body: assignedBody() }),
+    );
+
+    const r = await svc.sweepConfirm();
+
+    expect(r.confirmed).toBe(0);
   });
 });
