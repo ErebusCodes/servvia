@@ -482,6 +482,55 @@ since the fail-closed change, and no production record ever reached it.
 
 ---
 
+## 6a. Validated against live native behaviour, 2026-09-05
+
+The Table 5 two-round capture
+([result](../discovery/idealpos-table5-two-round-result-2026-09-05.md)) ran
+after this design was written. It **validates the shape** and **sharpens six
+fields**. Nothing here needed to be withdrawn.
+
+| Observed natively | Effect on this design |
+| --- | --- |
+| **Unsent items exist only in IPS UI memory** — adding items wrote nothing, twice | Confirms `drafting` must be a **Verdura-side** state. There is no native staging area to mirror, recover from, or reconcile against. A draft round is ours alone. |
+| **Persistence occurs on table save/send** | Confirms the `drafting → submitting` edge is the right freeze point: it is the exact native commit boundary. |
+| **Each sent round gets its own `OrderedTime`** | The native round key. Store it in `OrderRound.nativeRoundKey` (new, nullable) — as **reconstruction evidence**, never as an idempotency key. It carries no external reference and is not unique. |
+| **Previous lines survive byte-for-byte** | Confirms `linesToSend` — build the payload from one round only. Native does not want, and does not re-send, prior lines. |
+| **Only new lines print on the next KOT** (physically confirmed) | Confirms the round *is* the KOT unit. `kotEvidenceTier` stays three-valued: the live run reached `flag_set` in the DB and `emitted` only via the operator's eyes, with **zero printer-log bytes** in both rounds. |
+| **The native table sale is one logical sale despite POSServer surrogate-ID churn** | Confirms option C: one `Order` per session, many rounds. It also **disqualifies `PendingSales.ID`** — four IDs for one sale. `nativeSaleId` must never be populated from it. |
+
+### Schema deltas this forces
+
+```diff
+ model OrderRound {
+   ...
++  /// The native round key OBSERVED for this round (IdealPOS: PendingSaleLines
++  /// .OrderedTime). Reconstruction evidence only -- it carries no external
++  /// reference, is not unique, and MUST NOT be used to deduplicate.
++  nativeRoundKey String?
+ }
+
+ model Order {
+-  nativeSaleId            String?
++  /// MUST NOT be populated from POSServer.PendingSales.ID -- proved unstable
++  /// on 2026-09-05 (one sale observed under four IDs, once with no action on
++  /// the table). Reserved for a genuinely stable native identity, if one is
++  /// ever exposed.
++  nativeSaleId            String?
+ }
+```
+
+`nativeSaleMap` gains a concrete meaning: **`1` = table-map sale, `0` =
+web/takeaway ticket** — proved, and the discriminator
+`Reconciliation.SelectTableSale` ignores.
+
+### What the capture did NOT change
+
+`nativeSaleEvidenceTier` stays, and stays load-bearing. The live run found **no
+field anywhere in the native model that binds a sale or round to an external
+identity**. So `causal` remains unreachable, `synced` remains unreachable, and
+the fail-closed policy is unchanged. See
+[the invocation decision document](./idealpos-native-invocation-decision-2026-09-05.md).
+
 ## 7. What is implemented tonight, and what is not
 
 **Implemented, committed, tested, unused:**

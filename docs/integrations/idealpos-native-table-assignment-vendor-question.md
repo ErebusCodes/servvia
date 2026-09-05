@@ -61,6 +61,100 @@ Fields this question refers to:
 
 ---
 
+## UPDATE, 2026-09-05 — we have now measured the native behaviour ourselves
+
+A controlled, read-only, human-operated two-round test was performed on Table 5
+of the live installation on 2026-09-05 (full record:
+`docs/discovery/idealpos-table5-two-round-result-2026-09-05.md`). **No write,
+no protocol traffic and no automation of any kind was used** — a member of
+staff pressed the keys and we took SELECT-only database snapshots between each
+action.
+
+**This changes what we need from you.** Several of the 15 questions below are
+now answered by observation, and the remaining gap is much narrower and more
+specific. Please read this section first.
+
+### What we observed (and can evidence)
+
+The exact staff workflow, and its native effect:
+
+```
+sale-entry screen → enter items → TABLE MAP → select Table 5
+later: Table Map → Table 5 → Details → POS → add items → TABLE MAP → Table 5
+```
+
+| # | Observation | Confidence |
+| --- | --- | --- |
+| 1 | Items typed on the sale-entry screen write **nothing** to any database. Persistence happens only at table selection. | Proved (observed twice) |
+| 2 | Selecting a table, and recalling it via Details, write **nothing**. | Proved |
+| 3 | The table sale appears in **POSServer only**; SQL `IPSTransaction.PendingSales` never changed. | Proved |
+| 4 | The sale is keyed `Code='5'` (bare table number), `Map=1`, `POS=1` — while the operating till header read **POS 2**. | Proved |
+| 5 | Round 2 **appends** to the same sale. Round 1's line survived byte-for-byte, including its `OrderedTime`. | Proved |
+| 6 | Each round carries its own `PendingSaleLines.OrderedTime` (13:16:49, then 14:07:37), matching the "Ordered" sections in the Details screen. | Proved |
+| 7 | Quantity 2 is stored as **two qty-1 lines**, not `Col3=2`. | Proved |
+| 8 | Every line arrives with **`Printed=True` already set**, and `IPSPrinterServer.LOG` / `Printing.log` recorded **zero bytes** in both rounds. One physical KOT per round, containing only that round's items, no duplicates. | Proved |
+| 9 | `Col4` matched the configured Level-1 price exactly ($1.50, $6.00) — **IdealPOS resolved the price itself**. | Proved for the native path |
+| 10 | The POSServer sale row was re-created under **four different `ID` values** during the test (99719 → 99721 → 99723 → 99724) with identical content, once with no action on the table at all. | Proved |
+| 11 | **No field anywhere** in `PendingSales`, `PendingSaleLines`, `TableMapSetups`, `TableActivity` or the `~SENDSTAT` traffic references an external order. | Proved for what we captured |
+
+Observation 10 is why we cannot use `PendingSales.ID` as an identity. Observation
+11 is the core of our remaining problem.
+
+### The narrowed ask
+
+**Native IdealPOS clearly already does exactly what we need.** Our question is
+no longer "what does it do" — it is **"what may we call, and what will we get
+back".**
+
+Specifically:
+
+**A. Invocation.** Is there a supported interface by which an external
+application can perform the workflow above — create a table sale from a PLU
+list, and later append a further round to the same sale? We have found three
+candidates on the installation and **deliberately not invoked any of them**:
+`IKM.API.dll`, `VariPad.dll` (`VariPad.VariPadManager`), and the "Ideal
+Handheld"/WaiterPad TCP listener inside `IPS.exe`. Which, if any, is supported
+for third-party use, and under what licence (`HandheldLicences`,
+`Handheld / eCommerce Only`)?
+
+**B. Append vs replace — our single biggest risk.** `IPS.exe`'s handheld
+ingress path contains `DELETE * FROM PendingSaleLines WHERE Code='…'` followed
+by `DELETE * FROM PendingSales WHERE Code='…'`. If an externally submitted
+second round **replaces** the whole sale rather than appending to it, then
+either prior lines are lost, or every line is re-timestamped and **the entire
+table reprints to the kitchen on every round**. The native UI does not behave
+that way. Does the external path behave like the UI, or not?
+
+**C. Pricing.** `VariPad.dll` sends `<Price>-9999</Price>` for every stock item
+and a `<Total>` of zero. Is `-9999` the documented "POS determines the price"
+sentinel? We require IdealPOS to remain the price authority and must never
+supply a price.
+
+**D. Causal identity — the blocker.** Per observation 11, nothing native binds
+a sale or round to an external reference. Everything we found returns either
+ACK/NAK or an echo of a key the *sender* generated. **Does any supported
+interface return a native sale identifier, a line identifier, or a correlation
+token that we can store?** Without one we cannot honestly tell a restaurant
+that a particular order reached the kitchen, and we currently refuse to claim
+it (our software fails closed and reports "awaiting confirmation" indefinitely).
+
+**E. Read-back.** Is there a supported way to read a table's current line set
+with `OrderedTime` and `Printed`, so a submitted round can be reconciled
+against the native line delta?
+
+**F. System of record.** Our evidence suggests the master table sale is not in
+SQL Server but in an Access store (`ips.mdb`) — `IPS.exe` contains
+`SELECT Count(Code) AS TotalWebOrders FROM PendingSales WHERE Code LIKE 'WB*'`
+(Jet wildcard syntax), and pushes `~TABLEDATA` / `~NEWLINES` to POSServer.
+Is that correct, and is any supported interface offered over it?
+
+**We are not asking for internal details in order to bypass a supported
+route.** We are asking which supported route exists, precisely because we do
+not want to build on an unsupported one. Nothing on this installation has been
+written to, invoked, or automated by us.
+
+---
+
 ## The 15 questions
 
 **Entry point**
