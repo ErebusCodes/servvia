@@ -206,11 +206,27 @@ public static class NativeTableSaleCanonicalizer
     /// <summary>The Col0 value denoting a sale-item line. Every line of the sealed run was this.</summary>
     public const string SaleItemLineType = "SI";
 
-    /// <summary>The Map value of the native table-map partition, directly observed.</summary>
-    public const string TableMapMapValue = "1";
+    /// <summary>
+    /// The Map value OBSERVED on this installation for the table-map partition
+    /// on 2026-09-05 (against Map=0 for the web/takeaway rows).
+    ///
+    /// It is evidence from ONE installation on ONE day, not a law about
+    /// IdealPOS. Nothing in the sealed run showed that every native table on
+    /// every configured installation is permanently Map=1 — the map is a
+    /// configured floor-plan concept and a venue with several maps could
+    /// legitimately place tables elsewhere. So this constant is a documented
+    /// observation available to callers and test fixtures, and it is
+    /// deliberately NOT a fallback inside the reader: the expected map must be
+    /// supplied.
+    /// </summary>
+    public const string ObservedTableMapValueOnThisInstallation = "1";
 
-    /// <summary>The Pos value observed on the native table sale.</summary>
-    public const int TableSalePos = 1;
+    /// <summary>
+    /// The Pos value OBSERVED on the native table sale on this installation —
+    /// 1, even though the operating till header read POS 2. Same status as the
+    /// map above: observation, supplied by the caller, never assumed here.
+    /// </summary>
+    public const int ObservedTableSalePosOnThisInstallation = 1;
 
     /// <summary>
     /// Selects the sale matching the requested table context and canonicalizes
@@ -218,14 +234,18 @@ public static class NativeTableSaleCanonicalizer
     /// </summary>
     /// <param name="requestedTableCode">The table Verdura asked about, e.g. "5".</param>
     /// <param name="expectedMap">
-    /// The map partition to accept. Null means "the table-map partition",
-    /// <see cref="TableMapMapValue"/> — never "any map", because accepting any
-    /// map would let a Map=0 web ticket answer a dine-in question.
+    /// The map partition to accept, supplied by the caller from configuration
+    /// or from an observed native context. There is deliberately NO default:
+    /// an unknown map fails closed rather than silently assuming the value one
+    /// installation happened to use, and "any map" is never an option because
+    /// it would let a Map=0 web ticket answer a dine-in question.
     /// </param>
+    /// <param name="expectedPos">The POS/context to accept, likewise supplied rather than assumed.</param>
     /// <param name="candidates">Every sale row read for this table, with its lines.</param>
     public static NativeTableReadResult Canonicalize(
         string requestedTableCode,
         string? expectedMap,
+        int? expectedPos,
         IReadOnlyList<PosServerSaleWithLines> candidates)
     {
         if (string.IsNullOrWhiteSpace(requestedTableCode))
@@ -233,19 +253,34 @@ public static class NativeTableSaleCanonicalizer
             return NativeTableReadResult.Ambiguous("no table code was requested");
         }
 
-        var wantedMap = string.IsNullOrWhiteSpace(expectedMap) ? TableMapMapValue : expectedMap.Trim();
+        if (string.IsNullOrWhiteSpace(expectedMap))
+        {
+            return NativeTableReadResult.Ambiguous(
+                $"no expected map was supplied for table '{requestedTableCode}'. The map is venue configuration, not a "
+                + "constant — refusing to assume the value observed on one installation rather than read a table "
+                + "context we were not told.");
+        }
+
+        if (expectedPos is null)
+        {
+            return NativeTableReadResult.Ambiguous(
+                $"no expected POS context was supplied for table '{requestedTableCode}'");
+        }
+
+        var wantedMap = expectedMap.Trim();
+        var wantedPos = expectedPos.Value;
 
         var matching = (candidates ?? Array.Empty<PosServerSaleWithLines>())
             .Where(c => TableIdentity.SameTable(c.Sale.Code?.Trim(), requestedTableCode))
             .Where(c => c.Sale.Map is not null
                 && string.Equals(c.Sale.Map.Value.ToString(), wantedMap, StringComparison.OrdinalIgnoreCase))
-            .Where(c => c.Sale.Pos == TableSalePos)
+            .Where(c => c.Sale.Pos == wantedPos)
             .ToList();
 
         if (matching.Count == 0)
         {
             return NativeTableReadResult.NoSale(
-                $"no POSServer pending sale for table '{requestedTableCode}' at Map={wantedMap}, Pos={TableSalePos}");
+                $"no POSServer pending sale for table '{requestedTableCode}' at Map={wantedMap}, Pos={wantedPos}");
         }
 
         if (matching.Count > 1)
@@ -257,7 +292,7 @@ public static class NativeTableSaleCanonicalizer
             var ids = string.Join(", ", matching.Select(m => m.Sale.ObservedRowId));
             return NativeTableReadResult.Ambiguous(
                 $"{matching.Count} POSServer pending sales match table '{requestedTableCode}' at Map={wantedMap}, "
-                + $"Pos={TableSalePos} (observed row ids: {ids}) — the native state cannot be resolved to one sale");
+                + $"Pos={wantedPos} (observed row ids: {ids}) — the native state cannot be resolved to one sale");
         }
 
         var only = matching[0];
@@ -323,7 +358,7 @@ public static class NativeTableSaleCanonicalizer
         return NativeTableReadResult.Sale(new NativeTableSaleObservation
         {
             TableCode = only.Sale.Code?.Trim() ?? requestedTableCode.Trim(),
-            Pos = only.Sale.Pos ?? TableSalePos,
+            Pos = only.Sale.Pos ?? wantedPos,
             Map = only.Sale.Map?.ToString(),
             DateModified = only.Sale.DateModified,
             ObservedRowId = only.Sale.ObservedRowId,
@@ -367,4 +402,38 @@ public static class NativeTableSaleCanonicalizer
         price = value;
         return true;
     }
+}
+
+/// <summary>
+/// The native table context a read must be told: which map partition and which
+/// POS the table sale lives in.
+///
+/// This is a supplied value, not a constant, because the sealed 2026-09-05 run
+/// proved what Table 5 looked like ON THAT INSTALLATION on that day — Code=5,
+/// Map=1, Pos=1 — and proved nothing about every native table on every
+/// configured IdealPOS. The map is a floor-plan concept a venue configures, and
+/// a venue with several maps could legitimately place tables outside map 1.
+///
+/// Treating the observation as a domain law is precisely the class of mistake
+/// that produced the earlier "POSServer is a replica" over-claim, so the value
+/// travels as configuration and an unknown value fails closed.
+/// </summary>
+public sealed record NativeTableContext
+{
+    /// <summary>The map partition to read. Required; blank fails closed.</summary>
+    public required string? ExpectedMap { get; init; }
+
+    /// <summary>The POS context to read. Required; null fails closed.</summary>
+    public required int? ExpectedPos { get; init; }
+
+    /// <summary>
+    /// The context OBSERVED on this installation on 2026-09-05. Offered for
+    /// tests, fixtures and as a documented starting point for configuring a
+    /// venue — never applied implicitly by the reader.
+    /// </summary>
+    public static NativeTableContext ObservedOnThisInstallation => new()
+    {
+        ExpectedMap = NativeTableSaleCanonicalizer.ObservedTableMapValueOnThisInstallation,
+        ExpectedPos = NativeTableSaleCanonicalizer.ObservedTableSalePosOnThisInstallation,
+    };
 }

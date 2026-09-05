@@ -11,6 +11,9 @@ public sealed record NativeReadbackDecision
     /// <summary>The connection factory to use when <see cref="Enabled"/>. Null otherwise.</summary>
     public Func<DbConnection>? ConnectionFactory { get; init; }
 
+    /// <summary>The configured native table context to read in. Null when disabled.</summary>
+    public NativeTableContext? TableContext { get; init; }
+
     /// <summary>Always populated — the operator-facing explanation, logged either way.</summary>
     public required string Reason { get; init; }
 }
@@ -46,15 +49,42 @@ public static class NativeReadbackGate
 
     public const string DefaultProviderInvariantName = "Microsoft.Data.SqlClient";
 
+    /// <summary>Map partition to read. Venue configuration, never assumed.</summary>
+    public const string MapVariable = "IDEALPOS_POSSERVER_MAP";
+
+    /// <summary>POS context to read. Venue configuration, never assumed.</summary>
+    public const string PosVariable = "IDEALPOS_POSSERVER_POS";
+
     /// <summary>
-    /// The privilege this reader expects, stated where the wiring happens so it
-    /// travels with the code rather than living only in a runbook.
+    /// The read-only properties this codebase actually GUARANTEES. Every item
+    /// here is a structural fact about the reader, asserted by test.
     /// </summary>
-    public const string LeastPrivilegeNote =
-        "The configured login should hold db_datareader on the POSServer database and nothing more — this reader "
-        + "issues exactly one SELECT over dbo.PendingSales and dbo.PendingSaleLines. Do NOT configure it with the "
-        + "machine account, a sysadmin login, or any principal that can write. Set ApplicationIntent=ReadOnly where "
-        + "the deployment supports it.";
+    public const string EnforcedReadOnlyProperties =
+        "Enforced in code: the connection string must be explicitly configured (never defaulted or inferred); a "
+        + "provider must be registered; the reader issues exactly one SELECT held in a constant, with no "
+        + "ExecuteNonQuery/ExecuteScalar/BeginTransaction call and no dynamically built SQL.";
+
+    /// <summary>
+    /// The privilege requirement this codebase CANNOT check. Stated separately,
+    /// and deliberately not phrased as something the connector enforces: a
+    /// sysadmin connection string would work exactly as well here, and nothing
+    /// in this process could tell.
+    /// </summary>
+    public const string OperationalPrivilegeRequirement =
+        "NOT enforced by this connector, and not enforceable from it — required operationally: the SQL login must "
+        + "hold only read access (e.g. db_datareader) on the POSServer database and must lack write and "
+        + "administrative rights. Do not use the machine account or a sysadmin login. Granting and auditing this is "
+        + "the database administrator's responsibility.";
+
+    /// <summary>
+    /// Whether the connection string opts into a read-only application intent.
+    /// Reported, not required: not every provider or topology supports it, so
+    /// its absence is a fact to surface rather than grounds to refuse.
+    /// </summary>
+    public static bool DeclaresReadOnlyApplicationIntent(string? connectionString) =>
+        connectionString is not null
+        && connectionString.Replace(" ", string.Empty)
+            .Contains("ApplicationIntent=ReadOnly", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Decides from raw configuration values.
@@ -69,7 +99,9 @@ public static class NativeReadbackGate
     public static NativeReadbackDecision Decide(
         string? connectionString,
         string? providerInvariantName,
-        Func<string, DbProviderFactory?> resolveFactory)
+        Func<string, DbProviderFactory?> resolveFactory,
+        string? expectedMap = null,
+        string? expectedPos = null)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -116,10 +148,31 @@ public static class NativeReadbackGate
             };
         }
 
+        // The table context is venue configuration. Without it the reader would
+        // have to assume the map/POS one installation happened to use — exactly
+        // the over-claim this gate refuses to make on an operator's behalf.
+        if (string.IsNullOrWhiteSpace(expectedMap) || !int.TryParse((expectedPos ?? string.Empty).Trim(), out var pos))
+        {
+            return new NativeReadbackDecision
+            {
+                Enabled = false,
+                Reason =
+                    $"{ConnectionStringVariable} is set but the native table context is not: both {MapVariable} and "
+                    + $"{PosVariable} must be configured for this venue. The map and POS observed on one installation "
+                    + "are evidence, not defaults. Keeping the fail-closed stand-ins.",
+            };
+        }
+
         var captured = connectionString!;
+        var intentNote = DeclaresReadOnlyApplicationIntent(captured)
+            ? "The connection string declares ApplicationIntent=ReadOnly."
+            : "The connection string does not declare ApplicationIntent=ReadOnly; set it where the provider and "
+              + "topology support it.";
+
         return new NativeReadbackDecision
         {
             Enabled = true,
+            TableContext = new NativeTableContext { ExpectedMap = expectedMap!.Trim(), ExpectedPos = pos },
             ConnectionFactory = () =>
             {
                 var connection = factory.CreateConnection()
@@ -127,7 +180,9 @@ public static class NativeReadbackGate
                 connection.ConnectionString = captured;
                 return connection;
             },
-            Reason = $"native POSServer readback enabled via provider '{provider}'. {LeastPrivilegeNote}",
+            Reason =
+                $"native POSServer readback enabled via provider '{provider}', map {expectedMap!.Trim()}, POS {pos}. "
+                + $"{intentNote} {EnforcedReadOnlyProperties} {OperationalPrivilegeRequirement}",
         };
     }
 }

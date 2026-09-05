@@ -241,7 +241,9 @@ static async Task<int> RunAlwaysOnHostAsync(
     var readbackDecision = NativeReadbackGate.Decide(
         Environment.GetEnvironmentVariable(NativeReadbackGate.ConnectionStringVariable),
         Environment.GetEnvironmentVariable(NativeReadbackGate.ProviderVariable),
-        name => System.Data.Common.DbProviderFactories.GetFactory(name));
+        name => System.Data.Common.DbProviderFactories.GetFactory(name),
+        Environment.GetEnvironmentVariable(NativeReadbackGate.MapVariable),
+        Environment.GetEnvironmentVariable(NativeReadbackGate.PosVariable));
 
     // Stated at startup either way: an operator who set the variable and still
     // sees refusals needs to know the gate said no, and why.
@@ -250,7 +252,8 @@ static async Task<int> RunAlwaysOnHostAsync(
     if (readbackDecision.Enabled)
     {
         var factory = readbackDecision.ConnectionFactory!;
-        builder.Services.AddSingleton(sp => new PosServerTableStateReader(factory));
+        var tableContext = readbackDecision.TableContext!;
+        builder.Services.AddSingleton(sp => new PosServerTableStateReader(factory, tableContext));
         builder.Services.AddSingleton<INativeTableStateReader>(sp => sp.GetRequiredService<PosServerTableStateReader>());
         builder.Services.AddSingleton<IPosServerConfirmationClient>(sp =>
             new PosServerConfirmationClient(sp.GetRequiredService<PosServerTableStateReader>()));

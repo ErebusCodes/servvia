@@ -36,7 +36,7 @@ public sealed class PosServerConfirmationClientTests
     private static PosServerConfirmationClient ClientOver(params object?[][] rows)
     {
         var connection = new FakeDbConnection { Columns = QueryColumns.ToList(), Rows = rows.ToList() };
-        return new PosServerConfirmationClient(new PosServerTableStateReader(() => connection));
+        return new PosServerConfirmationClient(new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation));
     }
 
     private static TableSaleFingerprint Before(params (string Code, int Qty)[] lines) => new()
@@ -138,7 +138,7 @@ public sealed class PosServerConfirmationClientTests
         // supports no claim at all, and reporting one would be a false negative
         // that a later retry could turn into a resend.
         var connection = new FakeDbConnection { FailOnOpen = new InvalidOperationException("server down") };
-        var client = new PosServerConfirmationClient(new PosServerTableStateReader(() => connection));
+        var client = new PosServerConfirmationClient(new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation));
 
         var ex = await Assert.ThrowsAsync<NativeCapabilityUnavailableException>(
             () => client.ConfirmRoundAsync(
@@ -163,7 +163,7 @@ public sealed class PosServerConfirmationClientTests
     public async Task ItReadsTheTableContextFromTheBeforeSnapshot_SoBothTermsShareOneContext()
     {
         var connection = new FakeDbConnection { Columns = QueryColumns.ToList(), Rows = { Row("23", 1) } };
-        var client = new PosServerConfirmationClient(new PosServerTableStateReader(() => connection));
+        var client = new PosServerConfirmationClient(new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation));
 
         await client.ConfirmRoundAsync(
             TerminalRoundKind.SecondRound, "5", map: null, Before(("23", 1)),

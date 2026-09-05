@@ -125,8 +125,20 @@ public static class TerminalConfirmationEvaluator
     }
 
     /// <summary>
-    /// Confirms a round ONLY when the observed native delta is exactly the
-    /// round's items, prior lines are intact, and nothing else changed.
+    /// Reports whether the observed native delta is exactly the round's items,
+    /// with prior lines intact and nothing else changed.
+    ///
+    /// <b>WHAT <see cref="TerminalConfirmationOutcome.Confirmed"/> MEANS, AND
+    /// WHAT IT DOES NOT.</b> It means the CONTENT matches. It does not mean
+    /// Verdura caused the change, and this function cannot establish that: no
+    /// native field binds a sale or a line to a Verdura order. If a person
+    /// independently rings up the identical PLU and quantity in the same
+    /// interval, the delta is byte-identical to ours and this returns
+    /// Confirmed. That limitation is real, is not detectable here, and is
+    /// deliberately not papered over — the caller supplies the missing half
+    /// (evidence about our own execution) through
+    /// <c>RoundAttributionBasis</c>, and TerminalRoundService refuses to treat
+    /// a content match as attribution when that evidence is absent.
     ///
     /// Both round kinds are evaluated as a delta against
     /// <paramref name="before"/>. The round kind then decides what a

@@ -52,7 +52,7 @@ public sealed class PosServerTableReadTests
 
     private static NativeTableReadResult Read(
         string requestedTable = "5", string? map = null, params PosServerSaleWithLines[] candidates) =>
-        NativeTableSaleCanonicalizer.Canonicalize(requestedTable, map, candidates);
+        NativeTableSaleCanonicalizer.Canonicalize(requestedTable, map ?? NativeTableSaleCanonicalizer.ObservedTableMapValueOnThisInstallation, NativeTableSaleCanonicalizer.ObservedTableSalePosOnThisInstallation, candidates);
 
     // ─────────────────────── resolution outcomes ───────────────────────
 
@@ -127,6 +127,88 @@ public sealed class PosServerTableReadTests
 
         Assert.Equal(NativeTableReadStatus.NoOpenSale, result.Status);
         Assert.Contains("Map=1", result.Reason);
+    }
+
+    [Fact]
+    public void AConfiguredMapMatchesThatMap_AndOnlyThatMap()
+    {
+        // The map is venue configuration. These assertions say "a configured
+        // map 1 matches a map-1 sale, and a map-2 sale does not" — they
+        // deliberately do NOT say "native tables live on map 1", which the
+        // sealed run never established.
+        var saleOnMap1 = new PosServerSaleWithLines(Sale(map: 1), new[] { Line(1, "23") });
+
+        var matching = NativeTableSaleCanonicalizer.Canonicalize("5", "1", 1, new[] { saleOnMap1 });
+        var notMatching = NativeTableSaleCanonicalizer.Canonicalize("5", "2", 1, new[] { saleOnMap1 });
+
+        Assert.Equal(NativeTableReadStatus.Observed, matching.Status);
+        Assert.Equal(NativeTableReadStatus.NoOpenSale, notMatching.Status);
+    }
+
+    [Fact]
+    public void ASaleOnAnotherConfiguredMap_IsFoundWhenThatMapIsTheConfiguredOne()
+    {
+        // The converse, so neither map is privileged by the tests: a venue
+        // configured for map 4 reads map-4 tables.
+        var saleOnMap4 = new PosServerSaleWithLines(Sale(map: 4), new[] { Line(1, "23") });
+
+        var result = NativeTableSaleCanonicalizer.Canonicalize("5", "4", 1, new[] { saleOnMap4 });
+
+        Assert.Equal(NativeTableReadStatus.Observed, result.Status);
+        Assert.Equal("4", result.Observation!.Map);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void WithNoExpectedMapSupplied_TheReadFailsClosed_RatherThanAssumingOne(string? map)
+    {
+        var result = NativeTableSaleCanonicalizer.Canonicalize(
+            "5", map, 1, new[] { new PosServerSaleWithLines(Sale(), new[] { Line(1, "23") }) });
+
+        Assert.Equal(NativeTableReadStatus.Ambiguous, result.Status);
+        Assert.Contains("venue configuration, not a", result.Reason);
+    }
+
+    [Fact]
+    public void WithNoExpectedPosSupplied_TheReadFailsClosed()
+    {
+        var result = NativeTableSaleCanonicalizer.Canonicalize(
+            "5", "1", null, new[] { new PosServerSaleWithLines(Sale(), new[] { Line(1, "23") }) });
+
+        Assert.Equal(NativeTableReadStatus.Ambiguous, result.Status);
+        Assert.Contains("POS context", result.Reason);
+    }
+
+    [Fact]
+    public async Task TheReaderRefusesWhenItsConfiguredContextHasNoMap()
+    {
+        var connection = Connection();
+        var reader = new PosServerTableStateReader(
+            () => connection, new NativeTableContext { ExpectedMap = null, ExpectedPos = 1 });
+
+        var result = await reader.ReadTableAsync("5", null, CancellationToken.None);
+
+        Assert.Equal(NativeTableReadStatus.Ambiguous, result.Status);
+        Assert.Equal(0, connection.ExecuteCount); // it never even queried
+    }
+
+    [Fact]
+    public void TheObservedContextIsOfferedAsEvidence_NotAppliedImplicitly()
+    {
+        // The constant still exists — it is real evidence and a sensible
+        // starting point for configuring a venue — but the reader requires it
+        // to be handed over rather than reaching for it.
+        Assert.Equal("1", NativeTableContext.ObservedOnThisInstallation.ExpectedMap);
+        Assert.Equal(1, NativeTableContext.ObservedOnThisInstallation.ExpectedPos);
+
+        var ctorTakesContext = typeof(PosServerTableStateReader)
+            .GetConstructors()
+            .Single()
+            .GetParameters()
+            .Single(p => p.ParameterType == typeof(NativeTableContext));
+        Assert.False(ctorTakesContext.HasDefaultValue);
     }
 
     [Fact]
@@ -364,7 +446,7 @@ public sealed class PosServerTableReadTests
         var connection = Connection(
             Row(99724, "5", 1, 1, 1, "SI", "              23", "1", "1.5"),
             Row(99724, "5", 1, 1, 2, "SI", "             511", "1", "6"));
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         var result = await reader.ReadTableAsync("5", null, CancellationToken.None);
 
@@ -377,7 +459,7 @@ public sealed class PosServerTableReadTests
     public async Task TheAdapterParameterizesTheTableContext_AndNeverInterpolatesIt()
     {
         var connection = Connection();
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         await reader.ReadTableAsync("5", null, CancellationToken.None);
 
@@ -393,7 +475,7 @@ public sealed class PosServerTableReadTests
         // The LEFT JOIN yields one row with null line columns. An open-but-empty
         // table is a real state and must not read as free.
         var connection = Connection(Row(99724, "5", 1, 1, null, null, null, null, null));
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         var result = await reader.ReadTableAsync("5", null, CancellationToken.None);
 
@@ -405,7 +487,7 @@ public sealed class PosServerTableReadTests
     public async Task WhenTheServerCannotBeReached_TheResultIsUnavailable_NotAnEmptyTable()
     {
         var connection = new FakeDbConnection { FailOnOpen = new InvalidOperationException("network unreachable") };
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         var result = await reader.ReadTableAsync("5", null, CancellationToken.None);
 
@@ -422,7 +504,7 @@ public sealed class PosServerTableReadTests
             Columns = QueryColumns.ToList(),
             FailOnExecute = new TimeoutException("query timed out"),
         };
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         var result = await reader.ReadTableAsync("5", null, CancellationToken.None);
 
@@ -437,7 +519,7 @@ public sealed class PosServerTableReadTests
         // "I could not look" must not be squeezed into null — that is the exact
         // confusion that sends a first round onto an occupied table.
         var connection = new FakeDbConnection { FailOnOpen = new InvalidOperationException("down") };
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         await Assert.ThrowsAsync<NativeCapabilityUnavailableException>(
             () => reader.ReadAsync("5", null, CancellationToken.None));
@@ -449,7 +531,7 @@ public sealed class PosServerTableReadTests
         var connection = Connection(
             Row(99724, "5", 1, 1, 1, "SI", "23", "1", "1.5"),
             Row(99725, "5", 1, 1, 1, "SI", "511", "1", "6"));
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         await Assert.ThrowsAsync<NativeCapabilityUnavailableException>(
             () => reader.ReadAsync("5", null, CancellationToken.None));
@@ -459,7 +541,7 @@ public sealed class PosServerTableReadTests
     public async Task TheInterfaceAdapter_ReturnsNullOnlyForAGenuinelyFreeTable()
     {
         var connection = Connection();
-        var reader = new PosServerTableStateReader(() => connection);
+        var reader = new PosServerTableStateReader(() => connection, NativeTableContext.ObservedOnThisInstallation);
 
         Assert.Null(await reader.ReadAsync("5", null, CancellationToken.None));
     }

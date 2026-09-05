@@ -173,7 +173,7 @@ public sealed class TerminalRestartRecoveryTests : IDisposable
     }
 
     [Fact]
-    public async Task AfterACrashAtTheBoundary_TheSweepResolvesTheRound_WithoutTheCloudRedeliveringAnything()
+    public async Task AfterACrashAtTheBoundary_TheSweepSurfacesTheRound_WithoutTheCloudRedeliveringAnything()
     {
         var logPath = NewLogPath();
         var tableState = new FakeTerminalTableState();
@@ -196,9 +196,13 @@ public sealed class TerminalRestartRecoveryTests : IDisposable
             ui, new TerminalRoundStateStore(new DurableLocalLog(logPath)), reader, confirm);
         var swept = await restarted.ReconcileOutstandingAsync(CancellationToken.None);
 
+        // Found — which is the gap the sweep exists to close — but NOT
+        // confirmed: a sweep runs precisely when live execution evidence is
+        // gone, and an exact delta read then could equally be a person's work.
         var resolved = Assert.Single(swept);
         Assert.Equal("round-2", resolved.RoundId);
-        Assert.Equal(TerminalRoundStatus.CONFIRMED, resolved.Status);
+        Assert.Equal(TerminalRoundStatus.MANUAL_RESOLUTION_REQUIRED, resolved.Status);
+        Assert.NotEqual(TerminalRoundStatus.CONFIRMED, resolved.Status);
         Assert.Equal(2, ui.SaveToTableExecuteCount); // the sweep drove nothing
         Assert.Equal(1, tableState.Fingerprint("5")!.Lines.Count(l => l.NativeCode == "704"));
     }
@@ -288,7 +292,7 @@ public sealed class TerminalRestartRecoveryTests : IDisposable
             ui, new TerminalRoundStateStore(new DurableLocalLog(logPath)), reader, confirm);
 
         var first = await service.ReconcileOutstandingAsync(CancellationToken.None);
-        Assert.Equal(TerminalRoundStatus.CONFIRMED, Assert.Single(first).Status);
+        Assert.Equal(TerminalRoundStatus.MANUAL_RESOLUTION_REQUIRED, Assert.Single(first).Status);
 
         var second = await service.ReconcileOutstandingAsync(CancellationToken.None);
         Assert.Empty(second); // nothing left outstanding

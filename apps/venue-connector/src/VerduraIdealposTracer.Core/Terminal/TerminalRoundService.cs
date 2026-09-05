@@ -42,6 +42,48 @@ namespace VerduraIdealposTracer.Core.Terminal;
 /// <see cref="TerminalRoundStatus.AWAITING_NATIVE_CONFIRMATION"/> and never
 /// claims CONFIRMED.
 /// </summary>
+/// <summary>
+/// WHY THIS EXISTS. Nothing in native IdealPOS ties a table sale, or a line on
+/// it, to a Verdura order. The 2026-09-05 run searched PendingSales,
+/// PendingSaleLines, TableMapSetups, TableActivity and ~SENDSTAT and found no
+/// such field. So "the observed delta equals the round we intended" is a
+/// statement about CONTENT, not about CAUSE.
+///
+/// The gap is concrete and easy to state: baseline Table 5 carries a Lemon
+/// slice, Verdura intends MUHALLEBI x1, and in the same interval a staff member
+/// independently rings up MUHALLEBI x1. The post-state contains exactly the
+/// expected delta whether or not Verdura's send ever landed. No amount of
+/// reading PLU and quantity can separate those two worlds.
+///
+/// What CAN narrow it is evidence about our own execution, and that evidence
+/// differs sharply between two situations — which is what this type makes
+/// explicit rather than leaving implied.
+/// </summary>
+public enum RoundAttributionBasis
+{
+    /// <summary>
+    /// The driver completed a single guarded action window IN THIS PROCESS and
+    /// returned success, and the delta is being read immediately afterwards.
+    /// The window bounds when our mutation could have happened, and a
+    /// same-PLU collision inside it would normally show as a doubled delta
+    /// (caught as UnexpectedDuplicate) rather than an exact match.
+    ///
+    /// A residual gap remains and is NOT detected: if our send silently failed
+    /// to land while a human added the identical item in the same window, the
+    /// delta matches and this round confirms. That is accepted only because the
+    /// driver independently reported completing the send.
+    /// </summary>
+    GuardedActionWindow,
+
+    /// <summary>
+    /// A crash, a lost response, or a restart. There is no live execution
+    /// evidence at all — only durable state saying we may or may not have sent.
+    /// The interval in which the delta could have appeared is unbounded, so an
+    /// exact match is NOT attribution and must not be read as one.
+    /// </summary>
+    RecoveredWithoutExecutionEvidence,
+}
+
 public sealed class TerminalRoundService(
     IIdealposUiAutomationClient automationClient,
     TerminalRoundStateStore stateStore,
@@ -167,7 +209,7 @@ public sealed class TerminalRoundService(
             return awaiting;
         }
 
-        return await ReconcileAsync(request, preSend, cancellationToken);
+        return await ReconcileAsync(request, preSend, RoundAttributionBasis.GuardedActionWindow, cancellationToken);
     }
 
     /// <summary>
@@ -179,6 +221,7 @@ public sealed class TerminalRoundService(
     public async Task<TerminalRoundStateEntry> ReconcileAsync(
         TerminalRoundRequest request,
         TableSaleFingerprint? preSendSnapshot,
+        RoundAttributionBasis attributionBasis,
         CancellationToken cancellationToken)
     {
         if (confirmationClient is null)
@@ -212,8 +255,23 @@ public sealed class TerminalRoundService(
 
         if (confirmation.IsConfirmed)
         {
+            // The evaluator has said the observed delta EQUALS this round. That
+            // is content, not cause — see RoundAttributionBasis. Whether it is
+            // enough to call the round confirmed depends entirely on what we
+            // know about our own execution.
+            if (attributionBasis == RoundAttributionBasis.RecoveredWithoutExecutionEvidence)
+            {
+                return Persist(request, TerminalRoundStatus.MANUAL_RESOLUTION_REQUIRED,
+                    "the observed native delta equals this round, but it is being read after a crash/lost "
+                    + "response/restart with no evidence that OUR action caused it — an identical concurrent "
+                    + "mutation by a person is observationally indistinguishable, so this is not attributed. "
+                    + "A human must confirm the table. NOT resent.",
+                    baseline);
+            }
+
             return Persist(request, TerminalRoundStatus.CONFIRMED,
-                "confirmed natively: the observed delta equals this round", baseline);
+                "confirmed natively: the observed delta equals this round, read immediately after a guarded "
+                + "action window the driver reported completing", baseline);
         }
 
         // An outcome nobody can attribute is escalated, not retried. The
@@ -331,7 +389,9 @@ public sealed class TerminalRoundService(
             // The persisted snapshot is passed explicitly; ReconcileAsync also
             // falls back to it, but being explicit keeps the sweep's data flow
             // obvious rather than incidental.
-            results.Add(await ReconcileAsync(request, entry.PreSendSnapshot, cancellationToken));
+            // A sweep runs precisely when live execution evidence is gone.
+            results.Add(await ReconcileAsync(
+                request, entry.PreSendSnapshot, RoundAttributionBasis.RecoveredWithoutExecutionEvidence, cancellationToken));
         }
 
         return results;

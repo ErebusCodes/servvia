@@ -10,14 +10,24 @@ namespace VerduraIdealposTracer.Core.Terminal.PosServer;
 /// no code path that constructs mutating SQL — a property asserted by test, not
 /// merely intended.
 ///
-/// LEAST PRIVILEGE. The connection this is given should authenticate as a login
-/// with <c>db_datareader</c> on the POSServer database and nothing else. It
-/// must NOT inherit the machine's SYSTEM/sysadmin rights: the reader needs
-/// SELECT on two tables, and any privilege beyond that is a liability rather
-/// than a convenience. Operators should also set <c>ApplicationIntent=ReadOnly</c>
-/// where the deployment supports it. None of this is enforceable from inside
-/// the process, which is exactly why it is stated here and in the runbook
-/// rather than assumed.
+/// WHAT "READ-ONLY" MEANS HERE, PRECISELY. Two different things are often run
+/// together under that phrase, and only one of them is a property of this code:
+///
+///   ENFORCED BY THIS CLASS — it issues exactly one SELECT, held in a constant;
+///   it never calls ExecuteNonQuery, ExecuteScalar or BeginTransaction; it
+///   builds no dynamic SQL and interpolates no value into the statement. Those
+///   are structural facts about the code, asserted by test.
+///
+///   NOT ENFORCED, AND NOT ENFORCEABLE FROM HERE — that the SQL login actually
+///   lacks write and administrative rights. A connection string naming a
+///   sysadmin login would work exactly as well for this class, and nothing in
+///   this process can detect or prevent that. Granting the login only
+///   <c>db_datareader</c> on the POSServer database is an OPERATIONAL
+///   requirement satisfied outside this codebase, by whoever creates the login.
+///
+/// Saying the code "enforces least privilege" because a message mentions
+/// db_datareader would be false. It documents the requirement; the database
+/// administrator enforces it.
 ///
 /// NO PROVIDER DEPENDENCY. The connection arrives through a factory delegate
 /// typed as <see cref="DbConnection"/>, so this assembly takes no dependency on
@@ -35,7 +45,7 @@ namespace VerduraIdealposTracer.Core.Terminal.PosServer;
 /// </summary>
 public sealed class PosServerTableStateReader(
     Func<DbConnection> connectionFactory,
-    string? expectedMap = null,
+    NativeTableContext tableContext,
     int commandTimeoutSeconds = 10) : INativeTableStateReader
 {
     /// <summary>
@@ -79,9 +89,18 @@ public sealed class PosServerTableStateReader(
             return NativeTableReadResult.Ambiguous("no table code was requested");
         }
 
-        var wantedMap = string.IsNullOrWhiteSpace(map)
-            ? (string.IsNullOrWhiteSpace(expectedMap) ? NativeTableSaleCanonicalizer.TableMapMapValue : expectedMap!.Trim())
-            : map.Trim();
+        // The caller's map wins when supplied (both terms of a delta then share
+        // one observed context); otherwise the CONFIGURED context is used. There
+        // is no third fallback: an unconfigured map fails closed rather than
+        // assuming the value one installation happened to use.
+        var wantedMap = string.IsNullOrWhiteSpace(map) ? tableContext.ExpectedMap : map.Trim();
+
+        if (string.IsNullOrWhiteSpace(wantedMap))
+        {
+            return NativeTableReadResult.Ambiguous(
+                "no expected table map is configured and none was supplied — the map is venue configuration, not a "
+                + "constant, so this read refuses rather than guessing which native partition to look in");
+        }
 
         if (!int.TryParse(wantedMap, out var mapValue))
         {
@@ -106,7 +125,7 @@ public sealed class PosServerTableStateReader(
                 $"POSServer could not be read ({ex.GetType().Name}: {ex.Message})");
         }
 
-        return NativeTableSaleCanonicalizer.Canonicalize(tableCode, wantedMap, candidates);
+        return NativeTableSaleCanonicalizer.Canonicalize(tableCode, wantedMap, tableContext.ExpectedPos, candidates);
     }
 
     /// <summary>
@@ -150,7 +169,7 @@ public sealed class PosServerTableStateReader(
         command.CommandTimeout = commandTimeoutSeconds;
         AddParameter(command, "@code", tableCode);
         AddParameter(command, "@map", mapValue);
-        AddParameter(command, "@pos", NativeTableSaleCanonicalizer.TableSalePos);
+        AddParameter(command, "@pos", tableContext.ExpectedPos);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

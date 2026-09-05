@@ -180,7 +180,8 @@ public sealed class TerminalRoundOrchestrationTests : IDisposable
         var restartedStore = new TerminalRoundStateStore(new DurableLocalLog(logPath));
         var restarted = new TerminalRoundService(ui, restartedStore, reader, confirm);
 
-        var reconciled = await restarted.ReconcileAsync(Round2(), preSendSnapshot: null, CancellationToken.None);
+        var reconciled = await restarted.ReconcileAsync(Round2(), preSendSnapshot: null,
+            RoundAttributionBasis.RecoveredWithoutExecutionEvidence, CancellationToken.None);
 
         // The crash was BEFORE the drive, so the round never reached the
         // native side: the expected 704 is absent. That is ExpectedItemMissing
@@ -193,7 +194,7 @@ public sealed class TerminalRoundOrchestrationTests : IDisposable
     }
 
     [Fact]
-    public async Task LostResponseAfterTheNativeApply_IsUncertain_IsNeverResent_AndReconcilesToConfirmedAfterRestart()
+    public async Task LostResponseAfterTheNativeApply_IsUncertain_IsNeverResent_AndRecoversToManualResolution()
     {
         var logPath = NewLogPath();
         var tableState = new FakeTerminalTableState();
@@ -218,14 +219,22 @@ public sealed class TerminalRoundOrchestrationTests : IDisposable
         Assert.Equal(TerminalRoundStatus.UNCERTAIN, redelivered.Status);
         Assert.Equal(2, ui.SaveToTableExecuteCount);
 
-        // Restart, then reconcile: the persisted baseline plus the current
-        // native state prove the round DID land, exactly once.
+        // Restart, then reconcile. The content matches — 704 is on the table
+        // exactly once — but this is being read with NO evidence that OUR send
+        // caused it. A person adding the identical item would look the same, so
+        // the round is escalated rather than attributed.
         var restarted = new TerminalRoundService(
             ui, new TerminalRoundStateStore(new DurableLocalLog(logPath)), reader, confirm);
-        var reconciled = await restarted.ReconcileAsync(Round2(), preSendSnapshot: null, CancellationToken.None);
+        var reconciled = await restarted.ReconcileAsync(Round2(), preSendSnapshot: null,
+            RoundAttributionBasis.RecoveredWithoutExecutionEvidence, CancellationToken.None);
 
-        Assert.Equal(TerminalRoundStatus.CONFIRMED, reconciled.Status);
-        Assert.Equal(2, ui.SaveToTableExecuteCount); // still never resent
+        Assert.Equal(TerminalRoundStatus.MANUAL_RESOLUTION_REQUIRED, reconciled.Status);
+        Assert.NotEqual(TerminalRoundStatus.CONFIRMED, reconciled.Status);
+        Assert.Contains("indistinguishable", reconciled.Detail);
+
+        // The no-resend rule is untouched, which is the point: refusing to
+        // attribute must never turn into sending again.
+        Assert.Equal(2, ui.SaveToTableExecuteCount);
         var fp = tableState.Fingerprint("5")!;
         Assert.Equal(1, fp.Lines.Count(l => l.NativeCode == "704")); // applied exactly once
     }
