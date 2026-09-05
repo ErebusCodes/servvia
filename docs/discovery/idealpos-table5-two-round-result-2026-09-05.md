@@ -223,3 +223,28 @@ on the till. The two blockers are unchanged and now sharper:
 **Table 5 was left open** with both rounds sent, for normal staff handling. No
 close, pay, void, delete, cancel or transfer was performed. Table 10 — live
 customer activity throughout — was read-only and never touched.
+
+---
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+> ## POST-TEST CLEANUP — NOT EVIDENCE
+>
+> **This section is outside the experiment. It records an operator action taken
+> after the run closed, for accounting hygiene. It is not a capture step, it is
+> not part of `run-20260905-125814`, and it changes no finding, grade or verdict
+> above.**
+>
+> After `05-send-R2` (captured 14:08:41) and after all analysis was complete,
+> the operator deleted/voided the Table 5 test sale — 1 × Lemon slice and
+> 2 × MUHALLEBI, total $13.50 — through the **normal authorized IdealPOS staff
+> workflow**, and confirmed Table 5 returned to **Ready**.
+>
+> Deliberately **not** done: no capture step was taken of the cleanup, and no
+> diff was run against post-cleanup state. Folding cleanup into the evidence
+> chain would blur operator housekeeping with test observation, which is the
+> exact confusion this run's step discipline exists to prevent.
+>
+> The findings above rest entirely on the ten snapshots taken between 12:58:14
+> and 14:08:41, which are immutable on disk and committed. The live native
+> experiment is **closed**.
+<!-- ─────────────────────────────────────────────────────────────────────── -->
