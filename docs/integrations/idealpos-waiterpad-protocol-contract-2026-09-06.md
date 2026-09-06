@@ -588,8 +588,16 @@ else:
 | Is there a native line identity? | **No stable one.** The usable partition is line ordinal + `OrderedTime`. | `[BACK]` `PROVEN RUNTIME` (Table 5) |
 | Is there a status readback? | **Yes** — `REQUESTTABLESTATUS` (§13). | `PROVEN STATIC` |
 | **Does `ACK` mean the round was durably executed?** | **NO.** `ACK` is returned from `CheckWPOrder` the instant the XML document is parked in `g_WPPackets(i)`, an in-process array of at most 200 slots. Not one row has been written at that point. If `IPS.exe` dies between `ACK` and the buffer drain, **the round is lost with no trace anywhere**. | **`PROVEN STATIC`** |
+| **Does `ACK` even mean the packet was buffered?** | **NO — and this is worse than the line above.** The slot scan is `for i = 1 to 200`. When every slot is occupied the loop falls out to `0x01826751`, which calls `__vbaExitProc` **without touching the result local**, and that local still holds the `1` written at `0x01826566`. A buffer-exhausted till therefore returns `1`, the caller emits `ACK`, and the packet is **silently discarded**. Nothing on the wire distinguishes that from acceptance. | **`PROVEN STATIC`** — added 2026-09-07 |
 | Does `SaveChecksum` run on the socket path? | **Not observably.** Its sole caller is inside `ProcessHandheldOrder` (the relay path). `WPOrder` touches `LastCheckSum` at `0x0182d6b1` but does not call `SaveChecksum`. | `PROVEN STATIC` for the caller set; `NOT SHOWN` what `WPOrder` does with `LastCheckSum` |
 | Where is the checksum written relative to the sale? | If it is written by `ProcessHandheldOrder`, it is written **during** processing, not at ACK. So a crash after `ACK` and before the drain leaves **no** checksum recorded either — meaning a resend would *not* be rejected as duplicate. | `STRONGLY INDICATED` |
+
+> **Consequence for the driver.** `ACK` cannot be treated as delivery under any
+> circumstances. It means *"accepted into volatile memory, or silently dropped
+> because the buffer was full"* — one of which produces food and the other of
+> which produces nothing, with an identical response. Every ACK must be
+> followed by a readback before a round is reported as anything but
+> submitted-unconfirmed. Tracked as blocker `WAITERPAD-ACKLOSS-001`.
 
 ### 12.3 The brief's question, answered directly
 
@@ -714,6 +722,7 @@ Ranked by what actually blocks the driver.
 | 9 | Whether `Seat`, `Guests`, `Total`, `VoidMode` are read on the order path | Affects covers and seat routing. | `NOT SHOWN` |
 | 10 | Promotion / time-based pricing on the sentinel path | The branch reads a plain `Price<N>` column. If promotions apply elsewhere, native price may still differ. | `NOT SHOWN` |
 | 11 | What routes a handheld order to the **relay** path (`ProcessHandheldOrder`, delete-and-rewrite) instead of the socket path | This is the surviving correctness catastrophe, and it is **more likely here, not less**: this is a genuine two-machine deployment where the handheld terminal (Front) and the POSServer host (Back) are different boxes — precisely the topology a relay exists to serve. | `[STATIC]` `PROVEN STATIC` that the path exists; **`NOT SHOWN`** what selects it |
+| 11b | **Under what load the 200-slot buffer fills, and how often.** An ACK is emitted for a dropped packet when it does. | Determines whether the ACK-loss hazard is theoretical or routine at service volume. | `[STATIC]` `PROVEN STATIC` that the hazard exists; frequency `NOT SHOWN` |
 | 12 | Framing state machine precision — delimiter, partial reads, keepalive, `HANDHELDCLOSESECONDS` | Wire-level robustness. | `STRONGLY INDICATED` shape only |
 
 ---
