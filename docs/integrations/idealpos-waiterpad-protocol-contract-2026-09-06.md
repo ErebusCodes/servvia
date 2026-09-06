@@ -4,9 +4,10 @@
 
 **Method.** Static analysis of the installed `IPS.exe` (40,143,120 bytes,
 2023-09-11) using `pefile` + `capstone` x86-32 disassembly against a
-byte-offset string map; read-only reads of the IdealPOS log tree; one
-read-only `Get-NetTCPConnection -State Listen` query of this host's own TCP
-table. **No packet was sent to any IdealPOS port. No connection was opened to
+byte-offset string map; read-only reads of the IdealPOS log tree **on Back / Machine 1 only**; one
+read-only `Get-NetTCPConnection -State Listen` query of **Back's** own TCP
+table. Front / Machine 2 was not inspected in this session; Front facts here
+are operator-captured and labelled `[FRONT]`. **No packet was sent to any IdealPOS port. No connection was opened to
 6983, 7983 or 12183. No WPPacket was transmitted or replayed. No database was
 written. No config, registry or service was changed. No printer action. No COM
 object instantiated. No UI automation. No vendor contact.**
@@ -21,17 +22,55 @@ object instantiated. No UI automation. No vendor contact.**
 
 ---
 
+## 0a. Machine scope — read this before any claim below
+
+**Amended 2026-09-07 after correction.** The first version of this document
+generalised Back-scoped runtime observations to the venue. That was wrong, and
+the corrections are recorded in §17.
+
+This venue has **two IdealPOS machines**, and every runtime claim in this
+document is scoped to exactly one of them:
+
+| Label | Host | IPv4 | Role | Handheld entitlement |
+| --- | --- | --- | --- | --- |
+| **Back / Machine 1** | `DESKTOP-SOKKOQ7` | 192.168.1.250 | POSServer host + IPS + IPSClient + IPSPrinterServer. **The only machine this investigation could read.** | **absent** — every startup logs `Options=Pack 2` |
+| **Front / Machine 2** | `DESKTOP-70DQTGJ` | 192.168.1.199 | the operating till. **Never inspected from here.** | **present** — operator-captured Sila licence shows **`Ideal Handheld 2`**, **`HandheldNumber=2`** |
+
+**Three scope labels are used throughout, and no claim is allowed to travel
+between them:**
+
+- **`[BACK]`** — observed on Back / Machine 1. Says nothing about Front.
+- **`[FRONT]`** — operator-captured on Front / Machine 2, supplied to this
+  investigation. Not independently verified from here.
+- **`[STATIC]`** — derived from the `IPS.exe` binary, which is the **same build
+  on both machines** (`IPS.exe`, 40,143,120 bytes, 2023-09-11, deployed by
+  `IPSDeploy`). Static findings are therefore machine-independent and are the
+  only claims in this document that legitimately apply venue-wide.
+
+> **The word "venue" is used only where venue-wide evidence exists.** In
+> practice that means `[STATIC]` findings and the Front licence capture. It is
+> never used for a Back-only observation.
+
+**The handheld server was observed on Front / Machine 2.** Back / Machine 1 is
+not where the WaiterPad ingress runs, so Back's listener table, Back's log
+corpus and Back's licence line are all evidence about the *wrong machine* for
+the question "is the WaiterPad ingress live at this venue".
+
+---
+
 ## 0. Headline
 
 Five things changed tonight.
 
-1. **The listener port is resolved: TCP `6983`, hardcoded.** `PROVEN STATIC`,
-   with the decoding method corroborated at runtime by an identical code
-   pattern on a port we can observe.
-2. **That listener is not open on this installation, and never has been.**
-   `PROVEN RUNTIME`. 12183 — which an earlier note tentatively associated with
-   the handheld family — is IPS.exe's **single-instance guard**, not the
-   handheld ingress.
+1. **The listener port is resolved: TCP `6983`, hardcoded.** `[STATIC]`
+   `PROVEN STATIC`, with the decoding method corroborated at runtime by an
+   identical code pattern on a port observable on Back.
+2. **That listener is not open on Back / Machine 1** — `[BACK]`
+   `PROVEN RUNTIME` — **which is expected, because the handheld server runs on
+   Front / Machine 2, and Front holds the entitlement** (`Ideal Handheld 2`,
+   `HandheldNumber=2`, `[FRONT]`). Separately, 12183 — which an earlier note
+   tentatively associated with the handheld family — is IPS.exe's
+   **single-instance guard**, not the handheld ingress (`[STATIC]`).
 3. **Pricing is settled.** IdealPOS *replaces* a `<Price>` of `-9999` with
    `StockItems.Price<PriceLevel>` read from its own catalogue. This is no
    longer an inference from the sender side; it is the receiver's own branch.
@@ -51,8 +90,12 @@ Five things changed tonight.
 
 ## 1. Topology
 
+The ingress lives on **Front / Machine 2**, the machine holding the handheld
+entitlement. Back / Machine 1 runs the same `IPS.exe` build but without it.
+
 ```
 Verdura ──TCP 6983──►  IPS.exe  (VB6, Session 1, the till UI process)
+                       ▲  on FRONT / Machine 2 — 192.168.1.199
                         │  wsWaiterPad (MSWinsock control array, index 0)
                         │  wsWaiterPad_DataArrival → WPParsePacket
                         │      ├─ licence gate: NOT HandheldLicensed → exit
@@ -71,12 +114,13 @@ Verdura ──TCP 6983──►  IPS.exe  (VB6, Session 1, the till UI process)
                         └─ IPS.exe ──loopback TCP 11000──► POSServer.exe (SQL Server, downstream copy)
 ```
 
-| Fact | Grade |
-| --- | --- |
-| `IPS.exe` hosts the WaiterPad listener (`wsWaiterPad`, MSWinsock) | `PROVEN STATIC` |
-| A second listener, `IPSWorker` (`frmPOSWorkerListener`), lives at TCP **7983** and belongs to the **POSWorker** process, not the till UI | `PROVEN STATIC` + `PROVEN RUNTIME` — its `StartupListener Start` / `Socket listening.` / `StartupListener End` triple appears 661 times in `POSWorker.log`, 2023-03-12 → 2026-09-05 |
-| TCP **12183** on `IPS.exe` is a single-instance guard, not handheld | `PROVEN STATIC` — the same LocalPort/Listen pattern, whose bind-failure branch raises *"Idealpos is already running.  Idealpos will now shut down."*, at `0x0283ecd9` — plus `PROVEN RUNTIME` (observed listening, pid 20056) |
-| `POSServer` holds a rewritten downstream representation, not the authoritative store | `STRONGLY INDICATED` — carried forward unchanged from `idealpos-native-invocation-decision-2026-09-05.md` |
+| Fact | Scope | Grade |
+| --- | --- | --- |
+| `IPS.exe` hosts the WaiterPad listener (`wsWaiterPad`, MSWinsock) | `[STATIC]` | `PROVEN STATIC` |
+| A second listener, `IPSWorker` (`frmPOSWorkerListener`), lives at TCP **7983** and belongs to the **POSWorker** process, not the till UI | `[STATIC]` + `[BACK]` | `PROVEN STATIC`; its `StartupListener Start` / `Socket listening.` / `StartupListener End` triple appears 661 times in Back's `POSWorker.log`, 2023-03-12 → 2026-09-05 (`PROVEN RUNTIME`, Back only) |
+| TCP **12183** on `IPS.exe` is a single-instance guard, not handheld | `[STATIC]` + `[BACK]` | `PROVEN STATIC` — the same LocalPort/Listen pattern, whose bind-failure branch raises *"Idealpos is already running.  Idealpos will now shut down."*, at `0x0283ecd9` — corroborated by Back's observed listener (pid 20056) |
+| `POSServer` holds a rewritten downstream representation, not the authoritative store | `[BACK]` | `STRONGLY INDICATED` — carried forward unchanged from `idealpos-native-invocation-decision-2026-09-05.md` |
+| Which machine the WaiterPad listener is actually bound on | `[FRONT]` | the handheld server was observed on Front / Machine 2. **The port number was never read from Front's own TCP table** — see §2.2. |
 
 ---
 
@@ -127,9 +171,15 @@ listener assignment, plus two further 6983 references at `0x02812adf` and
 > `WaiterPadPriceLevel`, `WaiterPadNotes`, `ForceHandheldBillPrinterName`.
 > None sets a port.
 
-### 2.2 The listener is closed here — and always has been
+### 2.2 What Back / Machine 1 shows, and what it does not
 
-Read-only local TCP table, 2026-09-07 ~00:05 NZST:
+> **Scope warning.** Everything in this subsection is `[BACK]`. Back is **not**
+> the machine the handheld server runs on. These readings are consistent with
+> a two-machine deployment in which only Front is licensed for handheld — they
+> are **not** evidence that the WaiterPad ingress is closed at the venue, and
+> the first version of this document wrongly said they were.
+
+Read-only local TCP table on **Back / Machine 1**, 2026-09-07 ~00:05 NZST:
 
 ```
 0.0.0.0:808     IdealPos.Licensing (11820)
@@ -140,32 +190,40 @@ Read-only local TCP table, 2026-09-07 ~00:05 NZST:
 0.0.0.0:13184   ipsdeploy (12668)
 ```
 
-**No 6983. No 7983.** `PROVEN RUNTIME`.
+**On Back: no 6983, no 7983.** `[BACK]` `PROVEN RUNTIME`.
 
-Corroboration from IdealPOS's own logs (37 MB, 227 files, back to 2019):
+From Back's IdealPOS log corpus (37 MB, 227 files, back to 2019):
 
-| Probe | Result | Grade |
+| Probe | Result on **Back** | Grade |
 | --- | --- | --- |
-| `"Startup Listener."` — the WaiterPad startup log line, emitted immediately after the `LocalPort`/`Listen` pair | **zero occurrences, ever** | `PROVEN RUNTIME` |
-| `"StartupListener Start"` — the *IPSWorker* equivalent | 661 occurrences in `POSWorker.log` | `PROVEN RUNTIME` |
-| case-insensitive `handheld` / `waiterpad` / `varipad` across the whole log tree | zero matches (re-confirmed tonight) | `PROVEN RUNTIME` |
-| licence line at every `IPS.exe` startup | `UserName=Sila Restaurant  POSNumber=1  Options=Pack 2  License Enabled=True : Type=2` — no handheld/eCommerce entitlement named, ever | `PROVEN RUNTIME` |
+| `"Startup Listener."` — the WaiterPad startup log line, emitted immediately after the `LocalPort`/`Listen` pair | zero occurrences in Back's corpus | `[BACK]` `PROVEN RUNTIME` |
+| `"StartupListener Start"` — the *IPSWorker* equivalent | 661 occurrences in Back's `POSWorker.log` | `[BACK]` `PROVEN RUNTIME` |
+| case-insensitive `handheld` / `waiterpad` / `varipad` / `WPPacket` / `IH-DATA` / `IHSALE` across Back's whole log tree | zero matches | `[BACK]` `PROVEN RUNTIME` |
+| any `Ideal Handheld*.log` file — the sink the handheld routine's `"Ideal Handheld"` log category would produce | **does not exist on Back** | `[BACK]` `PROVEN RUNTIME` |
+| licence line at every Back `IPS.exe` startup | `UserName=Sila Restaurant  POSNumber=1  Options=Pack 2  License Enabled=True : Type=2` | `[BACK]` `PROVEN RUNTIME` |
+| licence on **Front / Machine 2** | **`Ideal Handheld 2`**, **`HandheldNumber=2`** — operator-captured | `[FRONT]` |
 
-> **The Ideal Handheld ingress has never been opened on this installation.**
-> This is a stronger statement than the previous "licence status UNKNOWN, the
-> socket listens at startup". The socket does **not** listen. The earlier
-> reading — that the gate is applied only later at `DataArrival` — remains true
-> of `WaiterPad_DataArrival EXIT because NOT HandheldLicensed` (`0x003c227c`),
-> but it is not the only gate: something upstream prevents the listener sub
-> from ever running to completion here.
->
+### 2.3 The correct reading
+
+| Statement | Status |
+| --- | --- |
+| Back / Machine 1 has no handheld entitlement and its WaiterPad listener is not bound | `[BACK]` `PROVEN RUNTIME` |
+| **Front / Machine 2 holds the handheld entitlement** (`Ideal Handheld 2`, `HandheldNumber=2`) | `[FRONT]` — operator-captured, not verified from here |
+| **The handheld server was observed on Front / Machine 2** | `[FRONT]` |
+| The WaiterPad listener is bound on **port 6983 on Front** | **`NOT SHOWN`.** The port constant is `[STATIC]` and applies to Front's identical binary, but Front's own TCP table has never been read. The binding is *expected*, not observed. |
+| **"The venue is unlicensed"** | **`CONTRADICTED`** by the Front licence capture. Retracted. |
+| **"The Ideal Handheld ingress has never been opened on this installation"** | **Retracted as written.** The supported statement is narrower — see below. |
+| **"No handheld order has ever run"** | **Retracted as written.** The supported statement is: *no successful historical WaiterPad order was found in the log corpus available on Back / Machine 1 during this investigation.* A historical `HandheldOrder` parser event is already held, and the authoritative current **Front `Ideal Handheld.log` was observed onsite** and is not necessarily represented in Back's corpus. |
+
 > **`CONTRADICTED`:** the earlier association of TCP 12183 with the WaiterPad
-> listener. 12183 is the single-instance guard.
+> listener. 12183 is the single-instance guard. `[STATIC]`
 >
-> **`NOT SHOWN`:** the precise gate that suppresses the startup. The sub at
-> `0x02811a20` is reached through the form's method table and has no direct
-> `E8` caller, so the guard condition was not traced. Candidate: the same
-> `HandheldLicences` licence check named at `0x00357f5c`.
+> **`NOT SHOWN`:** the precise gate that suppresses the listener startup on
+> Back. The sub at `0x02811a20` is reached through the form's method table and
+> has no direct `E8` caller, so the guard condition was not traced. The
+> `HandheldLicences` check at `0x00357f5c` is the obvious candidate, and the
+> Back/Front entitlement split is exactly what such a gate would produce — but
+> that is an inference, not a trace.
 
 ---
 
@@ -380,7 +438,7 @@ lookup already known from the strings.
 | `PriceLevel` selects which of the native price columns is used | **`PROVEN STATIC`** |
 | A **non**-sentinel `<Price>` is honoured verbatim as the line price | **`PROVEN STATIC`** — the `jne` skips the substitution entirely, so whatever was parsed stands |
 | IdealPOS was price authority in the observed native-UI workflow | `STRONGLY INDICATED` — Table 5: `Col4` = 1.5000 / 6.0000, the configured Level-1 prices, with no price supplied by anyone |
-| Webit corroboration from a second, independent path | `PROVEN RUNTIME` — `Webit.log` 2026-09-02: we sent `PricePaid=0`, IdealPOS resolved `PricePaid=15` from `StockItem.PricingMode=1` |
+| Webit corroboration from a second, independent path | `[BACK]` `PROVEN RUNTIME` — Back's `Webit.log`, 2026-09-02: we sent `PricePaid=0`, IdealPOS resolved `PricePaid=15` from `StockItem.PricingMode=1` |
 | Promotions / happy-hour / time-based pricing are applied on this path | `NOT SHOWN` — the branch reads a plain `Price<N>` column; `WPSetPriceLevel` and the `[BLOCK]` / `23:59` strings at `0x0030d3a4` – `0x0030d3c8` were not traced |
 
 > **Acceptance rule for Verdura, derived directly from the branch:**
@@ -396,9 +454,9 @@ lookup already known from the strings.
 | `<Table>` is the bare table number | `PROVEN STATIC` — flows to `PendingSales.Code`; matches the Table 5 capture where `Code = '5'` |
 | Table 0 is not addressable | `PROVEN STATIC` — `VariPad`: `m_table == 0` ⇒ `GetXml()` returns empty |
 | The map is chosen by the POS, not the packet | `STRONGLY INDICATED` (§5.2) |
-| Table identity resolves as `TableMapSetups` `code`=map, `Type`=3, `[Index]`=table | `PROVEN STATIC` (`0x018329bf`) + `PROVEN RUNTIME` (Table 5 = 1 / 3 / 5) |
-| `Caption` is not the identifier | `PROVEN RUNTIME` — empty for all 19 real tables |
-| The sale is scoped `POS = 1` | `PROVEN STATIC` — `SELECT * FROM PendingSales WHERE Code = '<n>' AND POS = 1` (`0x003e13b4`); the readback uses `… AND POS=1 ORDER BY Line` — plus `PROVEN RUNTIME` (the Table 5 sale carried `POS = 1` while the operating till header read POS 2) |
+| Table identity resolves as `TableMapSetups` `code`=map, `Type`=3, `[Index]`=table | `[STATIC]` `PROVEN STATIC` (`0x018329bf`) + `[BACK]` `PROVEN RUNTIME` (Table 5 = 1 / 3 / 5, read from Back's POSServer) |
+| `Caption` is not the identifier | `[BACK]` `PROVEN RUNTIME` — empty for all 19 real tables in Back's POSServer |
+| The sale is scoped `POS = 1` | `PROVEN STATIC` — `SELECT * FROM PendingSales WHERE Code = '<n>' AND POS = 1` (`0x003e13b4`); the readback uses `… AND POS=1 ORDER BY Line` — plus `[BACK]` `PROVEN RUNTIME` (the Table 5 sale carried `POS = 1` in Back's POSServer while the operating till header read POS 2 — itself a hint that the operating till is Front / Machine 2) |
 | Table status transitions are written back — `TableMapSetups.status`, `startTime`, `Seats`, `GuestsSaved`, `ATBLSEATS` | `PROVEN STATIC` (`0x01832ba8` – `0x0183382f`) |
 
 ---
@@ -410,7 +468,7 @@ lookup already known from the strings.
 | `<StockItem>` is the PLU / stock code, looked up in `StockItems` | `PROVEN STATIC` |
 | Unknown PLU → `** Item Not Found **` | `PROVEN STATIC`; `NOT SHOWN` whether that aborts the packet, drops the line, or writes an open item (`OPEN STOCK ITEM` is the adjacent branch) |
 | `<Quantity>` is carried per line | `PROVEN STATIC` |
-| The native UI splits qty 2 into two qty-1 lines | `PROVEN RUNTIME` (Table 5) — but this says nothing about what the handheld path does with `Quantity > 1` |
+| The native UI splits qty 2 into two qty-1 lines | `[BACK]` `PROVEN RUNTIME` (Table 5, observed in Back's POSServer) — but this says nothing about what the handheld path does with `Quantity > 1` |
 | Whether `Col4` is unit or extended price when `Col3 > 1` | `NOT SHOWN` — the Table 5 run sidestepped it structurally; no row with `Col3 > 1` was ever produced |
 | Modifiers/instructions are sibling lines (`<Instruction>`), not fields | `PROVEN STATIC` — consistent with `IKM.API`'s `ItemType.Condiment` / `.Instruction` |
 | Line fields written by the order routine: `SeatNumber`, `Balance`, `Printed`, `locationSold`, `OrderedTime` | `PROVEN STATIC` (`0x01830c83` – `0x01831d38`) |
@@ -439,7 +497,7 @@ socket path.**
 | `WPOrder` issues no `DELETE` against `PendingSales` / `PendingSaleLines` | `PROVEN STATIC` — exhaustive xref of both DELETE literals: `0x01827665`, `0x0182770a`, plus one unrelated site at `0x025dc50b` |
 | `WPOrder` therefore appends to an existing table sale rather than replacing it | `STRONGLY INDICATED` — the index-seek pattern (`CodePOS` / `CodePOSLine`), the absence of any delete, and the `"Removing residual items from Cleaned Table"` branch all point one way, but the `AddNew` / `Update` calls themselves are vtable dispatches and were not individually decoded |
 | The delete-and-rewrite hazard flagged in `idealpos-native-invocation-decision-2026-09-05.md` §2.3 reading (b) applies to the **relay** path, not the socket path | `PROVEN STATIC` for the routine split; `STRONGLY INDICATED` for the conclusion |
-| The relay path exists and can be reached — POSServerMessages `IH-DATA`, plus `UPDATE POSServerMessages SET ProcessedDate = NULL WHERE MessageType='IH-DATA'` (`0x018357d2`) | `PROVEN STATIC` — **so the hazard is not eliminated, only localised.** A multi-terminal venue may route a handheld order through it. |
+| The relay path exists and can be reached — POSServerMessages `IH-DATA`, plus `UPDATE POSServerMessages SET ProcessedDate = NULL WHERE MessageType='IH-DATA'` (`0x018357d2`) | `[STATIC]` `PROVEN STATIC` — **so the hazard is not eliminated, only localised, and this deployment is exactly the shape that exercises it**: the handheld terminal (Front / Machine 2) and the POSServer host (Back / Machine 1) are different machines. |
 
 **Comparison with the proven manual Table 5 R1/R2 behaviour.** The native UI
 result was: create at TABLE MAP selection; round 2 appends lines 2–3 to the
@@ -450,8 +508,10 @@ exactly that — the same `Code`+`POS` keying, the same `OrderedTime` write, the
 same `Printed`-flag-after-dispatch ordering, and the same `~TABLEDATA` /
 `~NEWLINES` push to POSServer at the end (`"Sending Status to POSServer"`,
 `"Sending Table Data to POSServer"`, `"Sending UNLOCK command to POSServer"`).
-**It is consistency, not proof.** No handheld order has ever run on this
-installation.
+**It is consistency, not proof.** No successful historical WaiterPad order was
+found in the log corpus available on Back / Machine 1 during this
+investigation, so nothing here has been checked against a real handheld round.
+Front / Machine 2's `Ideal Handheld.log` is where that check can be made.
 
 ---
 
@@ -524,8 +584,8 @@ else:
 | Is the duplicate check durable across an IPS restart? | **Yes** — the comparand lives in a database table (`AAAExampleData`, one row per `ColumnType='IH-<DeviceID>'`). | `PROVEN STATIC` |
 | Is it a general idempotency key? | **No. It is one-deep per device.** Only the *most recent* checksum is retained. Send A, then B, then A again → A is **accepted a second time**. | `PROVEN STATIC` |
 | Is the check mandatory? | **No.** Omit `<Checksum>` or send it empty and the check is skipped outright. | `PROVEN STATIC` |
-| Is there a native sale identity? | **No.** No response carries one; `POSServer.PendingSales.ID` is a churning surrogate. | `PROVEN STATIC` / `PROVEN RUNTIME` (Table 5: four IDs for one sale) |
-| Is there a native line identity? | **No stable one.** The usable partition is line ordinal + `OrderedTime`. | `PROVEN RUNTIME` (Table 5) |
+| Is there a native sale identity? | **No.** No response carries one; `POSServer.PendingSales.ID` is a churning surrogate. | `[STATIC]` `PROVEN STATIC` / `[BACK]` `PROVEN RUNTIME` (Table 5: four IDs for one sale) |
+| Is there a native line identity? | **No stable one.** The usable partition is line ordinal + `OrderedTime`. | `[BACK]` `PROVEN RUNTIME` (Table 5) |
 | Is there a status readback? | **Yes** — `REQUESTTABLESTATUS` (§13). | `PROVEN STATIC` |
 | **Does `ACK` mean the round was durably executed?** | **NO.** `ACK` is returned from `CheckWPOrder` the instant the XML document is parked in `g_WPPackets(i)`, an in-process array of at most 200 slots. Not one row has been written at that point. If `IPS.exe` dies between `ACK` and the buffer drain, **the round is lost with no trace anywhere**. | **`PROVEN STATIC`** |
 | Does `SaveChecksum` run on the socket path? | **Not observably.** Its sole caller is inside `ProcessHandheldOrder` (the relay path). `WPOrder` touches `LastCheckSum` at `0x0182d6b1` but does not call `SaveChecksum`. | `PROVEN STATIC` for the caller set; `NOT SHOWN` what `WPOrder` does with `LastCheckSum` |
@@ -630,7 +690,7 @@ Sequence inside `WPOrder`, in code order:
 | --- | --- |
 | Kitchen dispatch is triggered inside the handheld order routine, not by a generic later sweep | `PROVEN STATIC` |
 | "IKM" here means the **Kitchen Monitor transport**, not a printer | `PROVEN STATIC` — carried forward: `IKM` in `IPS.exe` resolves only to `Components\IKM\IKM.API.tlb`, whose sole outbound operation distributes dockets to monitors |
-| Only **new** lines are dispatched | `STRONGLY INDICATED` — the print selection is `Select * from PendingSaleLines where Printed=False AND Code = '` (`0x0039f890`), and `Printed` is set **after** the IKM handoff (`"Finished setting Printed Flags"` follows `"Finished sending to IKM"`). `PROVEN RUNTIME` corroboration from the native UI: Table 5 round 2 emitted one docket containing **only** the round-2 items, and round 1's line was not reprinted. |
+| Only **new** lines are dispatched | `STRONGLY INDICATED` — the print selection is `Select * from PendingSaleLines where Printed=False AND Code = '` (`0x0039f890`), and `Printed` is set **after** the IKM handoff (`"Finished setting Printed Flags"` follows `"Finished sending to IKM"`). `[BACK]` `PROVEN RUNTIME` corroboration from the native UI: Table 5 round 2 emitted one docket containing **only** the round-2 items, and round 1's line was not reprinted. |
 | `Printed = True` ⇒ a physical KOT was emitted | **`CONTRADICTED`.** The flag is set in this routine; physical delivery is decided asynchronously in `frmMenu` / `IPSPrinterServer` with a 60-second retry and a human-decision failure path, and `"SendPrintJobs but IdealHandheldProcessing.  Exiting but will try again later..."` proves the two are deliberately **not** concurrent. Table 5 recorded 0 bytes in both printer logs while every line arrived `Printed=True`. |
 | Bill printing is a separate verb with its own failure response | `PROVEN STATIC` — `PRINTBILL` → `WPBillPrint` → `NAKPRINT` on failure; honours `ForceHandheldBillPrinterName` |
 | KOT evidence available to Verdura tops out at `flag_set` | `PROVEN STATIC` — this is exactly why `OrderRound.kotEvidenceTier` is three-valued |
@@ -643,7 +703,7 @@ Ranked by what actually blocks the driver.
 
 | # | Unknown | Why it matters | Grade today |
 | --- | --- | --- | --- |
-| 1 | **Does this venue hold a handheld licence, and would the listener open if it did?** | Nothing else matters until 6983 is listening. | `PROVEN RUNTIME` that it is not licensed and not listening; `NOT SHOWN` what enabling it requires |
+| 1 | **Is TCP 6983 actually bound on Front / Machine 2, and reachable from the Verdura host?** | This is now the whole environmental question. Front *is* licensed (`Ideal Handheld 2`, `HandheldNumber=2`, `[FRONT]`) and the handheld server was observed there — but Front's TCP table has never been read. | `[STATIC]` for the port constant; **`NOT SHOWN`** for the binding and reachability. Settled by one read-only listener listing on Front. |
 | 2 | **Support status of the protocol.** No local artifact describes Ideal Handheld / WaiterPad as a third-party integration surface. | An unsupported write path into a live restaurant's till is not shippable, licence or no licence. | `NOT SHOWN` — unchanged, and unchangeable without the vendor |
 | 3 | The gate that suppresses the WaiterPad startup listener sub (`0x02811a20`) | Determines whether a licence alone opens the port. | `NOT SHOWN` |
 | 4 | How a `DeviceID` becomes registered (`BAD REGO` / `NAKREGO` / `"Adding … to current devices."`) | Verdura cannot send a first ORDER without it. | `NOT SHOWN` |
@@ -653,7 +713,7 @@ Ranked by what actually blocks the driver.
 | 8 | Behaviour on unknown PLU — abort packet / drop line / open item | Fail-closed design depends on it. | `NOT SHOWN` |
 | 9 | Whether `Seat`, `Guests`, `Total`, `VoidMode` are read on the order path | Affects covers and seat routing. | `NOT SHOWN` |
 | 10 | Promotion / time-based pricing on the sentinel path | The branch reads a plain `Price<N>` column. If promotions apply elsewhere, native price may still differ. | `NOT SHOWN` |
-| 11 | Whether a multi-terminal venue can route a handheld order through the **relay** path (`ProcessHandheldOrder`, delete-and-rewrite) | This is the surviving correctness catastrophe. | `PROVEN STATIC` that the path exists; `NOT SHOWN` what selects it |
+| 11 | What routes a handheld order to the **relay** path (`ProcessHandheldOrder`, delete-and-rewrite) instead of the socket path | This is the surviving correctness catastrophe, and it is **more likely here, not less**: this is a genuine two-machine deployment where the handheld terminal (Front) and the POSServer host (Back) are different boxes — precisely the topology a relay exists to serve. | `[STATIC]` `PROVEN STATIC` that the path exists; **`NOT SHOWN`** what selects it |
 | 12 | Framing state machine precision — delimiter, partial reads, keepalive, `HANDHELDCLOSESECONDS` | Wire-level robustness. | `STRONGLY INDICATED` shape only |
 
 ---
@@ -662,8 +722,9 @@ Ranked by what actually blocks the driver.
 
 > ### Do we now have enough evidence to implement a guarded Verdura WaiterPad / native-table driver?
 >
-> **Enough to *build* it: yes. Enough to *enable* it: no — and the reason is
-> no longer an evidence gap, it is a fact about this installation.**
+> **Enough to *build* it: yes. Enough to *enable* it: no — and, after the
+> 2026-09-07 correction, the remaining gaps are genuine unknowns about
+> Front / Machine 2 and about vendor support, not a settled negative.**
 
 The protocol is now specified to implementation depth: endpoint, framing,
 verbs, order schema, the complete response set including `LOCK{12000+POS}`, the
@@ -671,11 +732,31 @@ pricing contract, the duplicate mechanism and its exact limits, the readback
 field set, and the KOT ordering. Three of the four questions the brief called
 substantive are answered at `PROVEN STATIC`.
 
-What stops it is simpler than anything further research can address: **there is
-nothing listening on 6983, this venue holds no handheld entitlement, and no
-handheld order has ever run here.** A driver cannot be certified against a port
-that does not exist, and the vendor has still asserted no support status for
-the protocol.
+**Amended 2026-09-07.** The first version of this section said the blocker was
+that *"there is nothing listening on 6983, this venue holds no handheld
+entitlement, and no handheld order has ever run here."* **That was a
+machine-attribution error and is retracted.** It generalised Back / Machine 1
+readings to the venue. Front / Machine 2 **is** licensed for handheld
+(`Ideal Handheld 2`, `HandheldNumber=2`, `[FRONT]`) and the handheld server was
+observed there.
+
+What actually stops enablement is narrower, and no longer includes entitlement:
+
+1. **Front's binding is expected but unobserved.** The port constant is
+   `[STATIC]`, so the same binary on Front would bind 6983 — but Front's TCP
+   table has never been read, and neither has its reachability from the Verdura
+   host. `NOT SHOWN`.
+2. **Support status is still unasserted.** No local artifact on either machine
+   describes Ideal Handheld / WaiterPad as a third-party integration surface.
+   This is unchanged and is a vendor question.
+3. **Device registration is untraced.** `BAD REGO` / `NAKREGO` gate the first
+   ORDER, and how a `DeviceID` becomes known is `NOT SHOWN`.
+4. **The relay path is a live risk in this exact topology.** Front (handheld
+   terminal) and Back (POSServer host) are different machines — which is
+   precisely the arrangement `ProcessHandheldOrder`'s delete-and-rewrite relay
+   exists to serve. What selects it is `NOT SHOWN` (§15 #11).
+
+None of these is dissolved by reading Back harder.
 
 ### 16.1 What Claude Code should implement now
 
@@ -711,8 +792,10 @@ runtime.
    citing §14.
 8. **A transport that cannot connect.** The socket client ships behind a config
    flag defaulting to off, plus a startup assertion that refuses to dial unless
-   an explicit `IDEALPOS_WAITERPAD_CERTIFIED=<venue-id>` marker is present. No
-   environment currently satisfies it.
+   an explicit `IDEALPOS_WAITERPAD_CERTIFIED=<host>` marker is present, naming
+   the target machine explicitly. No environment currently satisfies it, and
+   the marker must name **Front / Machine 2** — never "the venue", and never a
+   host resolved at runtime.
 9. **Golden-file tests** built from `VariPad.dll`'s emitted packet shape and
    from the six literal response bodies — the only inputs we can honestly claim
    as first-party.
@@ -721,8 +804,10 @@ runtime.
 
 ### 16.2 What must stay gated until onsite certification
 
-- Any TCP connection to 6983, on any host. Including "just to see if it
-  answers".
+**Implementation has not begun and must not begin on this document alone.**
+
+- Any TCP connection to 6983, on any host — Front included. Including "just to
+  see if it answers".
 - Any `ORDER` / `ORDER2` transmission.
 - `PRINTBILL`, and anything else that can move paper.
 - Enabling the WaiterPad route in `dine-in-route.ts`. **Webit remains the
@@ -731,31 +816,48 @@ runtime.
 
 ### 16.3 The minimum specific missing evidence — not another broad investigation
 
-Six items. Four are questions for a person; two are single reads.
+**Amended 2026-09-07.** Item 1 of the previous list asked whether the venue
+holds a handheld licence. **It does — on Front / Machine 2** (`Ideal Handheld
+2`, `HandheldNumber=2`). That item is closed and is removed. The list is now
+five items: two are read-only observations on Front, three are vendor
+questions.
 
-1. **Does the venue hold, or can it obtain, the Ideal Handheld / eCommerce
-   licence option?** One line from the licence record. Today every startup logs
-   `Options=Pack 2`.
-2. **Vendor: is the WaiterPad TCP protocol on 6983 available to a third-party
-   device, and under what terms?** This is the support-status question, and
-   nothing local can answer it.
-3. **Vendor: how does a device register (`BAD REGO` / `NAKREGO`)?** Without it
-   the first ORDER cannot be sent.
-4. **Vendor: in a two-terminal venue, what routes a handheld order to the
-   POSServer relay path (`ProcessHandheldOrder`, delete-and-rewrite) instead of
-   the socket path (`WPOrder`)?** This is the surviving correctness risk
+**On Front / Machine 2 — read-only, no transmission:**
+
+1. **Front's listener table.** One `Get-NetTCPConnection -State Listen` (or
+   `netstat -ano`) on `DESKTOP-70DQTGJ`, naming the port `IPS.exe` is bound to.
+   This converts the §2.1 port constant from *expected* to *observed* and is
+   the single highest-value remaining reading. Not a probe — it is the machine
+   reporting its own sockets.
+2. **Front's `Ideal Handheld.log` and handheld log corpus.** The authoritative
+   handheld log was observed onsite on Front and is **not** represented in
+   Back's corpus. It is the only place a genuine successful WaiterPad order can
+   be reconstructed from — `DeviceID`, `Checksum`, `Table`, `Map`, PLU,
+   quantity, `PriceLevel`, the resolved price, ACK/NAK/DUPLICATE, the lock
+   sequence, the `Ready to Print!` → IKM → `Printed` ordering, and first-round
+   versus later-round behaviour. **Everything Priority 2 of the brief asked for
+   lives in this file.** Copy it off read-only; change nothing on Front.
+
+**Vendor questions — unchanged:**
+
+3. **Is the WaiterPad TCP protocol on 6983 available to a third-party device,
+   and under what terms?** The support-status question. Nothing local answers
+   it.
+4. **How does a device register (`BAD REGO` / `NAKREGO`)?** Without it the
+   first ORDER cannot be sent.
+5. **In a two-machine deployment like this one, what routes a handheld order to
+   the POSServer relay path (`ProcessHandheldOrder`, delete-and-rewrite)
+   instead of the socket path (`WPOrder`)?** The surviving correctness risk
    (§15 #11).
-5. **The licence line and `grep -i handheld` from `DESKTOP-70DQTGJ`.** One SSH
-   session, read-only. Settles whether the Front-desk till differs from this
-   host — still open from the 2026-09-06 iPad discovery.
-6. **One authorised loopback `REQUESTTABLESTATUS` against a licensed
-   installation**, read-only, against a table with known contents. It sends no
-   order, writes nothing and prints nothing — and it would convert §13 from
-   `PROVEN STATIC` to `PROVEN RUNTIME` and validate the entire recovery
-   procedure. **Not tonight, and not on this host.**
 
-Items 1–4 are vendor/operator questions. Nothing further can be extracted from
-this machine by reading it harder.
+A sixth item remains available but is deliberately **not** requested yet: one
+authorised `REQUESTTABLESTATUS` read against Front. It sends no order, writes
+nothing and prints nothing, and it would convert §13 from `PROVEN STATIC` to
+`PROVEN RUNTIME` — but it is still WaiterPad transmission, and it stays gated
+until items 1–5 are in hand.
+
+Nothing further can be extracted from Back / Machine 1 by reading it harder.
+The remaining evidence is on Front, or with the vendor.
 
 ---
 
@@ -763,9 +865,44 @@ this machine by reading it harder.
 
 | Document | Statement | Correction |
 | --- | --- | --- |
-| `idealpos-native-ingress-2026-09-05.md` §2.1 | listed `0.0.0.0:12183 (IPS.exe)` under the WaiterPad listener heading | 12183 is the single-instance guard (`0x0283ecd9`). The WaiterPad listener is 6983 and is **not open**. |
-| same, §2.1 | "The socket is set to listen at startup; the `HandheldLicensed` gate is applied later, at `DataArrival`. An open port is therefore not evidence the module is licensed." | The first clause is not true here — the socket never listens. The `DataArrival` gate is real but is not the only one. |
+| `idealpos-native-ingress-2026-09-05.md` §2.1 | listed `0.0.0.0:12183 (IPS.exe)` under the WaiterPad listener heading | 12183 is the single-instance guard (`0x0283ecd9`). The WaiterPad listener is 6983, and it is not bound **on Back / Machine 1** — which is the wrong machine to be looking at. |
+| same, §2.1 | "The socket is set to listen at startup; the `HandheldLicensed` gate is applied later, at `DataArrival`. An open port is therefore not evidence the module is licensed." | On Back the socket does not listen, so the gate is not only at `DataArrival`. On Front, which is licensed, the startup path is untested. The document's own caution — that a port's state is not a licence — holds, and its converse holds too: **Back's closed port is not the venue's licence state.** |
 | same, §5.3 | `-9999` as sentinel, and price recalculation, graded `STRONGLY SUGGESTED`, "the receiver's branch was not read" | The receiver's branch has now been read. Both promote to `PROVEN STATIC`. |
 | `idealpos-native-invocation-decision-2026-09-05.md` §2.3 | append-vs-replace framed as one unresolved question with a catastrophic branch | It is two routines. The socket path has no DELETE; the catastrophic branch belongs to the POSServer relay path. |
 | same, §2.4 | ranked the `VariPad` file drop above WaiterPad TCP | WaiterPad TCP now ranks first on evidence: it alone has a readback, a response vocabulary, a lock protocol, a durable duplicate guard and a proven price-resolution branch. Its accessibility problem is worse, and that is now measured rather than assumed. |
 | `ipad-integration-discovery-2026-09-06.md` §2.1 | "12183 — `IPS.exe` — internal printer-error channel (previously established)" | Not the printer-error channel; the single-instance guard. The printer channel is `IPSPrinterServer` on 11183, dialled **outbound** by `IPS.exe`. |
+
+### 17.1 Corrections to **this** document, v1 → v2 (2026-09-07)
+
+All three were machine-attribution regressions: Back / Machine 1 observations
+stated as venue-wide facts. Raised by the operator, who holds the Front
+evidence.
+
+| v1 statement | Status | v2 |
+| --- | --- | --- |
+| "That listener is not open on this installation, and never has been." (§0 #2) | **over-scoped** | Scoped to Back / Machine 1. Front runs the handheld server and was never inspected. |
+| "there is nothing listening on 6983, **this venue holds no handheld entitlement**, and no handheld order has ever run here" (§16) | **`CONTRADICTED`** | Front / Machine 2 holds `Ideal Handheld 2`, `HandheldNumber=2`. The entitlement blocker is withdrawn entirely; what remains is Front's *binding*, which is unobserved. |
+| "No handheld order has ever run on this installation." (§2.2, §10, §16) | **over-scoped** | Replaced with: *no successful historical WaiterPad order was found in the log corpus available on Back / Machine 1 during this investigation.* A historical `HandheldOrder` parser event is already held, and Front's authoritative `Ideal Handheld.log` was observed onsite and is not necessarily represented in Back's corpus. |
+
+**Unaffected by the correction.** Every `[STATIC]` finding stands as written —
+they derive from the binary, which is the same build on both machines, and none
+of them depended on a runtime observation:
+
+- WaiterPad listener port = TCP **6983** — `PROVEN STATIC`
+- `<Price>-9999</Price>` → IdealPOS resolves `StockItems.Price<PriceLevel>` —
+  `PROVEN STATIC`
+- a numeric `<Price>` **overrides** the native price — `PROVEN STATIC`
+- socket `ACK` means *accepted and buffered in RAM*, not durable native
+  execution — `PROVEN STATIC`
+- duplicate detection requires a **non-empty** `<Checksum>`, and is one-deep
+  per `DeviceID` — `PROVEN STATIC`
+- `REQUESTTABLESTATUS` readback exists but carries **no** `OrderedTime` and no
+  round identity — `PROVEN STATIC`
+- the `WPOrder` (socket) / `ProcessHandheldOrder` (relay) split, and the
+  absence of `DELETE` on the socket path — `PROVEN STATIC`
+
+**Lesson recorded.** This machine is the POSServer host, not the till. Its
+listener table, its logs and its licence line describe *it*. A negative
+observed on Back is evidence about Back, and nothing else — the same failure
+mode as the earlier "POSServer is a replica" and `IPS.exe`-ownership
+assumptions this project has already been bitten by twice.

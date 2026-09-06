@@ -95,14 +95,14 @@ An SSH, RDP-redirected or service-context run does not substitute for this.
 
 ### 2.1 Network and process topology (observed)
 
-Listeners on this host:
+Listeners on this host (**Back / Machine 1** — not the handheld terminal):
 
 | Port | Owner |
 | --- | --- |
 | 5501, 5502 | `IPSClient.exe` (12800) |
 | 11000 | `POSServer.exe` (7136) |
 | 11183 | `IPSPrinterServer.exe` (2528) |
-| 12183 | `IPS.exe` (20056) — internal printer-error channel (previously established) |
+| 12183 | `IPS.exe` (20056) — **corrected 2026-09-07:** IPS.exe's single-instance guard, not a printer-error channel. See the protocol contract §2.1. |
 | 13184 | `ipsdeploy.exe` (12668) |
 | 808 | `IdealPos.Licensing.exe` — licensing WCF |
 
@@ -128,7 +128,13 @@ ARP shows several locally-administered (randomised) MACs on the venue LAN —
 using private Wi-Fi addresses. **None of them holds a connection to any
 IdealPOS port.**
 
-### 2.2 Vendor handheld / WaiterPad (the Idealpos iPad product): present, dormant
+### 2.2 Vendor handheld / WaiterPad — dormant **on this host**
+
+> **Corrected 2026-09-07.** The heading and conclusion below were written as
+> statements about the installation. They are statements about **Back /
+> Machine 1**. Front / Machine 2 is licensed for handheld
+> (`Ideal Handheld 2`, `HandheldNumber=2`) and runs the handheld server.
+> Read every negative in this subsection as Back-scoped.
 
 | Artifact | Date | Reading |
 | --- | --- | --- |
@@ -147,8 +153,10 @@ Two negative results, both strong:
   `IPSClient.log`, `IPSDeploy.log`, `IdealposService-*.log`, Gateway logs back
   to 2019) returns **zero matches**.
 
-There is no evidence that a vendor iPad handheld integration has ever run on
-this installation.
+No successful historical WaiterPad order, and no handheld log activity of any
+kind, was found in the log corpus available on **Back / Machine 1**. This says
+nothing about Front / Machine 2, whose `Ideal Handheld.log` was later observed
+onsite and is not represented in Back's corpus.
 
 ### 2.3 What *is* live and tablet-shaped: Webit — and it is Verdura's own
 
@@ -211,6 +219,18 @@ Round-append semantics are untested on this path and are a third unknown.
 ---
 
 ## 4. Architecture verdict
+
+> **Superseded in part, 2026-09-07.** Evidence item 2 below ("the same licence
+> line from `DESKTOP-70DQTGJ`") has since been captured by the operator, and it
+> came back the **opposite** way to the expectation recorded here: Front /
+> Machine 2 holds **`Ideal Handheld 2`, `HandheldNumber=2`**. The vendor
+> handheld product is therefore **licensed at this venue, on Front**, and the
+> conditional path to a **C** verdict written below does not apply. The Back /
+> Machine 1 findings in this document remain correct **as statements about
+> Back**. See
+> [`../integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md`](../integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md)
+> §0a and §17.1.
+
 
 **D — INCONCLUSIVE, NEED SPECIFIC PASSIVE EVIDENCE**, trending toward **C**.
 
