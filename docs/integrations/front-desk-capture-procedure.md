@@ -1,7 +1,12 @@
 # Front-desk physical session — passive capture procedure
 
-**Status:** prepared 2026-09-06, not yet executed. Nothing in this procedure
-sends input to IdealPOS.
+**Status:** Track A prepared 2026-09-07, not yet executed. Track B prepared
+2026-09-06, not yet executed. Nothing in this procedure sends input to
+IdealPOS, and nothing in it transmits a byte to any IdealPOS port.
+
+**Machine:** Front / Machine 2, `DESKTOP-70DQTGJ`, 192.168.1.199 — the till that
+holds the Ideal Handheld entitlement. Back / Machine 1 (`DESKTOP-SOKKOQ7`) has
+been read to exhaustion and has nothing further to give.
 
 **Why this exists.** Every remaining native-driver decision is blocked on
 evidence we do not have, and the evidence must be gathered in a specific order:
@@ -12,9 +17,186 @@ failure mode the earlier `IPS.exe`/`replica` over-claims came from.
 
 **The one rule for the whole session.** Read only. No click, no keystroke, no
 `SetForegroundWindow`, no posted message, no `BM_CLICK`, no coordinate probing.
+No TCP connection to any IdealPOS port — including "just to see if it answers".
 The operator drives IdealPOS by hand; the tool only looks. If a stage's output
 is empty or surprising, the answer is to record that and stop — never to widen
 the search until something matches.
+
+---
+
+## The two tracks, and which one to run first
+
+| | Track A — WaiterPad / network evidence | Track B — native UI ownership |
+| --- | --- | --- |
+| Answers | `WAITERPAD-BIND-001`, `-CHECKSUM-001`, `-REGO-001`, `-RECON-001` | which executable owns the native Table Map, and the selector tree |
+| Needs | nothing on screen; the till running as it normally does | the real Table Map visible, an idle-ish moment, and the operator navigating by hand |
+| Duration | one command, under a minute | several stages, operator-driven |
+| Risk of disturbing service | none — it reads sockets, files and the registry | none, but it needs the operator's attention on the terminal |
+
+**Run Track A first, and run it even if there is no time for anything else.**
+It is one command, it needs no cooperation from the POS, and it is where every
+open WaiterPad blocker lives. Track B can be done on any later visit; Track A's
+`Ideal Handheld*.log` is the only artefact that cannot be reconstructed later if
+the till rotates or truncates it.
+
+---
+
+# TRACK A — the one-command WaiterPad capture
+
+## A0 — before running
+
+- [ ] You are physically at **`DESKTOP-70DQTGJ`**, logged in as **the Windows
+      user that runs IdealPOS**. This matters: the handheld log watermark lives
+      in `HKCU`, so running as a different user reads someone else's registry
+      and reports nothing.
+- [ ] It is the **interactive desktop session**, not RDP-redirected and not a
+      service context. The script records its own session id so a mistake here
+      is visible afterwards rather than silently invalidating the capture.
+- [ ] The till is running as it normally does. **Do not restart IdealPOS to
+      "get a clean capture".** A restart destroys exactly the state we want:
+      the in-process device-registration array and the current listener set.
+- [ ] You have somewhere to copy the output folder to.
+
+## A1 — run it
+
+```
+powershell -ExecutionPolicy Bypass -File .\front-passive-capture.ps1
+```
+
+The script is `scratchpad/front-passive-capture.ps1` in this repository. Copy it
+to Front on a USB stick or via the same route you use for any other file. It
+takes no required arguments; output lands in
+`C:\verdura-capture\front-capture-DESKTOP-70DQTGJ-<timestamp>\`.
+
+Useful switches: `-OutputRoot <path>`, `-MaxLogCopyMB <n>` (default 200),
+`-SkipDatabaseCopy`.
+
+**Keep the output path short.** A deeply nested output root can push copied log
+filenames past Windows' 260-character limit; the script now uses short numbered
+subdirectories to avoid it, but a short root removes the risk entirely. This is
+not hypothetical — the first Back rehearsal of this script silently lost 135 of
+147 log files to exactly that, which is why the copy report now lists skipped
+files explicitly.
+
+## A2 — what it collects, and why each piece is there
+
+| Output | Answers |
+| --- | --- |
+| `01-identity.txt` | hostname, local and UTC timestamp, IPv4, Windows user, **session id**, OS, and whether this is the expected machine |
+| `02-tcp-listeners.txt` / `.csv` | **the complete TCP listener table**, unfiltered, joined to owning PID → process → session → path → file version → **command line**; plus raw `netstat -ano` as a cross-check |
+| `03-tcp-established.txt` | current connections — does Front hold one to Back's POSServer on 11000? |
+| `04-idealpos-processes.txt` | every IdealPOS process with PID, path, SHA-256, version, start time, command line |
+| `05-install-inventory.txt` | versions and hashes of `IPS.exe`, `IPSWorker.exe`, `IPSPrinterServer.exe`, `IPSDeploy.EXE`, `IPSClient.exe`, `VariPad.dll`, `MTIPADLIB.dll`, and **an explicit `IPS.exe` vs `IPSWorker.exe` identical-hash check** |
+| `06-configuration.txt` | the IdealPOS registry trees, including **`CurrentHandheldLogDate`** — the handheld log rotation watermark — plus the list of handheld config keys to look for in the copied `ips.mdb` |
+| `07-log-inventory.txt` | a full listing of every log directory, with an explicit **"is there an `Ideal Handheld*` file at all"** answer per directory |
+| `09-logs/` | **copies** of `Ideal Handheld*`, `IPS*`, `POSWorker*`, `POSActivity*`, `Printing*`, `PrintJobs*`, `Webit*`, `POSServerClient*`, `IPSError*`, `IPSObjects*`, `IPSData*` — handheld first, so a size budget can never be the reason it was missed |
+| `08-log-copy-report.txt` | what was copied and **what was skipped, with the reason** |
+| `10-config/` | `*.config`, `*.ini`, `IdealHandheld*.xml`, and `ips.mdb` / `zz.sqlite` |
+| `11-token-sweep.txt` | every WaiterPad / handheld / order / relay / pricing token, **with six lines of context either side** |
+| `11-token-summary.txt` | one line per token with a match count — read this first |
+| `12-licence-lines.txt` | Front's own `License Enabled` / `Options=` / `HandheldNumber` lines, plus any `Waiters=` / `WP Current Count` |
+| `90-observations.txt` | what each of the above does and does not mean, per blocker |
+| `99-manifest.txt` | SHA-256 of every collected file, the script's own hash, and a **passivity self-check** that greps the script for transmission and mutation primitives |
+
+## A3 — the passivity guarantees
+
+The script contains no `TcpClient`, `Test-NetConnection`, `Invoke-WebRequest`,
+`Invoke-RestMethod`, `Start-Service`, `Stop-Service`, `Restart-Service`,
+`Stop-Process`, `Set-ItemProperty`, `New-ItemProperty` or `Remove-Item`, and
+**asserts that about its own text** before it tells you the capture succeeded.
+If `99-manifest.txt` says the self-check FAILED, the capture is untrusted and
+must not be filed as passive evidence.
+
+It writes only inside its own output directory. It reads IdealPOS files and
+never writes one. The `ips.mdb` copy is taken from a running system and may be
+internally torn — that is stated in `10-config-copy-report.txt` and the copy is
+taken anyway, because the handheld config-key values and the presence of the
+`WaiterPads` table survive a torn read.
+
+## A4 — read the output in this order, and read it before concluding
+
+1. **`02-tcp-listeners.txt`.** The whole table, before any expectation.
+
+   > **Do not go looking for 6983.** TCP 6983 is `PROVEN STATIC` from the
+   > binary and has never been observed bound anywhere. The question is *which
+   > ports are open and who owns them*, not *is the one we expected open*. If
+   > the handheld listener is on some other port, only an unfiltered table will
+   > show it.
+   >
+   > **And do not read 12183 as WaiterPad.** It is `IPS.exe`'s `wsPrinterError`
+   > channel, whose bind failure doubles as the single-instance guard. Front's
+   > `IPS.exe` will bind the same 12183 Back's did. See
+   > `idealpos-back-static-investigation-2026-09-07.md` §3–§4.
+   >
+   > **And attribute by PID, not by binary.** `IPS.exe` and `IPSWorker.exe` are
+   > byte-identical, so both contain the code for 6983, 7983 and 12183. Which
+   > port a process binds is a runtime fact about that PID.
+
+2. **`07-log-inventory.txt`.** Does an `Ideal Handheld*` file exist? If not,
+   that is a finding, and `06-configuration.txt`'s `HandheldLog` key and
+   `CurrentHandheldLogDate` say whether the category was ever enabled.
+
+3. **`06-configuration.txt`.** `CurrentHandheldLogDate` is the cheap tell. On
+   Back it reads `06/06/2019`, alongside FuelConsole and Smartlink — the shape
+   of a category never written. A recent date on Front means the handheld path
+   has run here.
+
+4. **`11-token-summary.txt`.** Non-zero counts for `Checksum`,
+   `WP Current Count`, `Waiters=`, `BAD REGO`, `WPOrder Processing STARTED` or
+   `ProcessHandheldOrder` are the ones that move blockers.
+
+5. **`90-observations.txt`.** What each of the above does and does not license.
+
+## A5 — what a good result looks like, per blocker
+
+| Blocker | Closed by | Where to look |
+| --- | --- | --- |
+| `WAITERPAD-BIND-001` | a listening port owned by an IdealPOS PID that is not 7983 / 11183 / 12183 / 13184 / 11000 / 5501 / 5502 / 808 | `02-tcp-listeners.txt` |
+| `WAITERPAD-CHECKSUM-001` | a `Checksum=` line with a real value **and the packet it belonged to** | `11-token-sweep.txt`, then `09-logs/` |
+| `WAITERPAD-REGO-001` | `WP Current Count=` / ` - Waiters=` / `Adding … to current devices.` / `BAD REGO` — the whole registration protocol as the till logs it, **plus the licensed slot count** | `11-token-sweep.txt`, `12-licence-lines.txt` |
+| `WAITERPAD-RECON-001` | a real order logging either `WPOrder Processing STARTED` (socket path) or `ProcessHandheldOrder` (relay path) | `11-token-sweep.txt` |
+| `WAITERPAD-ACKLOSS-001` | nothing on Front closes it. It is proven and is a design constraint. | — |
+| `WAITERPAD-SUPPORT-001` | nothing on Front closes it. Vendor question. | — |
+
+**A zero everywhere is a result.** It means Front's handheld feature is licensed
+but unexercised, and it is written down so no future session has to rediscover
+it.
+
+## A6 — turning a real packet into a fixture
+
+If the sweep yields genuine bytes, they belong in
+`apps/api/src/pos-sync/waiterpad/fixtures/captured/` as a JSON file whose
+`origin` names the machine, the source file, the observation time and the
+method. The format and the rules are in that directory's `README.md`. The
+loader **refuses** a capture that does not name its machine — deliberately,
+because filing a Back-scoped observation as a venue fact is a mistake this
+project has already made twice.
+
+Adding a captured fixture changes no production behaviour. It changes what the
+test suite can honestly assert.
+
+## A7 — the standing prohibition, restated because Track A makes it tempting
+
+Even with a listener observed and a checksum in hand, **nothing may be
+transmitted**. Not an `ORDER`. Not a `REQUESTTABLESTATUS`, which is read-only in
+the POS but is still WaiterPad transmission. Not a bare TCP connect to see if
+the port answers.
+
+There is a further, specific reason beyond the standing rule, and it is new as
+of 2026-09-07: **device registration consumes a licensed handheld slot.** An
+unknown `DeviceID` is auto-registered into an in-process array if — and only if
+— the count of registered devices is below the licensed handheld count. Front's
+licence reads `Ideal Handheld 2`. If a Verdura device registered first, a real
+waiter's handheld could be refused with `NAKREGO` in the middle of service.
+Connecting is not a read-only act.
+
+---
+
+# TRACK B — native UI ownership and selectors
+
+Everything below is the 2026-09-06 procedure, unchanged. It answers a different
+question (which executable owns the native Table Map, and what its control tree
+looks like) and is not a prerequisite for Track A.
 
 ---
 
