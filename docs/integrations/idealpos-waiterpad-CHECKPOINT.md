@@ -1,4 +1,4 @@
-# WaiterPad / Ideal Handheld — checkpoint, 2026-09-07 ~23:00 NZST
+# WaiterPad / Ideal Handheld — checkpoint, 2026-09-07 ~23:55 NZST
 
 **Stopped cleanly. Nothing in flight, nothing half-done.**
 
@@ -30,9 +30,18 @@ Front capture tooling (`scratchpad/front-passive-capture.ps1`), a second
 read-only Back static pass, contract §17.2, the offline fixture/replay harness,
 the exactly-once scenario suite, six new evidence notes.
 
-**Third session, 2026-09-07 evening — the generator hunt (this one):**
-One question, answered. See "What the third pass settled" below. Contract §17.3;
-four new evidence notes; five new tests; a new evidence bundle.
+**Third session, 2026-09-07 evening — the generator hunt, then RECON (this one):**
+Two passes. The checksum generator hunt (§17.3), then the primary one: the
+**relay path traced end to end** (§17.4). Seven new evidence notes, nine new
+tests, a new evidence bundle.
+
+**`WAITERPAD-RECON-001` is NARROWED, hard.** A socket ORDER's only durable act
+is an `IH-PRINT` row; the worker picks it up and applies it through
+`ProcessHandheldOrder`, which **deletes the table's `PendingSales` and
+`PendingSaleLines` rows and rewrites them**. There is no conditional routing to
+avoid it. And **no durable causal token** (`DeviceID`/`Checksum`) survives into
+native sale state, so an uncertain round can never be closed by content match —
+it stays `MANUAL_RESOLUTION_REQUIRED`.
 
 **Evidence bundles** (read-only):
 
@@ -44,8 +53,8 @@ four new evidence notes; five new tests; a new evidence bundle.
   — **new.** The generator hunt: six tools, seven traces, and a README stating
   the proof standard that was applied.
 
-**Verification state at stop:** **1292** tests across **88** suites, all green
-(**286** of them WaiterPad). `tsc --noEmit` clean. `check:nul-bytes` and
+**Verification state at stop:** **1296** tests across **88** suites, all green
+(**290** of them WaiterPad). `tsc --noEmit` clean. `check:nul-bytes` and
 `check:bridge-governance` pass. `eslint` is clean **across `pos-sync/waiterpad/`**
 — see the correction below for the rest of the API.
 
@@ -224,9 +233,12 @@ rely on the till to catch a duplicate.
    carry?* **answered: nothing** (§17.3 #4) — the builder takes no parameters.
    **What remains:** does `NAKREGO` have causes other than slot exhaustion?
    The wire cannot tell us; only the vendor can.
-5. In a two-machine deployment like this one, what routes a handheld order to
-   the delete-and-rewrite relay path rather than the appending socket path?
-   (`WAITERPAD-RECON-001` — narrowed but standing, §17.2 #6)
+5. `WAITERPAD-RECON-001` — **the routing half is answered** (§17.4): a socket
+   ORDER is relayed unconditionally and applied by `ProcessHandheldOrder`,
+   which deletes and rewrites `PendingSales`/`PendingSaleLines`. **What remains
+   is one question:** does the WaiterPad socket payload carry **complete table
+   state** or only the newly submitted round? Delete-and-rewrite is non-lossy
+   only if complete. Settled by one captured genuine packet from Front.
 
 ---
 

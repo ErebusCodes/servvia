@@ -18,6 +18,9 @@ import {
   CHECKSUM_NO_GENERATOR_EVIDENCE,
   CHECKSUM_STORAGE_DUALITY_EVIDENCE,
   DEVICE_REGISTRATION_EVIDENCE,
+  RECOVERY_CAUSAL_TOKEN_EVIDENCE,
+  RELAY_DELETE_REWRITE_EVIDENCE,
+  RELAY_PATH_CHAIN_EVIDENCE,
   NAKREGO_EMPTY_BODY_EVIDENCE,
   HANDHELD_LOG_LOCATION_EVIDENCE,
   IPS_AND_IPSWORKER_SAME_IMAGE,
@@ -380,6 +383,9 @@ describe('the evidence ledger records the 2026-09-07 static findings', () => {
       ['CHECKSUM_LOG_LINE_EVIDENCE', CHECKSUM_LOG_LINE_EVIDENCE],
       ['CHECKSUM_STORAGE_DUALITY_EVIDENCE', CHECKSUM_STORAGE_DUALITY_EVIDENCE],
       ['NAKREGO_EMPTY_BODY_EVIDENCE', NAKREGO_EMPTY_BODY_EVIDENCE],
+      ['RELAY_PATH_CHAIN_EVIDENCE', RELAY_PATH_CHAIN_EVIDENCE],
+      ['RELAY_DELETE_REWRITE_EVIDENCE', RELAY_DELETE_REWRITE_EVIDENCE],
+      ['RECOVERY_CAUSAL_TOKEN_EVIDENCE', RECOVERY_CAUSAL_TOKEN_EVIDENCE],
     ];
     for (const [name, note] of notes) {
       expect(note.note.length).toBeGreaterThan(60);
@@ -431,8 +437,11 @@ describe('the evidence ledger records the 2026-09-07 static findings', () => {
    * ship an invented hash. This test pins them apart.
    */
   it('separates "no generator in the binary" from "we know the algorithm"', () => {
-    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.grade).toBe('PROVEN_STATIC');
-    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.note).toContain('does NOT reveal the');
+    // Strong negative evidence, deliberately NOT graded PROVEN_STATIC: no
+    // exhaustive control-flow proof exists that a custom algorithm is absent.
+    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.grade).toBe('STRONGLY_INDICATED');
+    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.note).toContain('not an');
+    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.note).toContain('exhaustive');
     // The thing that must not move.
     expect(CHECKSUM_ALGORITHM_EVIDENCE.grade).toBe('NOT_SHOWN');
   });
@@ -456,6 +465,41 @@ describe('the evidence ledger records the 2026-09-07 static findings', () => {
     expect(CHECKSUM_STORAGE_DUALITY_EVIDENCE.note).toContain('0x2a2f1e4');
     expect(CHECKSUM_STORAGE_DUALITY_EVIDENCE.note).toContain('NOT SHOWN');
     expect(CHECKSUM_STORAGE_DUALITY_EVIDENCE.note).toContain('Do not assume the guard is armed');
+  });
+
+  /**
+   * The relay chain is the session's primary finding. These pin the two facts
+   * that make it load-bearing: socket orders DO reach the destructive path,
+   * and the two similarly-named procedures are NOT the same routine.
+   */
+  it('records that a socket ORDER reaches ProcessHandheldOrder via IH-PRINT', () => {
+    expect(RELAY_PATH_CHAIN_EVIDENCE.grade).toBe('PROVEN_STATIC');
+    expect(RELAY_PATH_CHAIN_EVIDENCE.note).toContain('IH-PRINT');
+    expect(RELAY_PATH_CHAIN_EVIDENCE.note).toContain('EXACTLY ONE caller');
+  });
+
+  it('keeps WPOrder and ProcessHandheldOrder distinct', () => {
+    expect(RELAY_PATH_CHAIN_EVIDENCE.note).toContain('do ' + 'not merge them');
+    expect(RELAY_PATH_CHAIN_EVIDENCE.note).toContain('0x0182cad0');
+    expect(RELAY_PATH_CHAIN_EVIDENCE.note).toContain('0x01826b90');
+  });
+
+  it('records the delete-and-rewrite as reaching NATIVE sale state', () => {
+    expect(RELAY_DELETE_REWRITE_EVIDENCE.note).toContain('PendingSaleLines');
+    expect(RELAY_DELETE_REWRITE_EVIDENCE.note).toContain('PendingSales');
+    expect(RELAY_DELETE_REWRITE_EVIDENCE.note).toContain('NATIVE');
+    // The WHERE operand was NOT decoded. Must stay flagged as inference.
+    expect(RELAY_DELETE_REWRITE_EVIDENCE.note).toContain('INFERENCE');
+  });
+
+  /**
+   * The one that must never soften: without a causal token, an exact content
+   * match is not proof Verdura caused it.
+   */
+  it('records that no durable causal token exists for recovery', () => {
+    expect(RECOVERY_CAUSAL_TOKEN_EVIDENCE.grade).toBe('NOT_SHOWN');
+    expect(RECOVERY_CAUSAL_TOKEN_EVIDENCE.note).toContain('NO DeviceID and NO Checksum');
+    expect(RECOVERY_CAUSAL_TOKEN_EVIDENCE.note).toContain('MANUAL_RESOLUTION_REQUIRED');
   });
 
   it('records that NAKREGO carries no body and therefore no reason code', () => {

@@ -10,8 +10,14 @@
  *
  * What produces that value is a different question, and it is NOT SHOWN. The
  * generating side is the vendor's Ideal Handheld application, which is not
- * installed on either venue machine; `MTIPADLIB.dll` was checked and holds
- * only device-connection handlers.
+ * installed on either INSPECTED WINDOWS POS MACHINE; `MTIPADLIB.dll` was
+ * checked and holds only device-connection handlers.
+ *
+ * That wording is deliberate. Front runtime evidence includes a physical
+ * Idealpos-branded handheld / PROTOCOL2 device. The generator plainly runs
+ * somewhere — on that device. "Not installed on either Windows machine we
+ * inspected" is the true claim; "does not exist at this venue" is not, and
+ * must never be written here.
  *
  * WHY "THE RECEIVER TREATS IT OPAQUELY" IS NOT A LICENCE TO INVENT ONE.
  * It is tempting to reason: the receiver only does string equality, therefore
@@ -109,8 +115,9 @@ export class UnresolvedChecksumProvider implements WaiterPadChecksumProvider {
     throw new WaiterPadChecksumUnavailableError(
       'The WaiterPad checksum generation algorithm is NOT SHOWN ' +
         `(evidence grade: ${CHECKSUM_ALGORITHM_EVIDENCE.grade}). ` +
-        'IPS.exe only compares the value; it never generates one, and the ' +
-        'vendor handheld application is not installed on either venue machine. ' +
+        'IPS.exe only compares the value; no generator has been identified in ' +
+        'it, and the vendor generating application is not installed on either ' +
+        'inspected Windows POS machine. ' +
         "Resolve it from a genuine order in Front / Machine 2's " +
         '"Ideal Handheld.log" before implementing a provider. A deterministic ' +
         'Verdura hash is not a WaiterPad checksum.',

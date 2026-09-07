@@ -1035,3 +1035,87 @@ Neither figure affects a protocol claim. Both are recorded because a checkpoint
 whose numbers cannot be reproduced is worse than one with no numbers, and
 because the next session should not spend time hunting a regression it did not
 cause.
+
+### 17.4 Additions, v4 → v5 (2026-09-07 late, the RECON pass)
+
+`WAITERPAD-RECON-001` is **NARROWED, hard** — its central routing question is
+answered, and the answer removes the hope that a socket order might avoid the
+destructive path.
+
+#### The chain, edge by edge
+
+| Edge | Grade |
+| --- | --- |
+| `wsWaiterPad_DataArrival` parses `<OrderItem>` (`0x02818602`), discards an item-less packet (`0x02818628`), INSERTs `POSServerMessages(CreatedDate,MessageType,Data)` as **`IH-PRINT`** with a Data payload (`0x02818755`/`0x0281877c`) | `[STATIC-PROVEN]` |
+| It calls `CheckWPOrder` (`0x01825f30`) from exactly one site, `0x02818883`; `CheckWPOrder` selects the response and does **not** touch `PendingSales` | `[STATIC-PROVEN]` |
+| Worker timer polls `IH-ERROR OR (ProcessedDate IS NULL AND (IH-PRINT OR IH-CMD))` (`0x0294f7c0`) behind a `SEMAPHORE.TMP` guard (`0x0294f86f`) | `[STATIC-PROVEN]` |
+| At `0x0295038e`–`0x02950390` a **non-`IH-ERROR`** row branches to `0x02950555`; `IH-ERROR` falls through to stamp `ProcessedDate` (`0x029503f1`) and is not applied | `[STATIC-PROVEN]` |
+| Non-`IH-ERROR` path logs `Loaded xml to process Handheld Order` (`0x0295063a`), parses a `WPPacket` (`0x02950673`), calls **`ProcessHandheldOrder`** (`0x01826b90`) at `0x029507aa` | `[STATIC-PROVEN]` |
+| `ProcessHandheldOrder` has **exactly one caller image-wide** — that site (binary-wide `E8` scan) | `[STATIC-PROVEN]` |
+
+**Answer to "what routes an order to the relay path":** for a socket ORDER,
+nothing does — it is unconditional. The socket handler's only durable act is the
+`IH-PRINT` row; the worker applies it.
+
+#### A. What is deleted
+
+```
+DELETE * FROM PendingSaleLines WHERE Code='<runtime value>'   (0x01827665)
+DELETE * FROM PendingSales     WHERE Code='<runtime value>'   (0x0182770a)
+```
+
+Both inside `ProcessHandheldOrder`. This reaches **native sale state**, not a
+queue or intermediate table. The `WHERE` operand is a **runtime value, not a
+string constant** — that it is the table code is `[INFERENCE]`, indicated by
+`PendingSales.Code` semantics and the surrounding `----------- TABLE ORDER : `
+/ `  Covers:` logging (`0x018274cf`), **not decoded**. Do not upgrade it.
+
+#### B. What is rewritten
+
+There is **no `INSERT INTO PendingSales` SQL literal anywhere in the image.**
+The rewrite is an ADO recordset on `PendingSaleLines` (`0x0182759a`) and
+`PendingSales` (`0x0182778d`), fields assigned by name: `Code`, `Date`, then per
+`OrderItem` (`0x01827c02`) `StockItem`, `Quantity`, `Type`, `Text`, `Seat`,
+`PriceLevel`, `Price`, `Description` (`0x01827c7d`–`0x0182803c`).
+`ProcessHandheldOrder` also calls `SaveChecksum` (`0x018267f0`) from
+`0x01827301`, and INSERTs an `HHPOS-ALT` message (`0x0182c016`).
+
+#### C. Two procedures, kept apart
+
+`WPOrder` (**`0x0182cad0`**, callers `0x0281244a` and `0x0282c146`) is **not**
+`ProcessHandheldOrder` (**`0x01826b90`**, one caller `0x029507aa`). `WPOrder`
+logs `Handheld Order successfully added to Pending Sales.` (`0x0183293c`),
+`Removing residual items from Cleaned Table` (`0x0182e1bf`) and
+`About to Send to POSServer`. Its trigger is `[UNKNOWN]`. They are not merged
+here and must not be merged later on the strength of similar names.
+
+#### E–I. Recovery
+
+**No durable causal token exists.** The rewrite assigns no `DeviceID` and no
+`Checksum`; both survive only receiver-side (the `Ideal Handheld` log,
+`AAAExampleData` `ColumnType='IH-…'`, `LastCheckSum<n>`) and are joined to no
+sale row by any SQL this pass found — `[STATIC]` over the traced rewrite,
+`[UNKNOWN]` beyond it, since the field list came from recordset assignments and
+not the live schema. One Front `SELECT TOP 1 *` on `PendingSales` would settle
+it.
+
+So "Verdura caused this exact PLU/qty delta" is **indistinguishable** from "a
+human added the same items during recovery". `ACK` cannot close it (emitted
+pre-execution, and on buffer exhaustion), nor can unstable `PendingSales.ID`,
+nor a `Printed` flag.
+
+#### J. The narrowest safe rule
+
+Reconciliation may **read** to detect *divergence* — a readback that cannot
+match the submitted round is evidence something is wrong. It may **never**
+conclude success from content equality. Any uncertain round stays
+`MANUAL_RESOLUTION_REQUIRED`. `reconcileRoundAgainstReadback()` remains
+unimplemented and still throws.
+
+#### The smallest remaining unknown
+
+**Does the WaiterPad socket payload carry complete table state, or only the
+newly submitted round?** Delete-and-rewrite is non-lossy only if complete. This
+was **not** inferred from field names and is not answered here. It is settled by
+one captured genuine packet from Front — the same capture that yields a checksum
+value. Until then, treat the relay as potentially destructive to prior rounds.

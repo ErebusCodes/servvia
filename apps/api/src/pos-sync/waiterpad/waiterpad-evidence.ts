@@ -225,7 +225,9 @@ export const CHECKSUM_ALGORITHM_EVIDENCE: EvidenceNote = {
   note:
     'Receiver-side treatment is opaque string equality (__vbaStrCmp) — PROVEN ' +
     'STATIC. No generation routine exists in the WaiterPad path. The vendor ' +
-    'handheld application is not installed on either machine. The generation ' +
+    'handheld GENERATING application is not installed on either inspected ' +
+    'Windows POS machine (a physical Idealpos-branded handheld device is ' +
+    'separate evidence and is NOT erased by this note). The generation ' +
     'algorithm is therefore NOT SHOWN and is left unimplemented. ' +
     'Strengthened 2026-09-07 by CHECKSUM_NO_GENERATOR_EVIDENCE, which shows ' +
     'by call graph - not by absence of a name - that no generator exists ' +
@@ -565,18 +567,23 @@ export const HANDHELD_LOG_LOCATION_EVIDENCE: EvidenceNote = {
  * from the vendor, and from nowhere else.
  */
 export const CHECKSUM_NO_GENERATOR_EVIDENCE: EvidenceNote = {
-  grade: 'PROVEN_STATIC',
+  grade: 'STRONGLY_INDICATED',
   addresses: ['0x01de4a60', '0x01f5b030', '0x01f5ae4a', '0x01f5af22'],
   note:
-    'IPS.exe contains NO checksum generator on any path. No <Checksum>/<WPOrder ' +
-    'construction literal exists; the binary only reads those names via ' +
-    'selectSingleNode. Support.GetMD5Hash at 0x01de4a60 has five callers ' +
+    'No checksum generator has been IDENTIFIED in IPS.exe, and the known ' +
+    'candidate construction and hash paths are now strongly excluded. No ' +
+    '<Checksum>/<WPOrder construction literal exists; the binary only reads ' +
+    'those names via selectSingleNode. Support.GetMD5Hash at 0x01de4a60 has five callers ' +
     'binary-wide (0x0133eb4f, 0x0175d78f, 0x01f5b030, 0x01f5bea3, 0x02512eb7), ' +
     'NONE in the handheld module 0x01823000-0x01836000 or the listener ' +
     '0x02811000-0x02813000; its 0x01f5b030 caller sits beside the Users/ADMIN ' +
     'SELECT and encryptedPassword, so it hashes operator passwords. No RNG, ' +
-    'timer, CryptoAPI or Base64 import exists. This does NOT reveal the ' +
-    'algorithm - it proves the algorithm is not in this binary to be found.',
+    'timer, CryptoAPI or Base64 import exists. IPS.exe behaves as the RECEIVER ' +
+    'in every traced WaiterPad path. This is strong NEGATIVE evidence, not an ' +
+    'exhaustive control-flow proof: absence of imports and strings does not by ' +
+    'itself exclude a custom arithmetic or string algorithm somewhere in the ' +
+    'image. Further blind searching of this image is low-value unless a new ' +
+    'concrete xref or data-flow lead appears.',
 };
 
 /**
@@ -681,4 +688,166 @@ export const NAKREGO_EMPTY_BODY_EVIDENCE: EvidenceNote = {
     'open/close storage is not interpolation. NAKREGO therefore carries NO ' +
     'body and no reason code; LOCK stays the only interpolated response. ' +
     'WAITERPAD-REGO-001 body half is closed; its cause half stands.',
+};
+
+/**
+ * WAITERPAD-RECON-001 — the relay path, traced end to end.
+ *
+ * This is the finding the route has been missing since the first session, and
+ * it is not the comfortable one. The question was: what routes a handheld order
+ * to the delete-and-rewrite relay path rather than an appending socket path?
+ * The answer is that for a socket ORDER there is no choice to route. **Every
+ * socket order is relayed, and the relay applies it by deleting the table's
+ * native sale and rewriting it.**
+ *
+ * THE CHAIN, each edge with its own evidence.
+ *
+ *   1. [STATIC-PROVEN] `wsWaiterPad_DataArrival` parses `<OrderItem>`
+ *      (0x02818602), discards a packet with no items (0x02818628), and INSERTs
+ *      `POSServerMessages (CreatedDate, MessageType, Data)` with MessageType
+ *      `'IH-PRINT'` and a Data payload (0x02818755 / 0x0281877c).
+ *   2. [STATIC-PROVEN] It calls `CheckWPOrder` (0x01825f30) from exactly one
+ *      site, 0x02818883 — the response-selection block. `CheckWPOrder` decides
+ *      ACK/NAK/DUPLICATE/LOCK/NAKREGO. It does NOT touch PendingSales.
+ *   3. [STATIC-PROVEN] The worker timer polls
+ *      `SELECT * FROM POSServerMessages WHERE MessageType='IH-ERROR' OR
+ *      (ProcessedDate IS NULL AND (MessageType='IH-PRINT' OR
+ *      MessageType='IH-CMD')) ORDER BY CreatedDate` (0x0294f7c0), behind a
+ *      `SEMAPHORE.TMP` guard (0x0294f86f).
+ *   4. [STATIC-PROVEN] It reads the row's `messageType`, compares against
+ *      `IH-CMD` (0x0294fa9c), `IH-PRINT` (0x02950134) and `IH-ERROR`
+ *      (0x0295016c). At 0x0295038e-0x02950390 a NON-`IH-ERROR` row branches to
+ *      0x02950555; an `IH-ERROR` row falls through to stamp `ProcessedDate`
+ *      (0x029503f1) and is not applied.
+ *   5. [STATIC-PROVEN] The non-`IH-ERROR` path logs `Loaded xml to process
+ *      Handheld Order` (0x0295063a), parses a `WPPacket` (0x02950673), and at
+ *      0x029507aa calls `ProcessHandheldOrder` (0x01826b90).
+ *   6. [STATIC-PROVEN] `ProcessHandheldOrder` has **exactly one caller in the
+ *      whole image** — that site. Verified by a binary-wide E8 scan.
+ *
+ * So an `IH-PRINT` row written by the socket handler is picked up by the worker
+ * and applied by `ProcessHandheldOrder`. The routing question is answered for
+ * the socket ORDER case: it is not conditional.
+ *
+ * KEEP THESE TWO APART. `WPOrder` (0x0182cad0) is a DIFFERENT procedure with
+ * different callers (0x0281244a and 0x0282c146) and different behaviour — it
+ * logs `Handheld Order successfully added to Pending Sales.` (0x0183293c) and
+ * `About to Send to POSServer`. It is not `ProcessHandheldOrder` and must never
+ * be merged with it on the strength of a similar name.
+ */
+export const RELAY_PATH_CHAIN_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: [
+    '0x02818755',
+    '0x02818883',
+    '0x0294f7c0',
+    '0x02950390',
+    '0x0295063a',
+    '0x029507aa',
+    '0x01826b90',
+  ],
+  note:
+    'Socket ORDER -> IH-PRINT row -> worker poll -> ProcessHandheldOrder, every ' +
+    'edge STATIC. wsWaiterPad_DataArrival INSERTs POSServerMessages MessageType ' +
+    "'IH-PRINT' with Data (0x02818755) and calls CheckWPOrder once (0x02818883). " +
+    'The worker polls IH-ERROR/IH-PRINT/IH-CMD (0x0294f7c0); at 0x02950390 a ' +
+    'non-IH-ERROR row branches to the XML load (0x0295063a) and calls ' +
+    'ProcessHandheldOrder at 0x029507aa. ProcessHandheldOrder (0x01826b90) has ' +
+    'EXACTLY ONE caller image-wide, that site. WPOrder (0x0182cad0) is a ' +
+    'DIFFERENT procedure with different callers (0x0281244a, 0x0282c146); do ' +
+    'not merge them.',
+};
+
+/**
+ * What the relay actually does to native sale state, and why it is a hazard.
+ *
+ * `ProcessHandheldOrder` (0x01826b90 .. its error handler at 0x0182c221) issues
+ * BOTH of these, in this order:
+ *
+ *     DELETE * FROM PendingSaleLines WHERE Code='<value>'     (0x01827665)
+ *     DELETE * FROM PendingSales     WHERE Code='<value>'     (0x0182770a)
+ *
+ * and then rewrites. There is **no `INSERT INTO PendingSales` SQL literal
+ * anywhere in the image** — the rewrite is an ADO recordset opened on
+ * `PendingSales` (0x0182778d) and `PendingSaleLines` (0x0182759a) with fields
+ * assigned by name: `Code`, `Date`, then per `OrderItem` (0x01827c02)
+ * `StockItem`, `Quantity`, `Type`, `Text`, `Seat`, `PriceLevel`, `Price`,
+ * `Description` (0x01827c7d-0x0182803c).
+ *
+ * THE KEY. The `WHERE Code='…'` operand is a RUNTIME VALUE, not a string
+ * constant, so this note does not claim to have decoded its provenance. That
+ * it is the table code is `[INFERENCE]` — strongly indicated by `PendingSales.Code`
+ * carrying the table code elsewhere in the schema and by the surrounding
+ * `----------- TABLE ORDER : ` / `  Covers:` logging (0x018274cf), but the
+ * variable itself was not traced to its source. Do not upgrade this without
+ * decoding it.
+ *
+ * WHY IT MATTERS. This is destructive to NATIVE sale state, not to a queue or
+ * an intermediate table. If the deleted scope is the whole table code, then
+ * every round already on that table is removed and re-created from the packet
+ * currently being applied — which means the packet must carry complete table
+ * state for the operation to be non-lossy. That requirement is `[INFERENCE]`
+ * from the delete-and-rewrite shape, and it is the single most important thing
+ * still to confirm.
+ */
+export const RELAY_DELETE_REWRITE_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x01827665', '0x0182770a', '0x0182759a', '0x0182778d', '0x01827c02'],
+  note:
+    'ProcessHandheldOrder issues DELETE * FROM PendingSaleLines WHERE Code= ' +
+    '(0x01827665) then DELETE * FROM PendingSales WHERE Code= (0x0182770a), ' +
+    'then rewrites via ADO recordsets on PendingSaleLines (0x0182759a) and ' +
+    'PendingSales (0x0182778d) with fields set by name (Code, Date, StockItem, ' +
+    'Quantity, Type, Text, Seat, PriceLevel, Price, Description). There is NO ' +
+    'INSERT INTO PendingSales SQL literal in the image. This reaches NATIVE ' +
+    'sale state, not a queue. The WHERE operand is a RUNTIME value: that it is ' +
+    'the table code is INFERENCE, not decoded. Whether the packet must ' +
+    'therefore carry COMPLETE table state is the open question.',
+};
+
+/**
+ * The recovery question, and the answer Verdura has to live with.
+ *
+ * Asked plainly: after an uncertain round, is there any durable token that
+ * distinguishes "Verdura caused this exact PLU/quantity delta" from "a human
+ * added the same items while we were recovering"?
+ *
+ * On the evidence so far: **no.** The fields the rewrite assigns are
+ * `Code`, `Date`, `StockItem`, `Quantity`, `Type`, `Text`, `Seat`,
+ * `PriceLevel`, `Price`, `Description`. **No `DeviceID` and no `Checksum`
+ * appear among them.** Both live on the receiver side only — the checksum in
+ * the `Ideal Handheld` log, in `AAAExampleData` under `ColumnType='IH-…'`, and
+ * in the `LastCheckSum<n>` setting; the `DeviceID` in the same places. None of
+ * that is joined to a `PendingSales` or `PendingSaleLines` row by any SQL this
+ * pass found.
+ *
+ * That absence is `[STATIC]` over the traced rewrite and `[UNKNOWN]` beyond it:
+ * the field list was read from the recordset assignments in
+ * `ProcessHandheldOrder`, not from the live schema, and a column that exists
+ * but is never assigned there would not appear. A Front `SELECT TOP 1 *` on
+ * `PendingSales` would settle it in one read.
+ *
+ * CONSEQUENCE, and it is the reason `reconcileRoundAgainstReadback()` stays
+ * unimplemented: an exact PLU/quantity match after an uncertain round is
+ * consistent with two different causes, and nothing durable separates them.
+ * `ACK` cannot close the gap either — it is emitted before execution
+ * (`ACK_MEANS_BUFFERED_NOT_EXECUTED`) and even for a packet dropped on a full
+ * buffer (`ACK_ON_BUFFER_EXHAUSTION`). Neither can `PendingSales.ID`, which is
+ * unstable, nor `Printed`, which says a kitchen docket was produced and not who
+ * caused it.
+ */
+export const RECOVERY_CAUSAL_TOKEN_EVIDENCE: EvidenceNote = {
+  grade: 'NOT_SHOWN',
+  addresses: ['0x01827c7d', '0x0182803c'],
+  note:
+    'NO durable causal token links a native PendingSales/PendingSaleLines row ' +
+    'to the Verdura submission that caused it. The rewrite in ' +
+    'ProcessHandheldOrder assigns Code, Date, StockItem, Quantity, Type, Text, ' +
+    'Seat, PriceLevel, Price, Description - NO DeviceID and NO Checksum. Those ' +
+    'two survive only receiver-side (Ideal Handheld log, AAAExampleData ' +
+    "ColumnType='IH-', LastCheckSum<n>) and are joined to no sale row by any " +
+    'SQL found. So an exact PLU/qty match cannot be distinguished from a human ' +
+    'adding the same items. ACK cannot close it (pre-execution, and emitted on ' +
+    'buffer exhaustion); nor can unstable PendingSales.ID or a Printed flag. ' +
+    'Recovery of an uncertain round stays MANUAL_RESOLUTION_REQUIRED.',
 };
