@@ -176,9 +176,12 @@ export function decideFromResponse(response: WaiterPadResponse): WaiterPadOutcom
         requiresReadback: true,
         safeToRepresentToOperator: false,
         reason:
-          'NAK: the till refused the order. The conditions producing a NAK were ' +
-          'not fully traced, so non-acceptance is not proven — read the table ' +
-          'back before resubmitting anything.',
+          'NAK: the till refused the order. One NAK condition is now traced and ' +
+          'it is a BUSY signal, not a rejection — WPParsePacket answers NAK when ' +
+          'HandheldProcessing is already set (0x0281852d), i.e. the till is ' +
+          'mid-drain. Other NAK sources remain untraced, so non-acceptance is ' +
+          'still not proven: read the table back before resubmitting anything, ' +
+          'and never treat a NAK as licence to retry automatically.',
       };
 
     case 'DUPLICATE':

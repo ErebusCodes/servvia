@@ -14,11 +14,14 @@
  *
  *   [STATIC] — read out of the `IPS.exe` binary (40,143,120 bytes, 2023-09-11),
  *              which is the same build on both venue machines. Machine
- *              independent. Everything in this file is [STATIC].
- *   [BACK]   — observed on Back / Machine 1 (the POSServer host). Nothing in
- *              this file depends on a [BACK] observation.
+ *              independent, and the grade of every protocol claim here.
+ *   [BACK]   — observed on Back / Machine 1 (the POSServer host). Two notes
+ *              added on 2026-09-07 carry a [BACK] observation, and each says so
+ *              in its own text: `IPS_AND_IPSWORKER_SAME_IMAGE` and the closing
+ *              paragraph of `HANDHELD_LOG_LOCATION_EVIDENCE`. No claim about
+ *              the PROTOCOL rests on either.
  *   [FRONT]  — operator-captured on Front / Machine 2 (the till that actually
- *              runs the handheld server). Nothing here depends on one either.
+ *              runs the handheld server). Nothing here depends on one.
  *
  * NOTHING IN THIS MODULE TREE OPENS A SOCKET. See `waiterpad-gate.ts`.
  */
@@ -290,4 +293,238 @@ export const APPEND_VS_RELAY_EVIDENCE: EvidenceNote = {
     'ProcessHandheldOrder (0x01826b90) has both (0x01827665, 0x0182770a) and is ' +
     'called only from the IH-DATA relay block at 0x029507aa. What routes an ' +
     'order to the relay is NOT SHOWN.',
+};
+
+/* ==========================================================================
+ * Added 2026-09-07, from a second read-only static pass on Back / Machine 1.
+ *
+ * Everything below is [STATIC] — read out of the same IPS.exe build that runs
+ * on Front — except where a note explicitly says [BACK], meaning it was
+ * observed on the POSServer host and says nothing about Front.
+ * ========================================================================== */
+
+/**
+ * `IPS.exe` and `IPSWorker.exe` ARE THE SAME FILE.
+ *
+ * Byte-identical on Back: both 40,143,120 bytes, both
+ * SHA-256 F18475A784C996351048D4F537CF0CC8E2D5EE9AA7B01B38130CDADCC85A520E.
+ * One image, two names, and the role is chosen at startup rather than by which
+ * file was launched.
+ *
+ * WHY THIS MATTERS, AND IT IS NOT A CURIOSITY. Both images therefore contain
+ * the listener code for 6983, 7983 and 12183. So "IPS.exe contains the
+ * WaiterPad port" says nothing whatever about which process binds it. A
+ * listener may only ever be attributed to a PID, by joining the TCP table to
+ * the owning process, its path and its command line — never by reasoning from
+ * a file's contents or from a process name.
+ */
+export const IPS_AND_IPSWORKER_SAME_IMAGE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[BACK] Get-FileHash of both files in the Idealpos program directory, ' +
+    '2026-09-07: identical SHA-256 and identical length. The [STATIC] ' +
+    'consequence — one image carrying every listener — is machine independent ' +
+    'and therefore applies to Front.',
+};
+
+/**
+ * TWO GATES IN `wsWaiterPad_DataArrival` THAT ANSWER NOTHING AT ALL.
+ *
+ * Before any parsing, DataArrival tests two globals and, on either, logs a line
+ * and exits. No response is written. The socket stays open; the sender sees a
+ * connection that accepted its bytes and never replied.
+ *
+ * This is why "no reply" is a first-class protocol outcome on this route and
+ * not merely a network fault. A licence lapse, or `NoReceiving` being set, is
+ * indistinguishable at the wire from a lost response — and both are
+ * indistinguishable from a round that was accepted and executed.
+ */
+export const SILENT_DROP_GATES: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x02815759', '0x0281577a', '0x028157d0', '0x028157fa'],
+  note:
+    "cmp word [0x2a2f46e], 0 then a log of 'WaiterPad_DataArrival EXIT because " +
+    "NOT HandheldLicensed'. A second pair at 0x028157d0-0x028157fa logs 'EXIT " +
+    "because NoReceiving=TRUE'. Neither branch writes a response body. " +
+    '[0x2a2f46e] is set at 0x027e3978 as (handheldLicenceCount > 0), from the ' +
+    'licensing object at [0x2a2f178].',
+};
+
+/**
+ * ONE `NAK` CONDITION IS NOW TRACED, AND IT IS A BUSY SIGNAL.
+ *
+ * Inside `WPParsePacket`, an ORDER arriving while `HandheldProcessing` is
+ * already set is answered with NAK — the till is mid-drain, not refusing the
+ * order's contents.
+ *
+ * This does NOT license retrying a NAK. `CheckWPOrder` returning 0 or 3 also
+ * produces NAK and those conditions remain untraced, so the conservative
+ * mapping stands. It is recorded because it is the first NAK condition with a
+ * known cause, and because it means a NAK can be a transient property of
+ * TIMING rather than of the packet.
+ */
+export const NAK_ON_HANDHELD_PROCESSING: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x0281852d'],
+  note:
+    "The string 'parsing ORDER but HandheldProcessing set - sending NAK back' " +
+    'is referenced at 0x0281852d, inside WPParsePacket (0x02817900-0x02818b30) ' +
+    'and between the ORDER/ORDER2 dispatch at 0x0281838c and the item-count ' +
+    'check at 0x02818602.',
+};
+
+/**
+ * HOW A DEVICE BECOMES REGISTERED — and why we must not take a slot.
+ *
+ * There is no enrolment ceremony. The registration sub logs
+ * `"Ideal Handheld" & deviceId & " - WP Current Count=" & n & " - Waiters=" & m`,
+ * and then:
+ *
+ *   - if the device is already known                   -> accept
+ *   - else if currentCount >= licensedHandheldCount    -> log "BAD REGO",
+ *                                                         reject (NAKREGO)
+ *   - else scan a 99-slot global string array for a
+ *     free slot, store the DeviceID, log
+ *     "Adding <id> to current devices."                -> accept
+ *
+ * TWO CONSEQUENCES, BOTH OPERATIONAL RATHER THAN THEORETICAL:
+ *
+ *   1. The registry is an in-process VB array. It does not survive an IPS.exe
+ *      restart, so registration state is not durable and a post-restart packet
+ *      re-registers from scratch.
+ *   2. THE CAP IS THE LICENCE. Front's licence reads `Ideal Handheld 2`. If
+ *      that grants two handheld slots and both are held by real waiter
+ *      devices, a Verdura DeviceID would be refused — and if Verdura got in
+ *      first, a real waiter's handheld would be the one refused. Connecting a
+ *      new device to a working service is therefore not a read-only act even
+ *      before a single ORDER is sent.
+ */
+export const DEVICE_REGISTRATION_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: [
+    '0x01824fdc',
+    '0x0182500d',
+    '0x0182507d',
+    '0x0182508b',
+    '0x018250b8',
+    '0x01825107',
+    '0x01825193',
+  ],
+  note:
+    'cmp word [ebp-0x1c], word [0x2a2f470] then jge to the BAD REGO branch at ' +
+    '0x01825183. Otherwise a for-1-to-99 scan of the global string array at ' +
+    '[0x2a2fc18] finds an empty slot (__vbaStrCmp against the empty string at ' +
+    '0x683b24) and __vbaStrCopy stores the DeviceID at 0x01825116. ' +
+    '[0x2a2f470] is written at 0x027e3965 from the licensing object; ' +
+    '[0x2a2f46e], the HandheldLicensed boolean, is set from the same value.',
+};
+
+/**
+ * THE PORT FAMILY, AND THE SCHEME THAT IS NOT THERE.
+ *
+ * It is tempting to read 11183 / 12183 / 13183 as a terminal-indexed
+ * `1<n>183` scheme. It is not one, and the counter-evidence is direct:
+ *
+ *   6983   IPS.exe    wsWaiterPad     LocalPort (dispid 2) + Listen (0x41)
+ *   7983   IPS.exe    POSWorker       LocalPort
+ *   11183  IPSPrinterServer           LocalPort + Listen
+ *          IPS.exe                    RemotePort (dispid 1) + Connect (0x40),
+ *                                     on the printing path and on wsSynch
+ *   12183  IPS.exe    wsPrinterError  LocalPort + Listen
+ *          IPSPrinterServer           RemotePort
+ *   13184  IPSDeploy                  LocalPort AND RemotePort
+ *
+ *   13183  DOES NOT APPEAR as an immediate anywhere in IPS.exe's .text.
+ *
+ * IPSDeploy uses 13184, not 13183, which breaks the pattern outright. Every
+ * value is a literal immediate; no site computes a port from a terminal or POS
+ * number. So Front's IPS.exe binds the SAME 12183 that Back's did — and an
+ * observed 12183 on Front is emphatically not the WaiterPad ingress.
+ */
+export const PORT_FAMILY_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: [
+    '0x02811abb',
+    '0x029938be',
+    '0x00fb3c7e',
+    '0x01780b49',
+    '0x0283ecd9',
+    '0x00413a92',
+    '0x0041cb37',
+    '0x00426b8f',
+  ],
+  note:
+    'Exhaustive scan of each candidate port as a 32-bit immediate across the ' +
+    '.text of IPS.exe, IPSPrinterServer.exe, IPSDeploy.EXE and IPSClient.exe. ' +
+    'Every hit is a literal; none is computed. 13183 has zero .text ' +
+    'occurrences in IPS.exe. dispid 1 = RemotePort and dispid 2 = LocalPort, ' +
+    'corroborated by the Connect (0x40) / Listen (0x41) calls that follow each. ' +
+    'The last three addresses are in IPSPrinterServer.exe and IPSDeploy.EXE, ' +
+    'not IPS.exe.',
+};
+
+/**
+ * WHAT THE SOCKET PATH WRITES TO `POSServerMessages`, AND WHAT IT DOES NOT.
+ *
+ * Refines APPEND_VS_RELAY_EVIDENCE rather than replacing it.
+ *
+ *   - The socket ORDER path — inside `WPParsePacket`, right after the no-items
+ *     discard check — INSERTs a `POSServerMessages` row of MessageType
+ *     `'IH-PRINT'` WITH a Data payload.
+ *   - The only `'IH-DATA'` INSERT in the whole binary sits in a database
+ *     housekeeping routine, among `FixLocation0` / `MiscellaneousFixes` /
+ *     one-off schema repairs, is guarded by an existence SELECT, and writes
+ *     only `(CreatedDate, MessageType)` — NO Data column. It is a provisioning
+ *     marker, not an order.
+ *   - `ProcessHandheldOrder` — the delete-and-rewrite routine — is called from
+ *     `frmPOSWorker`'s timer, which polls
+ *     `MessageType='IH-ERROR' OR (ProcessedDate IS NULL AND (MessageType=
+ *     'IH-PRINT' OR MessageType='IH-CMD'))` and dispatches on a `messageType`
+ *     ELEMENT inside a `WPPacket` document.
+ *
+ * SO THE HAZARD IS NARROWED, NOT REMOVED — and it is narrowed in an
+ * uncomfortable direction. The socket path does write a row that the worker
+ * picks up, and the worker is the process that owns the delete-and-rewrite
+ * routine. What the worker's `messageType` dispatch does with an order-shaped
+ * packet is still NOT SHOWN. `WAITERPAD-RECON-001` stands.
+ */
+export const RELAY_TRIGGER_EVIDENCE: EvidenceNote = {
+  grade: 'NOT_SHOWN',
+  addresses: ['0x02818755', '0x0281877c', '0x01a30f01', '0x01a31089', '0x0294f7c0', '0x029507aa'],
+  note:
+    "WPParsePacket INSERTs an 'IH-PRINT' row at 0x02818755/0x0281877c. The " +
+    'sole IH-DATA INSERT (0x01a31089) carries no Data column and sits between ' +
+    'FixLocation0 (0x01a30c8c) and MiscellaneousFixes (0x01a315dc). ' +
+    'ProcessHandheldOrder is reached from the frmPOSWorker timer whose SELECT ' +
+    'is at 0x0294f7c0. What routes an ORDER into that routine is still NOT ' +
+    'SHOWN.',
+};
+
+/**
+ * WHERE FRONT'S HANDHELD LOG LIVES, AND THE WATERMARK THAT SAYS IF IT IS USED.
+ *
+ * IPS.exe's own log-housekeeping table pairs the glob `Ideal Handheld*.*` with
+ * the `\LOGS` directory, beside `POSWorker*.*`, `POSActivity*.*`,
+ * `Printing*.*`, `Webit*.*` and `PrintJobs*.*`. The category is gated by a
+ * `HandheldLog` config key, and its rotation watermark is the registry value
+ * `CurrentHandheldLogDate` under
+ * `HKCU\SOFTWARE\VB and VBA Program Settings\Ideal POS System\System Options`.
+ *
+ * [BACK] Back's value reads `06/06/2019 11:17:12` — identical to
+ * `CurrentFuelConsoleDate` and `CurrentSmartlinkDate`, features this venue does
+ * not use — while `CurrentIPSLogDate` and `CurrentWebitDate` read 01 Sep 2026.
+ * That is the shape of a log category that has never been written. It is
+ * evidence about Back only, and it is the cheapest single reading available on
+ * Front.
+ */
+export const HANDHELD_LOG_LOCATION_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x0153a0e2', '0x0153a0f7', '0x00349cac'],
+  note:
+    "The glob 'Ideal Handheld*.*' at 0x0153a0e2 is immediately followed by " +
+    "'\\LOGS' at 0x0153a0f7, in the same table as the other log categories. " +
+    "'HandheldLog' at 0x00349cac is the config key naming the category. " +
+    '[BACK] the CurrentHandheldLogDate watermark was read read-only from HKCU ' +
+    'on 2026-09-07 and reads 06/06/2019.',
 };

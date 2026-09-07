@@ -149,7 +149,11 @@ which logs *"Startup Listener."* at `0x02811d31` and whose failure branch logs
 **Why the dispid decoding is trustworthy.** The identical five-step pattern —
 `VT_I4` variant, `[eax+0x304]`, `.Item(0)`, `__vbaLateIdSt(…, 2, …)`,
 `__vbaLateIdCall(…, 0x41)` — occurs at `0x0283ecd9` with the immediate
-`0x2F97 = 12183`, and **12183 is observed listening under `IPS.exe`**. The same
+`0x2F97 = 12183`, and **12183 was observed listening under `IPS.exe` on Back /
+Machine 1** (`[BACK]`, 2026-09-07 00:05, pid 20056; it was *not* listening at
+14:48 the same day, because `IPS.exe` was not running then). That is a
+corroboration of the DECODING METHOD on a machine we can read. It is not, and
+must never be cited as, evidence about Front. The same
 pattern at `0x029938be` carries `0x1F2F = 7983` for `IPSWorker`, and
 `POSWorker.log` records that listener starting successfully 661 times. So
 dispid 2 = `LocalPort` and dispid 0x41 = `Listen` are confirmed against runtime
@@ -186,7 +190,8 @@ Read-only local TCP table on **Back / Machine 1**, 2026-09-07 ~00:05 NZST:
 0.0.0.0:5501    IPSClient (12800)          0.0.0.0:5502   IPSClient
 0.0.0.0:11000   POSServer (7136)
 0.0.0.0:11183   IPSPrinterServer (2528)
-0.0.0.0:12183   IPS (20056)                ← single-instance guard
+0.0.0.0:12183   IPS (20056)                ← wsPrinterError; bind doubles as
+                                             the single-instance guard
 0.0.0.0:13184   ipsdeploy (12668)
 ```
 
@@ -714,7 +719,7 @@ Ranked by what actually blocks the driver.
 | 1 | **Is TCP 6983 actually bound on Front / Machine 2, and reachable from the Verdura host?** | This is now the whole environmental question. Front *is* licensed (`Ideal Handheld 2`, `HandheldNumber=2`, `[FRONT]`) and the handheld server was observed there — but Front's TCP table has never been read. | `[STATIC]` for the port constant; **`NOT SHOWN`** for the binding and reachability. Settled by one read-only listener listing on Front. |
 | 2 | **Support status of the protocol.** No local artifact describes Ideal Handheld / WaiterPad as a third-party integration surface. | An unsupported write path into a live restaurant's till is not shippable, licence or no licence. | `NOT SHOWN` — unchanged, and unchangeable without the vendor |
 | 3 | The gate that suppresses the WaiterPad startup listener sub (`0x02811a20`) | Determines whether a licence alone opens the port. | `NOT SHOWN` |
-| 4 | How a `DeviceID` becomes registered (`BAD REGO` / `NAKREGO` / `"Adding … to current devices."`) | Verdura cannot send a first ORDER without it. | `NOT SHOWN` |
+| 4 | How a `DeviceID` becomes registered (`BAD REGO` / `NAKREGO` / `"Adding … to current devices."`) | Verdura cannot send a first ORDER without it. | ~~`NOT SHOWN`~~ → **substantially answered 2026-09-07, see §17.2 #3**: registration is implicit and capped by the licensed handheld count. What remains `NOT SHOWN` is whether `NAKREGO` has other causes, and what its body carries. |
 | 5 | Which `Col0` value `WPOrder` writes on a handheld line (`'HH'` / `'H'` / `'SI'`) | Would give a **native provenance marker** — the first one found. Answerable by one read-only SELECT against POSServer once a handheld line exists. | `STRONGLY INDICATED` that the discriminator exists |
 | 6 | `AddNew` vs in-place update inside `WPOrder`'s line loop | Converts §10's append conclusion from `STRONGLY INDICATED` to `PROVEN STATIC`. Answerable statically with more disassembly. | `STRONGLY INDICATED` |
 | 7 | `Quantity > 1` representation, and unit-vs-extended `Col4` | Affects every multi-quantity line. Never observed. | `NOT SHOWN` |
@@ -915,3 +920,65 @@ listener table, its logs and its licence line describe *it*. A negative
 observed on Back is evidence about Back, and nothing else — the same failure
 mode as the earlier "POSServer is a replica" and `IPS.exe`-ownership
 assumptions this project has already been bitten by twice.
+
+---
+
+### 17.2 Corrections and additions, v2 → v3 (2026-09-07, second Back pass)
+
+A second read-only static pass on Back / Machine 1 produced one correction to a
+correction, one over-scoped sentence tightened, and ten additions. Full working
+in `idealpos-back-static-investigation-2026-09-07.md`.
+
+#### Corrected
+
+| v2 statement | Status | v3 |
+| --- | --- | --- |
+| §17, of `ipad-integration-discovery-2026-09-06.md`: *"Not the printer-error channel; the single-instance guard."* | **over-corrected** | It **is** the printer-error channel. The socket bound to 12183 is named **`wsPrinterError`** — Back's `Printing.log` logs `wsPrinterError_DataArrival` / `wsPrinterError_ConnectionRequest` against `Host: localhost:12183`, and the binary carries `wsPrinterError_ConnectionRequest` / `_DataArrival` / `_Close` in the same string neighbourhood as *"Idealpos is already running."* The accurate statement: **12183 is `IPS.exe`'s `wsPrinterError` inbound channel, which `IPSPrinterServer` dials; because `IPS.exe` binds it at startup, the bind failure also serves as the single-instance guard.** Both earlier readings were partly right; neither was the whole thing. |
+| §2.1: *"12183 **is observed** listening under `IPS.exe`"*, stated without a scope tag in a paragraph otherwise about the decoding method | **over-scoped** | Rewritten in place and tagged `[BACK]`, with the observation's date and pid, and with the note that it was **not** listening at 14:48 on 2026-09-07 because `IPS.exe` was not running then. It corroborates the **dispid decoding**, and nothing about Front. |
+| §1 topology table: *"TCP 12183 on `IPS.exe` is a single-instance guard, not handheld"* | **incomplete, not wrong** | Still not handheld — which is what the row was for, and it stands. Now also: it is the `wsPrinterError` channel. |
+
+**Explicitly NOT corrected, because it was already right.** The contract has
+never claimed Front's `IPS.exe` was observed on 6983. §2.3 records that binding
+as `NOT SHOWN`; §15 #1 lists it as the first open unknown; §16's amendment calls
+it *"expected, not observed"*; and `waiterpad-evidence.ts` says
+*"Whether Front binds 6983 is NOT SHOWN."* **That remains the position.** The
+historical 12183 observation is Back evidence about a different port, and after
+this amendment it is tagged as such everywhere it appears.
+
+#### Added — all `[STATIC]` unless marked otherwise
+
+| # | Finding | Grade | Affects |
+| --- | --- | --- | --- |
+| 1 | **`IPS.exe` and `IPSWorker.exe` are byte-identical** (same SHA-256, 40,143,120 bytes). One image, two names. Both therefore contain the listener code for 6983, 7983 **and** 12183, so a listener may only be attributed by **PID → process → command line** — never by which binary holds the constant. | `[BACK]` `PROVEN RUNTIME` for the hashes; the consequence is `[STATIC]` | how §2's port evidence must be read on Front |
+| 2 | **There is no terminal-indexed `1<n>183` scheme.** `IPSDeploy` binds **13184**, not 13183; 13183 has **zero** `.text` occurrences in `IPS.exe`; every port is a literal immediate with no arithmetic anywhere; and 11183/12183 are a **bidirectional pair between two programs** — `IPSPrinterServer` binds 11183 and dials 12183, `IPS.exe` binds 12183 and dials 11183. | `PROVEN STATIC` | closes a standing hypothesis. **Front's `IPS.exe` will bind the same 12183 Back's did.** |
+| 3 | **Device registration is implicit and licence-capped.** An unknown `DeviceID` is auto-added to a 99-slot in-process array **if** `currentCount < licensedHandheldCount`; otherwise `"BAD REGO"` → `NAKREGO`. The cap is read from the licensing object into `[0x2a2f470]`; `[0x2a2f46e]` (`HandheldLicensed`) is `(cap > 0)`. | `PROVEN STATIC` | **`WAITERPAD-REGO-001` substantially answered.** See the new risk below. |
+| 4 | **Two gates in `wsWaiterPad_DataArrival` answer nothing at all** — `NOT HandheldLicensed` (`0x0281577a`) and `NoReceiving=TRUE` (`0x028157fa`). Neither branch writes a response body. | `PROVEN STATIC` | silence is a first-class protocol outcome, not only a network fault. Already reflected in the round-state mapping; now it has a reason rather than a caution. |
+| 5 | **One `NAK` condition traced, and it is a busy signal**: `"parsing ORDER but HandheldProcessing set - sending NAK back"` (`0x0281852d`), inside `WPParsePacket`. Other NAK sources remain untraced. | `PROVEN STATIC` | §6's NAK row. The mapping is unchanged; its explanation is sharper. |
+| 6 | **`IH-PRINT` vs `IH-DATA`.** The socket ORDER path INSERTs a `POSServerMessages` row of type **`IH-PRINT`** with a Data payload (`0x02818755`). The **only** `IH-DATA` INSERT in the binary is a **provisioning marker with no `Data` column** (`0x01a31089`), inside a housekeeping routine between `FixLocation0` and `MiscellaneousFixes`. `ProcessHandheldOrder` is called from **`frmPOSWorker`'s timer**, which polls `IH-ERROR` / `IH-PRINT` / `IH-CMD` and dispatches on a `messageType` element inside a `WPPacket`. | `PROVEN STATIC` for the sites; the routing is still **`NOT SHOWN`** | §10, §15 #11. The relay hazard is **narrowed, not removed** — and narrowed uncomfortably: the socket path *does* write a row the worker consumes, and the worker is the process that owns the delete-and-rewrite routine. |
+| 7 | **The handheld log is `\LOGS\Ideal Handheld*.*`**, gated by a `HandheldLog` config key, with a per-user registry watermark `CurrentHandheldLogDate`. `[BACK]` Back's reads **06 Jun 2019**, alongside `CurrentFuelConsoleDate` and `CurrentSmartlinkDate` — features this venue does not use — while `CurrentIPSLogDate` reads 01 Sep 2026. | `PROVEN STATIC` + `[BACK]` `PROVEN RUNTIME` | the cheapest single decisive reading available on Front |
+| 8 | A **`WaiterPads` table exists in the IdealPOS schema** (`ips.mdb` `MSysObjects`). `IPS.exe` contains no SQL against it. | `PROVEN STATIC` for existence; **`NOT SHOWN`** for its columns and its writer | possibly relevant to `WAITERPAD-REGO-001`; worth one read-only `SELECT TOP 1 *` when a read is authorised |
+| 9 | The handheld **config-key set is larger than §2.1 recorded** — adding `HandheldV7Features`, `HandheldPOSLayout`, `HandheldItemGraphicLocation`, `HandheldItemBackgroundGraphic`, `WaiterPadCodeOrder`, `HandheldLog`, `HANDHELDTABCOLOUR1..18` (not 1..8), and **`HANDHELDWEBITONLY1/2/3`**, indexed by handheld number. None of them sets a port, so §2.1's conclusion stands. | `PROVEN STATIC` | §2.1's key list. `HANDHELDWEBITONLY2` is the one that would apply to Front (`HandheldNumber=2`), and its value is unknown. |
+| 10 | `[BACK]` A token sweep over **135 log files / 23.9 MB**, 2025-09 → 2026-09-07, returns **zero** matches for every WaiterPad, handheld, order, relay and pricing token. | `[BACK]` `PROVEN RUNTIME` | measures §2.2's claim rather than asserting it. Still says nothing whatever about Front. |
+
+#### A new risk this pass introduced, and it is the important one
+
+> **Registering a device is not a read-only act.** Registration is auto-granted
+> only while `currentCount < licensedHandheldCount`, and Front's licence reads
+> `Ideal Handheld 2`. A Verdura `DeviceID` connecting during service could
+> therefore occupy a slot that a real waiter's handheld then cannot get — that
+> handheld would be answered `NAKREGO`, mid-service. The slot table is
+> in-process, so an `IPS.exe` restart clears it; that is a recovery, not a
+> mitigation.
+>
+> This is a **second, independent reason not to connect**, alongside the
+> standing prohibition in §16.2. `[STATIC]` for the mechanism; `[UNKNOWN]` for
+> Front's actual licensed count, which the Front capture reads.
+
+#### Evidence hygiene note
+
+Back's `Printing.log` entries at **2026-09-04 12:29:59** are **Verdura's own
+PowerShell probe of 12183** from an earlier session — not IdealPOS traffic. The
+registry watermark `CurrentPrintingDate = 04 Sep 2026 12:29:59` records the same
+event. They remain useful (they prove the socket accepts connections and logs
+unrecognised bytes as `Estranged Data`), but they are our own footprint and must
+be cited as such rather than as observed vendor behaviour.

@@ -12,7 +12,18 @@ import {
   WaiterPadChecksumUnavailableError,
   type WaiterPadChecksumProvider,
 } from './waiterpad-checksum';
-import { CHECKSUM_ALGORITHM_EVIDENCE, WAITERPAD_PORT } from './waiterpad-evidence';
+import {
+  CHECKSUM_ALGORITHM_EVIDENCE,
+  DEVICE_REGISTRATION_EVIDENCE,
+  HANDHELD_LOG_LOCATION_EVIDENCE,
+  IPS_AND_IPSWORKER_SAME_IMAGE,
+  NAK_ON_HANDHELD_PROCESSING,
+  PORT_FAMILY_EVIDENCE,
+  RELAY_TRIGGER_EVIDENCE,
+  SILENT_DROP_GATES,
+  WAITERPAD_PORT,
+  type EvidenceNote,
+} from './waiterpad-evidence';
 import {
   assertNoTransportAvailable,
   assertWaiterPadCertified,
@@ -340,5 +351,68 @@ describe('nothing in this module tree can transmit', () => {
     for (const f of others) {
       expect(readFileSync(join(dir, f), 'utf8')).not.toContain('WAITERPAD_PORT');
     }
+  });
+});
+
+/**
+ * The 2026-09-07 additions to the evidence ledger.
+ *
+ * These are assertions about DOCUMENTATION, and they are worth having: an
+ * evidence note that loses its grade or its addresses stops being auditable,
+ * and this route's whole safety argument is "every constant traces to an
+ * address in a binary a reader can check".
+ */
+describe('the evidence ledger records the 2026-09-07 static findings', () => {
+  it('every note carries a grade, a body and — where static — addresses', () => {
+    const notes: Array<[string, EvidenceNote]> = [
+      ['SILENT_DROP_GATES', SILENT_DROP_GATES],
+      ['NAK_ON_HANDHELD_PROCESSING', NAK_ON_HANDHELD_PROCESSING],
+      ['DEVICE_REGISTRATION_EVIDENCE', DEVICE_REGISTRATION_EVIDENCE],
+      ['PORT_FAMILY_EVIDENCE', PORT_FAMILY_EVIDENCE],
+      ['RELAY_TRIGGER_EVIDENCE', RELAY_TRIGGER_EVIDENCE],
+      ['HANDHELD_LOG_LOCATION_EVIDENCE', HANDHELD_LOG_LOCATION_EVIDENCE],
+      ['IPS_AND_IPSWORKER_SAME_IMAGE', IPS_AND_IPSWORKER_SAME_IMAGE],
+    ];
+    for (const [name, note] of notes) {
+      expect(note.note.length).toBeGreaterThan(60);
+      expect([
+        'PROVEN_RUNTIME',
+        'PROVEN_STATIC',
+        'STRONGLY_INDICATED',
+        'NOT_SHOWN',
+        'CONTRADICTED',
+      ]).toContain(note.grade);
+      if (note.grade === 'PROVEN_STATIC') {
+        expect(note.addresses.length).toBeGreaterThan(0);
+        for (const a of note.addresses) expect(a).toMatch(/^0x[0-9a-f]{8}$/);
+      }
+      expect(name.length).toBeGreaterThan(0);
+    }
+  });
+
+  /**
+   * The relay question is the surviving correctness risk. Narrowing it is
+   * progress; closing it is not something a static pass can do, and the grade
+   * must keep saying so.
+   */
+  it('keeps the relay trigger at NOT_SHOWN despite the new detail', () => {
+    expect(RELAY_TRIGGER_EVIDENCE.grade).toBe('NOT_SHOWN');
+    expect(RELAY_TRIGGER_EVIDENCE.note).toContain('NOT');
+  });
+
+  it('records that a listener may only be attributed by PID, not by binary', () => {
+    expect(IPS_AND_IPSWORKER_SAME_IMAGE.grade).toBe('PROVEN_RUNTIME');
+    expect(IPS_AND_IPSWORKER_SAME_IMAGE.note).toContain('[BACK]');
+  });
+
+  it('records that the till can answer nothing at all, twice over', () => {
+    expect(SILENT_DROP_GATES.note).toContain('NOT HandheldLicensed');
+    expect(SILENT_DROP_GATES.note).toContain('NoReceiving');
+    expect(SILENT_DROP_GATES.note).toContain('Neither branch writes a response body');
+  });
+
+  it('records that registering a device consumes a licensed handheld slot', () => {
+    expect(DEVICE_REGISTRATION_EVIDENCE.grade).toBe('PROVEN_STATIC');
+    expect(DEVICE_REGISTRATION_EVIDENCE.note).toContain('BAD REGO');
   });
 });
