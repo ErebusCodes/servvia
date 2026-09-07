@@ -1,0 +1,9 @@
+{
+  "kind": "order_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — literal body at VA 0x01824b4a"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'NAK'></WPPacket>",
+  "note": "One NAK condition is now traced: WPParsePacket emits NAK when HandheldProcessing is already set (\"parsing ORDER but HandheldProcessing set - sending NAK back\", VA 0x0281852d), i.e. a busy till. Other NAK sources remain untraced, so NAK still requires a readback."
+}

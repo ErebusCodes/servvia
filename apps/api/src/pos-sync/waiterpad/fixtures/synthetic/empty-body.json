@@ -1,0 +1,9 @@
+{
+  "kind": "malformed",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "no contract basis — an empty reply is not a response"
+  },
+  "body": "",
+  "note": "A closed connection with no bytes. IPS.exe has two traced paths that accept a connection and answer nothing at all: wsWaiterPad_DataArrival exits silently when NOT HandheldLicensed (VA 0x0281577a) and when NoReceiving is set (VA 0x028157fa). Silence is therefore a real protocol outcome, not only a network failure — and it is indistinguishable from a lost reply."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "malformed",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §3 — the root element is WPPacket"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><Response Type = 'ACK'></Response>",
+  "note": "Right attribute, wrong element. Fail closed."
+}

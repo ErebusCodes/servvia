@@ -1,0 +1,9 @@
+{
+  "kind": "order_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — literal body at VA 0x01824ada"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'ACK'></WPPacket>",
+  "note": "The ACK body byte-for-byte as it appears in IPS.exe. Replaying it must never produce a decision that confirms a round: an ACK is emitted the instant the packet is parked in a 200-slot RAM array, and is also emitted when that array is full and the packet was silently dropped."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "malformed",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "no contract basis — framing is STRONGLY INDICATED only"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'AC",
+  "note": "A partial read. The receiver scans for '</WPPacket>'; our parser must refuse the fragment rather than guess at the type."
+}

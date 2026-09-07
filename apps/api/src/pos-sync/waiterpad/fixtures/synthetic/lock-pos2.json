@@ -1,0 +1,9 @@
+{
+  "kind": "order_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — 'LOCK' + (12000 + posNumber)"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'LOCK12002'></WPPacket>",
+  "note": "POS 2 holds the table. The LOCKED BY check runs before the buffering loop, so this is the only outcome with positive evidence of non-acceptance."
+}

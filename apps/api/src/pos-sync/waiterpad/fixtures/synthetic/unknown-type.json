@@ -1,0 +1,9 @@
+{
+  "kind": "malformed",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — the six bodies are the complete set"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'ACKNOWLEDGED'></WPPacket>",
+  "note": "A seventh type does not exist in the binary. Anything else on the wire is not a WaiterPad response, and must not be charitably read as an ACK."
+}

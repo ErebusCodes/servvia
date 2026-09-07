@@ -1,0 +1,9 @@
+{
+  "kind": "order_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — literal body at VA 0x01824bba"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'DUPLICATE'></WPPacket>",
+  "note": "DUPLICATE says a packet with this checksum was accepted from this DeviceID before. It says nothing about whether the resulting sale exists now."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "malformed",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — the response site tests strictly > 12000"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'LOCK12000'></WPPacket>",
+  "note": "12000 itself is not a lock code: the comparison is strictly greater than 12000, so a POS number is at least 1. Must fail closed, not parse as POS 0."
+}

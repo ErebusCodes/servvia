@@ -1,0 +1,9 @@
+{
+  "kind": "table_status_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §13 — the seven emitted elements; space padding from the Table 5 capture; envelope NOT SHOWN, so the root carries no Type attribute"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?>\n<WPPacket>\n  <Table>5</Table>\n  <OrderItem>\n    <Index>1</Index>\n    <StockItem>23        </StockItem>\n    <Description>Lemon slice                   </Description>\n    <Quantity>1</Quantity>\n    <Price>1.5000</Price>\n    <SeatNumber>0</SeatNumber>\n    <PriceLevel>1</PriceLevel>\n  </OrderItem>\n  <OrderItem>\n    <Index>2</Index>\n    <StockItem>23        </StockItem>\n    <Description>Lemon slice                   </Description>\n    <Quantity>1</Quantity>\n    <Price>1.5000</Price>\n    <SeatNumber>0</SeatNumber>\n    <PriceLevel>1</PriceLevel>\n  </OrderItem>\n</WPPacket>\n",
+  "note": "Two identical lines on table 5. This is the ambiguity that makes automatic reconciliation impossible: the readback carries no OrderedTime and no Printed flag, so nothing in this document says which round put either line there. If round 2 ordered the same item as round 1, an uncertain round 2 cannot be resolved from this. ENVELOPE CAVEAT: the root element carries NO Type attribute here, because the readback response's envelope is NOT SHOWN. IPS.exe's only 'WPPacket Type = ...' literals are the six order-path response bodies (ACK, NAK, DUPLICATE, LOCK, NAKREGO, NAKPRINT); no 'TABLESTATUS' response type exists anywhere in the binary. What IS proven (contract Sec 13) is the per-row <OrderItem> field set, and only that."
+}

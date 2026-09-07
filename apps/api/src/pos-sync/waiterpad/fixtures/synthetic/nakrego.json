@@ -1,0 +1,9 @@
+{
+  "kind": "order_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — body at VA 0x01824d02, contents NOT decoded"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'NAKREGO'></WPPacket>",
+  "note": "The NAKREGO body is undecoded, so this fixture carries an EMPTY one rather than an invented payload. A real captured NAKREGO belongs in captured/ and is the only thing that can tell us what the body holds."
+}

@@ -1,0 +1,9 @@
+{
+  "kind": "order_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §6 — body at VA 0x01824db2"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'NAKPRINT'></WPPacket>",
+  "note": "Belongs to PRINTBILL. Arriving on an order submission it is unexpected, and unexpected must mean unresolved."
+}

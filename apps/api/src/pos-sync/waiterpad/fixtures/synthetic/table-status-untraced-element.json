@@ -1,0 +1,9 @@
+{
+  "kind": "table_status_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "no contract basis — deliberately carries a field we have never observed; envelope NOT SHOWN, so the root carries no Type attribute"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?>\n<WPPacket>\n  <Table>5</Table>\n  <OrderItem>\n    <Index>1</Index>\n    <StockItem>23</StockItem>\n    <Description>Lemon slice</Description>\n    <Quantity>1</Quantity>\n    <Price>1.5000</Price>\n    <SeatNumber>0</SeatNumber>\n    <PriceLevel>1</PriceLevel>\n    <OrderedTime>2026-09-07 19:04:11</OrderedTime>\n  </OrderItem>\n</WPPacket>\n",
+  "note": "The contract proves the readback builder emits no OrderedTime. If a real capture ever contains one, this project's entire reconciliation argument changes — so the harness must NOTICE an untraced element rather than quietly ignoring it. This fixture exists to prove the harness notices. ENVELOPE CAVEAT: the root element carries NO Type attribute here, because the readback response's envelope is NOT SHOWN. IPS.exe's only 'WPPacket Type = ...' literals are the six order-path response bodies (ACK, NAK, DUPLICATE, LOCK, NAKREGO, NAKPRINT); no 'TABLESTATUS' response type exists anywhere in the binary. What IS proven (contract Sec 13) is the per-row <OrderItem> field set, and only that."
+}

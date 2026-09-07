@@ -1,0 +1,9 @@
+{
+  "kind": "table_status_response",
+  "origin": {
+    "provenance": "synthetic",
+    "derivedFrom": "docs/integrations/idealpos-waiterpad-protocol-contract-2026-09-06.md §7 — the sentinel is replaced only on the equality branch; envelope NOT SHOWN, so the root carries no Type attribute"
+  },
+  "body": "<?xml version='1.0' encoding='utf-8' ?>\n<WPPacket>\n  <Table>5</Table>\n  <OrderItem>\n    <Index>1</Index>\n    <StockItem>9999</StockItem>\n    <Description>Unknown item</Description>\n    <Quantity>1</Quantity>\n    <Price>-9999</Price>\n    <SeatNumber>0</SeatNumber>\n    <PriceLevel>1</PriceLevel>\n  </OrderItem>\n</WPPacket>\n",
+  "note": "A readback still showing -9999 means IdealPOS never substituted its own price. That is a hard stop — the line is on the table at a sentinel price — not a rounding detail. ENVELOPE CAVEAT: the root element carries NO Type attribute here, because the readback response's envelope is NOT SHOWN. IPS.exe's only 'WPPacket Type = ...' literals are the six order-path response bodies (ACK, NAK, DUPLICATE, LOCK, NAKREGO, NAKPRINT); no 'TABLESTATUS' response type exists anywhere in the binary. What IS proven (contract Sec 13) is the per-row <OrderItem> field set, and only that."
+}
