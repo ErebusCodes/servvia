@@ -65,3 +65,11 @@ AUDIT_REPORT_V2.md
 
 # Venue-connector local capture output (tools/verdura-run-capture.cmd)
 apps/venue-connector/.captures/
+
+# Claude Code linked git worktrees. Each subdirectory here is a COMPLETE second
+# checkout of this repository (it holds a `.git` gitdir pointer, its own
+# node_modules, .env files and build output), so committing one would duplicate
+# the entire tree and publish the ignored files inside it. The `.worktrees/`
+# rule above is the same policy for the other location and does not match this
+# path. Narrow by design: `.claude/skills/` is tracked and must stay tracked.
+.claude/worktrees/
