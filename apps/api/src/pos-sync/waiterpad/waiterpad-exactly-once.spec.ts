@@ -380,7 +380,7 @@ describe('H. a readback that contradicts the expected round', () => {
     expect(() => reconcileRoundAgainstReadback()).toThrow(/ambiguous round is a human decision/);
   });
 
-  it('names both open questions rather than choosing one', () => {
+  it('names all three open questions rather than choosing one', () => {
     let message = '';
     try {
       reconcileRoundAgainstReadback();
@@ -388,7 +388,12 @@ describe('H. a readback that contradicts the expected round', () => {
       message = (err as Error).message;
       expect((err as WaiterPadUnresolvedPolicyError).blockerId).toBe('WAITERPAD-RECON-001');
     }
-    expect(message).toContain('delete-and-rewrite relay path');
+    // Updated 2026-09-07: the routing question is ANSWERED, and the message
+    // must say so rather than still listing it as open. What replaced it is
+    // the causal-token gap, which is the reason a content match proves nothing.
+    expect(message).toContain('routing question is now ANSWERED');
+    expect(message).toContain('no durable causal token');
+    expect(message).toContain('COMPLETE table state');
     expect(message).toContain('no OrderedTime');
   });
 

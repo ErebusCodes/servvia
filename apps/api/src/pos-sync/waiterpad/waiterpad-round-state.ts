@@ -268,18 +268,29 @@ export function decideFromNonResponse(outcome: NonResponseOutcome): WaiterPadOut
  * The one question a caller most wants answered automatically, and the one we
  * refuse to answer.
  *
- * DELIBERATELY UNIMPLEMENTED. Deciding whether a readback shows that a
- * particular round landed requires knowing whether a second round APPENDS to a
- * table's existing lines or REPLACES them — and that is genuinely open. Two
- * different routines write a handheld order: `WPOrder`, reached from the socket
- * drain, issues no DELETE; `ProcessHandheldOrder`, reached from the
- * POSServerMessages relay, deletes the table's sale and lines and rewrites
- * them. What selects one over the other is NOT SHOWN, and this venue is exactly
- * the topology a relay exists to serve — the handheld terminal (Front) and the
- * POSServer host (Back) are different machines.
+ * DELIBERATELY UNIMPLEMENTED. The reason CHANGED on 2026-09-07 and got worse,
+ * not better. The old reason was that we could not tell which of two routines
+ * would write a handheld order. That is now settled for the socket ORDER case
+ * (`RELAY_PATH_CHAIN_EVIDENCE`): a socket order's only durable act is an
+ * `IH-PRINT` row in `POSServerMessages`, the worker timer picks it up, and
+ * `ProcessHandheldOrder` — which has exactly one caller image-wide — applies it
+ * by DELETEing the table's `PendingSales` and `PendingSaleLines` rows and
+ * rewriting them. There is no conditional routing to avoid that path.
  *
- * On top of that, the readback carries no `OrderedTime`, so two rounds that
- * ordered the same item are indistinguishable in the response.
+ * `WPOrder` is a DIFFERENT procedure with different callers, and its trigger is
+ * still `[UNKNOWN]`. The two are not merged here.
+ *
+ * THREE THINGS NOW BLOCK THIS, and each is enough on its own:
+ *
+ *   1. NO CAUSAL TOKEN. The rewrite assigns no `DeviceID` and no `Checksum`
+ *      (`RECOVERY_CAUSAL_TOKEN_EVIDENCE`). Nothing durable distinguishes
+ *      "Verdura caused this exact PLU/quantity delta" from "a human added the
+ *      same items while we were recovering". Content equality is not proof.
+ *   2. SCOPE OF THE DELETE IS UNCONFIRMED. Delete-and-rewrite is non-lossy only
+ *      if the packet carries COMPLETE table state. Whether it does is not
+ *      answerable from field names and needs one captured genuine packet.
+ *   3. NO `OrderedTime` IN THE READBACK, so two rounds that ordered the same
+ *      item remain indistinguishable in the response.
  *
  * A plausible-looking implementation here would be a guess about whether a
  * kitchen receives one round or an entire table again. It throws instead.
@@ -287,11 +298,16 @@ export function decideFromNonResponse(outcome: NonResponseOutcome): WaiterPadOut
 export function reconcileRoundAgainstReadback(): never {
   throw new WaiterPadUnresolvedPolicyError(
     'Automatic reconciliation of a round against a table readback is not ' +
-      'implemented, and must not be until two things are settled: (1) what routes ' +
-      'a handheld order to the delete-and-rewrite relay path rather than the ' +
-      'appending socket path, and (2) how to attribute readback lines to a round ' +
-      'when the response carries no OrderedTime. Until then an ambiguous round is ' +
-      'a human decision.',
+      'implemented. The routing question is now ANSWERED - a socket ORDER is ' +
+      'relayed as an IH-PRINT row and applied by ProcessHandheldOrder, which ' +
+      'deletes the table sale and lines and rewrites them - and that makes this ' +
+      'harder, not easier. Three things must be settled first: (1) no durable ' +
+      'causal token (no DeviceID, no Checksum) reaches native sale state, so an ' +
+      'exact content match cannot prove Verdura caused it; (2) whether the ' +
+      'packet carries COMPLETE table state, without which the rewrite is lossy; ' +
+      'and (3) how to attribute readback lines to a round when the response ' +
+      'carries no OrderedTime. Until then an ambiguous round is a human ' +
+      'decision.',
     'WAITERPAD-RECON-001',
   );
 }

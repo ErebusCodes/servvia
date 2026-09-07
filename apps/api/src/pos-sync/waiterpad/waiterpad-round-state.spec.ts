@@ -267,7 +267,7 @@ describe('reconciliation policy is deliberately unimplemented', () => {
     expect(() => reconcileRoundAgainstReadback()).toThrow(WaiterPadUnresolvedPolicyError);
   });
 
-  it('names the blocker and both reasons', () => {
+  it('names the blocker and all three reasons', () => {
     try {
       reconcileRoundAgainstReadback();
       throw new Error('expected a throw');
@@ -275,7 +275,8 @@ describe('reconciliation policy is deliberately unimplemented', () => {
       expect(err).toBeInstanceOf(WaiterPadUnresolvedPolicyError);
       const e = err as WaiterPadUnresolvedPolicyError;
       expect(e.blockerId).toBe('WAITERPAD-RECON-001');
-      expect(e.message).toMatch(/delete-and-rewrite relay/);
+      expect(e.message).toMatch(/no durable causal token/);
+      expect(e.message).toMatch(/COMPLETE table state/);
       expect(e.message).toMatch(/OrderedTime/);
     }
   });
