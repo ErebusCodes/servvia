@@ -982,3 +982,56 @@ registry watermark `CurrentPrintingDate = 04 Sep 2026 12:29:59` records the same
 event. They remain useful (they prove the socket accepts connections and logs
 unrecognised bytes as `Estranged Data`), but they are our own footprint and must
 be cited as such rather than as observed vendor behaviour.
+
+### 17.3 Additions, v3 → v4 (2026-09-07, third static pass — the generator hunt)
+
+This pass had one question: **where is the `<Checksum>` generated?** It followed
+the reference chain around `Checksum`, `WPPacket`, `WPOrder`, `DeviceID`,
+`OrderNo`, `OrderCode`, `IH-`, `MD5`, `SHA`, `CRC`, `hash`, `digest`, `GUID`,
+`UUID`, `random`, `Rnd`, `Timer`, `Now`, `Date`, `Hex` and `Base64`, under a
+standing rule: **a generator is proven only by a call/data-flow path that
+reaches a `Checksum` field placed in a genuine `WPOrder`** — never by the mere
+existence of a hash routine.
+
+The answer is that there is no generator here, and that is now a proven
+negative rather than an unsuccessful search.
+
+#### Added — all `[STATIC]`
+
+| # | Finding | Grade | Affects |
+| --- | --- | --- | --- |
+| 1 | **`IPS.exe` contains no checksum generator on any path.** Three independent proofs. (a) *No construction site*: the binary holds no `<Checksum>`, `</Checksum>`, `<WPOrder`, `<DeviceID` or `<OrderNo` opening-tag literal at all — those names appear only as `selectSingleNode` arguments against a parsed DOM. The six response bodies are the only packets it builds and none carries a Checksum. (b) *The MD5 helper is a different subsystem*: `Support.GetMD5Hash` (`0x01de4a60`) has exactly five callers binary-wide — `0x0133eb4f`, `0x0175d78f`, `0x01f5b030`, `0x01f5bea3`, `0x02512eb7` — and **not one** is in the handheld module (`0x01823000`–`0x01836000`) or the `wsWaiterPad` listener (`0x02811000`–`0x02813000`); its `0x01f5b030` caller sits beside `SELECT * FROM Users WHERE UPPER([Name])='ADMIN'` and `encryptedPassword`, so it hashes operator passwords. (c) *The primitives are absent*: no RNG, timer, CryptoAPI or Base64 import exists; the only matches are `__vbaStrDate`/`__vbaDateR8`/`__vbaDateStr`/`__vbaDateVar`, and `CoCreateGuid` has no code reference from this module. | `PROVEN STATIC` | §15. **The algorithm stays `NOT SHOWN`** — this proves only that further search of `IPS.exe` is wasted effort. |
+| 2 | **The received checksum is logged verbatim, beside its `DeviceID`.** `CheckWPOrder` builds `"Checksum=" & <value> & "  DeviceID=" & <deviceId>` (`__vbaStrCat` at `0x01826228`/`0x0182623b`/`0x0182624d`) and passes it with the log name `Ideal Handheld` (`0x0182620f`) to the module log writer `sub_01538380` (`0x01826262`, 44 call sites across the module). Written whenever the `Checksum` node is present and non-empty, **before** any duplicate decision, subject to the `HandheldLog` config gate. | `PROVEN STATIC` | **The Front capture already collects this file.** Grep target: `Checksum=`. This is the *value* half of a test vector; the line does not carry the order body, so pairing a value with the round that produced it remains the unproven step. |
+| 3 | **The duplicate guard reads two stores, and one of them is switchable.** Besides §12's `AAAExampleData` / `ColumnType='IH-…'` lookup there is a settings getter keyed `"LastCheckSum" & <handheld number>` under section `Ideal Handheld` (`sub_00fc6c90` at `0x01834fe2`, compared by `__vbaStrCmp` at `0x01834ff5`; key built at `0x01825313`–`0x01825333`; written back from the `0x0182d5xx` handler at `0x0182d6b0`). And the `AAAExampleData` check is **gated**: `cmp word [0x2a2f1e4]` / `je` at `0x01826289` jumps past `IsDuplicateHandheldOrder2` entirely when the global is clear. | `PROVEN STATIC` for both stores and the gate; **`NOT SHOWN`** for what sets `0x2a2f1e4` | §12. **Verdura's idempotency must not assume the receiver's duplicate guard is armed.** It is a switch, and we cannot see its position. |
+| 4 | **`NAKREGO` carries no body — `WAITERPAD-REGO-001`'s second half is closed.** `NAKREGO` and `NAKPRINT` are stored as *split* open/close tag literals, which looks like interpolation and is not. Their builders take **no parameters** — zero `[ebp+…]` reads across the whole procedure — and concatenate exactly three constants: the XML declaration (`0x01824d01`), the opening tag (`0x01824d1b`) and the closing `</WPPacket>` (`0x01824d33`). `NAKPRINT` is identical in shape at `0x01824dcc`. | `PROVEN STATIC` | §6. **`LOCK` remains the only genuinely interpolated response.** A `NAKREGO` says only *refused*, never *why*. |
+
+#### What this does and does not do to the checksum blocker
+
+It removes a hypothesis rather than the blocker. Before this pass it was
+reasonable to suspect the search had simply used the wrong word, or that the
+relay path constructed packets the socket path did not. Both are now closed:
+there is no construction site anywhere in the image, and the one real hash
+routine is excluded by call graph rather than by proximity.
+
+`UnresolvedChecksumProvider` therefore still throws, and the reason is unchanged
+and unweakened: **this binary is the receiver.** The generating side is the
+vendor's Ideal Handheld application, which is installed on neither venue
+machine. The algorithm arrives from a captured packet on Front, or from the
+vendor, and from nowhere else.
+
+#### A correction to the previous checkpoint's verification figures
+
+The 2026-09-07 ~15:30 checkpoint recorded **277** WaiterPad tests and
+`eslint` **clean**. Both were measured this session and both are wrong:
+
+* the WaiterPad baseline at `14b6239` is **281**, not 277;
+* `eslint` reports **62 pre-existing errors** at `14b6239`, none of them in
+  `pos-sync/waiterpad/` — they are in `dine-in-route.ts`,
+  `idealpos-confirmation.service.ts`, `idealpos-order-dispatcher.service.ts`
+  and neighbours, and are mostly `prettier/prettier` plus two
+  `@typescript-eslint/no-unsafe-enum-comparison`.
+
+Neither figure affects a protocol claim. Both are recorded because a checkpoint
+whose numbers cannot be reproduced is worse than one with no numbers, and
+because the next session should not spend time hunting a regression it did not
+cause.

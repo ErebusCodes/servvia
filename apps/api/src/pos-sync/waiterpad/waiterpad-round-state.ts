@@ -333,7 +333,21 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
   },
   {
     id: 'WAITERPAD-REGO-001',
-    title: 'Device registration procedure unknown',
-    why: 'NAKREGO gates the first ORDER; how a DeviceID becomes known is NOT SHOWN.',
+    title: 'NAKREGO causes beyond slot exhaustion unknown',
+    why:
+      'Narrowed twice, not closed. Registration is auto-granted while ' +
+      'registeredCount < licensedHandheldCount (PROVEN STATIC), and NAKREGO ' +
+      'carries NO body at all - its builder takes no parameters - so the wire ' +
+      'never says why a device was refused. Whether slot exhaustion is the ' +
+      'only cause is answerable by the vendor and by nothing we can observe.',
+  },
+  {
+    id: 'WAITERPAD-DUPGATE-001',
+    title: 'The receiver duplicate guard can be switched off',
+    why:
+      'CheckWPOrder skips IsDuplicateHandheldOrder2 entirely when the global ' +
+      'word at 0x2a2f1e4 is clear (cmp/je at 0x01826289). What sets it is NOT ' +
+      'SHOWN, so Verdura cannot assume the till will catch a duplicate round ' +
+      'and must carry exactly-once entirely on its own side.',
   },
 ] as const;

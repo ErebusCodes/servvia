@@ -14,7 +14,11 @@ import {
 } from './waiterpad-checksum';
 import {
   CHECKSUM_ALGORITHM_EVIDENCE,
+  CHECKSUM_LOG_LINE_EVIDENCE,
+  CHECKSUM_NO_GENERATOR_EVIDENCE,
+  CHECKSUM_STORAGE_DUALITY_EVIDENCE,
   DEVICE_REGISTRATION_EVIDENCE,
+  NAKREGO_EMPTY_BODY_EVIDENCE,
   HANDHELD_LOG_LOCATION_EVIDENCE,
   IPS_AND_IPSWORKER_SAME_IMAGE,
   NAK_ON_HANDHELD_PROCESSING,
@@ -372,6 +376,10 @@ describe('the evidence ledger records the 2026-09-07 static findings', () => {
       ['RELAY_TRIGGER_EVIDENCE', RELAY_TRIGGER_EVIDENCE],
       ['HANDHELD_LOG_LOCATION_EVIDENCE', HANDHELD_LOG_LOCATION_EVIDENCE],
       ['IPS_AND_IPSWORKER_SAME_IMAGE', IPS_AND_IPSWORKER_SAME_IMAGE],
+      ['CHECKSUM_NO_GENERATOR_EVIDENCE', CHECKSUM_NO_GENERATOR_EVIDENCE],
+      ['CHECKSUM_LOG_LINE_EVIDENCE', CHECKSUM_LOG_LINE_EVIDENCE],
+      ['CHECKSUM_STORAGE_DUALITY_EVIDENCE', CHECKSUM_STORAGE_DUALITY_EVIDENCE],
+      ['NAKREGO_EMPTY_BODY_EVIDENCE', NAKREGO_EMPTY_BODY_EVIDENCE],
     ];
     for (const [name, note] of notes) {
       expect(note.note.length).toBeGreaterThan(60);
@@ -414,5 +422,45 @@ describe('the evidence ledger records the 2026-09-07 static findings', () => {
   it('records that registering a device consumes a licensed handheld slot', () => {
     expect(DEVICE_REGISTRATION_EVIDENCE.grade).toBe('PROVEN_STATIC');
     expect(DEVICE_REGISTRATION_EVIDENCE.note).toContain('BAD REGO');
+  });
+
+  /**
+   * The third pass proved a NEGATIVE about the binary — no generator in it —
+   * without moving the algorithm off NOT_SHOWN. Those two must never be
+   * conflated, because conflating them is exactly the reasoning that would
+   * ship an invented hash. This test pins them apart.
+   */
+  it('separates "no generator in the binary" from "we know the algorithm"', () => {
+    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.grade).toBe('PROVEN_STATIC');
+    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.note).toContain('does NOT reveal the');
+    // The thing that must not move.
+    expect(CHECKSUM_ALGORITHM_EVIDENCE.grade).toBe('NOT_SHOWN');
+  });
+
+  it('records that the MD5 helper is excluded by call graph, not by proximity', () => {
+    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.note).toContain('GetMD5Hash');
+    expect(CHECKSUM_NO_GENERATOR_EVIDENCE.note).toContain('NONE in the handheld module');
+  });
+
+  it('records the Checksum= log line as the Front grep target', () => {
+    expect(CHECKSUM_LOG_LINE_EVIDENCE.grade).toBe('PROVEN_STATIC');
+    expect(CHECKSUM_LOG_LINE_EVIDENCE.note).toContain('Checksum=');
+    expect(CHECKSUM_LOG_LINE_EVIDENCE.note).toContain('DeviceID=');
+  });
+
+  /**
+   * A switchable duplicate guard is a live correctness hazard for Verdura's
+   * own idempotency, so the note must keep saying the switch is unexplained.
+   */
+  it('records that the receiver duplicate guard can be gated off', () => {
+    expect(CHECKSUM_STORAGE_DUALITY_EVIDENCE.note).toContain('0x2a2f1e4');
+    expect(CHECKSUM_STORAGE_DUALITY_EVIDENCE.note).toContain('NOT SHOWN');
+    expect(CHECKSUM_STORAGE_DUALITY_EVIDENCE.note).toContain('Do not assume the guard is armed');
+  });
+
+  it('records that NAKREGO carries no body and therefore no reason code', () => {
+    expect(NAKREGO_EMPTY_BODY_EVIDENCE.grade).toBe('PROVEN_STATIC');
+    expect(NAKREGO_EMPTY_BODY_EVIDENCE.note).toContain('no parameters');
+    expect(NAKREGO_EMPTY_BODY_EVIDENCE.note).toContain('carries NO');
   });
 });

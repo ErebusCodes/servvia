@@ -226,7 +226,10 @@ export const CHECKSUM_ALGORITHM_EVIDENCE: EvidenceNote = {
     'Receiver-side treatment is opaque string equality (__vbaStrCmp) — PROVEN ' +
     'STATIC. No generation routine exists in the WaiterPad path. The vendor ' +
     'handheld application is not installed on either machine. The generation ' +
-    'algorithm is therefore NOT SHOWN and is left unimplemented.',
+    'algorithm is therefore NOT SHOWN and is left unimplemented. ' +
+    'Strengthened 2026-09-07 by CHECKSUM_NO_GENERATOR_EVIDENCE, which shows ' +
+    'by call graph - not by absence of a name - that no generator exists ' +
+    'anywhere in this binary, so further search of IPS.exe is wasted effort.',
 };
 
 /**
@@ -527,4 +530,155 @@ export const HANDHELD_LOG_LOCATION_EVIDENCE: EvidenceNote = {
     "'HandheldLog' at 0x00349cac is the config key naming the category. " +
     '[BACK] the CurrentHandheldLogDate watermark was read read-only from HKCU ' +
     'on 2026-09-07 and reads 06/06/2019.',
+};
+
+/**
+ * THE GENERATOR HUNT, 2026-09-07 third pass. A negative, established by
+ * call graph rather than by absence of a name.
+ *
+ * The earlier grade rested on "no checksum routine on the WaiterPad path".
+ * That is a claim about what was not found, and the obvious objection is that
+ * the search was for the wrong word. This pass answered the objection three
+ * independent ways, and each one holds on its own:
+ *
+ *   1. NO CONSTRUCTION SITE. `IPS.exe` contains no `<Checksum>`, `</Checksum>`,
+ *      `<WPOrder`, `<DeviceID` or `<OrderNo` opening-tag literal anywhere. It
+ *      reads those names only as `selectSingleNode` arguments against a parsed
+ *      DOM. The six response bodies are the ONLY packets this binary builds,
+ *      and none of them carries a Checksum. A generator with no place to put
+ *      its output is not a generator.
+ *   2. THE MD5 HELPER IS ON A DIFFERENT SUBSYSTEM. `Support.GetMD5Hash`
+ *      (0x01de4a60) is real, and it is the trap. It has exactly five callers
+ *      binary-wide; not one is in the handheld module (0x01823000-0x01836000)
+ *      or the `wsWaiterPad` listener (0x02811000-0x02813000). Its caller at
+ *      0x01f5b030 sits beside `SELECT * FROM Users WHERE UPPER([Name])='ADMIN'`
+ *      and `encryptedPassword`: it hashes operator passwords.
+ *   3. THE PRIMITIVES ARE ABSENT. The import table holds no RNG, no timer, no
+ *      CryptoAPI and no Base64 — the only matches are `__vbaStrDate`,
+ *      `__vbaDateR8`, `__vbaDateStr`, `__vbaDateVar`. `CoCreateGuid` appears as
+ *      an import name with no code reference from this module.
+ *
+ * So the grade on the ALGORITHM does not move: still NOT_SHOWN, because the
+ * generating side is the vendor handheld application and this binary is the
+ * receiver. What moves is the confidence that looking harder in THIS binary is
+ * wasted effort. The algorithm will come from a captured packet on Front or
+ * from the vendor, and from nowhere else.
+ */
+export const CHECKSUM_NO_GENERATOR_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x01de4a60', '0x01f5b030', '0x01f5ae4a', '0x01f5af22'],
+  note:
+    'IPS.exe contains NO checksum generator on any path. No <Checksum>/<WPOrder ' +
+    'construction literal exists; the binary only reads those names via ' +
+    'selectSingleNode. Support.GetMD5Hash at 0x01de4a60 has five callers ' +
+    'binary-wide (0x0133eb4f, 0x0175d78f, 0x01f5b030, 0x01f5bea3, 0x02512eb7), ' +
+    'NONE in the handheld module 0x01823000-0x01836000 or the listener ' +
+    '0x02811000-0x02813000; its 0x01f5b030 caller sits beside the Users/ADMIN ' +
+    'SELECT and encryptedPassword, so it hashes operator passwords. No RNG, ' +
+    'timer, CryptoAPI or Base64 import exists. This does NOT reveal the ' +
+    'algorithm - it proves the algorithm is not in this binary to be found.',
+};
+
+/**
+ * THE TEST-VECTOR SOURCE, now with a known line format.
+ *
+ * `CheckWPOrder` writes the checksum it received, verbatim and beside its
+ * `DeviceID`, into the `Ideal Handheld` log — before it decides anything about
+ * the packet. The log writer is the handheld module's own, called 44 times
+ * across the module with the log name as its first argument.
+ *
+ * This is the single most useful thing this pass produced for tomorrow. It
+ * means a genuine vendor checksum and the device that produced it appear as a
+ * greppable pair in a file the Front capture already collects, so the capture
+ * needs no change to yield a test vector - only a `Checksum=` grep. What the
+ * line does NOT carry is the packet body, so one line alone gives a value
+ * without its input. Pairing it with the same round's order content is what
+ * turns it into a vector, and that pairing is still unproven.
+ */
+export const CHECKSUM_LOG_LINE_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x0182620f', '0x0182621f', '0x01826236', '0x01826262', '0x01538380'],
+  note:
+    'CheckWPOrder builds "Checksum=" & <received checksum> & "  DeviceID=" & ' +
+    '<deviceId> (__vbaStrCat at 0x01826228/0x0182623b/0x0182624d) and passes it ' +
+    'with the log name "Ideal Handheld" (0x0182620f) to the module log writer ' +
+    'sub_01538380 at 0x01826262. Written whenever the Checksum node is present ' +
+    'and non-empty, before the duplicate decision. Subject to the HandheldLog ' +
+    'config gate. GREP TARGET for the Front capture: "Checksum=".',
+};
+
+/**
+ * The duplicate guard reads TWO stores, not one, and one of them is switchable.
+ *
+ * §12 recorded the `AAAExampleData` / `ColumnType='IH-<DeviceID>'` lookup. There
+ * is a second, separate one: a settings getter keyed
+ * `"LastCheckSum" & <handheld number>` under the section `Ideal Handheld`,
+ * compared by `__vbaStrCmp` in its own routine at 0x01834f10, with the matching
+ * writer in the 0x0182d5xx packet handler.
+ *
+ * And the `AAAExampleData` duplicate check is GATED on a global word at
+ * 0x2a2f1e4: when clear, `CheckWPOrder` jumps past `IsDuplicateHandheldOrder2`
+ * entirely. What sets that global is NOT SHOWN, and it matters — it is a switch
+ * that can disable the receiver's duplicate protection. Verdura's idempotency
+ * must not assume the guard is armed.
+ */
+export const CHECKSUM_STORAGE_DUALITY_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: [
+    '0x01834f10',
+    '0x01834fe2',
+    '0x01834ff5',
+    '0x01825313',
+    '0x01826289',
+    '0x0182d6b0',
+    '0x00fc6cc1',
+  ],
+  note:
+    'Two independent stores of the last-accepted checksum. (a) settings getter ' +
+    'sub_00fc6c90(section "Ideal Handheld", key "LastCheckSum" & CStr(handheld ' +
+    'number), ...) at 0x01834fe2, compared by __vbaStrCmp at 0x01834ff5; key ' +
+    'built via __vbaStrI2/__vbaStrCat at 0x01825313-0x01825333; written back ' +
+    'from the 0x0182d5xx handler at 0x0182d6b0. (b) the AAAExampleData ' +
+    'ColumnType=IH- lookup of section 12. The (b) path is GATED: cmp word ' +
+    '[0x2a2f1e4] / je at 0x01826289 skips IsDuplicateHandheldOrder2 when clear. ' +
+    'What sets 0x2a2f1e4 is NOT SHOWN. Do not assume the guard is armed. ' +
+    'The (a) getter resolves against the REGISTRY root ' +
+    'Software > Idealpos Solutions > Idealpos (0x00fc6cc1), so on Front the ' +
+    'value LastCheckSum<handheld number> under an Ideal Handheld subkey may ' +
+    'hold a GENUINE vendor checksum readable without any packet capture. ' +
+    'Back has no such subkey under HKCU or HKLM, consistent with Back never ' +
+    'having run a handheld.',
+};
+
+/**
+ * `WAITERPAD-REGO-001`, the body half — closed.
+ *
+ * The open vendor question had two halves: what causes `NAKREGO`, and what its
+ * body carries. The second half is now answered statically, and the answer is
+ * "nothing".
+ *
+ * `NAKREGO` and `NAKPRINT` are stored as split open/close tag literals rather
+ * than as whole strings, which looks like interpolation and is not. Their
+ * builders take NO parameters — zero `[ebp+...]` reads across the whole
+ * procedure — and concatenate exactly three constants: the XML declaration, the
+ * opening tag, and the closing `</WPPacket>`. They are constant-valued packets
+ * that happen to be assembled at runtime. `LOCK` remains the only genuinely
+ * interpolated response.
+ *
+ * So a `NAKREGO` tells the sender only that it was refused. It never says why.
+ * The remaining half of `WAITERPAD-REGO-001` — whether slot exhaustion is the
+ * only cause — stands, and no readback can substitute for it, because the wire
+ * carries no distinguishing detail.
+ */
+export const NAKREGO_EMPTY_BODY_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x01824cd0', '0x01824d01', '0x01824d1b', '0x01824d33', '0x01824dcc'],
+  note:
+    'The NAKREGO builder at 0x01824cd0 takes no parameters (zero [ebp+] reads) ' +
+    'and concatenates three constants: the XML declaration (0x01824d01), the ' +
+    'NAKREGO opening tag (0x01824d1b) and the closing WPPacket tag ' +
+    '(0x01824d33). NAKPRINT has the identical shape at 0x01824dcc. The split ' +
+    'open/close storage is not interpolation. NAKREGO therefore carries NO ' +
+    'body and no reason code; LOCK stays the only interpolated response. ' +
+    'WAITERPAD-REGO-001 body half is closed; its cause half stands.',
 };

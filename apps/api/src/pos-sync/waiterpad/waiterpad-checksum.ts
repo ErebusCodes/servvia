@@ -39,6 +39,14 @@
  * Machine 2's `Ideal Handheld.log`, with the packet body it corresponds to.
  * That gives a value and its input, which is a test vector. Several give the
  * algorithm. Until then this stays unimplemented.
+ *
+ * THE LINE TO GREP FOR, established 2026-09-07 (`CHECKSUM_LOG_LINE_EVIDENCE`).
+ * `CheckWPOrder` logs every non-empty checksum it receives, verbatim, as
+ * `Checksum=<value>  DeviceID=<value>` into the `Ideal Handheld` log, before
+ * it decides anything about the packet. So the value half of a test vector is
+ * a grep away in a file the Front capture already collects. The line does not
+ * carry the order body, so it is half a vector: pairing it with the round that
+ * produced it is the unproven step, and it is what tomorrow must establish.
  */
 
 import { CHECKSUM_ALGORITHM_EVIDENCE } from './waiterpad-evidence';
