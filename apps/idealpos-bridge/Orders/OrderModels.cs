@@ -17,6 +17,15 @@ namespace VerduraIdealposBridge.Orders
     {
         public string ProductCode { get; set; }
         public decimal Quantity { get; set; }
+
+        /// <summary>Optional per-seat assignment for this line, carried
+        /// unchanged into the native round's SeatNumber. Null means "no seat"
+        /// — the native server decides (SeatNumber default); never coerced to
+        /// 0. The Order Tablet UI already models seats (billing per-seat
+        /// breakdown); this is the wire field that carries a seat through to
+        /// IdealPOS once seat persistence lands. Optional and backward
+        /// compatible: an omitted seat deserializes to null.</summary>
+        public int? Seat { get; set; }
     }
 
     /// <summary>Persisted in the local SQLite state store — this is the

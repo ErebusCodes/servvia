@@ -97,6 +97,7 @@ export const ORDER_TABLET_EXECUTION_FILES = [
   'apps/idealpos-bridge/Orders/NativeTable/TableRoundWriter.cs',
   'apps/idealpos-bridge/Orders/NativeTable/NativeSubmission.cs',
   'apps/idealpos-bridge/Orders/NativeTable/NativeTableRoundSubmission.cs',
+  'apps/idealpos-bridge/Orders/NativeTable/NativeTableRoundMapper.cs',
 ];
 
 export const FORBIDDEN_ORDER_TABLET_PATTERNS = [

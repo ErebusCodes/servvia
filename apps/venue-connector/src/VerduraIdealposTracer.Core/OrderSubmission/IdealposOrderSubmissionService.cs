@@ -48,7 +48,7 @@ public sealed class IdealposOrderSubmissionService(
         PropertyNameCaseInsensitive = true,
     };
 
-    private sealed record SubmitOrderPayloadItem(string? ProductCode, int Quantity);
+    private sealed record SubmitOrderPayloadItem(string? ProductCode, int Quantity, int? Seat = null);
     private sealed record SubmitOrderPayload(string? ExternalOrderId, string? Table, List<SubmitOrderPayloadItem>? Items, string? Notes);
 
     /// <summary>
@@ -135,7 +135,7 @@ public sealed class IdealposOrderSubmissionService(
         var bridgeRequest = new BridgeOrderRequest(
             payload.ExternalOrderId!,
             payload.Table!,
-            payload.Items!.Select(i => new BridgeOrderItem(i.ProductCode!, i.Quantity)).ToList(),
+            payload.Items!.Select(i => new BridgeOrderItem(i.ProductCode!, i.Quantity, i.Seat)).ToList(),
             payload.Notes);
 
         BridgeSubmitResult bridgeResult;

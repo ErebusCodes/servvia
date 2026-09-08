@@ -131,19 +131,8 @@ namespace VerduraIdealposBridge.Orders
                 // idempotency key. request.Items and products were already
                 // validated above.
                 record.StrategyUsed = "native";
-                var roundLines = new List<TableRoundLine>(request.Items.Count);
-                foreach (OrderLineRequest item in request.Items)
-                {
-                    roundLines.Add(new TableRoundLine(item.ProductCode, item.Quantity));
-                }
-                var round = new TableRound(
-                    record.RequestedTable,
-                    pos: 1,
-                    clerkId: 0,
-                    guests: 0,
-                    location: 1,
-                    lines: roundLines,
-                    idempotency: new TableRoundIdempotencyContext(request.ExternalOrderId));
+                TableRound round = NativeTableRoundMapper.ToTableRound(
+                    request, pos: 1, clerkId: 0, guests: 0, location: 1);
 
                 NativeSubmissionOutcome native = NativeTableRoundSubmission.Execute(
                     recordAlreadyExists: false, writer: _tableWriter, round: round);

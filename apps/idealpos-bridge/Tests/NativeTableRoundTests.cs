@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using VerduraIdealposBridge.Orders;
 using VerduraIdealposBridge.Orders.NativeTable;
 
 namespace VerduraIdealposBridge.Tests
@@ -200,6 +201,92 @@ namespace VerduraIdealposBridge.Tests
                 NativeSubmissionOutcome outcome = NativeTableRoundSubmission.Execute(false, spy, Round("ORD-19", new TableRoundLine("23", 1m)));
                 Assert.IsTrue(outcome.Kind != NativeSubmissionOutcomeKind.Submitted, "must never silently succeed via a fallback");
                 Assert.AreEqual(0, spy.Calls, "and must not attempt any submission");
+            });
+
+            // ---- UI/API -> TableRound mapping (screenshot acceptance) ----
+
+            // 20. Screenshot 2/3: selecting Table 5 carries tableCode "5" through unchanged.
+            yield return Assert.Run("Selected Table 5 becomes native tableCode \"5\"", () =>
+            {
+                var req = new OrderRequest
+                {
+                    ExternalOrderId = "ORD-20",
+                    Table = "5",
+                    Items = new List<OrderLineRequest> { new OrderLineRequest { ProductCode = "LEMON", Quantity = 1m } },
+                };
+                TableRound round = NativeTableRoundMapper.ToTableRound(req, pos: 1, clerkId: 0, guests: 0, location: 1);
+                Assert.AreEqual("5", round.TableCode, "selected table code carried through unchanged");
+            });
+
+            // 21. Screenshot 3: one menu item becomes one native round line, code + qty preserved.
+            yield return Assert.Run("One menu item becomes one native round line preserving code and quantity", () =>
+            {
+                var req = new OrderRequest
+                {
+                    ExternalOrderId = "ORD-21",
+                    Table = "5",
+                    Items = new List<OrderLineRequest> { new OrderLineRequest { ProductCode = "LEMON", Quantity = 2m } },
+                };
+                TableRound round = NativeTableRoundMapper.ToTableRound(req, pos: 1, clerkId: 0, guests: 0, location: 1);
+                Assert.AreEqual(1, round.Lines.Count, "one item -> one line");
+                Assert.AreEqual("LEMON", round.Lines[0].StockItemCode, "product code preserved");
+                Assert.AreEqual(2m, round.Lines[0].Quantity, "quantity preserved");
+            });
+
+            // 22. Screenshot 3: Lemon Slice on Seat 1 — seat survives the mapping.
+            yield return Assert.Run("Seat assignment survives mapping (Lemon Slice on Seat 1)", () =>
+            {
+                var req = new OrderRequest
+                {
+                    ExternalOrderId = "ORD-22",
+                    Table = "5",
+                    Items = new List<OrderLineRequest> { new OrderLineRequest { ProductCode = "LEMON", Quantity = 1m, Seat = 1 } },
+                };
+                TableRound round = NativeTableRoundMapper.ToTableRound(req, pos: 1, clerkId: 0, guests: 0, location: 1);
+                Assert.IsTrue(round.Lines[0].Seat.HasValue, "seat is carried");
+                Assert.AreEqual(1, round.Lines[0].Seat.Value, "seat value survives");
+            });
+
+            // 23. A line with no seat maps to null — the server decides, never coerced.
+            yield return Assert.Run("A line with no seat maps to null seat, never coerced", () =>
+            {
+                var req = new OrderRequest
+                {
+                    ExternalOrderId = "ORD-23",
+                    Table = "5",
+                    Items = new List<OrderLineRequest> { new OrderLineRequest { ProductCode = "LEMON", Quantity = 1m } },
+                };
+                TableRound round = NativeTableRoundMapper.ToTableRound(req, pos: 1, clerkId: 0, guests: 0, location: 1);
+                Assert.IsTrue(!round.Lines[0].Seat.HasValue, "absent seat stays null");
+            });
+
+            // 24. Screenshot 3 round 2: a second Send maps to only the new round's lines,
+            //     which the server appends after the existing lines (not a full-state resend).
+            yield return Assert.Run("A second Send to Kitchen maps to a round of only its own new lines, appended after existing", () =>
+            {
+                var round1 = new OrderRequest
+                {
+                    ExternalOrderId = "ORD-24-r1",
+                    Table = "5",
+                    Items = new List<OrderLineRequest>
+                    {
+                        new OrderLineRequest { ProductCode = "BREAD", Quantity = 1m },
+                        new OrderLineRequest { ProductCode = "WATER", Quantity = 1m },
+                    },
+                };
+                var round2 = new OrderRequest
+                {
+                    ExternalOrderId = "ORD-24-r2",
+                    Table = "5",
+                    Items = new List<OrderLineRequest> { new OrderLineRequest { ProductCode = "LEMON", Quantity = 1m } },
+                };
+                TableRound r1 = NativeTableRoundMapper.ToTableRound(round1, 1, 0, 0, 1);
+                TableRound r2 = NativeTableRoundMapper.ToTableRound(round2, 1, 0, 0, 1);
+                Assert.AreEqual(2, r1.Lines.Count, "round 1 has its two lines");
+                Assert.AreEqual(1, r2.Lines.Count, "round 2 carries ONLY its own new line, not the prior table state");
+                // Appended after round 1's 2 lines: round 2's single line takes ordinal 3.
+                IReadOnlyList<PlannedLine> appended = TableRoundPlan.PlanAppend(r1.Lines.Count, r2);
+                Assert.AreEqual((short)3, appended[0].Line, "round 2 line is appended after the existing lines");
             });
         }
     }

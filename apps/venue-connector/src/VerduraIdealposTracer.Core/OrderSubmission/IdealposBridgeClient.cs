@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace VerduraIdealposTracer.Core.OrderSubmission;
 
-public sealed record BridgeOrderItem(string ProductCode, int Quantity);
+public sealed record BridgeOrderItem(string ProductCode, int Quantity, int? Seat = null);
 
 /// <summary>
 /// Exactly the wire shape IdealposBridge's <c>POST /api/orders</c> expects

@@ -182,3 +182,73 @@ describe('buildIdealposOrderPayload', () => {
     ).toThrow(IdealposMappingError);
   });
 });
+
+describe('buildIdealposOrderPayload — per-seat assignment (Order Tablet screenshot flow)', () => {
+  it('carries a positive integer seat through to the bridge line, preserving the assignment', () => {
+    const payload = buildIdealposOrderPayload(
+      baseInput({
+        items: [
+          {
+            menuItemId: 'item-1',
+            menuItemTitle: 'Lemon Slice',
+            quantity: 1,
+            selectedModifiers: [],
+            posProductCode: 'PLU-LEMON',
+            seat: 1,
+          },
+        ],
+      }),
+    );
+    expect(payload.items[0]).toEqual({ productCode: 'PLU-LEMON', quantity: 1, seat: 1 });
+  });
+
+  it('acceptance: select Table 5 → add Lemon Slice → Send to Kitchen builds table=5, Lemon Slice, seat 1 (no IdealPOS call)', () => {
+    const payload = buildIdealposOrderPayload(
+      baseInput({
+        externalOrderId: 'ORD-TABLE5-R1',
+        tableCode: '5',
+        items: [
+          {
+            menuItemId: 'lemon-slice',
+            menuItemTitle: 'Lemon Slice',
+            quantity: 1,
+            selectedModifiers: [],
+            posProductCode: 'PLU-LEMON',
+            seat: 1,
+          },
+        ],
+      }),
+    );
+    // This is the payload that maps 1:1 to the bridge's TableRound
+    // (table="5", one line Lemon Slice seat 1). No HTTP/IdealPOS call happens
+    // here — this mapper is pure.
+    expect(payload).toEqual({
+      externalOrderId: 'ORD-TABLE5-R1',
+      table: '5',
+      items: [{ productCode: 'PLU-LEMON', quantity: 1, seat: 1 }],
+    });
+  });
+
+  it('omits seat entirely when none is assigned — never a seat:0 the native server would misread', () => {
+    const payload = buildIdealposOrderPayload(baseInput());
+    expect(payload.items[0]).not.toHaveProperty('seat');
+  });
+
+  it('treats a non-positive or non-integer seat as "no seat" rather than fabricating one', () => {
+    const zero = buildIdealposOrderPayload(
+      baseInput({
+        items: [
+          {
+            menuItemId: 'a',
+            menuItemTitle: 'A',
+            quantity: 1,
+            selectedModifiers: [],
+            posProductCode: 'PLU-A',
+            seat: 0,
+          },
+        ],
+      }),
+    );
+    expect(zero.items[0]).not.toHaveProperty('seat');
+  });
+});

@@ -63,6 +63,16 @@ export interface IdealposMappingItemInput {
   selectedModifiers: unknown;
   /** Table.posProductCode is not real; this is MenuItem.posProductCode. Null = unmapped. */
   posProductCode: string | null;
+  /**
+   * Optional per-seat assignment. The Order Tablet already models seats in
+   * its cart and per-seat billing; this carries a seat through to the
+   * bridge's OrderLineRequest.Seat -> native SeatNumber. Emitted only when it
+   * is a positive integer; null/absent means "no seat" and the native server
+   * decides (never coerced to 0). Seat persistence on OrderItem is a separate
+   * story, so the dispatcher may omit this until then — the field is optional
+   * and backward compatible.
+   */
+  seat?: number | null;
 }
 
 export interface IdealposMappingInput {
@@ -85,7 +95,7 @@ export interface IdealposMappingInput {
 export interface IdealposOrderPayload {
   externalOrderId: string;
   table: string;
-  items: Array<{ productCode: string; quantity: number }>;
+  items: Array<{ productCode: string; quantity: number; seat?: number }>;
   notes?: string;
 }
 
@@ -152,7 +162,13 @@ export function buildIdealposOrderPayload(input: IdealposMappingInput): Idealpos
         { menuItemId: item.menuItemId },
       );
     }
-    return { productCode: item.posProductCode, quantity: item.quantity };
+    // Seat is optional and advisory: carry it through only when it is a
+    // positive integer, matching the native contract where an absent/0 seat
+    // means "the server decides". Never coerce or fabricate one.
+    const seatProvided = Number.isInteger(item.seat) && (item.seat as number) > 0;
+    return seatProvided
+      ? { productCode: item.posProductCode, quantity: item.quantity, seat: item.seat as number }
+      : { productCode: item.posProductCode, quantity: item.quantity };
   });
 
   return {
