@@ -60,6 +60,10 @@
     <Compile Include="..\idealpos-bridge\Orders\OrderValidator.cs" Link="Orders\OrderValidator.cs" />
     <Compile Include="..\idealpos-bridge\Orders\Reconciliation.cs" Link="Orders\Reconciliation.cs" />
     <Compile Include="..\idealpos-bridge\Orders\TableAssignmentCapability.cs" Link="Orders\TableAssignmentCapability.cs" />
+    <!-- Native table-attached Order Tablet write path (vendor-free) — replaces WebOrder. -->
+    <Compile Include="..\idealpos-bridge\Orders\NativeTable\TableRound.cs" Link="Orders\NativeTable\TableRound.cs" />
+    <Compile Include="..\idealpos-bridge\Orders\NativeTable\TableRoundWriter.cs" Link="Orders\NativeTable\TableRoundWriter.cs" />
+    <Compile Include="..\idealpos-bridge\Orders\NativeTable\NativeSubmission.cs" Link="Orders\NativeTable\NativeSubmission.cs" />
     <Compile Include="..\idealpos-bridge\Idealpos\Dto.cs" Link="Idealpos\Dto.cs" />
     <Compile Include="..\idealpos-bridge\Idealpos\IdealposReadRepository.cs" Link="Idealpos\IdealposReadRepository.cs" />
   </ItemGroup>
@@ -72,6 +76,7 @@
     <Compile Include="..\idealpos-bridge\Tests\IdealposReadRepositoryTests.cs" Link="Tests\IdealposReadRepositoryTests.cs" />
     <Compile Include="..\idealpos-bridge\Tests\ReconciliationTests.cs" Link="Tests\ReconciliationTests.cs" />
     <Compile Include="..\idealpos-bridge\Tests\TableAssignmentCapabilityTests.cs" Link="Tests\TableAssignmentCapabilityTests.cs" />
+    <Compile Include="..\idealpos-bridge\Tests\NativeTableRoundTests.cs" Link="Tests\NativeTableRoundTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
