@@ -984,6 +984,42 @@ describe('OrdersService', () => {
       );
     });
 
+    it('persists a positive per-line seat (Lemon Slice on Seat 1 survives persistence)', async () => {
+      mockResolution(mockMenuItemNoModifiers);
+      mockPrisma.order.create.mockResolvedValue({ id: 'order-uuid' });
+      mockPrisma.order.findUnique.mockResolvedValueOnce({ id: 'order-uuid', items: [] });
+
+      await service.createStaffOrder(dtoWith([], { seat: 1 }), orgId, staffActor);
+
+      expect(mockPrisma.orderItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ seat: 1 }) }),
+      );
+    });
+
+    it('normalizes a non-positive seat to null — never persists seat 0', async () => {
+      mockResolution(mockMenuItemNoModifiers);
+      mockPrisma.order.create.mockResolvedValue({ id: 'order-uuid' });
+      mockPrisma.order.findUnique.mockResolvedValueOnce({ id: 'order-uuid', items: [] });
+
+      await service.createStaffOrder(dtoWith([], { seat: 0 }), orgId, staffActor);
+
+      expect(mockPrisma.orderItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ seat: null }) }),
+      );
+    });
+
+    it('persists null seat when none is assigned', async () => {
+      mockResolution(mockMenuItemNoModifiers);
+      mockPrisma.order.create.mockResolvedValue({ id: 'order-uuid' });
+      mockPrisma.order.findUnique.mockResolvedValueOnce({ id: 'order-uuid', items: [] });
+
+      await service.createStaffOrder(dtoWith([]), orgId, staffActor);
+
+      expect(mockPrisma.orderItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ seat: null }) }),
+      );
+    });
+
     it('an item with no configured modifier catalog rejects any submitted modifier outright (never silently zeroes it)', async () => {
       mockResolution(mockMenuItemNoModifiers);
 

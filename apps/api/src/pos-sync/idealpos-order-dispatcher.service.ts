@@ -398,6 +398,9 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
           quantity: item.quantity,
           selectedModifiers: item.selectedModifiers,
           posProductCode: nativeCode,
+          // Persisted per-line seat (nullable) carried through to the native
+          // round. null stays null — the native server decides the seat.
+          seat: item.seat ?? null,
         })),
       });
     } catch (err: unknown) {
@@ -464,7 +467,12 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       // Not a route, and specifically NOT a fallback to the other route.
       // Nothing is dispatched; the record stays retryable so fixing the
       // configuration is enough to recover it.
-      await this.holdUndispatched(id, orderId, venueId, `dine-in route not resolved: ${routing.reason}`);
+      await this.holdUndispatched(
+        id,
+        orderId,
+        venueId,
+        `dine-in route not resolved: ${routing.reason}`,
+      );
       result.ineligible++;
       return;
     }
@@ -552,7 +560,9 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
    * a route survives restarts without any new column: the command type was
    * written once and cannot change.
    */
-  private async commandTypeOf(connectorSubmitCommandId: string | null | undefined): Promise<string | null> {
+  private async commandTypeOf(
+    connectorSubmitCommandId: string | null | undefined,
+  ): Promise<string | null> {
     if (!connectorSubmitCommandId) return null;
     const command = await this.prisma.connectorCommand.findUnique({
       where: { id: connectorSubmitCommandId },
@@ -582,7 +592,9 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       return reported.some((c) => c === IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY);
     }
     if (typeof reported === 'object') {
-      const value = (reported as Record<string, unknown>)[IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY];
+      const value = (reported as Record<string, unknown>)[
+        IDEALPOS_NATIVE_TABLE_ROUND_REQUIRED_CAPABILITY
+      ];
       return value === true || value === 'true';
     }
     return false;
@@ -613,7 +625,9 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       },
     });
     if (updated.count > 0) {
-      this.logger.warn(`posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} not dispatched: ${reason}`);
+      this.logger.warn(
+        `posSyncRecordId=${id} venueId=${venueId} orderId=${orderId} not dispatched: ${reason}`,
+      );
       await this.broadcastPosSyncUpdate(orderId, venueId);
     }
   }
@@ -639,7 +653,11 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
    */
   private buildNativeRoundPayload(
     externalOrderId: string,
-    webitPayload: { table: string; items: { productCode: string; quantity: number }[]; notes?: string | null },
+    webitPayload: {
+      table: string;
+      items: { productCode: string; quantity: number }[];
+      notes?: string | null;
+    },
   ): Record<string, unknown> {
     return {
       externalOrderId,

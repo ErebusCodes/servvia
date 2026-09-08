@@ -80,8 +80,26 @@ namespace VerduraIdealposBridge.Orders
             }
         }
 
+        /// <summary>A native table-attached submission (the only path today —
+        /// see OrderService). Durably tagged via StrategyUsed so it survives a
+        /// restart. Any legacy WebOrder record (StrategyUsed != "native", with
+        /// an IdealposWebReference) still gets the WB* observation below.</summary>
+        private static bool IsNativeSubmission(OrderRecord record)
+        {
+            return string.Equals(record.StrategyUsed, "native", System.StringComparison.OrdinalIgnoreCase);
+        }
+
         private void Observe(OrderRecord record)
         {
+            // Native orders are NEVER reconciled via WebOrder/WB* and never via
+            // PLU/qty coincidence. The WB* observation below is isolated to
+            // legacy WebOrder records; native records fail closed.
+            if (IsNativeSubmission(record))
+            {
+                ObserveNative(record);
+                return;
+            }
+
             bool stillResolving = record.Status == OrderStatus.SubmittedToIdealpos
                                 || record.Status == OrderStatus.PendingIdealposProcessing
                                 || record.Status == OrderStatus.Processed
@@ -168,6 +186,42 @@ namespace VerduraIdealposBridge.Orders
             if (record.Status == OrderStatus.AssignedToTable)
             {
                 ObservePendingSaleStillOpen(record);
+            }
+        }
+
+        /// <summary>
+        /// Native table-attached reconciliation — deliberately minimal and
+        /// fail-closed. There is no proven native readback contract yet (the
+        /// live IPS/WPOrder transport is disabled pending Front evidence), so
+        /// the bridge cannot positively confirm a native order from outside
+        /// IdealPOS. It therefore:
+        ///   * keeps the durable state set at submit time (externalOrderId
+        ///     dedup, SendInitiated/Submitted/Uncertain in the native state
+        ///     machine) untouched;
+        ///   * NEVER promotes Submitted -> confirmed without strong native
+        ///     evidence — none exists yet;
+        ///   * NEVER uses PLU/qty coincidence as proof;
+        ///   * ages a bounded-but-unconfirmed in-flight send past the stale
+        ///     timeout into Uncertain (terminal, never auto-resent, operator
+        ///     verifies), rather than guessing an outcome.
+        /// Terminal native states (incl. NativeTransportDisabled while the
+        /// transport is off) are left exactly as they are.
+        /// </summary>
+        private void ObserveNative(OrderRecord record)
+        {
+            if (record.Status.IsTerminal())
+            {
+                return;
+            }
+
+            if (System.DateTime.UtcNow - record.SubmittedAtUtc > System.TimeSpan.FromMinutes(_config.OrderStaleTimeoutMinutes))
+            {
+                Transition(record, OrderStatus.Uncertain,
+                    "Native table submission was not confirmed within the stale timeout. There is no proven " +
+                    "native readback contract yet (live transport disabled pending Front evidence), and PLU/qty " +
+                    "coincidence is never used as proof — so the outcome is Uncertain, not a claimed success or " +
+                    "failure. Verify on the native IdealPOS table/bill; do not resubmit under a new externalOrderId " +
+                    "without first confirming no duplicate exists.");
             }
         }
 

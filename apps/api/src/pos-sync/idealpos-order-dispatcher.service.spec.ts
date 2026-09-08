@@ -132,6 +132,67 @@ describe('IdealposOrderDispatcherService', () => {
       );
     });
 
+    it('carries a persisted per-line seat through to the ConnectorCommand payload (Table 5, Lemon Slice, Seat 1)', async () => {
+      mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
+      mockPrisma.menuItem.findMany.mockResolvedValueOnce([
+        { id: 'lemon', posProductCode: 'PLU-LEMON' },
+      ]);
+      mockPrisma.order.findUnique.mockResolvedValueOnce(
+        mappedOrder({
+          table: { posTableCode: '5' },
+          items: [
+            {
+              menuItemId: 'lemon',
+              menuItemTitle: 'Lemon Slice',
+              quantity: 1,
+              selectedModifiers: [],
+              seat: 1,
+            },
+          ],
+        }),
+      );
+      mockPrisma.order.findUnique.mockResolvedValueOnce(
+        mappedOrder({ posSyncRecord: { status: POSSyncStatus.queued_for_connector } }),
+      );
+
+      await service.sweepDispatch();
+
+      expect(mockConnectorCommandService.createCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: {
+            externalOrderId: 'order-1',
+            table: '5',
+            items: [{ productCode: 'PLU-LEMON', quantity: 1, seat: 1 }],
+          },
+        }),
+      );
+    });
+
+    it('a null persisted seat is omitted from the payload — never emitted as seat 0', async () => {
+      mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([dispatchCandidate()]);
+      mockPrisma.order.findUnique.mockResolvedValueOnce(
+        mappedOrder({
+          items: [
+            {
+              menuItemId: 'item-1',
+              menuItemTitle: 'Mixed Grill',
+              quantity: 2,
+              selectedModifiers: [],
+              seat: null,
+            },
+          ],
+        }),
+      );
+      mockPrisma.order.findUnique.mockResolvedValueOnce(
+        mappedOrder({ posSyncRecord: { status: POSSyncStatus.queued_for_connector } }),
+      );
+
+      await service.sweepDispatch();
+
+      const call = mockConnectorCommandService.createCommand.mock.calls[0][0];
+      expect(call.payload.items[0]).not.toHaveProperty('seat');
+    });
+
     it('a retry attempt (attemptCount > 0) uses an attempt-qualified idempotency key, never the original one', async () => {
       mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([
         dispatchCandidate({ attemptCount: 2 }),

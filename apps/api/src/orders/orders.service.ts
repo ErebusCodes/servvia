@@ -61,6 +61,7 @@ interface ResolvedOrderItem {
   lineTotalCents: number;
   selectedModifiers: ResolvedSelectedModifier[];
   notes: string | null;
+  seat: number | null;
 }
 
 interface ResolvedTable {
@@ -76,6 +77,17 @@ export class OrdersService {
   private static readonly PAYMENT_REF_CONSTRAINT_NAME = 'Order_paymentProviderTransactionId_key';
 
   private readonly logger = new Logger(OrdersService.name);
+
+  /**
+   * A seat is a positive integer or "no seat" (null). Any non-integer or
+   * non-positive value normalizes to null — never stored as seat 0. This is
+   * the same rule buildIdealposOrderPayload applies, kept in lock-step so the
+   * seat that survives persistence is exactly the seat that reaches the
+   * native round.
+   */
+  private static normalizeSeat(seat: number | null | undefined): number | null {
+    return Number.isInteger(seat) && (seat as number) > 0 ? (seat as number) : null;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1238,6 +1250,10 @@ export class OrdersService {
         lineTotalCents,
         selectedModifiers: resolvedModifiers,
         notes: itemDto.notes || null,
+        // Normalize to a positive integer or null — never seat 0 — matching
+        // buildIdealposOrderPayload's own rule so the same seat value behaves
+        // identically at persistence and at native-payload build time.
+        seat: OrdersService.normalizeSeat(itemDto.seat),
       });
     }
 
@@ -1786,6 +1802,7 @@ export class OrdersService {
             lineTotalCents: resItem.lineTotalCents,
             selectedModifiers: resItem.selectedModifiers as unknown as Prisma.InputJsonValue,
             notes: resItem.notes,
+            seat: resItem.seat,
           },
         });
       }

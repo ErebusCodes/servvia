@@ -886,6 +886,15 @@ model OrderItem {
   lineTotalCents    Int
   selectedModifiers Json    @default("[]")
   notes             String?
+  // Optional per-seat assignment for the Order Tablet dine-in flow. Nullable
+  // and unconstrained-by-default so this is a backward-compatible additive
+  // column: existing rows (and any order without a seat) stay NULL, which the
+  // whole pipeline treats as "no seat — the native server decides", never
+  // seat 0. Carried through to IdealposOrderPayload.items[].seat ->
+  // OrderLineRequest.Seat -> native SeatNumber. Positive integer or NULL only
+  // (normalized in OrdersService.resolveOrderItems, consistent with
+  // buildIdealposOrderPayload).
+  seat              Int?
 
   order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItem MenuItem @relation(fields: [menuItemId], references: [id])

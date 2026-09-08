@@ -72,6 +72,17 @@ export class CreateOrderItemDto {
   notes?: string;
 
   /**
+   * Optional per-seat assignment for the Order Tablet dine-in flow. Must be
+   * an integer when present; a non-positive value is normalized to "no seat"
+   * (null) in OrdersService.resolveOrderItems, consistently with
+   * buildIdealposOrderPayload — never stored or emitted as seat 0. Absent =
+   * no seat.
+   */
+  @IsOptional()
+  @IsInt()
+  seat?: number;
+
+  /**
    * The per-unit price (base + resolved modifier deltas) the caller
    * currently displays for this line, in integer cents. Optional — only
    * the strict (staff/tablet) path sends it. When present, the server

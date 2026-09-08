@@ -822,6 +822,10 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         .filter((mod): mod is typeof mod & { groupId: string; optionId: string } => !!mod.groupId && !!mod.optionId)
         .map(mod => ({ modifierGroupId: mod.groupId, optionId: mod.optionId })),
       expectedUnitPriceCents: Math.round(item.unit * 100) + item.mods.reduce((s, m) => s + Math.round(m.delta * 100), 0),
+      // Structured per-line seat, persisted to OrderItem.seat and carried to
+      // the native round (TableRoundLine.Seat). Only sent when assigned (> 0);
+      // the [Seat N] notes prefix is kept for the existing KOT/display path.
+      seat: item.seat > 0 ? item.seat : undefined,
       notes: item.seat > 0 ? `[Seat ${item.seat}] ${item.note}` : (item.note || undefined),
     }));
   }
