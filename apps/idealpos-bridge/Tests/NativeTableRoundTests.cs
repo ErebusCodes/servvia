@@ -20,6 +20,21 @@ namespace VerduraIdealposBridge.Tests
         private static TableRound Round(string ext, params TableRoundLine[] lines) =>
             new TableRound("5", pos: 1, clerkId: 1, guests: 2, location: 1, lines: lines, idempotency: Ctx(ext));
 
+        /// <summary>A writer that counts submission attempts, so tests can prove
+        /// zero-attempt fail-closed / duplicate paths and exactly-once sends.
+        /// The only writer type the orchestrator can reach — there is no
+        /// WebOrder writer to fall back to.</summary>
+        private sealed class SpyWriter : ITableRoundWriter
+        {
+            private readonly bool _enabled;
+            private readonly TableRoundWriteResult _result;
+            public int Calls;
+            public SpyWriter(bool enabled, TableRoundWriteResult result) { _enabled = enabled; _result = result; }
+            public bool IsTransportEnabled { get { return _enabled; } }
+            public string TransportName { get { return "spy"; } }
+            public TableRoundWriteResult SubmitTableRound(TableRound round) { Calls++; return _result; }
+        }
+
         public static IEnumerable<TestResult> RunAll()
         {
             // 1. First round on an empty table numbers lines from 1.
@@ -138,6 +153,53 @@ namespace VerduraIdealposBridge.Tests
                 Assert.AreEqual("ORD-14", r.Idempotency.ExternalOrderId, "externalOrderId");
                 Assert.AreEqual("CS-ORD-14", r.Idempotency.Checksum, "checksum");
                 Assert.AreEqual("DEV-2", r.Idempotency.DeviceId, "deviceId");
+            });
+
+            // 15. Fail closed: disabled transport → controlled rejection, zero attempts.
+            yield return Assert.Run("Fail closed: disabled transport yields a controlled rejection and attempts zero submissions", () =>
+            {
+                var spy = new SpyWriter(enabled: false, result: null);
+                NativeSubmissionOutcome outcome = NativeTableRoundSubmission.Execute(false, spy, Round("ORD-15", new TableRoundLine("23", 1m)));
+                Assert.AreEqual(NativeSubmissionOutcomeKind.ControlledRejectionTransportDisabled, outcome.Kind, "outcome kind");
+                Assert.AreEqual(NativeTableRoundSubmission.TransportDisabledMessage, outcome.Message, "controlled rejection message");
+                Assert.AreEqual(0, spy.Calls, "a disabled transport must attempt zero submissions");
+            });
+
+            // 16. Duplicate externalOrderId attempts zero submissions.
+            yield return Assert.Run("Duplicate externalOrderId attempts zero submissions", () =>
+            {
+                var spy = new SpyWriter(enabled: true, result: TableRoundWriteResult.Submitted("ACK"));
+                NativeSubmissionOutcome outcome = NativeTableRoundSubmission.Execute(true, spy, Round("ORD-16", new TableRoundLine("23", 1m)));
+                Assert.AreEqual(NativeSubmissionOutcomeKind.Duplicate, outcome.Kind, "duplicate must short-circuit");
+                Assert.AreEqual(0, spy.Calls, "a duplicate must attempt zero submissions");
+            });
+
+            // 17. Enabled transport makes exactly one bounded submission.
+            yield return Assert.Run("Enabled transport makes exactly one bounded submission", () =>
+            {
+                var spy = new SpyWriter(enabled: true, result: TableRoundWriteResult.Submitted("ACK1"));
+                NativeSubmissionOutcome outcome = NativeTableRoundSubmission.Execute(false, spy, Round("ORD-17", new TableRoundLine("23", 1m)));
+                Assert.AreEqual(NativeSubmissionOutcomeKind.Submitted, outcome.Kind, "submitted");
+                Assert.AreEqual(1, spy.Calls, "exactly one bounded submission");
+                Assert.AreEqual("ACK1", outcome.NativeAckChecksum, "native ack carried through");
+            });
+
+            // 18. Enabled + ambiguous write → uncertain, still exactly one submission.
+            yield return Assert.Run("Enabled + ambiguous write classifies as uncertain, still exactly one submission", () =>
+            {
+                var spy = new SpyWriter(enabled: true, result: TableRoundWriteResult.Ambiguous("timeout"));
+                NativeSubmissionOutcome outcome = NativeTableRoundSubmission.Execute(false, spy, Round("ORD-18", new TableRoundLine("23", 1m)));
+                Assert.AreEqual(NativeSubmissionOutcomeKind.Uncertain, outcome.Kind, "ambiguous -> uncertain");
+                Assert.AreEqual(1, spy.Calls, "still exactly one submission, never a retry");
+            });
+
+            // 19. No WebOrder fallback: a disabled transport never yields success.
+            yield return Assert.Run("No WebOrder fallback: a disabled transport never yields a success outcome", () =>
+            {
+                var spy = new SpyWriter(enabled: false, result: null);
+                NativeSubmissionOutcome outcome = NativeTableRoundSubmission.Execute(false, spy, Round("ORD-19", new TableRoundLine("23", 1m)));
+                Assert.IsTrue(outcome.Kind != NativeSubmissionOutcomeKind.Submitted, "must never silently succeed via a fallback");
+                Assert.AreEqual(0, spy.Calls, "and must not attempt any submission");
             });
         }
     }

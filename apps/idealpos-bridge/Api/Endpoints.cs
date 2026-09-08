@@ -135,6 +135,19 @@ namespace VerduraIdealposBridge.Api
                     });
                     return;
 
+                case OrderSubmitOutcomeKind.NativeTransportDisabled:
+                    // Fail closed: the native table-write transport is not
+                    // enabled, so nothing was sent and there was no fallback to
+                    // WebOrder. A controlled 503, never a success.
+                    ResponseWriter.WriteJson(ctx, 503, new
+                    {
+                        error = "native_transport_disabled",
+                        detail = outcome.Error,
+                        externalOrderId = outcome.Record?.ExternalOrderId,
+                        status = outcome.Record?.Status.ToWireString(),
+                    });
+                    return;
+
                 case OrderSubmitOutcomeKind.Success:
                     ResponseWriter.WriteJson(ctx, 201, ToResponseBody(outcome.Record, duplicate: false));
                     return;

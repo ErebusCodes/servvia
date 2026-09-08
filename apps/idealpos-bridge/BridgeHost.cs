@@ -5,6 +5,7 @@ using VerduraIdealposBridge.Http;
 using VerduraIdealposBridge.Idealpos;
 using VerduraIdealposBridge.Logging;
 using VerduraIdealposBridge.Orders;
+using VerduraIdealposBridge.Orders.NativeTable;
 using VerduraIdealposBridge.Realtime;
 
 namespace VerduraIdealposBridge
@@ -50,7 +51,11 @@ namespace VerduraIdealposBridge
             }
 
             var repo = new IdealposReadRepository(config.IpsConnectionString);
-            var submitter = new IdealposOrderSubmitter();
+            // The Order Tablet writes only through ITableRoundWriter. The
+            // WebOrder/Ecommerce writer has been removed. Until the native
+            // IPS/WPOrder transport is proven and enabled, this is the disabled
+            // writer, which makes SubmitOrder fail closed (no fallback).
+            ITableRoundWriter tableWriter = new DisabledTableRoundWriter();
             var hub = new WebSocketHub();
 
             // Null unless PosServerConnection is configured. Logged either way
@@ -72,7 +77,7 @@ namespace VerduraIdealposBridge
             }
 
             _store = new OrderStateStore(config.StateDatabasePath);
-            var orderService = new OrderService(config, _store, repo, submitter, hub);
+            var orderService = new OrderService(config, _store, repo, tableWriter, hub);
 
             _watcher = new OrderLifecycleWatcher(config, _store, repo, orderService, posServerRepo);
             _watcher.Start();

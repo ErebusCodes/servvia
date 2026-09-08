@@ -218,7 +218,7 @@ WHERE ExternalOrderId = @ExternalOrderId";
             using (var conn = Open())
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = "SELECT * FROM Orders WHERE Status NOT IN ('closed','rejected','failed','uncertain')";
+                cmd.CommandText = "SELECT * FROM Orders WHERE Status NOT IN ('closed','rejected','failed','uncertain','native_transport_disabled')";
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read()) result.Add(ReadRecord(reader));

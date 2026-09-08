@@ -14,9 +14,9 @@
     "Update these numbers ONLY together with the matching ExpectedTestCount in",
     "apps/idealpos-bridge-ci/CiTestMain.cs, and only as a deliberate change."
   ],
-  "totalLocalBaseline": 85,
+  "totalLocalBaseline": 81,
   "ciCovered": {
-    "tests": 69,
+    "tests": 74,
     "suites": [
       "OrderValidatorTests",
       "OrderStatusTests",
@@ -27,11 +27,10 @@
     ]
   },
   "ciNotCovered": {
-    "tests": 16,
+    "tests": 7,
     "reason": "typed against the proprietary IdealPos.Webit vendor DLL, which is not source-controlled and is absent from any GitHub runner",
     "suites": [
-      "TableAssignmentStrategyTests",
-      "IdealposOrderSubmitterTests"
+      "TableAssignmentStrategyTests"
     ]
   }
 }

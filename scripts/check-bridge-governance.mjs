@@ -80,6 +80,61 @@ export function parseSuitesFromCiProject(csproj) {
   return [...csproj.matchAll(/<Compile Include="[^"]*Tests[\\/](\w+)\.cs"/g)].map((m) => m[1]);
 }
 
+/**
+ * The Order Tablet WRITE execution path. Per the product decision, WebOrder /
+ * Ecommerce / Doshii-Webit is not an Order Tablet transport: these files must
+ * never reference the removed writer again. Guarding the execution path (not
+ * the whole project) is deliberate — the strategy helpers and read repository
+ * may still name WebOrder for other reasons; what must never come back is a
+ * WebOrder WRITE reachable from a Send-to-Kitchen submission.
+ */
+export const ORDER_TABLET_EXECUTION_FILES = [
+  'apps/idealpos-bridge/Orders/OrderService.cs',
+  'apps/idealpos-bridge/BridgeHost.cs',
+  'apps/idealpos-bridge/Api/Endpoints.cs',
+  'apps/idealpos-bridge/Orders/OrderSubmitOutcome.cs',
+  'apps/idealpos-bridge/Orders/NativeTable/TableRound.cs',
+  'apps/idealpos-bridge/Orders/NativeTable/TableRoundWriter.cs',
+  'apps/idealpos-bridge/Orders/NativeTable/NativeSubmission.cs',
+  'apps/idealpos-bridge/Orders/NativeTable/NativeTableRoundSubmission.cs',
+];
+
+export const FORBIDDEN_ORDER_TABLET_PATTERNS = [
+  /\bWebOrder\b/,
+  /\bInsertOrders\b/,
+  /\bLocalDataHelper\b/,
+  /\bEcommerceGuid\b/,
+  /\bConfirmedEcommercePluginGuid\b/,
+];
+
+/** Strip C# block comments, line/doc comments, and double-quoted string
+ * literals so that a comment or message legitimately NAMING the removed
+ * symbols (these files explain why WebOrder was removed) is not a false
+ * positive — only real code references count. */
+export function stripCommentsAndStrings(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ')
+    .replace(/"(?:\\.|[^"\\])*"/g, '""');
+}
+
+export function findWebOrderInOrderTabletPath(readFileText) {
+  const hits = [];
+  for (const file of ORDER_TABLET_EXECUTION_FILES) {
+    let text;
+    try {
+      text = readFileText(file);
+    } catch {
+      continue; // a file may be absent in a partial checkout; not this guard's concern
+    }
+    const code = stripCommentsAndStrings(text);
+    for (const pattern of FORBIDDEN_ORDER_TABLET_PATTERNS) {
+      if (pattern.test(code)) hits.push({ file, token: pattern.source });
+    }
+  }
+  return hits;
+}
+
 function main() {
   const problems = [];
   const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split('\n').filter(Boolean);
@@ -92,6 +147,16 @@ function main() {
 
   const apiKeyProblem = findCommittedApiKey(readFileSync(`${BRIDGE_DIR}/App.config`, 'utf8'));
   if (apiKeyProblem) problems.push(`${BRIDGE_DIR}/App.config: ${apiKeyProblem}`);
+
+  // WebOrder must never re-enter the Order Tablet execution path.
+  const webOrderHits = findWebOrderInOrderTabletPath((f) => readFileSync(f, 'utf8'));
+  for (const h of webOrderHits) {
+    problems.push(
+      `Order Tablet execution path re-acquired a WebOrder dependency: ${h.file} references ` +
+        `/${h.token}/. The Order Tablet must write only through ITableRoundWriter — never WebOrder/` +
+        `InsertOrders/LocalDataHelper/EcommerceGuid.`,
+    );
+  }
 
   const runnerSource = readFileSync(`${BRIDGE_DIR}/Tests/TestRunner.cs`, 'utf8');
   const mirrorSource = readFileSync(`${BRIDGE_CI_DIR}/CiTestSupport.cs`, 'utf8');

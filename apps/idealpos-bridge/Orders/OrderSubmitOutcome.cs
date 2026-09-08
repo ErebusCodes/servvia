@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace VerduraIdealposBridge.Orders
 {
-    public enum OrderSubmitOutcomeKind { Success, ValidationFailed, Duplicate, IdealposSubmissionFailed }
+    public enum OrderSubmitOutcomeKind { Success, ValidationFailed, Duplicate, IdealposSubmissionFailed, NativeTransportDisabled }
 
     /// <summary>What the HTTP layer needs to pick a status code and body —
     /// kept separate from OrderRecord so Api/OrdersEndpoint.cs doesn't need
@@ -25,5 +25,12 @@ namespace VerduraIdealposBridge.Orders
 
         public static OrderSubmitOutcome IdealposFailed(OrderRecord record, string error) =>
             new OrderSubmitOutcome { Kind = OrderSubmitOutcomeKind.IdealposSubmissionFailed, Record = record, Error = error };
+
+        /// <summary>Fail-closed: the native table-write transport is not enabled,
+        /// so nothing was sent and — critically — there was no fallback to the
+        /// removed WebOrder path. The HTTP layer turns this into a controlled
+        /// 503, never a success.</summary>
+        public static OrderSubmitOutcome NativeTransportDisabled(OrderRecord record, string message) =>
+            new OrderSubmitOutcome { Kind = OrderSubmitOutcomeKind.NativeTransportDisabled, Record = record, Error = message };
     }
 }

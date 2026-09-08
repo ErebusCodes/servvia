@@ -20,7 +20,6 @@ namespace VerduraIdealposBridge.Tests
             results.AddRange(TableAssignmentStrategyTests.RunAll());
             results.AddRange(OrderStatusTests.RunAll());
             results.AddRange(IdealposReadRepositoryTests.RunAll());
-            results.AddRange(IdealposOrderSubmitterTests.RunAll());
             results.AddRange(ReconciliationTests.RunAll());
             results.AddRange(TableAssignmentCapabilityTests.RunAll());
             results.AddRange(NativeTableRoundTests.RunAll());

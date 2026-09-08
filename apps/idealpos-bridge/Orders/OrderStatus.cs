@@ -113,6 +113,14 @@ namespace VerduraIdealposBridge.Orders
         /// implementation (the bridge cannot currently distinguish the two
         /// instants from outside Idealpos) — see README.</summary>
         Closed,
+
+        /// <summary>Fail-closed terminal state: the native table-write transport
+        /// is not enabled/proven for this venue, so nothing was sent and there
+        /// was NO fallback to the removed WebOrder path. Distinct from Failed
+        /// (which means a submission was attempted and threw) and from Uncertain
+        /// (which means a bounded send was made with an unknown outcome): here
+        /// no submission was attempted at all.</summary>
+        NativeTransportDisabled,
     }
 
     public static class OrderStatusExtensions
@@ -135,6 +143,7 @@ namespace VerduraIdealposBridge.Orders
                 case OrderStatus.Uncertain: return "uncertain";
                 case OrderStatus.Paid: return "paid";
                 case OrderStatus.Closed: return "closed";
+                case OrderStatus.NativeTransportDisabled: return "native_transport_disabled";
                 default: return status.ToString();
             }
         }
@@ -149,7 +158,8 @@ namespace VerduraIdealposBridge.Orders
             // risk during the 2026-08-19 preflight review (not itself a bug
             // today, since both already agreed before Uncertain was added).
             return status == OrderStatus.Closed || status == OrderStatus.Rejected
-                || status == OrderStatus.Failed || status == OrderStatus.Uncertain;
+                || status == OrderStatus.Failed || status == OrderStatus.Uncertain
+                || status == OrderStatus.NativeTransportDisabled;
         }
     }
 }

@@ -7,35 +7,41 @@ using VerduraIdealposBridge.Http;
 using VerduraIdealposBridge.Idealpos;
 using VerduraIdealposBridge.Logging;
 using VerduraIdealposBridge.Realtime;
-using VerduraIdealposBridge.TableAssignment;
+using VerduraIdealposBridge.Orders.NativeTable;
 
 namespace VerduraIdealposBridge.Orders
 {
     /// <summary>
     /// Orchestrates one order submission: idempotency check, validation,
-    /// per-table serialization, table-assignment strategy application,
-    /// submission via IdealposOrderSubmitter, and initial state
-    /// persistence + real-time publish. This is the only class that ties
-    /// the idempotency store, the Idealpos read repository, and the
-    /// submitter together — Api/OrdersEndpoint.cs talks only to this.
+    /// per-table serialization, native table-round submission, and initial
+    /// state persistence + real-time publish. This is the only class that
+    /// ties the idempotency store, the Idealpos read repository, and the
+    /// table-round writer together — Api/OrdersEndpoint.cs talks only to this.
+    ///
+    /// The WebOrder/Ecommerce writer (IdealposOrderSubmitter,
+    /// LocalDataHelper.InsertOrders) has been REMOVED from this path per the
+    /// product decision: the Order Tablet writes only through
+    /// <see cref="ITableRoundWriter"/> and cannot fall back to it. Until the
+    /// native transport is proven and enabled, the injected writer is
+    /// <see cref="DisabledTableRoundWriter"/> and submission fails closed.
     /// </summary>
     public class OrderService
     {
         private readonly BridgeConfig _config;
         private readonly OrderStateStore _store;
         private readonly IdealposReadRepository _repo;
-        private readonly IdealposOrderSubmitter _submitter;
+        private readonly ITableRoundWriter _tableWriter;
         private readonly WebSocketHub _hub;
         private readonly ConcurrentDictionary<string, object> _tableLocks =
             new ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
         public OrderService(BridgeConfig config, OrderStateStore store, IdealposReadRepository repo,
-            IdealposOrderSubmitter submitter, WebSocketHub hub)
+            ITableRoundWriter tableWriter, WebSocketHub hub)
         {
             _config = config;
             _store = store;
             _repo = repo;
-            _submitter = submitter;
+            _tableWriter = tableWriter;
             _hub = hub;
         }
 
@@ -112,47 +118,85 @@ namespace VerduraIdealposBridge.Orders
                 Logger.Info("order_validated", Logger.F("externalOrderId", request.ExternalOrderId), Logger.F("table", record.RequestedTable), Logger.F("itemCount", request.Items.Count));
                 Publish(record);
 
-                ITableAssignmentStrategy strategy;
-                try
+                // Native table-attached write. The WebOrder/Ecommerce writer
+                // has been removed: the Order Tablet submits a TableRound
+                // through ITableRoundWriter and can never reach
+                // LocalDataHelper.InsertOrders — there is no fallback.
+                //
+                // Pos is pinned to 1 (POSServer's own invariant for these
+                // pending-sale rows, STATIC-PROVEN). Clerk / guests / location
+                // and per-seat lines are placeholders until the proven native
+                // transport is wired; they never leave the bridge while the
+                // transport is disabled. externalOrderId is Verdura's durable
+                // idempotency key. request.Items and products were already
+                // validated above.
+                record.StrategyUsed = "native";
+                var roundLines = new List<TableRoundLine>(request.Items.Count);
+                foreach (OrderLineRequest item in request.Items)
                 {
-                    strategy = TableAssignmentStrategyFactory.Create(_config.TableAssignmentStrategyName);
+                    roundLines.Add(new TableRoundLine(item.ProductCode, item.Quantity));
                 }
-                catch (Exception ex)
-                {
-                    // Should be unreachable — BridgeConfig validates this at
-                    // startup — but fail the order honestly rather than
-                    // crash the request pipeline if it ever happens.
-                    record.Status = OrderStatus.Failed;
-                    record.LastError = ex.Message;
-                    record.LastObservedAtUtc = DateTime.UtcNow;
-                    _store.Update(record);
-                    Publish(record);
-                    return OrderSubmitOutcome.IdealposFailed(record, ex.Message);
-                }
+                var round = new TableRound(
+                    record.RequestedTable,
+                    pos: 1,
+                    clerkId: 0,
+                    guests: 0,
+                    location: 1,
+                    lines: roundLines,
+                    idempotency: new TableRoundIdempotencyContext(request.ExternalOrderId));
 
-                var relevantProducts = products.Where(p => request.Items.Any(i => string.Equals(i.ProductCode, p.Code, StringComparison.OrdinalIgnoreCase))).ToList();
-                OrderSubmissionResult result = _submitter.Submit(request, relevantProducts, strategy);
-
-                record.StrategyUsed = strategy.Name;
-                record.IdealposWebReference = result.IdealposWebReference;
-                record.OriginGuid = result.OriginGuid.ToString();
+                NativeSubmissionOutcome native = NativeTableRoundSubmission.Execute(
+                    recordAlreadyExists: false, writer: _tableWriter, round: round);
                 record.LastObservedAtUtc = DateTime.UtcNow;
 
-                if (!result.Success)
+                switch (native.Kind)
                 {
-                    record.Status = OrderStatus.Failed;
-                    record.LastError = result.Error;
-                    _store.Update(record);
-                    Publish(record);
-                    return OrderSubmitOutcome.IdealposFailed(record, result.Error);
+                    case NativeSubmissionOutcomeKind.ControlledRejectionTransportDisabled:
+                        // Fail closed. Nothing was sent; NativeTransportDisabled
+                        // is terminal so the watcher never re-observes or
+                        // resends it. Never reports success, never a WebOrder.
+                        record.Status = OrderStatus.NativeTransportDisabled;
+                        record.LastError = native.Message;
+                        _store.Update(record);
+                        Publish(record);
+                        Logger.Warn("order_native_transport_disabled",
+                            Logger.F("externalOrderId", request.ExternalOrderId),
+                            Logger.F("transport", _tableWriter.TransportName));
+                        return OrderSubmitOutcome.NativeTransportDisabled(record, native.Message);
+
+                    case NativeSubmissionOutcomeKind.Rejected:
+                        record.Status = OrderStatus.Failed;
+                        record.LastError = native.Message;
+                        _store.Update(record);
+                        Publish(record);
+                        return OrderSubmitOutcome.IdealposFailed(record, native.Message);
+
+                    case NativeSubmissionOutcomeKind.Uncertain:
+                        // A bounded send was made but the outcome is unknown.
+                        // Terminal and NEVER auto-resent; requires operator
+                        // verification (NativeSubmissionDecider).
+                        record.Status = OrderStatus.Uncertain;
+                        record.LastError = native.Message;
+                        _store.Update(record);
+                        Publish(record);
+                        return OrderSubmitOutcome.IdealposFailed(record, native.Message);
+
+                    case NativeSubmissionOutcomeKind.Submitted:
+                        record.Status = OrderStatus.SubmittedToIdealpos;
+                        _store.Update(record);
+                        Publish(record);
+                        Logger.Info("order_submitted",
+                            Logger.F("externalOrderId", request.ExternalOrderId),
+                            Logger.F("transport", _tableWriter.TransportName));
+                        return OrderSubmitOutcome.Success(record);
+
+                    default:
+                        record.Status = OrderStatus.Uncertain;
+                        record.LastError = "Unclassified native submission outcome.";
+                        _store.Update(record);
+                        Publish(record);
+                        return OrderSubmitOutcome.IdealposFailed(record, record.LastError);
                 }
-
-                record.Status = OrderStatus.SubmittedToIdealpos;
-                _store.Update(record);
-                Publish(record);
-                Logger.Info("order_submitted", Logger.F("externalOrderId", request.ExternalOrderId), Logger.F("strategy", strategy.Name), Logger.F("idealposWebReference", record.IdealposWebReference));
-
-                return OrderSubmitOutcome.Success(record);
             }
         }
 
