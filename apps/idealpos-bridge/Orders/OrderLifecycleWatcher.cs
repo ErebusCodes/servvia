@@ -214,7 +214,9 @@ namespace VerduraIdealposBridge.Orders
                 return;
             }
 
-            if (System.DateTime.UtcNow - record.SubmittedAtUtc > System.TimeSpan.FromMinutes(_config.OrderStaleTimeoutMinutes))
+            // Anchored to the durable SubmittedAtUtc (see NativeStaleTimeout):
+            // a process restart never resets this clock.
+            if (NativeTable.NativeStaleTimeout.IsStale(record.SubmittedAtUtc, System.DateTime.UtcNow, _config.OrderStaleTimeoutMinutes))
             {
                 Transition(record, OrderStatus.Uncertain,
                     "Native table submission was not confirmed within the stale timeout. There is no proven " +

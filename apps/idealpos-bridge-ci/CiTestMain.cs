@@ -20,7 +20,7 @@ namespace VerduraIdealposBridge.Ci
 {
     public static class CiTestMain
     {
-        private const int ExpectedTestCount = 79;
+        private const int ExpectedTestCount = 84;
 
         public static int Main()
         {

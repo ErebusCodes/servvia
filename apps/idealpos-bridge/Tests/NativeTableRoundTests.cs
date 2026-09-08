@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using VerduraIdealposBridge.Orders;
 using VerduraIdealposBridge.Orders.NativeTable;
@@ -287,6 +288,58 @@ namespace VerduraIdealposBridge.Tests
                 // Appended after round 1's 2 lines: round 2's single line takes ordinal 3.
                 IReadOnlyList<PlannedLine> appended = TableRoundPlan.PlanAppend(r1.Lines.Count, r2);
                 Assert.AreEqual((short)3, appended[0].Line, "round 2 line is appended after the existing lines");
+            });
+
+            // ---- ObserveNative stale-timeout invariant (durable, restart-safe) ----
+
+            // 25. Not stale before the window elapses.
+            yield return Assert.Run("Stale timeout: an in-flight submission is not stale before the window elapses", () =>
+            {
+                var submittedAt = new DateTime(2026, 9, 9, 12, 0, 0, DateTimeKind.Utc);
+                DateTime now = submittedAt.AddMinutes(9);
+                Assert.IsTrue(!NativeStaleTimeout.IsStale(submittedAt, now, 10), "9 min < 10 min timeout -> not stale");
+            });
+
+            // 26. Stale after the window elapses.
+            yield return Assert.Run("Stale timeout: an in-flight submission is stale after the window elapses", () =>
+            {
+                var submittedAt = new DateTime(2026, 9, 9, 12, 0, 0, DateTimeKind.Utc);
+                DateTime now = submittedAt.AddMinutes(11);
+                Assert.IsTrue(NativeStaleTimeout.IsStale(submittedAt, now, 10), "11 min > 10 min timeout -> stale");
+            });
+
+            // 27. Strict boundary — exactly at the timeout is not yet stale.
+            yield return Assert.Run("Stale timeout: exactly at the timeout is not yet stale (strict boundary)", () =>
+            {
+                var submittedAt = new DateTime(2026, 9, 9, 12, 0, 0, DateTimeKind.Utc);
+                DateTime now = submittedAt.AddMinutes(10);
+                Assert.IsTrue(!NativeStaleTimeout.IsStale(submittedAt, now, 10), "exactly 10 min is not > 10 min");
+            });
+
+            // 28. Anchored to the DURABLE submission timestamp, so a restart never resets the clock.
+            yield return Assert.Run("Stale timeout: anchored to the durable submission timestamp — a process restart does not reset it", () =>
+            {
+                // SubmittedAtUtc is persisted (TEXT NOT NULL) and survives a
+                // restart unchanged; staleness is a pure function of
+                // (submittedAtUtc, nowUtc). So an order submitted just before a
+                // crash keeps aging from its ORIGINAL time, not from reboot.
+                var submittedAt = new DateTime(2026, 9, 9, 12, 0, 0, DateTimeKind.Utc);
+                // "now" observed shortly after a restart, 9 min after submission:
+                Assert.IsTrue(!NativeStaleTimeout.IsStale(submittedAt, submittedAt.AddMinutes(9), 10),
+                    "still within window after a restart -> not stale (clock not reset to 0 at reboot)");
+                // A later poll, 11 min after the ORIGINAL submission, is stale —
+                // proving the elapsed time is measured from submittedAt, never
+                // from process start.
+                Assert.IsTrue(NativeStaleTimeout.IsStale(submittedAt, submittedAt.AddMinutes(11), 10),
+                    "past the window relative to the durable submission time -> stale");
+            });
+
+            // 29. A non-positive configured timeout is clamped to 0 (fail-closed: any elapsed time is stale).
+            yield return Assert.Run("Stale timeout: a non-positive configured timeout clamps to 0 (any elapsed time is stale)", () =>
+            {
+                var submittedAt = new DateTime(2026, 9, 9, 12, 0, 0, DateTimeKind.Utc);
+                Assert.IsTrue(NativeStaleTimeout.IsStale(submittedAt, submittedAt.AddSeconds(1), 0), "0 timeout: 1s elapsed is stale");
+                Assert.IsTrue(NativeStaleTimeout.IsStale(submittedAt, submittedAt.AddSeconds(1), -5), "negative timeout clamps to 0");
             });
         }
     }

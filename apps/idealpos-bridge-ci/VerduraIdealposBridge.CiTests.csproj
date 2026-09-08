@@ -66,6 +66,7 @@
     <Compile Include="..\idealpos-bridge\Orders\NativeTable\NativeSubmission.cs" Link="Orders\NativeTable\NativeSubmission.cs" />
     <Compile Include="..\idealpos-bridge\Orders\NativeTable\NativeTableRoundSubmission.cs" Link="Orders\NativeTable\NativeTableRoundSubmission.cs" />
     <Compile Include="..\idealpos-bridge\Orders\NativeTable\NativeTableRoundMapper.cs" Link="Orders\NativeTable\NativeTableRoundMapper.cs" />
+    <Compile Include="..\idealpos-bridge\Orders\NativeTable\NativeStaleTimeout.cs" Link="Orders\NativeTable\NativeStaleTimeout.cs" />
     <Compile Include="..\idealpos-bridge\Idealpos\Dto.cs" Link="Idealpos\Dto.cs" />
     <Compile Include="..\idealpos-bridge\Idealpos\IdealposReadRepository.cs" Link="Idealpos\IdealposReadRepository.cs" />
   </ItemGroup>

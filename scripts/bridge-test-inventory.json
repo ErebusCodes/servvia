@@ -14,9 +14,9 @@
     "Update these numbers ONLY together with the matching ExpectedTestCount in",
     "apps/idealpos-bridge-ci/CiTestMain.cs, and only as a deliberate change."
   ],
-  "totalLocalBaseline": 86,
+  "totalLocalBaseline": 91,
   "ciCovered": {
-    "tests": 79,
+    "tests": 84,
     "suites": [
       "OrderValidatorTests",
       "OrderStatusTests",
