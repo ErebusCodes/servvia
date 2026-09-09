@@ -286,9 +286,20 @@ export function decideFromNonResponse(outcome: NonResponseOutcome): WaiterPadOut
  *      (`RECOVERY_CAUSAL_TOKEN_EVIDENCE`). Nothing durable distinguishes
  *      "Verdura caused this exact PLU/quantity delta" from "a human added the
  *      same items while we were recovering". Content equality is not proof.
- *   2. SCOPE OF THE DELETE IS UNCONFIRMED. Delete-and-rewrite is non-lossy only
- *      if the packet carries COMPLETE table state. Whether it does is not
- *      answerable from field names and needs one captured genuine packet.
+ *   2. SCOPE OF THE DELETE IS UNCONFIRMED, and got sharper on 2026-09-09. This
+ *      point used to say delete-and-rewrite is non-lossy "only if the packet
+ *      carries COMPLETE table state", and that settling it "needs one captured
+ *      genuine packet". Front's logs supplied 41. THE PACKET IS A DELTA: a
+ *      second round on a table carries only the new lines, numbered from 1
+ *      again, with no repetition of the earlier round
+ *      (`ROUND_IS_DELTA_NOT_FULL_STATE_EVIDENCE`). A literal delete-and-rewrite
+ *      of the customer's tab from a delta would erase every earlier round, and
+ *      tables observably accumulate across rounds in normal trade - so the
+ *      delete must be narrower than the tab. The logs do show a deletion, but
+ *      of an `IH`-prefixed staging code, and they never record the row set the
+ *      SQL touched (`IH_STAGING_CODE_EVIDENCE`). So the question is no longer
+ *      "is the packet complete" but "what exactly does the rewrite delete", and
+ *      that is still NOT SHOWN. Do not assume the benign reading.
  *   3. NO `OrderedTime` IN THE READBACK, so two rounds that ordered the same
  *      item remain indistinguishable in the response.
  *
@@ -323,24 +334,53 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
   {
     id: 'WAITERPAD-RECON-001',
     title: 'Automatic round-vs-readback reconciliation',
-    why: 'Append-vs-relay semantics NOT SHOWN; readback has no OrderedTime.',
+    why:
+      'Narrowed on 2026-09-09, not closed. The old point 2 - whether the ' +
+      'packet carries COMPLETE table state - is ANSWERED: it does NOT, a ' +
+      'round is a DELTA and its line index restarts at 1 ' +
+      '(ROUND_IS_DELTA_NOT_FULL_STATE_EVIDENCE). That makes the static ' +
+      'delete-and-rewrite reading and observed trade behaviour incompatible ' +
+      'unless the delete is narrower than the tab, and which rows it touches ' +
+      'is NOT SHOWN (IH_STAGING_CODE_EVIDENCE). Points 1 and 3 stand ' +
+      'unchanged: no durable causal token reaches native sale state, and the ' +
+      'readback still has no OrderedTime.',
   },
   {
     id: 'WAITERPAD-CHECKSUM-001',
     title: 'Checksum generation algorithm',
-    why: 'The receiver only compares; no generator exists on either venue machine.',
+    why:
+      'The receiver only compares; no generator exists on either venue ' +
+      'machine. 41 genuine input/output pairs are now recoverable from the ' +
+      'Front Ideal Handheld logs (packet body plus its own <Checksum> node), ' +
+      'but no algorithm has been derived from them. Note the planned ' +
+      '"Checksum=" log grep does NOT work on Front - that literal is absent ' +
+      '(CHECKSUM_LOG_LINE_ABSENT_ON_FRONT_EVIDENCE). This blocks exactly-once ' +
+      'twice over: Verdura cannot compute a valid checksum, and the receiver ' +
+      'skips its duplicate guard entirely when the Checksum node is empty.',
   },
   {
     id: 'WAITERPAD-ACKLOSS-001',
-    title: 'ACK returned on buffer exhaustion',
+    title: 'ACK is emitted before durable processing, and on buffer exhaustion',
     why:
       'CheckWPOrder leaves its result at 1 when all 200 buffer slots are full ' +
-      '(0x01826751), so an ACK can be sent for a packet that was silently dropped.',
+      '(0x01826751), so an ACK can be sent for a packet that was silently ' +
+      'dropped. Now also PROVEN RUNTIME: on 2026-09-08 the ACK was sent at ' +
+      '16:38:31.875 and ProcessHandheldOrder only started at 16:38:32.105, ' +
+      'finishing at 16:38:33.065. The ACK body is byte-identical to the ACK ' +
+      'for a Test command and carries no order identity, so nothing on the ' +
+      'wire distinguishes accepted from buffered from dropped.',
   },
   {
-    id: 'WAITERPAD-BIND-001',
-    title: 'Front / Machine 2 is not observed listening on 6983',
-    why: 'The port is PROVEN STATIC; the binding on Front has never been read.',
+    id: 'WAITERPAD-FRAMING-001',
+    title: 'The receiver can NAK a fragment of an order it already accepted',
+    why:
+      'PROVEN RUNTIME on 2026-09-04 17:15:24: an Order2 was ACKed at .050, ' +
+      'then a trailing TCP fragment of the same transmission failed to parse ' +
+      'and the receiver sent NAK at .170. The receiver parses on socket-read ' +
+      'boundaries and reassembles only sometimes. So neither ACK nor NAK ' +
+      'identifies which packet it answers, and a NAK may follow an order that ' +
+      'is already on its way to the kitchen. Until framing is understood, no ' +
+      'response can drive an automatic retry decision.',
   },
   {
     id: 'WAITERPAD-SUPPORT-001',
@@ -364,6 +404,11 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
       'CheckWPOrder skips IsDuplicateHandheldOrder2 entirely when the global ' +
       'word at 0x2a2f1e4 is clear (cmp/je at 0x01826289). What sets it is NOT ' +
       'SHOWN, so Verdura cannot assume the till will catch a duplicate round ' +
-      'and must carry exactly-once entirely on its own side.',
+      'and must carry exactly-once entirely on its own side. 2026-09-09 adds ' +
+      'runtime weight in BOTH directions: the guard is real and has fired ' +
+      '(eight "HandheldOrder DUPLICATE!" lines keyed on checksum+DeviceID in ' +
+      "POSServer's ErrorLog.log), but it has not fired since 2019 and Front's " +
+      'LastCheckSum1 / LastCheckSum2 registry values are BOTH EMPTY after 41 ' +
+      'genuine orders in five days (DUPLICATE_GUARD_STATE_EVIDENCE).',
   },
 ] as const;

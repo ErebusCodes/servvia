@@ -270,3 +270,450 @@ rely on the till to catch a duplicate.
   which links every constant to the address it came from
 * **Blocker register:** `UNRESOLVED_PRODUCTION_BLOCKERS` in
   `waiterpad-round-state.ts`, asserted by test
+
+---
+
+## Addendum — 2026-09-08, Back collection window (read-only), stopped on instruction
+
+Active investigation was stopped on instruction while Back access was still open.
+No further probing of Front or IdealPOS ports was done after the stop. The Back
+evidence bundle for this window is
+`.tmp-back-evidence/back-20260908-1524/` (gitignored, `.gitignore:78`; not
+committed): **23 evidence files + `MANIFEST-sha256.txt`**. All 23 SHA-256 hashes
+verify (`sha256sum -c` all OK); the manifest and the present file set reconcile
+exactly (none unlisted, none missing).
+
+### Procedural deviation — bare TCP connects to prohibited IdealPOS ports
+
+During Back→Front port discovery, bare TCP connects were made to prohibited
+IdealPOS protocol ports **6983, 7983, 12183, 5501, 11183, 13184**, contrary to
+the standing prohibition on touching those ports.
+
+Nature of the connects, precisely:
+
+* **TCP handshake / connect only.**
+* **Zero application/protocol bytes intentionally sent.**
+* **Immediate close.**
+* **No registration, order, or request packets** — no `REGO`/`DeviceID`
+  registration, no `ORDER`, no `REQUESTTABLESTATUS` or any other request.
+
+This is recorded here as a procedural deviation for the record. It is also noted
+in the sealed evidence file `back-to-front-access-discovery.txt` within the
+bundle above.
+
+### Corrected reconciliation — preserved
+
+The corrected reconciliation from this window is preserved unchanged; no
+reconciliation content was reverted or overwritten. The reconciliation-relevant
+open question is unchanged and remains open: whether a WaiterPad socket ORDER
+carries **complete table state** or only the **delta** round is **UNKNOWN**
+(`WAITERPAD-RECON-001`; `reconcileRoundAgainstReadback()` still throws).
+
+### Final status
+
+```
+BACK COLLECTION COMPLETE
+FRONT SSH DISCOVERED: 192.168.1.199:22
+FRONT SSH AUTHENTICATION: NOT AVAILABLE IN CURRENT BACK CREDENTIAL CONTEXT
+FRONT ETL/TIMING/LOGS: NOT YET RETRIEVED
+FULL-STATE VS DELTA ORDER: UNKNOWN
+DURABLE IDEMPOTENCY TOKEN: NONE PROVEN
+LIVE HANDHELD WRITE PATH: NOT YET PROVEN
+PRODUCTION READY: NO
+```
+
+---
+
+## Addendum — 2026-09-09, Front evidence retrieval over SSH (read-only)
+
+Authorised SSH (port 22, key-based) was established Back → Front and used
+**only** to read files and passively read process/connection/registry state.
+No IdealPOS protocol port was contacted, no packet was sent, no Front file,
+service, config, firewall or registry value was modified, no test order was
+submitted and Verdura was not deployed.
+
+**Identity confirmed:** `DESKTOP-70DQTGJ` / `desktop-70dqtgj\user`, Windows
+10.0.14393. Front host key `SHA256:MHKJx+1njxab6MSKYyJN2/0r5lv+hLJg10lj2ONrCeY`
+(ED25519) verified physically on Front before it was pinned on Back.
+
+**Bundle:** `.tmp-back-evidence/20260909-124209/` (gitignored, `.gitignore:78`).
+58 files, 46,760,645 bytes, `PROVENANCE.txt` included. **Every file
+hash-verified: 21/21 in the Front evidence set and 35/35 in the log set, zero
+mismatches.** Live logs were read through a `FileShare.ReadWrite` stream with
+SHA-256 computed on Front over the exact bytes returned, so an appended log
+yields a self-consistent point-in-time snapshot rather than a false mismatch.
+
+`ssh.txt.txt` (49 bytes) was deliberately **not** retrieved — it may hold a
+credential and is not needed.
+
+### Corrections to prior records
+
+* `POSServerClient-20260907040237.LOG`, cited previously as a known relevant
+  example, **does not exist on Front**. Front holds only
+  `POSServerClient-2026090{2120038,2230912,4163749,5175525,7112553,8113029}.LOG`
+  plus the live `POSServerClient.log`. Provenance of the cited name is
+  UNCONFIRMED.
+* `C:\Program Files (x86)\Idealpos Solutions\Idealpos\LOGS\` exists but is
+  **empty (0 files)**. All log evidence is from the ProgramData tree.
+
+### The 14:37 ETL — what it actually contains
+
+**CAPTURE-PROVEN.** Decoded offline on Back (`Get-WinEvent`, `netsh trace
+convert`, and a direct binary frame parse). No capture was started and no
+traffic was generated.
+
+* The ETL spans **14:37:11 → 14:37:43 (~32 s)**, *not* the 14:37:05 → 14:42:20
+  window `timing.txt` records. The fixed 1,179,648-byte buffer stopped writing
+  at 14:37:43 (file mtime agrees). **The capture covers roughly 10% of the
+  intended window.**
+* 354 IPv4 frames: 336 TCP, 18 UDP. Dominant flow is
+  `192.168.1.199:7070 <-> 192.168.1.45:52223` (291 frames), unrelated to
+  IdealPOS handheld traffic. Also `192.168.1.199:50359 <-> 192.168.1.250:5501`
+  (Front/Back IPSClient, 21 frames) and some TLS to WAN hosts.
+* **The iPad (192.168.1.161) appears only as mDNS** (`5353 -> 224.0.0.251`,
+  9 frames). **Zero TCP frames from the iPad.**
+* **Zero frames on 6983, 7983, 11000, 11183, 12183, 13184.**
+* The earlier 13:53 ETL is materially identical in shape (283 frames, iPad mDNS
+  only, no IdealPOS protocol ports).
+
+**The physical iPad action during the 14:37 capture remains UNKNOWN and is NOT
+reconstructed here.** What *is* established is stronger than the ETL alone:
+`Ideal Handheld-20260909113154.LOG` records `Startup Listener` at
+**2026-09-08 11:30:55** and its next event at **15:51:27**. No handheld
+connection occurred anywhere in the 14:37 window, so no handheld round was
+submitted during it — independent of the ETL truncation. (This relies on the
+listener logging every connection request; it does so consistently elsewhere in
+the same file.)
+
+### The live handheld protocol — RUNTIME-PROVEN from production
+
+Source: `Ideal Handheld-20260909113154.LOG` (Front, covering 2026-09-08).
+Twelve genuine customer orders, all from device
+`10DF1A7881284E2E95CA107E82EE7D0D` (`iPad Pro 12.9-inch iPad7,2`,
+`iPadOS 17.7.11`, `PocketPad Version 2.2.51`, `WPType Protocol2`) at
+`192.168.1.161`.
+
+The order command on the wire is **`<Order Type="Order2">` inside `<WPPacket>`**
+— *not* `WPOrder`:
+
+```
+<WPPacket><Order Type="Order2">
+  <Map><Location><POSTerminal>901</POSTerminal><Table>10</Table><Clerk>108</Clerk>
+  <Guests><SkipKitchen>0</SkipKitchen><KitchenOnly>0</KitchenOnly><VoidMode>False</VoidMode>
+  <Total>75</Total><CashAmount><PointsAmount><SalesCaption /><PrintReceipt>False</PrintReceipt>
+  <LocalAddress><DeviceID><PocketPad><DeviceModel><DeviceOS>
+  <Checksum>1024185259</Checksum>
+  <OrderItem Index="0"><Type>StockItem</Type><StockItem>219</StockItem>
+    <Description>CHICKEN SHAWARMA</Description><Quantity>1</Quantity><Price>18.00</Price>
+    <Seat>0</Seat><PriceLevel>0</PriceLevel><TaxString>1</TaxString></OrderItem> ...
+</Order></WPPacket>
+```
+
+Only two command types were ever observed: `Test` (4,382) and `RequestProgram`
+(108). **No `REQUESTTABLESTATUS`, no `TABLESTATUS`, no `NAKREGO`, no `ACKLOSS`
+and no `IH-PRINT` token appears anywhere in any Front log.**
+
+* **`<Seat>` is a first-class native field and is accepted** — but every one of
+  the 224 production `OrderItem` elements carries `Seat 0`. There is **no
+  production evidence of a non-zero seat**. Seat plumbing is protocol-supported,
+  not protocol-exercised.
+* Twelve distinct `Checksum` values were captured paired with their DeviceID and
+  full order body (each value appears twice: once on `RECEIVED`, once on
+  `Attempting to Parse`). **The generator algorithm remains unknown** —
+  `WAITERPAD-CHECKSUM-001` is NOT closed. These are samples, not a generator.
+* `HKLM\SOFTWARE\WOW6432Node\Idealpos Solutions\Idealpos\Ideal Handheld` exists
+  and holds `LastCheckSum1` and `LastCheckSum2`, **both empty**. Read-only.
+  That they are empty now is not evidence they are never populated.
+
+### WAITERPAD-RECON-001 — the delta question is ANSWERED: DELTA
+
+**RUNTIME-PROVEN, from two independent lines of evidence.**
+
+1. **Order bodies.** Table 12 at `18:04:10` = SHIRAZ glass + Apple Tea,
+   `Total 15`. Table 12 at `18:13:39` = HAMSA KUWAITI, Grill Prawns, Cauliflower
+   Fritters, Moussaka, `Total 72` — the first round's two items are **absent**,
+   and 72 is exactly the sum of the second round's items alone. The same pattern
+   holds across Table 10's three rounds (`16:38`, `18:52`, `19:44`).
+2. **Printer routing corroborates it independently.** Round 1 on table 12 (two
+   drinks) produced **`BPrinter_20.Dat` only**; round 2 (four food items)
+   produced **`KitchenPrinter_20.Dat` only**. Had round 2 carried complete table
+   state, the drinks would have reprinted to the bar. They did not.
+
+**A socket ORDER carries the DELTA round, not complete table state.**
+
+This makes a delete-and-rewrite reconciliation strategy *more* dangerous, not
+less. It does **not** close `WAITERPAD-RECON-001`, which additionally requires a
+durable causal token — still absent.
+
+### Downstream path — RUNTIME-PROVEN
+
+For all 12 orders, 1:1, correlating the handheld log, `POSActivity` and
+`Printing.log`:
+
+```
+16:38:31.595  ----RECEIVED Socket 2----      (order arrives)
+16:38:31.745  Attempting to Parse Packet
+16:38:31.875  ---Sent: <WPPacket Type = 'ACK'>
+16:38:32.925  Printing.log: Found KitchenPrinter_20.Dat -> 192.168.1.211
+16:38:33.225  CheckHandheldMessages data=`IH10108
+16:38:33.255  ProcessAlertLevelPacket Entry tabletag=`IH10
+16:38:33.355  Deleting PendSale record `IH10 p=1
+16:38:33.365  Printing.log: Found BPrinter_20.Dat -> 192.168.1.212
+```
+
+* **ACK precedes durable processing in all 12 cases**, by **1.25 s to 2.38 s**
+  (parse to `CheckHandheldMessages`). The static-analysis finding that ACK may
+  precede durable processing is now **RUNTIME-PROVEN**. ACK must never be
+  treated as durable acceptance.
+* **The ACK is generic.** All 865 `---Sent:` lines in the day's log are the
+  byte-identical
+  `<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'ACK'></WPPacket>`
+  — for `Test`, `RequestProgram` and `Order2` alike. It carries **no order
+  identity, no sequence and no receipt**. No NAK or reject was ever observed.
+* **Kitchen/KOT fires for handheld rounds** — 12/12 produced print jobs within
+  ±1 s, routed by item category. The KOT path is the **print spool**
+  (`KitchenPrinter_NN.Dat` / `BPrinter_NN.Dat`), **not** POSActivity's
+  `SendToKitchen`, which on 2026-09-08 was emitted **35 times and never once
+  with an `IH` code** (always `POS=2` with a plain table code).
+* **The pending-sale namespace is split:** handheld rounds stage as
+  Code `` `IH<table> `` with `p=1`; POS-terminal table tabs are Code
+  `` `<table> `` with `p=2`. This sharpens, and does not contradict, the
+  existing finding that `IPSTransaction.PendingSales.Code` is a table/tab
+  business key scoped by POS. It is still **not** a per-submission idempotency
+  token.
+
+### Port 11000 / POSServerClient — full-state readback exists, but not per round
+
+`POSServerClient.log` is the port-11000 POSServer protocol. Command vocabulary
+observed (fixed-width fields, `@@@` terminator): `~TABLEDATA` (1,170),
+`~SENDSTAT`, `~GETCUSTP`, `~UNLOCK` (552), `~REQUEST`, `~LOCKONE` (374),
+`~GETSIM`, `~SIMSTATUS`, `~LOCK` (156), `~SETCUSTP`, `~DELETE`, `~MISCELLAN`,
+`~GETALL`, `~ALLSTATUS`. This **extends** the prior CAPTURE-PROVEN
+CONNECT / `~GETALL` / `~ALLSTATUS` finding and confirms 11000 is **not**
+exclusively table-status traffic.
+
+`~TABLEDATA` carries **complete current table state**, accumulating every round
+with a per-round timestamp — e.g. table 10 carrying the `16:38:29` handheld
+round together with later `16:59:41` and `17:25:45` additions.
+
+**However:** correlating all 12 handheld orders against port-11000 traffic in a
+−3 s to +20 s window found **no `~LOCK` or `~TABLEDATA` emitted as a consequence
+of a handheld round** (the single hit at 20:12:59 is a +20 s
+`~LOCKONE`/`~REQUEST` pair consistent with an unrelated operator action).
+Port-11000 traffic is driven by POS-side table operations. **`~TABLEDATA` is
+therefore not a per-submission reconciliation signal**, and
+`WAITERPAD-RECON-001` stays open.
+
+### Listener attribution — WAITERPAD-BIND-001 partially closed
+
+**RUNTIME-PROVEN by PID, twice** (Front audit 2026-09-08 14:32, and a live
+passive read 2026-09-09 — different PIDs, identical mapping):
+
+| Port | Process |
+|---|---|
+| 5501, 5502 | `IPSClient.exe` |
+| **6983** | **`IPS.exe`** |
+| 7983 | `IPSWorker.exe` |
+| 11000 | `POSServer.exe` |
+| 11183 | `IPSPrinterServer.exe` |
+| **12183** | **`IPS.exe`** |
+| 13184 | `ipsdeploy.exe` |
+
+Front **does** bind 6983; the prior `NOT SHOWN` on the binding is closed.
+
+**The handheld ingress port itself is still NOT PROVEN.** `IPS.exe` owns *both*
+6983 and 12183, and no captured evidence ties the `Ideal Handheld` listener to
+either. The iPad was not connected during the audit, during either ETL, or
+during the 2026-09-09 live read, so no accepted handheld connection has ever
+been observed in the connection table. That 6983 is the handheld port is
+**INFERENCE** (convention plus `IPS.exe` ownership), not proof. The prior
+Back-to-Front port scan opened all six IdealPOS ports but recorded no
+timestamps, so it cannot disambiguate the two `Connection Request from
+192.168.1.250` entries the handheld log shows at 15:51:27 and 15:52:51.
+
+### No Verdura and no WebOrder activity
+
+`Verdura` appears in Front logs **only** as the menu item `Verdura Hummus`
+(StockItem 728). `Doshii`, `Ecommerce` and `InsertOrders` appear **zero** times.
+`CheckWebOrderLabel` (347 occurrences on 2026-09-08) is POS UI label polling and
+is **not** evidence of a WebOrder write path being exercised. This is consistent
+with the prior finding that current `POSServerMessages` shows no active IH-PRINT
+backlog — which remains *not* evidence that IH-PRINT never existed.
+
+### Status
+
+```
+FRONT SSH:                        AUTHENTICATED (key-based, read-only use)
+FRONT ETL/TIMING/LOGS:            RETRIEVED, 56/56 HASH-VERIFIED
+ETL COVERAGE:                     ~32s of an intended 5m15s window
+IPAD ACTION AT 14:37:             UNKNOWN (not reconstructed)
+HANDHELD ROUND DURING 14:37:      NONE OCCURRED (log-proven)
+LIVE ORDER WIRE FORMAT:           WPPacket / <Order Type="Order2">  RUNTIME-PROVEN
+WPOrder AS LIVE TRANSPORT:        NOT CONFIRMED - live format is Order2
+FULL-STATE VS DELTA ORDER:        DELTA                              RUNTIME-PROVEN
+KITCHEN/KOT FOR HANDHELD:         FIRES via print spool, 12/12       RUNTIME-PROVEN
+ACK vs DURABLE PROCESSING:        ACK PRECEDES BY 1.25-2.38s         RUNTIME-PROVEN
+ACK SPECIFICITY:                  GENERIC, NO ORDER IDENTITY         RUNTIME-PROVEN
+CHECKSUM ALGORITHM:               UNKNOWN (12 samples captured)
+HANDHELD INGRESS PORT:            NOT PROVEN (6983 vs 12183)
+DEVICEID ACCEPTANCE FOR VERDURA:  UNKNOWN
+DURABLE IDEMPOTENCY TOKEN:        NONE PROVEN
+NATIVE TRANSPORT ACTIVATION:      NO - DisabledTableRoundWriter STAYS
+PRODUCTION READY:                 NO
+```
+
+---
+
+## Addendum — 2026-09-09, second Front pass (read-only): three new log trees, and the port
+
+This pass re-verified everything the first 2026-09-09 pass collected, then found
+that the first pass had inventoried only **one** of Front's **four** IdealPOS log
+directories. One of the three it missed contained the only duplicate-detection
+evidence on the machine.
+
+Provenance for this pass:
+`.tmp-back-evidence/20260909-124209/PROVENANCE-2.txt` (raw evidence stays off Git).
+
+### Corrections to the first 2026-09-09 pass
+
+| Prior record | Correction |
+|---|---|
+| "56/56 HASH-VERIFIED" | **57** files were recorded in `PROVENANCE.txt` (21 Set A + 36 Set B). All 57 re-hashed this pass: **57/57 match, 0 mismatch, 0 missing.** |
+| "`Program Files (x86)\...\LOGS` exists but is empty — nothing else to collect" | True, but incomplete. A recursive scan of **both** `Idealpos Solutions` trees found three further log directories that were never inventoried: `ProgramData\Idealpos Solutions\logs` (2490 `Gateway-*` files), `...\IPSClient\logs` (empty), and **`...\POSServer\logs` (4 files)**. |
+| `WAITERPAD-BIND-001` "still NOT PROVEN … the port scan recorded no timestamps, so it cannot disambiguate" | **Superseded — see below.** The scan's own timestamps were never needed. Front's are enough. |
+
+A further 12 files were retrieved this pass (4 POSServer logs, 4 Gateway logs,
+4 additional `Idealpos\LOGS` files in the surrounding time range), all
+source-hash-verified byte-exact. The `.cab` for the 14:37 capture was expanded
+offline on Back: its `report.etl` is **byte-identical** to the standalone `.etl`
+(both `40057B7E…A83D57E`), so the CAB carries no additional packet data.
+
+### WAITERPAD-BIND-001 — CLOSED. TCP 6983 is the handheld listener.
+
+The first pass looked for the answer in the handheld log alone and correctly
+concluded it was not there. The answer is in the **other five** logs.
+
+Back's 2026-09-08 port scan was a sequential `TcpClient` sweep (2.5 s timeout)
+over the authored list `6983, 7983, 12183, 5501, 11183, 13184`. Front logged the
+resulting accepts **in five different subsystems**, at ~4.8 s intervals, in
+exactly that order:
+
+| Slot | Front log | Timestamp | Port |
+|---:|---|---|---:|
+| 1 | `Ideal Handheld-…LOG` — "Connection Request from 192.168.1.250" | 15:51:27.821 | **6983** |
+| 2 | `POSWorker.log` — same wording, same source IP | 15:51:32.652 | 7983 |
+| 3 | `Printing.log` — `wsPrinterError_ConnectionRequest` | 15:51:37.352 | 12183 |
+| 4 | *(no log surface)* | ~15:51:42 | 5501 |
+| 5 | `IPSPrinterServer.LOG` — `wsPrinter_ConnectionRequest` | 15:51:48.419 | 11183 |
+| 6 | `IPSDeploy.log` — `ConnectionRequest … requestID` | 15:51:53.013 | 13184 |
+
+**Slot 3 is the anchor.** It landed on the socket control literally named
+`wsPrinterError` — which independent *static* analysis had already attributed to
+12183, and which this file already used to argue 12183 is emphatically not the
+WaiterPad ingress. A second, non-timing line of evidence therefore fixes the
+alignment, and slot 1 is 6983. Slots 1 and 2 additionally name `192.168.1.250`
+explicitly, so there is no doubt whose connection was accepted.
+
+**Residual assumption:** that the scan issued the list in the order recorded in
+`back-to-front-access-discovery.txt`. Nothing else is assumed.
+
+Front never caught an iPad connection in a `netstat` sample because the handheld
+exchange is connect → one command → response → close in well under a second —
+which is why five days of sampling found nothing and one accidental port scan
+answered it.
+
+**Closing this unlocked nothing.** `DisabledTableRoundWriter` stays. Knowing the
+port only means a future authorised capture can be aimed at the right socket.
+
+### The duplicate guard: real, has fired, currently empty
+
+`POSServer\logs\ErrorLog.log` — in the directory the first pass never
+inventoried — is the only duplicate-detection evidence on Front. It holds eight
+lines:
+
+```
+20190725 17:42:40.4520   HandheldOrder DUPLICATE! Checksum - 502244953A0ECF63167035A9E822A9B2A01CE137489A55CCD
+```
+
+The value is the decimal checksum **concatenated with the device id**, so the
+guard keys on **checksum + DeviceID**, not checksum alone.
+
+- It **is real and has fired** — eight times, 2019-07-25 → 2019-07-28, POSServer 1.7.1.6.
+- It has **not fired since**: zero occurrences in any 2020–2026 Front log.
+- Store (a) **exists but is empty**: `HKLM\SOFTWARE\WOW6432Node\Idealpos Solutions\Idealpos\Ideal Handheld`
+  carries `LastCheckSum1` and `LastCheckSum2`, **both blank**, read read-only on
+  2026-09-09 — after 41 genuine orders in the preceding five days.
+
+This does **not** prove the guard is disarmed; store (b) (`AAAExampleData`) was
+not inspected. It does remove any basis for assuming it is armed.
+`WAITERPAD-DUPGATE-001` stays open, better characterised.
+
+### NAK means "I could not parse that", not "I rejected your order"
+
+New blocker **`WAITERPAD-FRAMING-001`**. Exactly one NAK exists in 2853
+responses. On 2026-09-04 17:15:24 an `Order2` was received and **ACKed at
+.050**; the receiver then read a **trailing TCP fragment** of the same
+transmission, logged `XML parsing error` at .140, and sent **NAK at .170**.
+
+The receiver parses on socket-read boundaries and reassembles only sometimes —
+the 2026-09-08 16:38:31 order arrived as *two* `----RECEIVED Socket 2----`
+chunks and did reassemble. So neither response identifies which packet it
+answers, and **a NAK can follow an order that is already on its way to the
+kitchen.** Retrying that NAK would have double-posted it. This is the concrete
+reason auto-retry stays prohibited.
+
+### The planned `Checksum=` test-vector grep does not work on Front
+
+`CHECKSUM_LOG_LINE_EVIDENCE` nominated `"Checksum="` as the grep that would
+yield a genuine vendor checksum beside its DeviceID. That literal appears
+**zero** times in any Front log — including the four `Ideal Handheld` logs that
+do contain 41 genuine `<Checksum>` XML nodes. Either the `HandheldLog` gate on
+that writer is off or `CheckWPOrder` is not reached on this path.
+
+No matter: the logs give a **better** vector than the one planned, because they
+carry the packet body *and* its checksum in the same entry. 41 input/output
+pairs are now recoverable. **The algorithm is still not derived**, and deriving
+it was not attempted here. `WAITERPAD-CHECKSUM-001` stays open — and it blocks
+exactly-once twice over, because the receiver skips its duplicate guard entirely
+when the `Checksum` node is empty.
+
+### Blocker register — net effect of this pass
+
+| Blocker | Change |
+|---|---|
+| `WAITERPAD-BIND-001` | **CLOSED and removed.** 6983 proven. |
+| `WAITERPAD-FRAMING-001` | **NEW.** NAK can follow an already-accepted order. |
+| `WAITERPAD-RECON-001` | Narrowed. "Is the packet complete?" is answered (**delta**); the live question is now "what exactly does the rewrite delete?" |
+| `WAITERPAD-ACKLOSS-001` | Reinforced — ACK-before-processing is now RUNTIME-PROVEN, not just static. |
+| `WAITERPAD-DUPGATE-001` | Reinforced — guard real, fired 2019, registry store empty today. |
+| `WAITERPAD-CHECKSUM-001` | Reinforced — 41 vectors recoverable, algorithm still unknown, planned grep dead. |
+| `WAITERPAD-REGO-001`, `-SUPPORT-001` | Unchanged. |
+
+Seven blockers before, seven after. One closed, one opened.
+
+### Status
+
+```
+FRONT SSH:                        AUTHENTICATED (key-based, read-only use)
+FRONT HOST KEY:                   RE-VERIFIED, UNCHANGED
+PASS-1 COPIES RE-VERIFIED:        57/57 HASH MATCH, 0 MISMATCH
+PASS-2 FILES RETRIEVED:           12/12 SOURCE-HASH VERIFIED
+FRONT LOG TREES:                  4 found (1 inventoried by pass 1)
+ETL EVIDENTIAL VALUE:             VOID - 32s of 5m15s, saturated by AnyDesk:7070
+IPAD ACTION AT 14:37:             UNKNOWN (not reconstructed, not reconstructable)
+LIVE ORDER WIRE FORMAT:           WPPacket / <Order Type="Order2">  RUNTIME-PROVEN
+WPOrder AS LIVE TRANSPORT:        NOT CONFIRMED - live format is Order2
+HANDHELD INGRESS PORT:            6983                               PROVEN
+FULL-STATE VS DELTA ORDER:        DELTA                              RUNTIME-PROVEN
+KITCHEN/KOT FOR HANDHELD:         FIRES via print spool              RUNTIME-PROVEN
+ACK vs DURABLE PROCESSING:        ACK PRECEDES                       RUNTIME-PROVEN
+ACK SPECIFICITY:                  GENERIC, NO ORDER IDENTITY         RUNTIME-PROVEN
+NAK SEMANTICS:                    XML PARSE FAILURE, NOT REJECTION   RUNTIME-PROVEN
+DUPLICATE GUARD:                  REAL, FIRED 2019, STORE (a) EMPTY  RUNTIME-PROVEN
+CHECKSUM ALGORITHM:               UNKNOWN (41 vectors now available)
+DEVICEID ACCEPTANCE FOR VERDURA:  UNKNOWN
+DURABLE IDEMPOTENCY TOKEN:        NONE PROVEN
+ROUND -> DURABLE TAB MERGE:       NOT SHOWN (no SQL row set in any log)
+NATIVE TRANSPORT ACTIVATION:      NO - DisabledTableRoundWriter STAYS
+PRODUCTION READY:                 NO
+```

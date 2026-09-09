@@ -286,13 +286,26 @@ describe('the production blocker register', () => {
   it('lists every blocker that must be closed before certification', () => {
     expect(UNRESOLVED_PRODUCTION_BLOCKERS.map((b) => b.id).sort()).toEqual([
       'WAITERPAD-ACKLOSS-001',
-      'WAITERPAD-BIND-001',
       'WAITERPAD-CHECKSUM-001',
       'WAITERPAD-DUPGATE-001',
+      'WAITERPAD-FRAMING-001',
       'WAITERPAD-RECON-001',
       'WAITERPAD-REGO-001',
       'WAITERPAD-SUPPORT-001',
     ]);
+  });
+
+  // WAITERPAD-BIND-001 left the register on 2026-09-09 and must not drift back
+  // in as an open item. It was closed by HANDHELD_INGRESS_PORT_RUNTIME_EVIDENCE:
+  // Back's sequential port scan of 2026-09-08 15:51 landed, at ~4.8s intervals
+  // and in list order, on five different Front subsystems, and the third slot
+  // (12183) hit the wsPrinterError control that static analysis had already
+  // named - which anchors slot one, 6983, as the Ideal Handheld listener.
+  //
+  // Closing it unlocked NOTHING. The writer stays disabled; knowing the port
+  // only means a future authorised capture can be aimed at the right socket.
+  it('no longer lists the ingress port as unresolved', () => {
+    expect(UNRESOLVED_PRODUCTION_BLOCKERS.map((b) => b.id)).not.toContain('WAITERPAD-BIND-001');
   });
 
   it('gives every blocker a reason', () => {

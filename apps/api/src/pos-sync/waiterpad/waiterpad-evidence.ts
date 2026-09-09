@@ -49,10 +49,18 @@ export interface EvidenceNote {
 }
 
 /**
- * The ingress port. PROVEN STATIC only — that the same binary on Front is
- * actually BOUND to it has never been observed, and this module must never
- * imply otherwise. Recorded for documentation; deliberately not used by any
- * code here, because no code here connects to anything.
+ * The ingress port.
+ *
+ * UPDATED 2026-09-09. This was PROVEN STATIC only, with the caveat that Front
+ * had never been observed bound to it. Both halves are now closed: Front is
+ * observed LISTENING on 6983 under `IPS.exe`, and cross-host timing correlation
+ * ties the `Ideal Handheld` listener specifically to 6983 rather than to the
+ * other port `IPS.exe` owns. See `HANDHELD_INGRESS_PORT_RUNTIME_EVIDENCE`,
+ * including its one residual assumption.
+ *
+ * KNOWING THE PORT CHANGES NOTHING ABOUT SAFETY. It is still recorded for
+ * documentation only and is still not used by any code here, because no code
+ * here connects to anything. See `waiterpad-gate.ts`.
  */
 export const WAITERPAD_PORT = 6983 as const;
 
@@ -850,4 +858,358 @@ export const RECOVERY_CAUSAL_TOKEN_EVIDENCE: EvidenceNote = {
     'adding the same items. ACK cannot close it (pre-execution, and emitted on ' +
     'buffer exhaustion); nor can unstable PendingSales.ID or a Printed flag. ' +
     'Recovery of an uncertain round stays MANUAL_RESOLUTION_REQUIRED.',
+};
+
+/* ===========================================================================
+ * FRONT RUNTIME PASS - 2026-09-09
+ *
+ * Everything above this line was read out of IPS.exe or observed on Back. The
+ * notes below are the first [FRONT] RUNTIME observations of the live handheld
+ * route, recovered from Front's own application logs over read-only SSH.
+ *
+ * SOURCE ARTIFACTS (raw evidence is deliberately NOT in this repository; see
+ * .tmp-back-evidence/20260909-124209/PROVENANCE.txt and PROVENANCE-2.txt for
+ * paths, lengths, LastWriteTime and source==copy SHA-256 for every file):
+ *
+ *   Ideal Handheld-2026090{5175525,7112553,8113029,9113154}.LOG
+ *       C:\ProgramData\Idealpos Solutions\Idealpos\LOGS
+ *       The WaiterPad listener's own log. 41 distinct genuine Order2 packets,
+ *       2853 ACK responses, 1 NAK, across 2026-09-04..09.
+ *   POSWorker.log                   same directory. ProcessHandheldOrder runs.
+ *   POSActivity-20260909113154.LOG  same directory. POS-terminal side.
+ *   Printing.log, PrintJobs.log, IPSPrinterServer.LOG   same directory.
+ *   POSServerClient.log             same directory. The POSServer 11000 channel.
+ *   ErrorLog.log   C:\ProgramData\Idealpos Solutions\POSServer\logs
+ *       The ONLY duplicate-detection evidence anywhere on Front.
+ *
+ * These notes carry no IPS.exe addresses; `addresses` is empty by design. They
+ * are graded PROVEN_RUNTIME only where the log text itself states the fact, and
+ * STRONGLY_INDICATED or NOT_SHOWN where a step had to be inferred by
+ * correlation. No note here upgrades a claim that only correlation supports.
+ * =========================================================================== */
+
+/**
+ * The live packet, at last. `WPOrder` as a NAME remains unobserved on the wire;
+ * what the live iPad actually sends is `<WPPacket><Order Type="Order2">`.
+ *
+ * This is the most important artifact of the pass, because every prior
+ * order-shape claim in this file was read out of a binary. This one was sent by
+ * a real iPad, to a real till, for a real table, and the kitchen printed it.
+ */
+export const LIVE_ORDER2_PACKET_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] The genuine live handheld order frame is <?xml version="1.0" ' +
+    'encoding="UTF-8" ?><WPPacket><Order Type="Order2"> with scalar children ' +
+    'Map, Location, POSTerminal, Table, Clerk, Guests, SkipKitchen, ' +
+    'KitchenOnly, VoidMode, Total, CashAmount, PointsAmount, SalesCaption, ' +
+    'PrintReceipt, LocalAddress, DeviceID, PocketPad, DeviceModel, DeviceOS, ' +
+    'Checksum, followed by repeated <OrderItem Index="0"> each carrying Type, ' +
+    'StockItem, Description, Quantity, Price, Seat, PriceLevel, TaxString. ' +
+    'Type is "StockItem" for a sold line and "Text" for a free-text kitchen ' +
+    'instruction (StockItem "#", Quantity 0, Price 0.00). NOTE Index is ' +
+    'literally "0" on EVERY item - it does NOT enumerate. Observed verbatim ' +
+    '2026-09-08 16:38:31 in Ideal Handheld-20260909113154.LOG: Table 10, ' +
+    'Clerk 108, POSTerminal 901, Map 1, Location 1, Guests 0, Total 75, ' +
+    'Checksum 1024185259, DeviceID 10DF1A7881284E2E95CA107E82EE7D0D. 41 ' +
+    'distinct such packets exist across the four retained logs.',
+};
+
+/**
+ * A ROUND IS A DELTA. This answers half of `WAITERPAD-RECON-001` point 2 and
+ * opens a sharper question in its place.
+ *
+ * The old blocker text said delete-and-rewrite is non-lossy "only if the packet
+ * carries COMPLETE table state", and that answering it "needs one captured
+ * genuine packet". We now have 41, including consecutive rounds on one table.
+ * The packet does NOT carry complete table state.
+ */
+export const ROUND_IS_DELTA_NOT_FULL_STATE_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] A second physical round on the same table sends ONLY the new ' +
+    'items, not the accumulated table state, and the per-round line index ' +
+    'restarts at 1. Cleanest instance, POSWorker.log 2026-09-08: TABLE 12 at ' +
+    '18:04:11 carried exactly 2 lines (SHIRAZ Glass, Apple Tea); TABLE 12 at ' +
+    '18:13:40, nine minutes later, carried 4 lines (HAMSA KUWAITI, Grill ' +
+    'Prawns, CAULIFLOWER FRITTERS, GREEK EGGPLANT LAMB MOUSSAKA) - a DISJOINT ' +
+    'set numbered 1..4 with no repetition of round one. Same shape at TABLE 18 ' +
+    'on 2026-09-06 (14:18:19 seven lines, then 16:48:57 eleven entirely ' +
+    'different lines). Each round independently fires SendToKitchen. ' +
+    'CONSEQUENCE: any implementation that treats a round as full table state, ' +
+    'or that re-sends a table to make state converge, would double-charge the ' +
+    'customer and double-fire the kitchen.',
+};
+
+/**
+ * What the delete in `ProcessHandheldOrder` actually appears to target.
+ *
+ * DELIBERATELY NOT UPGRADED. Static analysis says ProcessHandheldOrder DELETEs
+ * PendingSales/PendingSaleLines and rewrites them. Runtime says the packet is a
+ * delta and that tables plainly accumulate across rounds in normal trade. Both
+ * cannot be true of the SAME rows, so the delete must be narrower than "the
+ * customer's tab" - but the logs show a deletion of a DIFFERENT, IH-prefixed
+ * code, and never show the row set the SQL touched. Reconciling the two
+ * readings is NOT SHOWN and is now the sharp end of WAITERPAD-RECON-001.
+ */
+export const IH_STAGING_CODE_EVIDENCE: EvidenceNote = {
+  grade: 'STRONGLY_INDICATED',
+  addresses: [],
+  note:
+    '[FRONT] The handheld route uses a distinct IH-prefixed PendingSales code ' +
+    'that is created and then deleted within about a second, separate from the ' +
+    "table's own tab code. 2026-09-08: POSWorker.log 16:38:32.435 " +
+    '"SendToKitchen Code=`IH10 POS=1"; POSActivity 16:38:33.225 ' +
+    '"CheckHandheldMessages data=`IH10108" (table 10 and clerk 108 ' +
+    'concatenated), 16:38:33.255 "ProcessAlertLevelPacket Entry ' +
+    'tabletag=`IH10", 16:38:33.355 "Deleting PendSale record `IH10 p=1". This ' +
+    'three-line pattern recurs identically for every one of the 36 handheld ' +
+    'rounds in the POSActivity log. The POS terminal separately writes its OWN ' +
+    'tab as code="<padded table>" POS=1 plus a transient "`<table>" POS=2, ' +
+    'e.g. 17:55:27.095 code padded 10 POS=1, then 17:55:29.096 code=`10 POS=2, ' +
+    'then delete. So at least three code namespaces coexist. WHAT IS NOT ' +
+    'SHOWN: no log records the SQL row set, so whether the static ' +
+    'delete-and-rewrite targets `IH10 (staging) or table 10 durable tab is NOT ' +
+    'resolved. Do not assume the benign reading.',
+};
+
+/**
+ * ACK BEFORE DURABLE PROCESSING - now runtime, not just static.
+ *
+ * `ACK_MEANS_BUFFERED_NOT_EXECUTED` said this from the binary. Front's clocks
+ * now say it out loud, in two different log files, for the same packet.
+ */
+export const ACK_PRECEDES_PROCESSING_RUNTIME_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] For the SAME order on 2026-09-08, the Ideal Handheld log shows: ' +
+    'received 16:38:31.595-.735, parsed .745, "Adding <DeviceID> to current ' +
+    'devices" .805, ACK sent 16:38:31.875. POSWorker.log only THEN begins - ' +
+    '"Loaded xml to process Handheld Order" 16:38:32.105, ' +
+    '"ProcessHandheldOrder Processing STARTED : Table 10 and Map 1" .195, ' +
+    'SendToKitchen .435, "Totally finished : Table 10" 16:38:33.065. The ACK ' +
+    'precedes the START of durable processing by about 230ms and its ' +
+    'COMPLETION by about 1.19s. The ACK body is a fixed 73 bytes and is ' +
+    'BYTE-IDENTICAL to the ACK returned for a Test command - it carries no ' +
+    'order identity, no table, no sequence and no result. ACK IS NOT ' +
+    'ACCEPTANCE, and no later message on the socket revises it.',
+};
+
+/**
+ * NAK MEANS "I COULD NOT PARSE THAT", NOT "I REJECTED YOUR ORDER" - and it can
+ * arrive AFTER the order it appears to refer to was already accepted.
+ *
+ * This is a retry trap and the reason auto-retry must stay prohibited.
+ */
+export const NAK_IS_A_PARSE_FAILURE_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] Exactly one NAK exists in 2853 responses across four logs. ' +
+    'Ideal Handheld-20260905175525.LOG, 2026-09-04 17:15:24: an Order2 was ' +
+    'received and ACKed at 17:15:24.050; the receiver then read a TRAILING TCP ' +
+    'FRAGMENT of the same transmission (logged as a bare <DeviceID> line), ' +
+    'logged "XML parsing error" at .140, and sent NAK at .170. The receiver ' +
+    'parses on socket-read boundaries and does not always reassemble - the ' +
+    '16:38:31 order on 2026-09-08 arrived as TWO "----RECEIVED Socket 2----" ' +
+    'chunks and DID reassemble, so the behaviour is not deterministic. ' +
+    'CONSEQUENCE: a NAK does not mean the round was refused. Here the round ' +
+    'was already accepted and had gone to the kitchen. Retrying on that NAK ' +
+    'would have double-posted it. NEVER auto-retry a NAK.',
+};
+
+/**
+ * The receiver's duplicate guard is REAL, has FIRED, and is currently EMPTY.
+ *
+ * `CHECKSUM_STORAGE_DUALITY_EVIDENCE` predicted store (a) would be readable in
+ * the Front registry. It is. It holds nothing.
+ */
+export const DUPLICATE_GUARD_STATE_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] (1) The guard is real and has fired: ' +
+    'C:\\ProgramData\\Idealpos Solutions\\POSServer\\logs\\ErrorLog.log holds ' +
+    'eight lines "HandheldOrder DUPLICATE! Checksum - " followed by the ' +
+    'decimal checksum CONCATENATED with the device id, e.g. ' +
+    '502244953A0ECF63167035A9E822A9B2A01CE137489A55CCD - so the key is ' +
+    'checksum+DeviceID, not checksum alone. All eight are dated 2019-07-25 to ' +
+    '2019-07-28 under POSServer 1.7.1.6, against a 40-hex device id. (2) It ' +
+    'has NOT fired since: zero occurrences in any 2020-2026 Front log. (3) ' +
+    'Store (a) exists but is EMPTY: HKLM\\SOFTWARE\\WOW6432Node\\Idealpos ' +
+    'Solutions\\Idealpos\\Ideal Handheld carries values LastCheckSum1 and ' +
+    'LastCheckSum2, BOTH blank, read read-only on 2026-09-09 with 41 genuine ' +
+    'orders having passed through in the preceding five days. So this till is ' +
+    'NOT recording last-accepted checksums today. Verdura must carry ' +
+    'exactly-once entirely on its own side. This does NOT prove the guard is ' +
+    'disarmed - store (b) was not inspected - but it removes any basis for ' +
+    'assuming it is armed.',
+};
+
+/**
+ * The `Checksum=` grep that `CHECKSUM_LOG_LINE_EVIDENCE` planned for does not
+ * work on Front as configured. Recorded so nobody re-runs that plan.
+ */
+export const CHECKSUM_LOG_LINE_ABSENT_ON_FRONT_EVIDENCE: EvidenceNote = {
+  grade: 'NOT_SHOWN',
+  addresses: ['0x0182620f', '0x01826262'],
+  note:
+    '[FRONT] CHECKSUM_LOG_LINE_EVIDENCE named "Checksum=" as the grep target ' +
+    'that would yield a genuine vendor checksum beside its DeviceID. That ' +
+    'literal appears ZERO times in any Front log, including the four Ideal ' +
+    'Handheld logs that DO contain 41 genuine <Checksum> XML nodes. Either the ' +
+    'HandheldLog config gate on that writer is off, or CheckWPOrder is not ' +
+    'reached on this path. The checksums ARE recoverable anyway - from the ' +
+    "logged packet body's own <Checksum> node, paired with the full order " +
+    'content in the same log entry, which is a BETTER vector than the planned ' +
+    'one because it includes the input. What is still missing is the ' +
+    'ALGORITHM: 41 input/output pairs now exist but no generator has been ' +
+    'derived from them, and deriving one is not attempted here.',
+};
+
+/**
+ * The identification exchange, as it actually happens.
+ */
+export const LIVE_SESSION_MODEL_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] There is no separate registration handshake on this path. Every ' +
+    'packet self-identifies: Command packets carry LocalAddress, DeviceID, ' +
+    'MachineDescription, WPType (Protocol2), Table and RootMenuCode. The only ' +
+    'Command Types observed are "Test" (1706 in one log) and "RequestProgram" ' +
+    '(38); no TABLESTATUS or REQUESTTABLESTATUS literal appears anywhere in ' +
+    'any Front log. The receiver answers Test with the same bare ACK and logs ' +
+    '"<DeviceID> - WP Current Count=<n> - Waiters=<n>" plus, on first sight, ' +
+    '"Adding <DeviceID> to current devices." RequestProgram triggers a menu ' +
+    'build (WPTables, WPClerks, BuildStructureFromPOSScreen, AddBasePOSLayers, ' +
+    'AddEachPOSLayer, AddPOSMenus, AddPOSGrids, "Saving handheld data...") ' +
+    'answered by "---Sent Large Return Packet---", about 5.7s end to end. The ' +
+    'transport is connect / one command / response / close: each exchange ' +
+    'opens a new socket, and the listener logs "Current State=8 Closing socket ' +
+    'from old connection" when a request arrives on a busy index.',
+};
+
+/**
+ * The kitchen path, end to end, with the docket text.
+ */
+export const LIVE_KITCHEN_PATH_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] A handheld round reaches the kitchen through the native printer ' +
+    'path. 2026-09-08 16:38: POSWorker "SendToKitchen Code=`IH10 POS=1" at ' +
+    '.435 writes C:\\ProgramData\\Idealpos Solutions\\Idealpos\\PrintJobs\\' +
+    'KitchenPrinter_20.Dat (.885) and BPrinter_20.Dat (33.045); Printing.log ' +
+    'then connects to Ethernet printers 192.168.1.211 and 192.168.1.212, ' +
+    'prints, and DELETES each .Dat file. The docket body is table-attached and ' +
+    'clerk-attributed - it reads "! TABLE 10", "4:38pm! 08-Sep-2026", ' +
+    '"! chowdhury!", then quantity-collapsed lines under a "----MAINS----" ' +
+    'header with modifiers indented beneath their parent line. The bar printer ' +
+    'receives only the drink lines. NOTE the docket collapses 3 x CHICKEN ' +
+    'SHAWARMA into a single "3!x" line although the packet sent three separate ' +
+    'OrderItem entries, so docket text cannot be used to count packet lines.',
+};
+
+/**
+ * The POSServer (11000) channel is a DIFFERENT subsystem and the handheld round
+ * does not touch it. Recorded because it is the natural place to look for a
+ * lock lifecycle, and the answer is "not here".
+ */
+export const HANDHELD_BYPASSES_POSSERVER_CHANNEL_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] POSServerClient.log shows the POS terminal speaking a fixed-width ' +
+    'text protocol to POSServer on 11000: CONNECT, "Sending Identification ' +
+    'POS 2", then ~SENDSTAT (83), ~UNLOCK (76), ~REQUEST (65), ~TABLEDATA ' +
+    '(62), ~GETCUSTP (55), ~LOCKONE (48), ~GETSIM (29), ~SETCUSTP (23), ' +
+    '~DELETE (18), ~MISCELLAN (2), ~GETALL (2) - each padded and terminated ' +
+    'with "@@@". This CORROBORATES that 11000 is not exclusively table-status ' +
+    'traffic. But the 16:38:31 handheld order produced NO POSServerClient ' +
+    'activity at all: that log is silent from before 16:38 until an unrelated ' +
+    '~GETSIM at 16:39:43. The handheld ingest does not lock the table over ' +
+    'this channel. The only handheld lock evidence on Front is Handheld.log, ' +
+    'which contains exactly two lines in its entire life - "Table Locked by ' +
+    'Handheld POS!" on 2024-12-13 and 2026-03-24 - a rare contention message, ' +
+    'not a routine lifecycle. The lock lifecycle for the HANDHELD path is ' +
+    'therefore still NOT SHOWN.',
+};
+
+/**
+ * THE PORT. `WAITERPAD-BIND-001` is closed by this note.
+ *
+ * Read the residual assumption at the end before relying on it.
+ */
+export const HANDHELD_INGRESS_PORT_RUNTIME_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT+BACK] TCP 6983 on Front IS the Ideal Handheld / WaiterPad ' +
+    'listener, established by cross-host timing correlation. On 2026-09-08 ' +
+    'Back ran a sequential TcpClient scan (2.5s timeout) against Front over ' +
+    'the authored list 6983, 7983, 12183, 5501, 11183, 13184 - a logged ' +
+    'deviation recorded in back-to-front-access-discovery.txt. Front logs ' +
+    'record the resulting accepts, each in a DIFFERENT subsystem, at about ' +
+    '4.8s intervals in exactly that order: Ideal Handheld log 15:51:27.821 ' +
+    '("Connection Request from 192.168.1.250", accepted, closed); ' +
+    'POSWorker.log 15:51:32.652 (same wording, same source IP); Printing.log ' +
+    '15:51:37.352 ("wsPrinterError_ConnectionRequest"); IPSPrinterServer.LOG ' +
+    '15:51:48.419; IPSDeploy.log 15:51:53.013. Slot 3 is the anchor: it landed ' +
+    'on the socket control named wsPrinterError, which INDEPENDENT STATIC ' +
+    'analysis had already attributed to 12183 - so the alignment is confirmed ' +
+    'by a second, non-timing line of evidence. Slot 1 is therefore 6983 = the ' +
+    'handheld listener and slot 2 is 7983 = POSWorker. Two of the five accepts ' +
+    'name 192.168.1.250 explicitly, removing doubt about whose connection it ' +
+    'was. RESIDUAL ASSUMPTION: that the scan issued the list in the recorded ' +
+    'order. Front never caught an iPad connection in a netstat sample because ' +
+    'the handheld exchange is connect/command/ACK/close in well under a second.',
+};
+
+/**
+ * The iPad, identified. Recorded so a future capture can be aimed correctly.
+ */
+export const LIVE_HANDHELD_DEVICE_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] The venue handheld is 192.168.1.161, DeviceID ' +
+    '10DF1A7881284E2E95CA107E82EE7D0D, an iPad Pro 12.9-inch (iPad7,2) on ' +
+    'iPadOS 17.7.11 running PocketPad "Version 2.2.51", speaking WPType ' +
+    'Protocol2 and submitting as POSTerminal 901 / Clerk 108. It is NOT ' +
+    '192.168.1.45 - that address is the AnyDesk peer. See ' +
+    'ETL_CAPTURES_ARE_EVIDENTIALLY_VOID_EVIDENCE.',
+};
+
+/**
+ * Why the two operator packet captures answered nothing, so that the next
+ * capture is set up differently.
+ */
+export const ETL_CAPTURES_ARE_EVIDENTIALLY_VOID_EVIDENCE: EvidenceNote = {
+  grade: 'NOT_SHOWN',
+  addresses: [],
+  note:
+    '[FRONT] Both 2026-09-08 netsh packet captures contain ZERO IdealPOS ' +
+    'protocol traffic and cannot support any protocol claim. Decoded offline ' +
+    'on Back. For front-ipad-passive-20260908-143705.etl the timing file ' +
+    'records the trace running 14:37:05.154 to 14:42:20.307 (+12:00), but the ' +
+    'file holds events only from 14:37:11.333 to 14:37:43.187 - 32 seconds of ' +
+    'a 5m15s window - because the 9 x 128KB buffer filled and logging halted. ' +
+    'Of 354 checksum-validated IPv4 frames, 291 are 192.168.1.45 to and from ' +
+    'Front:7070, which is AnyDesk.exe (confirmed by live read-only listener ' +
+    'attribution on Front, PID 2072) carrying TLS 1.2 application data - ' +
+    'encrypted, and it is what exhausted the buffer. The remainder: 21 frames ' +
+    'Front to and from Back:5501 carrying single 0x00 bytes (an IPSClient ' +
+    'keepalive with no protocol content), a few HTTPS flows to Microsoft and ' +
+    'CDN hosts, and mDNS/SSDP multicast. NO frame on 6983, 7983, 11000, 12183, ' +
+    '11183 or 13184. The iPad appears only as mDNS. The 13:53 capture is the ' +
+    'same but worse: 15 seconds, 283 frames, 246 of them AnyDesk. report.etl ' +
+    'inside each .cab is byte-identical to the standalone .etl, so the CABs ' +
+    'add no packet data. CONSEQUENCE: the undocumented physical iPad action of ' +
+    'the 14:37 session CANNOT be reconstructed - the window in which it would ' +
+    'have occurred was never recorded. Any future capture must exclude TCP ' +
+    '7070 and raise maxSize.',
 };

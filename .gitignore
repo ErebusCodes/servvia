@@ -73,3 +73,6 @@ apps/venue-connector/.captures/
 # rule above is the same policy for the other location and does not match this
 # path. Narrow by design: `.claude/skills/` is tracked and must stay tracked.
 .claude/worktrees/
+
+# Raw Back-machine investigation evidence — must never be committed
+/.tmp-back-evidence/
