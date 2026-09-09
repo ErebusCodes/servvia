@@ -13,6 +13,7 @@
  */
 import {
   assertOrder2ReplaySafe,
+  NATIVE_PRICE_SENTINEL_TEXT,
   ORDER2_CANONICAL_SHAPE,
   serialiseOrder2,
   validateOrder2,
@@ -35,7 +36,7 @@ const stock = (over: Partial<Extract<Order2Line, { kind: 'stockItem' }>> = {}) =
     stockItem: '219',
     description: 'TEST ITEM',
     quantity: 1,
-    price: '18.00',
+    pricing: { mode: 'explicit', amount: '18.00' },
     ...over,
   }) as Order2Line;
 
@@ -136,19 +137,55 @@ describe('item lines', () => {
   });
 });
 
-describe('prices are the caller’s explicit responsibility', () => {
-  it('requires a 2dp decimal string', () => {
-    expect(() => validateOrder2(packet({ lines: [stock({ price: '18' })] }))).toThrow(
-      /2dp decimal string/,
-    );
-    expect(() => validateOrder2(packet({ lines: [stock({ price: '18.5' })] }))).toThrow();
-    expect(() => validateOrder2(packet({ lines: [stock({ price: '18.00' })] }))).not.toThrow();
+describe('pricing is an explicit choice, never a default', () => {
+  it('requires a 2dp decimal string in explicit mode', () => {
+    const p = (amount: string) =>
+      packet({ lines: [stock({ pricing: { mode: 'explicit', amount } })] });
+    expect(() => validateOrder2(p('18'))).toThrow(/2dp decimal string/);
+    expect(() => validateOrder2(p('18.5'))).toThrow();
+    expect(() => validateOrder2(p('18.00'))).not.toThrow();
   });
 
-  it('carries the price through verbatim — there is no sentinel in Order2', () => {
-    const xml = serialiseOrder2(packet({ lines: [stock({ price: '27.50' })] }));
+  it('carries an explicit amount through verbatim, and the till believes it', () => {
+    const xml = serialiseOrder2(
+      packet({ lines: [stock({ pricing: { mode: 'explicit', amount: '27.50' } })] }),
+    );
     expect(xml).toContain('<Price>27.50</Price>');
     expect(xml).not.toContain('-9999');
+  });
+
+  // The receiver compares the incoming price against -9999.0 (0x474698) with
+  // __vbaFpCmpCy and, only on equality, re-reads it from StockItems."Price"&N.
+  it('emits the -9999 sentinel in nativeResolved mode', () => {
+    const xml = serialiseOrder2(
+      packet({ lines: [stock({ pricing: { mode: 'nativeResolved', priceLevel: 1 } })] }),
+    );
+    expect(xml).toContain(`<Price>${NATIVE_PRICE_SENTINEL_TEXT}</Price>`);
+    expect(xml).toContain('<PriceLevel>1</PriceLevel>');
+  });
+
+  it('requires a price level of 1..6 in nativeResolved mode, because it is a column name', () => {
+    const at = (priceLevel: number) =>
+      packet({ lines: [stock({ pricing: { mode: 'nativeResolved', priceLevel } })] });
+    expect(() => validateOrder2(at(0))).toThrow(/Price0 is not a column/);
+    expect(() => validateOrder2(at(7))).toThrow(/between 1 and 6/);
+    expect(() => validateOrder2(at(1))).not.toThrow();
+    expect(() => validateOrder2(at(6))).not.toThrow();
+  });
+
+  it('refuses the sentinel smuggled in as an explicit amount', () => {
+    expect(() =>
+      validateOrder2(
+        packet({ lines: [stock({ pricing: { mode: 'explicit', amount: '-9999' } })] }),
+      ),
+    ).toThrow();
+  });
+
+  it('keeps PriceLevel 0 in explicit mode, reproducing the venue iPad', () => {
+    const xml = serialiseOrder2(
+      packet({ lines: [stock({ pricing: { mode: 'explicit', amount: '3.00' } })] }),
+    );
+    expect(xml).toContain('<PriceLevel>0</PriceLevel>');
   });
 });
 
@@ -179,12 +216,23 @@ describe('refusals', () => {
     );
   });
 
-  it('refuses a non-integer checksum string', () => {
-    expect(() => validateOrder2(packet({ checksum: 'abc' }))).toThrow(/signed decimal integer/);
+  // The receiver string-compares the token and imposes no format. Our only
+  // constraint is that it cannot terminate the SQL literal it is interpolated
+  // into, so quotes and control characters are refused and letters are not.
+  it('refuses a checksum that could break out of the receiver SQL literal', () => {
+    expect(() => validateOrder2(packet({ checksum: "a'b" }))).toThrow(/unescaped/);
+    expect(() => validateOrder2(packet({ checksum: 'a;b' }))).toThrow();
+    expect(() => validateOrder2(packet({ checksum: '' }))).toThrow();
   });
 
-  it('accepts a negative checksum, because the wire value is signed', () => {
+  it('accepts a negative integer, as the venue iPad sends', () => {
     expect(() => validateOrder2(packet({ checksum: '-1395186882' }))).not.toThrow();
+  });
+
+  it('accepts an opaque hex token, as Verdura sends', () => {
+    expect(() =>
+      validateOrder2(packet({ checksum: '0123456789abcdef0123456789abcdef' })),
+    ).not.toThrow();
   });
 });
 
@@ -209,7 +257,11 @@ describe('the replay gate is separate from the format gate', () => {
 describe('determinism', () => {
   it('produces byte-identical output for the same input', () => {
     const p = packet({
-      lines: [stock(), { kind: 'text', description: '  extra sauce' }, stock({ price: '3.00' })],
+      lines: [
+        stock(),
+        { kind: 'text', description: '  extra sauce' },
+        stock({ pricing: { mode: 'explicit', amount: '3.00' } }),
+      ],
     });
     expect(serialiseOrder2(p)).toBe(serialiseOrder2(p));
   });

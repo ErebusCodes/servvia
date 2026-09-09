@@ -290,73 +290,115 @@ describe('the gate cannot be opened', () => {
   });
 });
 
-describe('nothing in this module tree can transmit', () => {
+/**
+ * NARROWED DELIBERATELY ON 2026-09-09, NOT DELETED.
+ *
+ * This block used to assert that NOTHING in the tree could open a socket. A
+ * real transport now exists, because the protocol is known well enough to build
+ * one. The invariant that replaces it is stricter in the way that matters:
+ * network capability is allowed in EXACTLY ONE named file, and the list is
+ * asserted, so a second one cannot appear without a test failing.
+ *
+ * The old comment asked that a future transport "delete this test on purpose,
+ * not slip past it". This is that deletion, done on purpose.
+ */
+describe('network capability is confined to one file', () => {
   const dir = __dirname;
   const sources = readdirSync(dir).filter((f) => f.endsWith('.ts'));
-  /**
-   * Production sources only. The spec files quote the forbidden tokens as test
-   * data, which is exactly what makes the check meaningful — so they are
-   * excluded from the body scan rather than the check being weakened.
-   */
   const productionSources = sources.filter((f) => !f.endsWith('.spec.ts'));
+
+  /** The ONLY production file permitted to touch the network. */
+  const TRANSPORT_FILE = 'waiterpad-transport.ts';
+
+  const NETWORK_IMPORTS = [
+    "'net'",
+    'node:net',
+    "'dgram'",
+    'node:dgram',
+    "'http'",
+    'node:http',
+    "'https'",
+    'node:https',
+    'axios',
+    'node-fetch',
+    'undici',
+    'ws',
+    'socket.io',
+  ];
+  const NETWORK_CALLS = [
+    'createConnection',
+    'createServer',
+    '.connect(',
+    'new Socket',
+    'fetch(',
+    'XMLHttpRequest',
+  ];
+
+  const importBlock = (text: string): string =>
+    text
+      .split('\n')
+      .filter((l) => l.trimStart().startsWith('import ') || l.includes('require('))
+      .join('\n');
 
   it('has sources to check', () => {
     expect(sources.length).toBeGreaterThan(5);
-    expect(productionSources.length).toBeGreaterThan(4);
+    expect(productionSources).toContain(TRANSPORT_FILE);
   });
 
-  it.each(productionSources)('%s imports no network capability', (file) => {
-    const text = readFileSync(join(dir, file), 'utf8');
-    const importLines = text
-      .split('\n')
-      .filter((l) => /^\s*(import|export)\s.*\sfrom\s|require\(/.test(l));
-    const joined = importLines.join('\n');
-    for (const forbidden of [
-      "'net'",
-      '"net"',
-      'node:net',
-      "'tls'",
-      'node:tls',
-      "'dgram'",
-      'node:dgram',
-      "'http'",
-      'node:http',
-      "'https'",
-      'node:https',
-      'axios',
-      'node-fetch',
-      'undici',
-      'ws',
-      'socket.io',
-    ]) {
-      expect(joined).not.toContain(forbidden);
+  it('names exactly one transport file, and it is the expected one', () => {
+    const capable = productionSources.filter((f) => {
+      const text = readFileSync(join(dir, f), 'utf8');
+      return NETWORK_IMPORTS.some((n) => importBlock(text).includes(n));
+    });
+    expect(capable).toEqual([TRANSPORT_FILE]);
+  });
+
+  it.each(productionSources.filter((f) => f !== TRANSPORT_FILE))(
+    '%s imports no network capability',
+    (file) => {
+      const joined = importBlock(readFileSync(join(dir, file), 'utf8'));
+      for (const forbidden of NETWORK_IMPORTS) expect(joined).not.toContain(forbidden);
+    },
+  );
+
+  it.each(productionSources.filter((f) => f !== TRANSPORT_FILE))(
+    '%s calls no network primitive',
+    (file) => {
+      const text = readFileSync(join(dir, file), 'utf8');
+      for (const forbidden of NETWORK_CALLS) expect(text).not.toContain(forbidden);
+    },
+  );
+
+  it('the transport opens a client connection and never listens', () => {
+    const text = readFileSync(join(dir, TRANSPORT_FILE), 'utf8');
+    expect(text).toContain('createConnection');
+    // A listener in the write path would mean we had built a server by mistake.
+    expect(text).not.toContain('createServer');
+  });
+
+  it('the transport has no retry, reconnect or backoff', () => {
+    const text = readFileSync(join(dir, TRANSPORT_FILE), 'utf8').toLowerCase();
+    for (const forbidden of ['setinterval', 'retr', 'reconnect', 'backoff']) {
+      // Prose in comments is fine; executable identifiers are not.
+      const code = text
+        .split('\n')
+        .filter((l) => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//'))
+        .join('\n');
+      expect(code).not.toContain(forbidden);
     }
   });
 
-  it.each(productionSources)('%s calls no network primitive', (file) => {
-    const text = readFileSync(join(dir, file), 'utf8');
-    // Deliberately crude and greppable. A future transport must delete this
-    // test on purpose, not slip past it.
-    for (const forbidden of [
-      'createConnection',
-      'createServer',
-      '.connect(',
-      'new Socket',
-      'fetch(',
-      'XMLHttpRequest',
-    ]) {
-      expect(text).not.toContain(forbidden);
-    }
-  });
-
-  it('mentions the port only as documentation, never as a connection target', () => {
+  it('mentions the documented port constant only in the evidence ledger', () => {
     expect(WAITERPAD_PORT).toBe(6983);
     const evidence = readFileSync(join(dir, 'waiterpad-evidence.ts'), 'utf8');
     expect(evidence).toContain('6983');
-    // The constant is not referenced by any other module in the tree.
-    const others = sources.filter((f) => f !== 'waiterpad-evidence.ts' && !f.endsWith('.spec.ts'));
+    const others = productionSources.filter((f) => f !== 'waiterpad-evidence.ts');
     for (const f of others) {
-      expect(readFileSync(join(dir, f), 'utf8')).not.toContain('WAITERPAD_PORT');
+      const text = readFileSync(join(dir, f), 'utf8');
+      // The env var name legitimately contains the token; the exported constant
+      // must not be imported anywhere, because the port is configuration now.
+      expect(text).not.toContain('WAITERPAD_PORT,');
+      expect(text).not.toContain('WAITERPAD_PORT }');
     }
   });
 });

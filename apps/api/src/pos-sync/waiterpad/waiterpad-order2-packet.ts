@@ -15,7 +15,7 @@
  *   | Order Type     | `"ORDER"`            | `"Order2"`                     |
  *   | Index attr     | `Index=""`           | `Index="0"` on EVERY item      |
  *   | Price          | sentinel `-9999`     | a REAL price, e.g. `18.00`     |
- *   | PriceLevel     | required 1..6        | always `0` (builder REJECTS 0) |
+ *   | PriceLevel     | required 1..6        | `0` (builder REJECTS 0)        |
  *   | item `<Type>`  | absent               | `StockItem` or `Text`          |
  *   | `<TaxString>`  | absent               | present, but ONLY on StockItem |
  *   | modifiers      | `<Instruction>` child| a SIBLING `Type=Text` item     |
@@ -24,6 +24,13 @@
  * The old module is left untouched and unused rather than edited, because it
  * remains an accurate record of the VariPad file format and something may still
  * import it. Nothing here changes it.
+ *
+ * ON PRICE, THE TWO FORMATS TURNED OUT TO AGREE. The last two rows above read
+ * like a contradiction and are not: static analysis on 2026-09-09 showed the
+ * receiver honours the `-9999` sentinel on THIS path too, resolving the price
+ * from `StockItems.Price<PriceLevel>` when it sees it. The venue iPad simply
+ * never uses it. See `Order2Pricing` - Verdura should send the sentinel, which
+ * keeps 'Verdura never sets a price' true against the real wire format.
  *
  * PURE. This module builds a string. It opens nothing and sends nothing.
  * The route is still gated shut; see `waiterpad-gate.ts`.
@@ -103,28 +110,51 @@ export interface WaiterPadDeviceIdentity {
 }
 
 /**
- * A sold line.
+ * How a line's price is decided — and this is the safety-critical choice in the
+ * whole codec, so the type forces the caller to make it explicitly.
  *
- * `price` IS REQUIRED AND IS A DECIMAL STRING. This is the uncomfortable part
- * of the real protocol and it is deliberately not smoothed over: the genuine
- * client sends a real money amount, formatted to two decimal places, and there
- * is no sentinel anywhere in 412 observed items. Whether the receiver TRUSTS
- * this value or re-resolves it from `StockItems` is NOT SHOWN — see
- * `WAITERPAD-PRICE-001`. A caller that guesses wrong mis-charges a customer,
- * so the type makes the caller state the amount explicitly rather than letting
- * a default slip through.
+ * RESOLVED 2026-09-09 by static analysis of `ProcessHandheldOrder`
+ * (`PRICE_SENTINEL_HONOURED_IN_ORDER2_EVIDENCE`). The receiver converts the
+ * incoming `<Price>` with `__vbaCyStr` and compares it against the constant
+ * `-9999.0` at `0x474698` using `__vbaFpCmpCy`:
+ *
+ *   * NOT equal -> `jne` skips the lookup, and the SENT PRICE IS USED VERBATIM.
+ *   * equal     -> falls through and re-reads the price from
+ *                  `StockItems."Price" & PriceLevel`, overwriting what we sent.
+ *
+ * So the venue iPad, which always sends a real amount, is always authoritative
+ * over price. And the `-9999` sentinel that `waiterpad-price.ts` was built
+ * around is REAL and is honoured on this path after all.
+ *
+ * `nativeResolved` is what Verdura should use. It keeps the original invariant
+ * — Verdura never sets a price — intact against the real wire format.
  */
+export type Order2Pricing =
+  /**
+   * Emit `-9999` and let the till resolve the price from
+   * `StockItems.Price<priceLevel>`. `priceLevel` is REQUIRED here and must be
+   * 1..6, because it becomes a literal column name: the receiver builds
+   * `"Price" & priceLevel` via `__vbaStrI2`, and `Price0` is not a column that
+   * was found in the image (Price1..Price4 and Price8 are).
+   */
+  | { readonly mode: 'nativeResolved'; readonly priceLevel: number }
+  /**
+   * Send a real amount and be believed. Only for reproducing captured packets
+   * and for a caller that genuinely owns pricing — it mis-charges a customer if
+   * Verdura's menu has drifted from the till's.
+   */
+  | { readonly mode: 'explicit'; readonly amount: string; readonly priceLevel?: number };
+
+/** A sold line. */
 export interface Order2StockLine {
   readonly kind: 'stockItem';
   readonly stockItem: string;
   readonly description: string;
   readonly quantity: number;
-  /** Decimal string, exactly 2dp, e.g. `"18.00"`. Not a number: see above. */
-  readonly price: string;
+  /** See `Order2Pricing`. No default: the caller must choose. */
+  readonly pricing: Order2Pricing;
   /** Constant 0 in all 412 observed items. Non-zero is UNVERIFIED. */
   readonly seat?: number;
-  /** Constant 0 in all 412 observed items. */
-  readonly priceLevel?: number;
   /** Constant "1" in all 314 observed StockItem lines. */
   readonly taxString?: string;
 }
@@ -179,11 +209,28 @@ const LIMITS = {
   maxLines: 200,
   maxQuantity: 999,
   maxTextLength: 200,
+  maxPriceLevel: 6,
 } as const;
+
+/** What the sentinel looks like on the wire. `__vbaCyStr` parses either form. */
+export const NATIVE_PRICE_SENTINEL_TEXT = '-9999';
 
 const DECIMAL_2DP = /^\d+\.\d{2}$/;
 const DECIMAL_LOOSE = /^\d+(\.\d{1,2})?$/;
-const INT32 = /^-?\d{1,10}$/;
+/**
+ * What the receiver actually accepts in `<Checksum>`.
+ *
+ * NOT a number. Static analysis on 2026-09-09 showed the value is only ever
+ * string-compared (`__vbaStrCmp`) against a stored column and concatenated into
+ * a log line and a SQL literal - there is no arithmetic on this path at all.
+ * The venue iPad happens to send a signed 32-bit integer; nothing requires it.
+ *
+ * The constraint we impose is therefore ours, not the protocol's, and it exists
+ * for one reason: the receiver interpolates the value straight into
+ * `INSERT INTO AAAExampleData (...) VALUES ('<value>'` with no escaping, so the
+ * character set must not be able to terminate that literal.
+ */
+const SAFE_TOKEN = /^-?[0-9A-Za-z_.:-]{1,64}$/;
 
 function text(value: unknown, field: string, allowEmpty = false): string {
   if (typeof value !== 'string') {
@@ -242,9 +289,12 @@ export function validateOrder2(packet: Order2Packet): void {
   text(packet.device?.deviceModel, 'device.deviceModel');
   text(packet.device?.deviceOs, 'device.deviceOs');
 
-  if (packet.checksum !== null && !INT32.test(packet.checksum)) {
+  if (packet.checksum !== null && !SAFE_TOKEN.test(packet.checksum)) {
     throw new WaiterPadOrder2Error(
-      'checksum must be a signed decimal integer string, or null to emit an empty node',
+      'checksum must be 1..64 characters of [0-9A-Za-z_.:-] (optionally leading "-"), ' +
+        'or null to emit an empty node. The receiver imposes no format, but it ' +
+        'interpolates the value into SQL unescaped, so quotes and control ' +
+        'characters must never reach it.',
     );
   }
 
@@ -274,10 +324,33 @@ export function validateOrder2(packet: Order2Packet): void {
           `${where}.quantity must be between 1 and ${LIMITS.maxQuantity}`,
         );
       }
-      if (!DECIMAL_2DP.test(line.price)) {
-        throw new WaiterPadOrder2Error(
-          `${where}.price must be a 2dp decimal string such as "18.00", got ${String(line.price)}`,
-        );
+      const pricing = line.pricing;
+      if (pricing === undefined || typeof pricing !== 'object') {
+        throw new WaiterPadOrder2Error(`${where}.pricing is required; choose a mode explicitly`);
+      }
+      if (pricing.mode === 'nativeResolved') {
+        const pl = int(pricing.priceLevel, `${where}.pricing.priceLevel`);
+        if (pl < 1 || pl > LIMITS.maxPriceLevel) {
+          throw new WaiterPadOrder2Error(
+            `${where}.pricing.priceLevel must be between 1 and ${LIMITS.maxPriceLevel}: it ` +
+              'becomes the literal column name "Price" & priceLevel on the receiver, and ' +
+              'Price0 is not a column',
+          );
+        }
+      } else if (pricing.mode === 'explicit') {
+        if (!DECIMAL_2DP.test(pricing.amount)) {
+          throw new WaiterPadOrder2Error(
+            `${where}.pricing.amount must be a 2dp decimal string such as "18.00", got ` +
+              String(pricing.amount),
+          );
+        }
+        if (pricing.amount === NATIVE_PRICE_SENTINEL_TEXT) {
+          throw new WaiterPadOrder2Error(
+            `${where}.pricing is explicit but carries the sentinel; use mode nativeResolved`,
+          );
+        }
+      } else {
+        throw new WaiterPadOrder2Error(`${where}.pricing.mode is unrecognised`);
       }
     } else if (line.kind === 'text') {
       text(line.description, `${where}.description`);
@@ -289,7 +362,7 @@ export function validateOrder2(packet: Order2Packet): void {
       const seat = int(line.seat, `${where}.seat`);
       if (seat < 0) throw new WaiterPadOrder2Error(`${where}.seat must not be negative`);
     }
-    if (line.priceLevel !== undefined) {
+    if (line.kind === 'text' && line.priceLevel !== undefined) {
       const pl = int(line.priceLevel, `${where}.priceLevel`);
       if (pl < 0) throw new WaiterPadOrder2Error(`${where}.priceLevel must not be negative`);
     }
@@ -340,6 +413,24 @@ const IND_ITEM_CLOSE = '                            ';
  * The odd indentation is not a style choice — it reproduces the client's own
  * output, which the round-trip test asserts byte-for-byte against real packets.
  */
+/** The `<Price>` text for a line: the sentinel, or the explicit amount. */
+function priceTextOf(line: Order2Line): string {
+  if (line.kind !== 'stockItem') return '0.00';
+  return line.pricing.mode === 'nativeResolved' ? NATIVE_PRICE_SENTINEL_TEXT : line.pricing.amount;
+}
+
+/**
+ * The `<PriceLevel>` text. Under `nativeResolved` this is load-bearing - it
+ * becomes the receiver's column name - so it is never defaulted away. Under
+ * `explicit` the receiver never reads it, and 0 reproduces the venue iPad.
+ */
+function priceLevelOf(line: Order2Line): number {
+  if (line.kind !== 'stockItem') return line.priceLevel ?? 0;
+  return line.pricing.mode === 'nativeResolved'
+    ? line.pricing.priceLevel
+    : (line.pricing.priceLevel ?? 0);
+}
+
 export function serialiseOrder2(packet: Order2Packet): string {
   validateOrder2(packet);
 
@@ -388,9 +479,9 @@ export function serialiseOrder2(packet: Order2Packet): string {
     );
     body.push(`${IND_ITEM_FIELD}<Description>${esc(line.description)}</Description>`);
     body.push(`${IND_ITEM_FIELD}<Quantity>${isStock ? line.quantity : 0}</Quantity>`);
-    body.push(`${IND_ITEM_FIELD}<Price>${isStock ? line.price : '0.00'}</Price>`);
+    body.push(`${IND_ITEM_FIELD}<Price>${isStock ? priceTextOf(line) : '0.00'}</Price>`);
     body.push(`${IND_ITEM_FIELD}<Seat>${line.seat ?? 0}</Seat>`);
-    body.push(`${IND_ITEM_FIELD}<PriceLevel>${line.priceLevel ?? 0}</PriceLevel>`);
+    body.push(`${IND_ITEM_FIELD}<PriceLevel>${priceLevelOf(line)}</PriceLevel>`);
     if (isStock) {
       const ts = line.taxString ?? '1';
       body.push(`${IND_ITEM_FIELD}<TaxString>${esc(ts)}</TaxString>`);

@@ -88,7 +88,12 @@ function toPacket(body) {
       kind: 'stockItem',
       stockItem: pick(it, 'StockItem'),
       quantity: Number(pick(it, 'Quantity')),
-      price: pick(it, 'Price'),
+      // Captured packets always carry a real amount, never the sentinel.
+      pricing: {
+        mode: 'explicit',
+        amount: pick(it, 'Price'),
+        priceLevel: Number(pick(it, 'PriceLevel')),
+      },
       taxString: pick(it, 'TaxString'),
       ...common,
     };

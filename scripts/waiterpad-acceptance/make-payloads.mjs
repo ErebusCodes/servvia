@@ -52,7 +52,7 @@ const test = [
   '                        </WPPacket>',
 ].join('\n');
 
-const order = serialiseOrder2({
+const orderCommon = {
   map: 1,
   location: 1,
   posTerminal: '901',
@@ -77,19 +77,38 @@ const order = serialiseOrder2({
   // value is not a real vendor checksum — the algorithm is unknown
   // (WAITERPAD-CHECKSUM-001) — but an empty node would disable the guard.
   checksum: '1',
-  lines: [
-    {
-      kind: 'stockItem',
-      stockItem: '251',
-      description: 'Coke No Sugar  -- can 330ml',
-      quantity: 1,
-      price: '3.00',
-    },
-  ],
+};
+
+const item = (pricing) => ({
+  kind: 'stockItem',
+  stockItem: '251',
+  description: 'Coke No Sugar  -- can 330ml',
+  quantity: 1,
+  pricing,
+});
+
+/**
+ * THE PRODUCTION PATH. `-9999` makes the receiver resolve the price from
+ * StockItems.Price1 rather than believing us, which is what keeps "Verdura
+ * never sets a price" true against the real wire format. Static analysis says
+ * it is honoured; step J of the runbook is where that becomes a live fact.
+ */
+const order = serialiseOrder2({
+  ...orderCommon,
+  lines: [item({ mode: 'nativeResolved', priceLevel: 1 })],
+});
+
+/** The iPad's path, for comparison only. The till takes this amount verbatim. */
+const orderExplicit = serialiseOrder2({
+  ...orderCommon,
+  lines: [item({ mode: 'explicit', amount: '3.00' })],
 });
 
 writeFileSync(join(outDir, 'test.payload'), test, 'utf8');
 writeFileSync(join(outDir, 'order.payload'), order, 'utf8');
-console.log(`test.payload  ${Buffer.byteLength(test)} bytes`);
-console.log(`order.payload ${Buffer.byteLength(order)} bytes`);
-console.log(`\n-> ${outDir}`);
+writeFileSync(join(outDir, 'order-explicit.payload'), orderExplicit, 'utf8');
+console.log(`test.payload           ${Buffer.byteLength(test)} bytes`);
+console.log(`order.payload          ${Buffer.byteLength(order)} bytes  (sentinel -9999)`);
+console.log(`order-explicit.payload ${Buffer.byteLength(orderExplicit)} bytes  (explicit 3.00)`);
+console.log(`
+-> ${outDir}`);

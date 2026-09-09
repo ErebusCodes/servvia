@@ -1213,3 +1213,173 @@ export const ETL_CAPTURES_ARE_EVIDENTIALLY_VOID_EVIDENCE: EvidenceNote = {
     'have occurred was never recorded. Any future capture must exclude TCP ' +
     '7070 and raise maxSize.',
 };
+
+/* ===========================================================================
+ * STATIC PASS — 2026-09-09, on IPS.exe directly
+ *
+ * The notes below were read out of the binary on Back with capstone/pefile.
+ * Back carries the SAME IPS.exe build as Front (40,143,120 bytes, 2023-09-11,
+ * sha256 f18475a784c996351048d4f537cf0cc8e2d5ee9aa7b01b38130cdadcc85a520e),
+ * so these are [STATIC] findings and are machine-independent. No Front access
+ * was involved and nothing was executed.
+ *
+ * Between them they close two blockers that had been open since this
+ * integration began, and they close them in the SAFE direction.
+ * =========================================================================== */
+
+/**
+ * THE CHECKSUM IS NOT A CHECKSUM. It is an opaque equality token.
+ *
+ * This closes `WAITERPAD-CHECKSUM-001`. The question was always "what algorithm
+ * produces this value" and the answer is "none, on the receiver's side" — it
+ * never computes one, so there is nothing to reproduce.
+ */
+export const CHECKSUM_IS_OPAQUE_TOKEN_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: [
+    '0x01835070',
+    '0x0183510b',
+    '0x01835162',
+    '0x0183519d',
+    '0x0183534d',
+    '0x01835390',
+    '0x018261fa',
+    '0x0070e764',
+    '0x0070e770',
+    '0x0070e7d4',
+  ],
+  note:
+    'IsDuplicateHandheldOrder2(checksum, deviceId) at 0x01835070 does exactly ' +
+    "three things with the incoming <Checksum>. (1) It builds 'IH-' (0x70e764) " +
+    '+ DeviceID and queries "SELECT * FROM AAAExampleData WHERE ColumnType=\'" ' +
+    '(0x70e770). (2) On an empty recordset it INSERTs the value verbatim via ' +
+    '"INSERT INTO AAAExampleData (InsertDate, ColumnType, Data) VALUES (\'" ' +
+    '(0x70e7d4). (3) Otherwise it reads the row\'s "data" column (0x696904) and ' +
+    'compares it to our value with __vbaStrCmp (0x0183534d, import 0x401254), ' +
+    'converting the result to a VB Boolean by neg/sbb/inc/neg and returning -1 ' +
+    'for a match (0x01835390). Every instruction that touches the value is a ' +
+    'string operation - __vbaStrCmp, __vbaStrCat, __vbaStrCopy, __vbaStrMove. ' +
+    'There is NO arithmetic, NO hash, NO length rule and NO validation on the ' +
+    'path. CONSEQUENCE: Verdura may mint its own token, and the vendor ' +
+    'algorithm is irrelevant. Note also 0x018261fa, __vbaStrCmp against the ' +
+    'empty string (0x683b24): an empty <Checksum> skips the guard entirely.',
+};
+
+/**
+ * The guard is ONE DEEP and per-device. This is why the token helps and does
+ * not solve.
+ */
+export const DUPLICATE_GUARD_IS_ONE_DEEP_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x01835070', '0x0070e764', '0x0070e7d4'],
+  note:
+    'The store is a single AAAExampleData row per device, keyed ' +
+    "ColumnType='IH-<DeviceID>', holding only the LAST value seen. So a resend " +
+    'of the SAME attempt carrying the SAME token is caught, but attempt A then ' +
+    'B then A again reads as three distinct orders. Combined with the gate at ' +
+    '0x01826289 that can skip the check entirely, and with the empty-token ' +
+    'bypass, this is a useful second line of defence and NOT a basis for ' +
+    'exactly-once. Verdura carries exactly-once on its own side.',
+};
+
+/**
+ * THE -9999 PRICE SENTINEL IS HONOURED ON THE ORDER2 PATH.
+ *
+ * This closes `WAITERPAD-PRICE-001`, and closes it the safe way: Verdura does
+ * not have to own pricing after all.
+ */
+export const PRICE_SENTINEL_HONOURED_IN_ORDER2_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: [
+    '0x01827f98',
+    '0x01827ff1',
+    '0x01828538',
+    '0x0182853e',
+    '0x01828546',
+    '0x01828583',
+    '0x0182862c',
+    '0x00474698',
+  ],
+  note:
+    'ProcessHandheldOrder reads <Price> from the OrderItem (0x01827f98), ' +
+    'converts it with __vbaCyStr (0x01827ff1, import 0x4011ac) into a Currency ' +
+    'at [ebp-0x88], then at 0x01828538 loads the constant at 0x474698 - which ' +
+    'is the double -9999.0 - and compares with __vbaFpCmpCy (0x0182853e, ' +
+    'import 0x401318). The branch at 0x01828546 is jne: NOT equal jumps PAST ' +
+    'the lookup, so a non-sentinel price is used VERBATIM. Equal falls through ' +
+    'to a block that builds the field name "Price" & PriceLevel via __vbaStrI2 ' +
+    '(0x01828583 pushes 0x68dd3c "Price"), reads it from the StockItems ' +
+    'recordset and OVERWRITES the price at 0x0182862c via __vbaCyVar. ' +
+    'CONSEQUENCE: sending -9999 makes the till resolve the price itself, which ' +
+    'preserves "Verdura never sets a price" against the real wire format. The ' +
+    'venue iPad simply never uses it - all 412 observed items carry a real ' +
+    'amount, which is why this looked like a contradiction from traffic alone. ' +
+    'PriceLevel becomes a literal COLUMN NAME on that path, and the image ' +
+    'contains Price1..Price4 and Price8 (0x68cc90..0x68cccc, 0x68c740) but no ' +
+    'Price0 - so the sentinel path requires a price level of at least 1.',
+};
+
+/**
+ * WHAT THE REWRITE ACTUALLY DELETES. The benign reading was correct.
+ *
+ * This is the sharp end of `WAITERPAD-RECON-001` and it is now answered: the
+ * delete is scoped to the `IH`-prefixed STAGING rows, not to the customer's tab.
+ */
+export const REWRITE_DELETES_STAGING_CODE_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_STATIC',
+  addresses: ['0x018275f6', '0x01827665', '0x0182770a', '0x0070dd64', '0x0070dd70', '0x0070ddd8'],
+  note:
+    'ProcessHandheldOrder loads the literal "`IH" (0x70dd64) at 0x018275f6, ' +
+    'concatenates the table number, and uses the result as the Code in ' +
+    '"DELETE * FROM PendingSaleLines WHERE Code=\'" (0x70dd70, referenced at ' +
+    '0x01827665) and in "DELETE * FROM PendingSales WHERE Code=\'" (0x70ddd8, ' +
+    'referenced at 0x0182770a). The rows removed are therefore the ' +
+    '`IH<table> STAGING rows this same routine is about to rewrite - NOT the ' +
+    "customer's table tab. This reconciles the static delete-and-rewrite " +
+    'reading with the runtime fact that rounds accumulate on a table across a ' +
+    'service (ROUND_IS_DELTA_NOT_FULL_STATE_EVIDENCE); the two were never in ' +
+    'conflict, the delete was just narrower than it looked.',
+};
+
+/**
+ * Seat: parsed, carried, and NOT fully resolved. Recorded so nobody upgrades it.
+ */
+export const SEAT_PARSED_BUT_UNRESOLVED_EVIDENCE: EvidenceNote = {
+  grade: 'STRONGLY_INDICATED',
+  addresses: ['0x01827e6f', '0x01827ed7', '0x01827edd', '0x01827e43', '0x00701ef4'],
+  note:
+    'ProcessHandheldOrder reads <Seat> (0x701ef4, node fetched at 0x01827e6f), ' +
+    'converts it with __vbaI2Str (0x01827ed7, import 0x40136c) and stores it at ' +
+    '[ebp-0xb0] (0x01827edd). There are exactly TWO references to that local in ' +
+    'the whole routine: that write, and a read at 0x01827e43 which copies it ' +
+    'into [ebp-0x60] under a guard whose else-branch substitutes 0 ' +
+    '(0x01827e55). The read sits at a LOWER address than the write, so the ' +
+    'relationship between them across loop iterations is NOT resolved by static ' +
+    'reading alone, and a naive reading would suggest an off-by-one that we are ' +
+    'NOT asserting. WHAT THIS LICENSES: carrying Seat through the codec. WHAT ' +
+    'IT DOES NOT: sending a non-zero Seat to a live till. The writer therefore ' +
+    'fails closed on seat > 0 and never silently rewrites it to 0. See ' +
+    'WAITERPAD-SEAT-001.',
+};
+
+/**
+ * The phantom registration, quantified — a vendor bug, not a Verdura problem.
+ */
+export const PHANTOM_REGISTRATION_EVIDENCE: EvidenceNote = {
+  grade: 'PROVEN_RUNTIME',
+  addresses: [],
+  note:
+    '[FRONT] The venue iPad app registers TWICE per IPS session: first with ' +
+    'DeviceID and LocalAddress both literally "undefined", then a few seconds ' +
+    'later with its real identity. Observed in every retained handheld log that ' +
+    'covers an IPS start - 2026-09-05 13:20:59 then 13:21:05 (6s), 09-06 ' +
+    '14:16:51 then 14:16:57 (6s), 09-07 16:37:38, 09-08 18:03:19, 09-09 ' +
+    '11:42:54 then 11:43:00 (6s). Each phantom consumes one of the two licensed ' +
+    'handheld seats ("WP Current Count=2 - Waiters=2"), and it is never ' +
+    'released: the count stays at 2 for the rest of the session, and only an ' +
+    'IPS restart clears it. CONSEQUENCE: the venue permanently runs one ' +
+    'handheld seat down, and Verdura was refused NAKREGO/BAD REGO on 2026-09-09 ' +
+    'because of it. This is a client-side defect worth reporting to Idealpos ' +
+    'independently of this integration. Verdura must NOT be designed around it: ' +
+    'borrowing the phantom identity would mean depending on the bug persisting.',
+};
