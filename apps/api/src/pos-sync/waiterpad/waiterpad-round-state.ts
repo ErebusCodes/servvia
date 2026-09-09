@@ -412,14 +412,31 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
     why: 'No local artifact describes this protocol as a third-party surface.',
   },
   {
+    id: 'WAITERPAD-LICENCE-001',
+    title: 'No handheld licence seat is available for Verdura',
+    why:
+      'THE CURRENT HARD BLOCKER, and it is not a code problem. The authorised ' +
+      'live test on 2026-09-09 was refused NAKREGO at 14:15:10 (Test) and ' +
+      '14:19:55 (Order2), both logged "BAD REGO" against ' +
+      '"WP Current Count=2 - Waiters=2". The licence has TWO seats and both ' +
+      'were taken. Worse, one is wasted: at 11:42:54 that day a device ' +
+      'registered with DeviceID AND LocalAddress both literally "undefined" ' +
+      '(the iPad app registering before it knows its own identity), taking ' +
+      'seat 1; the real iPad took seat 2 six seconds later. Until a seat is ' +
+      'freed or bought, Verdura cannot register and therefore cannot post an ' +
+      'order at all. Freeing the phantom seat needs an IPS restart, which is ' +
+      'an operator decision and must not happen during trade.',
+  },
+  {
     id: 'WAITERPAD-REGO-001',
     title: 'NAKREGO causes beyond slot exhaustion unknown',
     why:
-      'Narrowed twice, not closed. Registration is auto-granted while ' +
-      'registeredCount < licensedHandheldCount (PROVEN STATIC), and NAKREGO ' +
-      'carries NO body at all - its builder takes no parameters - so the wire ' +
-      'never says why a device was refused. Whether slot exhaustion is the ' +
-      'only cause is answerable by the vendor and by nothing we can observe.',
+      'Slot exhaustion is now CONFIRMED as a cause, RUNTIME, by the authorised ' +
+      '2026-09-09 test: Count=2 of Waiters=2 produced "BAD REGO" then NAKREGO, ' +
+      'twice, for two different packet types. What remains open is only ' +
+      'whether it is the ONLY cause. NAKREGO still carries no body - its ' +
+      'builder takes no parameters - so the wire never says why, and a second ' +
+      'cause could not be distinguished from this one. Vendor question.',
   },
   {
     id: 'WAITERPAD-DUPGATE-001',

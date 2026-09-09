@@ -871,3 +871,100 @@ correct next step is not a more careful send; it is one of: a vendor answer on
 the checksum and on price authority, a non-production IdealPOS instance, or an
 explicitly agreed maintenance window on a table that is out of service — an
 operator decision, not one to be taken unilaterally from Back.
+
+---
+
+## Addendum — 2026-09-09 14:15–14:20, AUTHORISED LIVE ACCEPTANCE TEST
+
+The operator explicitly authorised minimal, controlled Order2 acceptance tests
+on the live system over TCP 6983, before departing at 15:00. Two sends were
+made. **Both were refused by the till, and neither touched a sale.**
+
+### What was sent, and what came back
+
+| # | 14:15:10 | 14:19:55 |
+|---|---|---|
+| packet | `<Command Type="Test">` | `<Order Type="Order2">`, table 99, 1 line |
+| bytes | 581 | 1422 |
+| response | `NAKREGO` (77 bytes, 315 ms) | `NAKREGO` (77 bytes, 306 ms) |
+| Front logged | `BAD REGO` | `BAD REGO` |
+| sale created | none | none |
+
+Both used `DeviceID VERDURA-ACCEPT-20260909-0001` from Back (192.168.1.250).
+Single attempt each. **No retry was issued for either.**
+
+### THE BLOCKER IS A LICENCE SEAT — `WAITERPAD-LICENCE-001`
+
+Front logged, immediately before each refusal:
+
+```
+20260909 14:15:10.568    VERDURA-ACCEPT-20260909-0001 - WP Current Count=2 - Waiters=2
+20260909 14:15:10.608    BAD REGO
+```
+
+The handheld licence has **two** seats and both were occupied. And one is
+**wasted on a phantom**: at 11:42:54 that morning a device registered with
+`DeviceID` *and* `LocalAddress` both literally `undefined` — the iPad app
+registering before it knows its own identity — taking seat 1. The real iPad
+took seat 2 six seconds later:
+
+```
+20260909 11:42:54.450    Adding undefined to current devices.
+20260909 11:43:00.419    Adding 10DF1A7881284E2E95CA107E82EE7D0D to current devices.
+```
+
+So the venue runs permanently one seat down, from every IPS start until the
+next. Verdura cannot register, and therefore cannot post an order at all,
+until a seat is freed or bought. This is not a code problem and no amount of
+codec work moves it.
+
+### Three things the test PROVED that were previously assumptions
+
+1. **`NAKREGO` is caused by slot exhaustion — RUNTIME.** Previously PROVEN
+   STATIC only, and never once observed in the historical corpus (zero NAKREGO
+   in 2853 responses). It fired twice on demand, with `BAD REGO` beside it.
+   `WAITERPAD-REGO-001` narrows to "is this the *only* cause", which the wire
+   cannot answer because NAKREGO carries no body.
+2. **The ORDER path is registration-gated, and the gate runs BEFORE processing.**
+   This is a genuine safety property of the receiver, not a hazard: an
+   unregistered device cannot post a sale. `POSWorker.log` shows only timer
+   ticks across the whole window — no `ProcessHandheldOrder`, no
+   `SendToKitchen`, no table 99, nothing.
+3. **Our generated Order2 is well-formed to the real parser.** The receiver
+   logged the packet body in full and produced **no** `XML parsing error` and
+   **no** `NAK` — it parsed cleanly and reached the registration gate, which
+   sits after the parse. The 42/42 offline round-trip is now backed by the live
+   receiver accepting the codec's output as valid XML.
+
+### What was deliberately NOT done
+
+Re-sending under the venue iPad's own `DeviceID` would have bypassed the
+licence gate and posted a real order. It was not done. The authorisation was
+for a controlled test of **Verdura's** path; borrowing another device's
+identity would defeat the very gate the till uses to protect itself, would
+pollute the real device's duplicate state, and would produce evidence that does
+not describe how Verdura would run in production — it needs its own seat either
+way.
+
+### Status
+
+```
+LIVE TEST PERFORMED:              YES - 2 sends, both refused, zero mutation
+ORDER2 XML VALID TO REAL PARSER:  YES - parsed, no XML error, no NAK
+ORDER PATH REGISTRATION-GATED:    YES - gate runs before processing
+NAKREGO FROM SLOT EXHAUSTION:     RUNTIME-PROVEN
+HANDHELD LICENCE SEATS:           2, BOTH TAKEN (one by a phantom "undefined")
+VERDURA CAN REGISTER:             NO
+ORDER ACCEPTANCE:                 UNTESTABLE UNTIL A SEAT IS FREE
+NATIVE TRANSPORT ACTIVATION:      NO
+PRODUCTION READY:                 NO
+```
+
+### The single next action
+
+Free or buy a handheld licence seat. The phantom seat clears on an IPS restart,
+which is an operator decision and **must not** happen during trade. Once a seat
+is available the same two commands re-run unchanged and the remaining
+questions — acceptance, whether the round lands on the native tab, price
+authority (`WAITERPAD-PRICE-001`) and kitchen behaviour — become answerable in
+minutes.

@@ -289,6 +289,7 @@ describe('the production blocker register', () => {
       'WAITERPAD-CHECKSUM-001',
       'WAITERPAD-DUPGATE-001',
       'WAITERPAD-FRAMING-001',
+      'WAITERPAD-LICENCE-001',
       'WAITERPAD-PRICE-001',
       'WAITERPAD-RECON-001',
       'WAITERPAD-REGO-001',
