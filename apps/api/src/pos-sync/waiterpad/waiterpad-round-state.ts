@@ -346,19 +346,6 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
       'readback still has no OrderedTime.',
   },
   {
-    id: 'WAITERPAD-CHECKSUM-001',
-    title: 'Checksum generation algorithm',
-    why:
-      'The receiver only compares; no generator exists on either venue ' +
-      'machine. 41 genuine input/output pairs are now recoverable from the ' +
-      'Front Ideal Handheld logs (packet body plus its own <Checksum> node), ' +
-      'but no algorithm has been derived from them. Note the planned ' +
-      '"Checksum=" log grep does NOT work on Front - that literal is absent ' +
-      '(CHECKSUM_LOG_LINE_ABSENT_ON_FRONT_EVIDENCE). This blocks exactly-once ' +
-      'twice over: Verdura cannot compute a valid checksum, and the receiver ' +
-      'skips its duplicate guard entirely when the Checksum node is empty.',
-  },
-  {
     id: 'WAITERPAD-ACKLOSS-001',
     title: 'ACK is emitted before durable processing, and on buffer exhaustion',
     why:
@@ -369,19 +356,6 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
       'finishing at 16:38:33.065. The ACK body is byte-identical to the ACK ' +
       'for a Test command and carries no order identity, so nothing on the ' +
       'wire distinguishes accepted from buffered from dropped.',
-  },
-  {
-    id: 'WAITERPAD-PRICE-001',
-    title: 'Order2 carries a real price, and who wins is NOT SHOWN',
-    why:
-      'The VariPad-derived builder sends the -9999 sentinel so the till resolves ' +
-      'price natively, which was a deliberate safety invariant. The live client ' +
-      'does NOT: all 412 observed items carry a real 2dp amount and no sentinel ' +
-      'appears anywhere. Whether the receiver TRUSTS the sent price or ' +
-      're-resolves it from StockItems is NOT SHOWN, and the two readings differ ' +
-      'by a customer being charged the wrong amount. Note the same packets carry ' +
-      'PriceLevel 0 in every item, which the old builder rejects outright ' +
-      '(it requires 1..6), so the sentinel path cannot simply be kept either.',
   },
   {
     id: 'WAITERPAD-SEAT-001',
@@ -450,6 +424,11 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
       '(eight "HandheldOrder DUPLICATE!" lines keyed on checksum+DeviceID in ' +
       "POSServer's ErrorLog.log), but it has not fired since 2019 and Front's " +
       'LastCheckSum1 / LastCheckSum2 registry values are BOTH EMPTY after 41 ' +
-      'genuine orders in five days (DUPLICATE_GUARD_STATE_EVIDENCE).',
+      'genuine orders in five days (DUPLICATE_GUARD_STATE_EVIDENCE). Static ' +
+      'analysis then closed the ALGORITHM question - the value is an opaque ' +
+      'string compared with __vbaStrCmp, never computed - so Verdura now mints ' +
+      'its own durable token (waiterpad-token.ts). That is a real second line ' +
+      'of defence and still not exactly-once: the store is ONE DEEP per device ' +
+      'and the whole check can be jumped over by a flag we do not control.',
   },
 ] as const;

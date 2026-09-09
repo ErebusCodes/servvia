@@ -286,11 +286,9 @@ describe('the production blocker register', () => {
   it('lists every blocker that must be closed before certification', () => {
     expect(UNRESOLVED_PRODUCTION_BLOCKERS.map((b) => b.id).sort()).toEqual([
       'WAITERPAD-ACKLOSS-001',
-      'WAITERPAD-CHECKSUM-001',
       'WAITERPAD-DUPGATE-001',
       'WAITERPAD-FRAMING-001',
       'WAITERPAD-LICENCE-001',
-      'WAITERPAD-PRICE-001',
       'WAITERPAD-RECON-001',
       'WAITERPAD-REGO-001',
       'WAITERPAD-SEAT-001',
@@ -307,8 +305,23 @@ describe('the production blocker register', () => {
   //
   // Closing it unlocked NOTHING. The writer stays disabled; knowing the port
   // only means a future authorised capture can be aimed at the right socket.
-  it('no longer lists the ingress port as unresolved', () => {
-    expect(UNRESOLVED_PRODUCTION_BLOCKERS.map((b) => b.id)).not.toContain('WAITERPAD-BIND-001');
+  // Three blockers have left this register, each closed by evidence rather than
+  // by decision. They must not drift back in as open items.
+  //   BIND-001     6983 proven by cross-host timing correlation (2026-09-09).
+  //   CHECKSUM-001 there is no algorithm to find: the receiver only
+  //                __vbaStrCmps the value (CHECKSUM_IS_OPAQUE_TOKEN_EVIDENCE).
+  //   PRICE-001    the -9999 sentinel IS honoured on the Order2 path
+  //                (PRICE_SENTINEL_HONOURED_IN_ORDER2_EVIDENCE), so Verdura
+  //                still never sets a price.
+  it.each(['WAITERPAD-BIND-001', 'WAITERPAD-CHECKSUM-001', 'WAITERPAD-PRICE-001'])(
+    'no longer lists %s as unresolved',
+    (id) => {
+      expect(UNRESOLVED_PRODUCTION_BLOCKERS.map((b) => b.id)).not.toContain(id);
+    },
+  );
+
+  it('still leads with the licence seat, which is the only live gate left', () => {
+    expect(UNRESOLVED_PRODUCTION_BLOCKERS.map((b) => b.id)).toContain('WAITERPAD-LICENCE-001');
   });
 
   it('gives every blocker a reason', () => {
