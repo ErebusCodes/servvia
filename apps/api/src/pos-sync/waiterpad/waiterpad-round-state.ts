@@ -371,6 +371,30 @@ export const UNRESOLVED_PRODUCTION_BLOCKERS = [
       'wire distinguishes accepted from buffered from dropped.',
   },
   {
+    id: 'WAITERPAD-PRICE-001',
+    title: 'Order2 carries a real price, and who wins is NOT SHOWN',
+    why:
+      'The VariPad-derived builder sends the -9999 sentinel so the till resolves ' +
+      'price natively, which was a deliberate safety invariant. The live client ' +
+      'does NOT: all 412 observed items carry a real 2dp amount and no sentinel ' +
+      'appears anywhere. Whether the receiver TRUSTS the sent price or ' +
+      're-resolves it from StockItems is NOT SHOWN, and the two readings differ ' +
+      'by a customer being charged the wrong amount. Note the same packets carry ' +
+      'PriceLevel 0 in every item, which the old builder rejects outright ' +
+      '(it requires 1..6), so the sentinel path cannot simply be kept either.',
+  },
+  {
+    id: 'WAITERPAD-SEAT-001',
+    title: 'Seat is 0 in 100% of observed traffic',
+    why:
+      'This branch persists seat assignment through the native round pipeline ' +
+      '(commit 658f428), but every one of the 412 genuine OrderItems carries ' +
+      '<Seat>0</Seat>. The venue has never exercised seat assignment over this ' +
+      'protocol, so the receiver behaviour for a non-zero Seat is entirely ' +
+      'unobserved - not contradicted, just never tested. Sending one would be ' +
+      'the first time it had ever happened on this till.',
+  },
+  {
     id: 'WAITERPAD-FRAMING-001',
     title: 'The receiver can NAK a fragment of an order it already accepted',
     why:

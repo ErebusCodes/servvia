@@ -717,3 +717,157 @@ ROUND -> DURABLE TAB MERGE:       NOT SHOWN (no SQL row set in any log)
 NATIVE TRANSPORT ACTIVATION:      NO - DisabledTableRoundWriter STAYS
 PRODUCTION READY:                 NO
 ```
+
+---
+
+## Addendum — 2026-09-09, third pass: the Order2 codec, and why the checksum did not fall
+
+This pass did the implementation work the evidence actually licenses, and
+stopped where it stops. Nothing was transmitted, nothing was deployed, and the
+gate in `waiterpad-gate.ts` is untouched.
+
+### The existing ORDER builder targets the wrong format
+
+`waiterpad-order-packet.ts` was derived from `VariPad.dll`'s
+`ImportVariPadOrderFile`. That is a **file import** format. The live socket
+protocol is a different, larger envelope, and the divergence is not cosmetic:
+
+| thing | VariPad builder | live Order2 |
+|---|---|---|
+| Order Type | `"ORDER"` | `"Order2"` |
+| `Index` attribute | `Index=""` | `Index="0"` on **every** item |
+| Price | sentinel `-9999` | a **real** amount, e.g. `18.00` |
+| PriceLevel | required `1..6` | always `0` — **the builder rejects it** |
+| item `<Type>` | absent | `StockItem` or `Text` |
+| `<TaxString>` | absent | present, but **only** on StockItem lines |
+| modifiers | `<Instruction>` child | a **sibling** `Type=Text` item |
+| 15 header tags | absent | `Map`…`DeviceOS`, fixed order |
+
+Two of those are outright contradictions rather than omissions: the live client
+sends `PriceLevel` `0`, which the old builder refuses, and it sends real money
+where the old builder sends a sentinel. **The old builder could not have
+produced an acceptable packet.** It is left in place, unused and unedited, since
+it remains a correct record of the VariPad file format.
+
+### New: `waiterpad-order2-packet.ts`, verified byte-for-byte
+
+A faithful codec for the live format. The structure was derived from all 42
+genuine packets / 412 items, every one of which agreed on: header field order,
+`Index="0"`, `<SalesCaption />` self-closing with a leading space, the
+`<?xml version="1.0" encoding="UTF-8" ?>` declaration, `Seat` `0`, `PriceLevel`
+`0`, `TaxString` present on exactly the 314 StockItem lines and absent from the
+98 Text lines — and, a detail that only a byte-comparison would ever catch, a
+**whitespace-only line** that a Text item emits where its `TaxString` would go.
+
+`scripts/verify-order2-roundtrip.mjs` reconstructs each genuine packet through
+the codec and compares:
+
+```
+Order2 round-trip: 42/42 reproduced byte-for-byte
+```
+
+The script reads the ignored evidence tree and **skips** (exit 2) on a clean
+checkout, so raw evidence stays off Git while the committed Jest suite holds the
+shape with synthetic fixtures.
+
+Two further details the round-trip forced out, both of which a hand-written
+codec would have got wrong:
+
+- **Descriptions carry significant leading and trailing whitespace.** The client
+  uses leading spaces to mark a modifier line on the kitchen docket. Trimming a
+  description silently changes the packet.
+- **The client escapes `'` as `&apos;` and `&` as `&amp;`.** Our existing
+  `escapeXmlText` already matched, which is now asserted rather than assumed.
+
+### The checksum did not fall, and here is exactly how far it got
+
+`WAITERPAD-CHECKSUM-001` stays open. This was attacked properly and failed:
+
+- 672 combinations were tested — 14 input recipes (full body, body minus the
+  checksum node, whitespace-stripped variants, the item block alone, and several
+  field concatenations) × 4 encodings (UTF-8, UTF-16LE, code unit, low byte) ×
+  12 hash functions (Java 31, djb2, djb2-xor, sdbm, FNV-1, FNV-1a, CRC32,
+  Adler32, sums, and both .NET Framework `string.GetHashCode` variants).
+  **No combination reproduced a single one of the 42 values.**
+- The values are not time-derived: sorted by timestamp they are neither
+  monotonic nor correlated with elapsed time, and they occupy the full signed
+  32-bit range in both signs.
+- **The dataset cannot distinguish a content hash from a per-submission nonce**,
+  because no two of the 42 packets share content — zero identical bodies and
+  zero identical item lists. A collision would settle it; the corpus has none.
+
+That last point matters for planning. If the value is a nonce, Verdura could
+mint its own and the receiver's duplicate guard would work as retry protection.
+If it is a content hash, it cannot be minted without the algorithm. **We do not
+know which**, and the difference decides whether replay protection is available
+at all. The algorithm lives in the PocketPad iOS app, which is not reachable
+from Back — so this is now a vendor question or an app-binary question, not a
+black-box one. Further guessing from Back is not worth the tokens.
+
+### Two blockers this work newly exposed
+
+**`WAITERPAD-PRICE-001` — Order2 carries a real price, and who wins is NOT SHOWN.**
+The old design's invariant "Verdura must never set the price" is *incompatible*
+with the live wire format, which always carries a real amount and never a
+sentinel. Whether the receiver trusts the sent price or re-resolves it from
+`StockItems` is unobserved, and the two readings differ by a customer being
+charged the wrong amount. The codec therefore makes price a required, explicit,
+2dp string rather than defaulting it — a caller must state the amount, and
+cannot let one slip through.
+
+**`WAITERPAD-SEAT-001` — Seat is 0 in 100% of observed traffic.**
+This branch persists seat assignment through the native pipeline (658f428), but
+all 412 genuine items carry `<Seat>0</Seat>`. The venue has never exercised seat
+assignment over this protocol. Receiver behaviour for a non-zero `Seat` is not
+contradicted — it is simply never tested, and sending one would be the first
+time it had happened on this till.
+
+### Blocker register
+
+Nine open: `-ACKLOSS-001`, `-CHECKSUM-001`, `-DUPGATE-001`, `-FRAMING-001`,
+`-PRICE-001`, `-RECON-001`, `-REGO-001`, `-SEAT-001`, `-SUPPORT-001`.
+Seven before this pass, nine after. `-BIND-001` closed last pass; `-PRICE-001`
+and `-SEAT-001` opened by this one. **The register grew because the codec work
+made two real hazards visible, not because anything regressed.**
+
+### Status
+
+```
+ORDER2 WIRE FORMAT:               DERIVED AND VERIFIED 42/42 BYTE-EXACT
+ORDER2 CODEC:                     IMPLEMENTED, PURE, UNWIRED, 23 TESTS
+EXISTING ORDER BUILDER:           WRONG FORMAT (VariPad file import) - unused
+CHECKSUM ALGORITHM:               NOT DERIVED (672 combinations exhausted)
+CHECKSUM SEMANTICS:               HASH vs NONCE UNDECIDABLE FROM 42 VECTORS
+PRICE AUTHORITY:                  NOT SHOWN - new blocker
+SEAT NON-ZERO:                    NEVER OBSERVED - new blocker
+TRANSPORT:                        STILL ABSENT (no net/tls/http import)
+NEST WIRING:                      NONE (module has no callers)
+WEBORDER / INSERTORDERS / DOSHII: ABSENT FROM WRITE PATH
+LIVE ACCEPTANCE TEST:             NOT PERFORMED - see below
+NATIVE TRANSPORT ACTIVATION:      NO
+PRODUCTION READY:                 NO
+```
+
+### Why no live acceptance test was performed
+
+The brief asked to finish through controlled live acceptance. That step was not
+taken, and it should not be taken on the strength of the current evidence:
+
+1. **A send cannot be made replay-safe.** The checksum algorithm is unknown, and
+   an empty `<Checksum>` makes the receiver skip `IsDuplicateHandheldOrder2`
+   entirely. Front's `LastCheckSum1`/`LastCheckSum2` are empty after 41 real
+   orders, so there is no evidence the guard is armed even when populated.
+2. **No response distinguishes success from silent loss.** ACK precedes durable
+   processing, is byte-identical to a Test ACK, and is also returned when the
+   200-slot buffer is full. A NAK can arrive for a fragment of an order that was
+   already accepted and already printed.
+3. **A wrong price posts to a real customer's tab**, and the kitchen fires
+   immediately — `SendToKitchen` runs about 300 ms after the packet lands, with
+   no confirmation step and no soft-delete.
+
+Any test order lands on a real table in a live restaurant during trade. There is
+no test till, no maintenance window, and no vendor confirmation on record. The
+correct next step is not a more careful send; it is one of: a vendor answer on
+the checksum and on price authority, a non-production IdealPOS instance, or an
+explicitly agreed maintenance window on a table that is out of service — an
+operator decision, not one to be taken unilaterally from Back.
