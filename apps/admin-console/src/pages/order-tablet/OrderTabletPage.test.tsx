@@ -590,6 +590,43 @@ describe('OrderTabletPage — Story 15-1 device identity, restricted mode, and s
     expect(body).not.toHaveProperty('venueId');
   });
 
+  // Covers used to travel only as text inside `notes` ("Guests: N"), and the
+  // reader fell back to a hardcoded 2 whenever that pattern missed. Harmless
+  // on a summary line; not harmless as <Guests> in a native Order2 round,
+  // which the till takes as fact and prints on a real bill. The notes string
+  // stays - staff read it on existing screens - but the machine value is now
+  // its own field.
+  it('sends the cover count as a real field, not only as text inside notes', async () => {
+    seedEnrolledDevice();
+    const { calls } = installStandaloneFetchMock(NZ_SUPPORTED_TAX_CONFIG);
+    renderStandaloneTablet();
+
+    await selectTableAndStartOrder();
+    await addTestItemToCart();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Send to kitchen/i }));
+
+    await waitFor(() => {
+      const submits = calls.filter((c) => c.url.includes('/api/tablet/orders') && c.init?.method === 'POST');
+      expect(submits).toHaveLength(1);
+    });
+
+    const submit = calls.find((c) => c.url.includes('/api/tablet/orders') && c.init?.method === 'POST');
+    const body = JSON.parse(submit!.init!.body as string) as {
+      guests?: number;
+      notes?: string;
+      serviceMode: string;
+    };
+
+    expect(body.serviceMode).toBe('dine_in');
+    expect(typeof body.guests).toBe('number');
+    expect(body.guests).toBeGreaterThan(0);
+    // And it agrees with the human-readable copy, rather than contradicting it.
+    const fromNotes = /Guests:\s*(\d+)/.exec(body.notes ?? '');
+    expect(fromNotes).not.toBeNull();
+    expect(Number(fromNotes![1])).toBe(body.guests);
+  });
+
   it('an incorrect staff PIN does not elevate the session, and a subsequent order still uses the restricted endpoint', async () => {
     seedEnrolledDevice();
     const { calls } = installStandaloneFetchMock(NZ_SUPPORTED_TAX_CONFIG);

@@ -80,6 +80,7 @@ export class TabletOrdersController {
         venueId: req.user.venueId!,
         tableId: dto.tableId,
         serviceMode: dto.serviceMode,
+        guests: dto.guests,
         items: dto.items,
         notes: dto.notes,
         idempotencyKey: dto.idempotencyKey,

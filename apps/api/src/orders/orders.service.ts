@@ -179,6 +179,9 @@ export class OrdersService {
       // kiosk order is persisted as dine_in, explicitly, matching this
       // migration's backfill policy for every pre-existing row.
       serviceMode: ServiceMode.dine_in,
+      // The kiosk never asks for a cover count, so there is genuinely none to
+      // record. Null rather than a stand-in number.
+      guests: null,
       resolvedItems,
       subtotalCents,
       taxCents,
@@ -327,6 +330,9 @@ export class OrdersService {
       tableId,
       tableNumber,
       serviceMode: dto.serviceMode,
+      // Covers as the waiter set them on the Order Tablet. Takeaway sends
+      // none, and an older client that omits it stays null - never defaulted.
+      guests: dto.guests ?? null,
       resolvedItems,
       subtotalCents,
       taxCents,
@@ -1655,6 +1661,8 @@ export class OrdersService {
     tableNumber: string | null;
     /** Story 15-13. Always explicit — never left to the schema's own DEFAULT to decide, so every caller's intent is traceable in this method's own args. */
     serviceMode: ServiceMode;
+    /** Covers, exactly as the waiter set them. Null when genuinely unknown - never inferred, because a native Order2 round sends this to the till as fact. */
+    guests: number | null;
     resolvedItems: ResolvedOrderItem[];
     subtotalCents: number;
     taxCents: number;
@@ -1673,6 +1681,7 @@ export class OrdersService {
       tableId,
       tableNumber,
       serviceMode,
+      guests,
       resolvedItems,
       subtotalCents,
       taxCents,
@@ -1773,6 +1782,11 @@ export class OrdersService {
           tableId,
           tableNumber,
           serviceMode,
+          // Covers. Persisted exactly as sent and never inferred: a native
+          // Order2 round carries this number to the till as fact, so a guess
+          // here becomes a wrong cover count on a real bill. Absent stays
+          // null, which every consumer reads as "unknown".
+          guests,
           takeawayReference,
           status: initialStatus,
           posSyncStatus:

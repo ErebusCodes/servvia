@@ -1,11 +1,14 @@
 import {
   IsArray,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -39,6 +42,22 @@ export class CreateStaffOrderDto {
 
   @IsEnum(ServiceMode)
   serviceMode: ServiceMode;
+
+  /**
+   * Covers, as the waiter set them when opening the table.
+   *
+   * Optional because takeaway has none and an older tablet build does not send
+   * it, and NOT inferred when absent. The Order Tablet used to write the count
+   * into `notes` as the free text "Guests: N" and read it back with a
+   * hardcoded fallback of 2 - fine for a summary line, not fine for `<Guests>`
+   * in a native Order2 round, where the till takes the number as fact and it
+   * lands on a real bill.
+   */
+  @IsInt()
+  @Min(1)
+  @Max(99)
+  @IsOptional()
+  guests?: number;
 
   @IsArray()
   @ValidateNested({ each: true })

@@ -878,10 +878,20 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
       const notes = serviceMode === 'takeaway'
         ? 'Order Tablet Checkout (Takeaway)'
         : `Order Tablet Checkout (Guests: ${seatsCount})`;
+      // Covers as a real field, not as text inside `notes`.
+      //
+      // The count still appears in `notes` above, because that string is what
+      // staff read on existing screens and in the KDS. But the notes copy is
+      // now a HUMAN SUMMARY, and this is the machine value: a native Order2
+      // round sends <Guests> to the till as fact, and reading it back out of
+      // free text (with a hardcoded fallback of 2 when the pattern missed)
+      // put a guessed cover count on a real bill. Takeaway sends none.
+      const covers = serviceMode === 'dine_in' && seatsCount > 0 ? { guests: seatsCount } : {};
       const body = restrictedOrdersEndpoint
         ? {
             ...(realTable ? { tableId: realTable.id } : {}),
             serviceMode,
+            ...covers,
             items,
             notes,
             idempotencyKey: orderIdempotencyKey,
@@ -890,6 +900,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
             venueId: DEFAULT_VENUE_ID,
             ...(realTable ? { tableId: realTable.id } : {}),
             serviceMode,
+            ...covers,
             items,
             notes,
             idempotencyKey: orderIdempotencyKey,

@@ -1,11 +1,14 @@
 import {
   IsArray,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -29,6 +32,13 @@ export class CreateTabletOrderDto {
 
   @IsEnum(ServiceMode)
   serviceMode!: ServiceMode;
+
+  /** Covers. Same contract as `CreateStaffOrderDto.guests` - see that DTO. */
+  @IsInt()
+  @Min(1)
+  @Max(99)
+  @IsOptional()
+  guests?: number;
 
   @IsArray()
   @ValidateNested({ each: true })
