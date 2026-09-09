@@ -428,7 +428,9 @@ export class NativeTableRoundService {
  * the type check here rather than silently becoming `unresolved`, which would
  * be safe but would also hide that nobody had handled it.
  */
-function toNativeState(to: 'awaiting_native_confirmation' | 'rejected' | 'unresolved'): NativeRoundState {
+function toNativeState(
+  to: 'awaiting_native_confirmation' | 'rejected' | 'unresolved',
+): NativeRoundState {
   switch (to) {
     case 'awaiting_native_confirmation':
       return NativeRoundState.awaiting_native_confirmation;
