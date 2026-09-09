@@ -813,6 +813,15 @@ model Order {
   // dedicated Postgres sequence (never a "latest row + 1" read) -- see
   // OrdersService.persistOrder.
   serviceMode                  ServiceMode   @default(dine_in)
+  /// Covers, as the waiter set them when opening the table.
+  ///
+  /// Nullable because it genuinely is unknown for every historical order and
+  /// for takeaway, which has no covers. Before this column existed the Order
+  /// Tablet smuggled the count through `notes` as the free text "Guests: N"
+  /// and fell back to a hardcoded 2 when the pattern did not match - fine for
+  /// a display hint, not fine for `<Guests>` in a native Order2 packet, where
+  /// a guessed number is sent to the till as fact.
+  guests                       Int?
   takeawayReference            String?
   // Story 6-1: database-enforced idempotency + payment-reference uniqueness.
   // idempotencyKey is required and scoped per venue (venueId already fixes
@@ -849,6 +858,9 @@ model Order {
   // comment).
   paymentObservation       PaymentObservation?
   paymentObservationEvents PaymentObservationEvent[]
+  /// Native IdealPOS delta rounds for this table session. Empty for every
+  /// order that never used the native handheld path, including all history.
+  nativeRounds             NativeTableRound[]
 
   @@unique([venueId, idempotencyKey])
   @@unique([paymentProviderTransactionId])
@@ -896,8 +908,18 @@ model OrderItem {
   // buildIdealposOrderPayload).
   seat              Int?
 
-  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItem MenuItem @relation(fields: [menuItemId], references: [id])
+  /// Which native delta round carried this line to IdealPOS. NULL means the
+  /// line has not been assigned to a round - true for every historical row
+  /// and for any order on the Webit path. A line whose round is `confirmed`
+  /// is never swept into a later round: that is what makes a second Send to
+  /// Kitchen a delta rather than a replay of the whole tab.
+  nativeRoundId     String?
+
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem          @relation(fields: [menuItemId], references: [id])
+  nativeRound NativeTableRound? @relation(fields: [nativeRoundId], references: [id], onDelete: SetNull)
+
+  @@index([nativeRoundId])
 }
 
 model Printer {
@@ -1565,4 +1587,139 @@ model ConnectorCommand {
   @@unique([organizationId, venueId, idempotencyKey])
   @@index([venueId, status, createdAt])
   @@index([status, expiresAt])
+}
+
+/// The durable half of the multi-round table-ordering model whose rules live
+/// in `apps/api/src/orders/rounds/order-round.model.ts`. That module was
+/// deliberately landed unused because the entities could not be migrated
+/// until a native append mechanism was known. It now is: WPPacket
+/// `<Order Type="Order2">` over TCP 6983, proven byte-exact against 42
+/// genuine handheld packets.
+///
+/// WHY A ROUND IS ITS OWN ROW AND NOT A FLAG ON THE ORDER. A native handheld
+/// sends DELTA rounds - the second Send to Kitchen on a table carries only
+/// the new items, never the whole tab. That means "which lines belong to
+/// which submission" is durable truth the kitchen depends on, not a view
+/// derived from timestamps. `OrderItem.nativeRoundId` assigns each line to
+/// exactly one round, and a line whose round is `confirmed` can never be
+/// swept into a later one.
+enum NativeRoundState {
+  drafting
+  submitting
+  awaiting_native_confirmation
+  confirmed
+  rejected
+  failed
+  /// The send produced NO definite outcome. Never auto-retried, never auto
+  /// -discarded, and the only state that requires a human to leave.
+  unresolved
+  abandoned
+}
+
+model NativeTableRound {
+  id      String @id @default(uuid())
+  orderId String
+  venueId String
+
+  /// 1-based, contiguous, unique within the order. Derived from the highest
+  /// sequence ever used, so an abandoned round never causes a reuse.
+  sequence Int
+
+  /// Minted when the round is OPENED, never at submit time. This is the fix
+  /// for the restart hole: the key is durable before any submission is
+  /// attempted, so every attempt for this round presents the same key.
+  idempotencyKey String @unique
+
+  state NativeRoundState @default(drafting)
+
+  /// The native IdealPOS table this round was built against, captured at
+  /// OPEN time from `Table.posTableCode`. Stored on the round rather than
+  /// read through the order at send time so that a later edit to the table's
+  /// mapping cannot silently redirect an in-flight round to another table.
+  posTableCode String
+  guests       Int
+
+  /// Set exactly once, on drafting -> submitting. Non-null means the line set
+  /// is frozen and may no longer be edited under this identity.
+  payloadFrozenAt DateTime?
+
+  /// The native identity, once known. A round may NEVER be `confirmed` while
+  /// `nativeSaleTier` is null or `correlated` - only a causal identity
+  /// confirms, the same rule `confirmRound` enforces in the domain model.
+  nativeSaleId   String?
+  nativeSaleTier String?
+  nativeObservedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order    Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items    OrderItem[]
+  attempts NativeSendAttempt[]
+
+  @@unique([orderId, sequence])
+  @@index([venueId, state])
+  @@index([posTableCode, state])
+}
+
+/// One genuine submission attempt for one round, written BEFORE any byte can
+/// leave the host.
+///
+/// THIS ROW EXISTING IS THE WHOLE POINT. If the process dies mid-send, the
+/// next start must be able to tell "never sent" from "sent, outcome unknown"
+/// - two states needing opposite handling. Without a row persisted ahead of
+/// the socket there is no evidence a send was ever attempted, and the safe
+/// reading of no evidence would have to be the dangerous one.
+///
+/// A SECOND ATTEMPT IS A SECOND ROW, never an update. The token is derived
+/// from (roundId, attemptId), so a new attempt is a new token - required,
+/// because the receiver would otherwise answer DUPLICATE to a genuinely new
+/// submission. Nothing in the codebase creates an attempt automatically after
+/// an ambiguous outcome; that is a human decision by design.
+model NativeSendAttempt {
+  id      String @id @default(uuid())
+  roundId String
+
+  /// Verdura's id for this attempt. Half the input to the duplicate token.
+  attemptId String @unique
+
+  /// The order id as the till will know it, carried so an attempt is
+  /// self-describing without a join during incident review.
+  externalOrderId String
+  posTableCode    String
+
+  /// Stable Verdura handheld identity. Never the venue iPad's, never
+  /// "undefined" - see waiterpad-device-identity.ts.
+  deviceId String
+
+  /// The opaque equality token sent as `<Checksum>` and stored verbatim by
+  /// the receiver at `AAAExampleData.ColumnType='IH-<deviceId>'`. Token
+  /// equality against that row is the confirmation predicate.
+  token String
+
+  /// SHA-256 of the exact serialized payload. Stored instead of the payload
+  /// so a later attempt can be proven identical or different without keeping
+  /// a second copy of customer order content.
+  payloadHash String
+
+  sendInitiatedAt DateTime
+
+  /// Null until the transport returns. `bytesLeftHost` is the safety-critical
+  /// one, not `outcomeKind`: false ONLY where nothing can have been written.
+  outcomeKind   String?
+  bytesLeftHost Boolean?
+  /// The licensed transition this outcome mapped to, e.g. confirmed /
+  /// registrationRejected / uncertain / failedBeforeSend.
+  decision      String?
+  /// Sanitized receiver response text. Never a raw packet.
+  responseNote  String?
+  settledAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  round NativeTableRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  @@index([roundId, sendInitiatedAt])
+  @@index([deviceId, sendInitiatedAt])
+  @@index([token])
 }

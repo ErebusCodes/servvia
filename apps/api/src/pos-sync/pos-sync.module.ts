@@ -13,6 +13,9 @@ import { AuthModule } from '../auth/auth.module';
 import { QueueModule } from '../queue/queue.module';
 import { ConnectorModule } from '../connector/connector.module';
 import { OrdersModule } from '../orders/orders.module';
+import { tableRoundWriterProvider } from './waiterpad/waiterpad-writer.provider';
+import { NativeSendAttemptStore } from './waiterpad/native-send-attempt.store';
+import { NativeTableRoundService } from './waiterpad/native-table-round.service';
 
 @Module({
   // Story 9-3: QueueModule is imported so PosSyncDispatcherService can
@@ -41,7 +44,17 @@ import { OrdersModule } from '../orders/orders.module';
     { provide: BRIDGE_ORDER_STATUS_READER, useExisting: ConnectorBridgeOrderStatusReader },
     IdealposConfirmationService,
     PosCatalogService,
+    // The IdealPOS native handheld path (WPPacket Order2 over TCP 6983).
+    // `tableRoundWriterProvider` is the single place the feature gate is
+    // decided: with the feature off - the default, and production today - it
+    // binds DisabledTableRoundWriter, which refuses every round with zero
+    // socket activity. NativeTableRoundService therefore exists in every
+    // build and is inert in every build that has not been explicitly and
+    // completely configured. There is no fallback from it to the Webit path.
+    tableRoundWriterProvider,
+    NativeSendAttemptStore,
+    NativeTableRoundService,
   ],
-  exports: [IdealposConfirmationService],
+  exports: [IdealposConfirmationService, NativeTableRoundService],
 })
 export class PosSyncModule {}

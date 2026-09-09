@@ -163,12 +163,23 @@ describe('LOCK is the one outcome with positive non-acceptance evidence', () => 
 });
 
 describe('NAK, NAKREGO and NAKPRINT', () => {
-  it('NAK rejects but still demands a readback, because its conditions are untraced', () => {
+  // A NAK must NOT land in `rejected`. `rejected` is the state that licenses a
+  // repair-and-resubmit, and a NAK has been observed answering a fragment of an
+  // order the till had already accepted and already printed - so "NAK" and "the
+  // kitchen already has this" are compatible readings of the same byte.
+  it('NAK is unresolved, never rejected: it does not prove the order was refused', () => {
     const d = decideFromResponse({ type: 'NAK' });
-    expect(d.transition.to).toBe('rejected');
+    expect(d.transition.to).toBe('unresolved');
     expect(d.nativeEffect).toBe('unknown');
     expect(d.requiresReadback).toBe(true);
     expect(d.safeToRepresentToOperator).toBe(false);
+  });
+
+  it('and so a NAK can never be reopened straight into a new draft', () => {
+    const d = decideFromResponse({ type: 'NAK' });
+    expect(d.transition.to).toBe('unresolved');
+    // Unresolved has no automatic exit; leaving it is a human decision.
+    expect(isLegalRoundTransition('unresolved', 'drafting')).toBe(false);
   });
 
   it('NAKREGO is unresolved, not a clean rejection', () => {

@@ -170,18 +170,39 @@ export function decideFromResponse(response: WaiterPadResponse): WaiterPadOutcom
       };
 
     case 'NAK':
+      // UNRESOLVED, NOT REJECTED — corrected 2026-09-09.
+      //
+      // This previously mapped to `rejected`, which reads naturally ("the till
+      // said no") and is the one mapping this protocol cannot afford. The
+      // entire purpose of `rejected` is that it licenses a repair-and-resubmit
+      // (`reopenRejectedRound`, and `isLegalRoundTransition('rejected',
+      // 'drafting')` is true). But a NAK does NOT establish non-acceptance:
+      //
+      //   * 2026-09-04 17:15:24 — the till answered NAK to a trailing TCP
+      //     fragment of an order it had ALREADY accepted and ALREADY printed
+      //     in the kitchen. Neither ACK nor NAK identifies which packet it
+      //     answers.
+      //   * the one traced NAK condition is a BUSY signal, not a refusal:
+      //     WPParsePacket answers NAK when HandheldProcessing is already set
+      //     (0x0281852d), i.e. the till is mid-drain.
+      //   * the remaining NAK sources are untraced.
+      //
+      // So "NAK" and "the kitchen already has this round" are compatible, and
+      // a state that invites a resend is the wrong home for that. Unresolved
+      // has no automatic exit and requires a human to look at the table, which
+      // is exactly the handling this outcome needs.
       return {
-        transition: { apply: 'rejectRound', to: 'rejected' },
+        transition: { apply: 'markUnresolved', to: 'unresolved' },
         nativeEffect: 'unknown',
         requiresReadback: true,
         safeToRepresentToOperator: false,
         reason:
-          'NAK: the till refused the order. One NAK condition is now traced and ' +
-          'it is a BUSY signal, not a rejection — WPParsePacket answers NAK when ' +
-          'HandheldProcessing is already set (0x0281852d), i.e. the till is ' +
-          'mid-drain. Other NAK sources remain untraced, so non-acceptance is ' +
-          'still not proven: read the table back before resubmitting anything, ' +
-          'and never treat a NAK as licence to retry automatically.',
+          'NAK: the till did not accept this packet, but non-acceptance of the ' +
+          'ORDER is not proven. A NAK has been observed answering a fragment of ' +
+          'an order that was already accepted and already printed, and the one ' +
+          'traced NAK condition is a BUSY signal (HandheldProcessing already ' +
+          'set, 0x0281852d) rather than a refusal. Read the table back before ' +
+          'anything else, and never treat a NAK as licence to retry.',
       };
 
     case 'DUPLICATE':
