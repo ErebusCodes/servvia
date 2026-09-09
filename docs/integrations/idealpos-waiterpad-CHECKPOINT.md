@@ -968,3 +968,202 @@ is available the same two commands re-run unchanged and the remaining
 questions — acceptance, whether the round lands on the native tab, price
 authority (`WAITERPAD-PRICE-001`) and kitchen behaviour — become answerable in
 minutes.
+
+---
+
+## Addendum — 2026-09-09, offline build-out: two blockers closed, the writer implemented
+
+With live acceptance blocked on a licence seat, this pass did everything that
+did not need another live order. Two blockers closed **on evidence**, and the
+production writer now exists behind a fail-closed gate.
+
+Static analysis was done on Back against its own copy of `IPS.exe`
+(40,143,120 bytes, 2023-09-11, sha256 `f18475a7…c85a520e` — the same build Front
+runs), with capstone/pefile. Nothing was executed and Front was not touched.
+
+### The checksum is not a checksum — `WAITERPAD-CHECKSUM-001` CLOSED
+
+`IsDuplicateHandheldOrder2(checksum, deviceId)` at `0x01835070` does three
+things and no more:
+
+1. builds `'IH-'` + DeviceID and runs
+   `SELECT * FROM AAAExampleData WHERE ColumnType='…'`
+2. on an empty recordset, **stores our value verbatim** via
+   `INSERT INTO AAAExampleData (InsertDate, ColumnType, Data) VALUES ('…'`
+3. otherwise reads the row's `data` column and compares it with **`__vbaStrCmp`**
+   (`0x0183534d`), returning `-1` for a match
+
+Every instruction touching the value is a string operation — `__vbaStrCmp`,
+`__vbaStrCat`, `__vbaStrCopy`, `__vbaStrMove`. **No arithmetic, no hash, no
+validation.** The vendor algorithm was never findable because the receiver never
+computes one.
+
+So the question "what algorithm?" was the wrong question. `<Checksum>` is an
+**opaque equality token scoped by DeviceID**, and Verdura can mint its own.
+`waiterpad-token.ts` derives it as `sha256(roundId, attemptId)[0..32]` —
+deterministic, so a crash-and-restart recomputes the same value and the till can
+recognise a resend of *that attempt* rather than treating it as a new order.
+
+What it still does **not** buy, and `WAITERPAD-DUPGATE-001` stays open for:
+the store is **one deep per device**, so A→B→A reads as three orders; an empty
+token skips the guard entirely (`__vbaStrCmp` against `''` at `0x018261fa`); and
+the whole check is jumped over when the global at `0x2a2f1e4` is clear
+(`0x01826289`). Exactly-once stays on Verdura's side.
+
+### The -9999 price sentinel IS honoured — `WAITERPAD-PRICE-001` CLOSED
+
+This one reverses the previous pass's conclusion, and reverses it the safe way.
+
+`ProcessHandheldOrder` converts `<Price>` with `__vbaCyStr`, then at `0x01828538`
+compares it against the constant at `0x474698` — **the double `-9999.0`** — using
+`__vbaFpCmpCy`. The branch is `jne`:
+
+- **not equal** → jumps past the lookup: **the sent price is used verbatim**
+- **equal** → falls through, builds the column name `"Price" & PriceLevel` via
+  `__vbaStrI2`, reads it from `StockItems`, and **overwrites** the price
+  (`0x0182862c`)
+
+The last pass recorded "there is no sentinel in Order2" from traffic alone. That
+was true of the *iPad*, which always sends a real amount — and false of the
+*protocol*. The invariant "Verdura never sets a price" survives intact: send
+`-9999` and the till prices the line itself.
+
+`PriceLevel` becomes a literal column name on that path, so it must be 1..6 —
+the image has `Price1`..`Price4` and `Price8`, and no `Price0`. That also
+explains why the old VariPad builder demanded 1..6: it was right for the
+sentinel path all along.
+
+### What the rewrite deletes — `WAITERPAD-RECON-001` narrowed again
+
+`ProcessHandheldOrder` loads the literal `` `IH `` (`0x70dd64`), appends the
+table number, and uses the result as the Code in both
+`DELETE * FROM PendingSaleLines WHERE Code='…'` (`0x01827665`) and
+`DELETE * FROM PendingSales WHERE Code='…'`.
+
+**The delete is scoped to the `` `IH<table> `` staging rows, not the customer's
+tab.** The apparent contradiction between the static delete-and-rewrite reading
+and the runtime fact that rounds accumulate is resolved: they were never in
+conflict. Recorded as `REWRITE_DELETES_STAGING_CODE_EVIDENCE`.
+
+`RECON-001` stays open for the remaining halves — no `OrderedTime` in the
+readback, and the token-row write ordering is unknown — but it now has a real
+causal signal to build on (below).
+
+### Seat — still fail-closed, deliberately
+
+`<Seat>` is read and converted with `__vbaI2Str` into `[ebp-0xb0]`
+(`0x01827edd`). There are exactly two references to that local: that write, and a
+read at `0x01827e43` that copies it under a guard whose else-branch substitutes
+`0`. The read sits at a *lower* address than the write, so the cross-iteration
+relationship is not resolved by static reading, and a naive reading suggests an
+off-by-one that is **not** being asserted.
+
+That licenses carrying Seat through the codec. It does **not** license sending a
+non-zero Seat to a live till. The writer refuses `seat > 0` unless
+`IDEALPOS_WAITERPAD_ALLOW_NON_ZERO_SEAT=true`, and **never silently rewrites a
+seat to 0** — that would move a customer's item to another seat.
+
+### What was built
+
+| module | role |
+|---|---|
+| `waiterpad-order2-packet.ts` | the codec; pricing is now an explicit `nativeResolved` \| `explicit` choice |
+| `waiterpad-token.ts` | durable duplicate token + what the receiver guard can/cannot do, as data |
+| `waiterpad-device-identity.ts` | Verdura's own DeviceID; **hard-refuses** the iPad's id and `undefined` |
+| `waiterpad-config.ts` | fail-closed activation gate; collects every reason it stayed shut |
+| `waiterpad-transport.ts` | one bounded send, **no retry path exists** |
+| `waiterpad-table-round-writer.ts` | `ITableRoundWriter` + `DisabledTableRoundWriter` (still the wired one) |
+| `waiterpad-reconciliation.ts` | the predicate the next live run finalises |
+| `testing/fake-waiterpad-server.ts` | 11 scripted receiver behaviours |
+
+**The safety invariant was narrowed, not deleted.** `waiterpad-safety.spec.ts`
+used to assert that *nothing* in the tree could open a socket. It now asserts
+that the set of files with network capability is **exactly**
+`['waiterpad-transport.ts']`, so a second one cannot appear silently. The old
+test's own comment asked that a future transport "delete this test on purpose,
+not slip past it" — this is that deletion, done on purpose.
+
+The transport's central rule is that ambiguity after the write is never reported
+as failure. `bytesLeftHost` is false **only** when nothing was written; a reset
+that arrives *after* `connect` is uncertain, not failed, and there is a test
+whose job is to stop someone "fixing" that.
+
+### The strongest causal signal we have ever had
+
+The receiver stores **our token, verbatim, keyed by our DeviceID**. That is the
+first durable row on the till that can be tied to a specific Verdura submission.
+`reconcileAmbiguousSend` therefore returns `confirmed` on exactly one condition —
+the till is holding this attempt's token for this device — and demands a human
+otherwise. It explicitly refuses to confirm on PLU/quantity coincidence.
+
+It is one-deep, so it speaks only about the most recent attempt for a device —
+which, for an ambiguous send, is precisely the attempt in question.
+
+### Deployment sequence
+
+The `OrderItem.seat` migration exists and **is not yet applied**
+(`20260909010000_add_order_item_seat`, `prisma migrate status` confirms). It was
+**not** applied in this session: that was not part of an authorised deployment.
+
+```
+1.  npm run db:migrate          # = prisma migrate deploy, apps/api
+2.  deploy apps/api
+3.  deploy connector / bridge
+4.  deploy admin console (Order Tablet)
+```
+
+The migration is backward compatible — a nullable column with no default — so
+step 1 is safe to run ahead of step 2, and existing rows stay `NULL` (meaning
+"no seat", never seat 0).
+
+### Vendor issue for Idealpos — the phantom registration
+
+Worth raising independently of Verdura, because the venue is paying for a seat
+it never gets.
+
+> The Idealpos handheld client registers **twice** per IPS session. It first
+> registers with `DeviceID` and `LocalAddress` both literally the string
+> `undefined`, then a few seconds later with its real identity. The phantom
+> registration consumes one of the licensed handheld seats and is never
+> released; the seat is only recovered by restarting IPS.
+>
+> Observed on DESKTOP-70DQTGJ in every retained `Ideal Handheld` log covering an
+> IPS start:
+>
+> ```
+> 20260905 13:20:59.461  Adding undefined to current devices.
+> 20260905 13:21:05.420  Adding 10DF1A78…7D0D to current devices.
+> 20260906 14:16:51.546  Adding undefined to current devices.
+> 20260906 14:16:57.617  Adding 10DF1A78…7D0D to current devices.
+> 20260909 11:42:54.450  Adding undefined to current devices.
+> 20260909 11:43:00.419  Adding 10DF1A78…7D0D to current devices.
+> ```
+>
+> Effect: `WP Current Count=2 - Waiters=2` with only one physical handheld in
+> use, so a second genuine device is refused `NAKREGO` / `BAD REGO`.
+> PocketPad Version 2.2.51, iPadOS 17.7.11, IPS.exe build 2023-09-11.
+
+### Status
+
+```
+SOFTWARE IMPLEMENTATION:          READY  (codec, token, identity, config,
+                                   transport, writer, reconciliation, fakes)
+ORDER2 CODEC:                     42/42 byte-exact vs genuine packets
+CHECKSUM:                         CLOSED - opaque token, Verdura mints its own
+PRICE AUTHORITY:                  CLOSED - -9999 sentinel honoured; policy is
+                                   nativeResolved, so Verdura sets no price
+DELETE SCOPE:                     CLOSED - staging `IH<table> rows, not the tab
+SEAT:                             FAIL-CLOSED, never silently downgraded
+TRANSPORT:                        ONE bounded send, no retry path exists
+FAILURE SEMANTICS:                ACK != durable; NAK may follow acceptance;
+                                   NAKREGO = registration refused; anything
+                                   after the write = UNCERTAIN
+RECONCILIATION:                   abstraction in place; token row is the
+                                   strongest causal signal found to date
+CONFIG GATE:                      FAIL CLOSED, 12 required settings
+WIRED WRITER:                     DisabledTableRoundWriter
+MIGRATION:                        present, NOT applied (deliberately)
+WEBORDER / INSERTORDERS / DOSHII: ABSENT from the native path
+LIVE ACTIVATION:                  BLOCKED - handheld licence capacity only
+PRODUCTION READY:                 NO
+```
