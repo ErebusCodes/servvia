@@ -17,6 +17,7 @@ import { tableRoundWriterProvider } from './waiterpad/waiterpad-writer.provider'
 import { NativeSendAttemptStore } from './waiterpad/native-send-attempt.store';
 import { NativeTableRoundService } from './waiterpad/native-table-round.service';
 import { NativeRoundsController } from './native-rounds.controller';
+import { NativeRoundReconciliationService } from './waiterpad/native-round-reconciliation.service';
 
 @Module({
   // Story 9-3: QueueModule is imported so PosSyncDispatcherService can
@@ -65,7 +66,14 @@ import { NativeRoundsController } from './native-rounds.controller';
     tableRoundWriterProvider,
     NativeSendAttemptStore,
     NativeTableRoundService,
+    // Settles rounds the wire could not settle. It holds NO writer and no
+    // transport - reconciliation polls, it never resends, and that is enforced
+    // by its dependency graph rather than by a rule in a branch. Its evidence
+    // reader (NATIVE_ROUND_EVIDENCE_READER) is deliberately left UNBOUND: no
+    // connector build can read the till's token row yet, and the escalation
+    // half of the job works without one.
+    NativeRoundReconciliationService,
   ],
-  exports: [IdealposConfirmationService, NativeTableRoundService],
+  exports: [IdealposConfirmationService, NativeTableRoundService, NativeRoundReconciliationService],
 })
 export class PosSyncModule {}
