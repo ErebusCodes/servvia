@@ -17,6 +17,18 @@ export const ACK_BODY = "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type =
 export const NAK_BODY = "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'NAK'></WPPacket>";
 export const NAKREGO_BODY =
   "<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'NAKREGO'></WPPacket>";
+/**
+ * `LOCK` + (12000 + posNumber). THE ONLY OUTCOME WITH POSITIVE EVIDENCE OF
+ * NON-ACCEPTANCE: the "LOCKED BY" check returns before the receiver's buffering
+ * loop runs, so a LOCK proves the packet was never taken.
+ *
+ * It is the only response that licenses giving a round's lines back, which is
+ * exactly why the fake till needed to be able to produce it - the behaviour was
+ * missing, so the one branch that can release a customer's food onto a later
+ * bill had never been exercised end to end.
+ */
+export const lockBody = (posNumber: number): string =>
+  `<?xml version='1.0' encoding='utf-8' ?><WPPacket Type = 'LOCK${12000 + posNumber}'></WPPacket>`;
 
 export type FakeBehaviour =
   /** Reply ACK once the request looks complete. */
@@ -24,6 +36,8 @@ export type FakeBehaviour =
   | { readonly kind: 'nak' }
   /** What the real till did to Verdura on 2026-09-09: refuse registration. */
   | { readonly kind: 'nakrego' }
+  /** The table is held by another POS. Proves nothing was accepted. */
+  | { readonly kind: 'lock'; readonly posNumber: number }
   | { readonly kind: 'delayedAck'; readonly delayMs: number }
   /** Reply, then drop the connection immediately. */
   | { readonly kind: 'ackThenDisconnect' }
@@ -93,6 +107,9 @@ export async function startFakeWaiterPadServer(
           break;
         case 'nakrego':
           reply(NAKREGO_BODY);
+          break;
+        case 'lock':
+          reply(lockBody(behaviour.posNumber));
           break;
         case 'delayedAck':
           setTimeout(() => reply(ACK_BODY), behaviour.delayMs);

@@ -3,7 +3,14 @@
  * on the Order Tablet for a native IdealPOS venue, and there is no other route
  * into the native path from the running application. `GET` on the same path is
  * the way back OUT: it reads where those rounds now stand and can send nothing.
- * One writing route and one reading one, and only the first can reach the till.
+ * `POST .../rounds/:sequence/resolve` is the way out of the ONE state the
+ * machine cannot leave by itself, and it sends nothing either.
+ *
+ * THREE ROUTES, AND EXACTLY ONE OF THEM CAN REACH THE TILL. That is the
+ * property to preserve when adding a fourth: the send route is the only place
+ * in the running application where a byte can leave the host for IdealPOS, and
+ * both of the others are reached precisely when a round MAY ALREADY BE ON THE
+ * TAB - which is the worst possible place to put code that can send.
  *
  * IT IS NOT A DEVELOPER ENDPOINT. There is deliberately no second, unguarded
  * route for testing: a debug endpoint that can put a real docket on a real
@@ -74,10 +81,12 @@ import { OrdersService } from '../orders/orders.service';
 import {
   NativeRoundError,
   NativeTableRoundService,
+  type ManualResolutionResult,
   type RoundStatusView,
   type SubmitRoundResult,
 } from './waiterpad/native-table-round.service';
 import { SubmitNativeRoundDto } from './dto/submit-native-round.dto';
+import { ResolveNativeRoundDto } from './dto/resolve-native-round.dto';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -87,6 +96,24 @@ const STAFF_ORDER_ROLES = [
   StaffRole.cashier,
   StaffRole.kitchen,
 ] as const;
+
+/**
+ * Who may settle an unresolved round by hand. DELIBERATELY NARROWER than
+ * `STAFF_ORDER_ROLES`, which is what the send and read routes take.
+ *
+ * Resolving is not an order-taking act. It means walking to the till, reading a
+ * customer's bill, and putting your name to what is there - and one of its two
+ * outcomes releases lines onto that bill. The person best placed to do it
+ * carelessly is the waiter who pressed Send: they are the one looking at the
+ * red banner, they are the one it is blocking, and they are the one who can
+ * make it go away by choosing either answer. The readback has told staff to
+ * "ask a manager" since it was written; this is that sentence being true.
+ *
+ * The cost of being wrong in this direction is a blocked table, which is
+ * visible, recoverable, and survivable for one service. The cost of being wrong
+ * in the other is a double-charged bill nobody re-reads.
+ */
+const ROUND_RESOLUTION_ROLES = [StaffRole.admin, StaffRole.manager] as const;
 
 /** What the tablet receives. Every field is something the UI genuinely renders. */
 export interface NativeRoundResponse {
@@ -339,6 +366,100 @@ export class NativeRoundsController {
     // can be added later - a sweep timestamp, a venue-level reconciliation
     // notice - without every existing client's parse breaking.
     return { rounds: await this.native.readRounds(orderId) };
+  }
+
+  /**
+   * SETTLE AN UNRESOLVED ROUND ON A HUMAN'S WORD. The way OUT of the dead end.
+   *
+   * THE DEAD END. `unresolved` occupies the table's single in-flight slot, so
+   * while one stands no further round may be opened on that table. Both of its
+   * machine exits are written by the reconciler and both need evidence read
+   * from the till - and no connector build binds an evidence reader yet. So in
+   * the configuration this integration ships in, the reconciler's verdict is
+   * permanently `manualResolutionRequired`, every round escalates once its
+   * window runs out, and the table is finished for the rest of the service.
+   * The readback added the banner that says so; this is the button under it.
+   *
+   * IT SENDS NOTHING. No writer, no transport, no branch that could react to
+   * what it finds by resending it. This route exists exactly where a round MAY
+   * ALREADY BE ON THE TAB, which is the worst possible place to put code that
+   * can send. Lines that need to reach the kitchen after all go on the NEXT
+   * round, pressed by a waiter, with the table unblocked and the screen showing
+   * what happened.
+   *
+   * 409 FOR EVERY REFUSAL, never 4xx-that-looks-retryable and never 5xx. The
+   * two refusals it can produce - the round is not resolvable, or somebody else
+   * resolved it first - are both "your request did nothing and repeating it
+   * unchanged will also do nothing". A 5xx would invite a retry wrapper to
+   * hammer a route that settles bills.
+   *
+   * MANAGER AND ADMIN ONLY - see `ROUND_RESOLUTION_ROLES`.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @Roles(...ROUND_RESOLUTION_ROLES)
+  @HttpCode(HttpStatus.OK)
+  @Post('admin/orders/:id/rounds/:sequence/resolve')
+  async resolveRound(
+    @Req() req: AuthedRequest,
+    @Param('id') orderId: string,
+    @Param('sequence') sequence: string,
+    @Body() dto: ResolveNativeRoundDto,
+  ): Promise<ManualResolutionResult> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, venueId: true, venue: { select: { organizationId: true } } },
+    });
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    this.assertInScope(req, order);
+
+    // Parsed rather than coerced. `Number('3abc')` is NaN and `Number('')` is
+    // 0, and a sequence of 0 exists on no order - but a NaN reaching Prisma is
+    // an error from the driver rather than a sentence for staff.
+    const seq = Number.parseInt(sequence, 10);
+    if (!Number.isInteger(seq) || seq < 1) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: `'${sequence}' is not a round number.`,
+          error: 'bad_sequence',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      return await this.native.resolveRound({
+        orderId,
+        sequence: seq,
+        outcome: dto.outcome,
+        basis: dto.basis,
+        // FROM THE TOKEN, never from the body. A client-supplied author is not
+        // an author, and the whole value of this record is that it names
+        // somebody who can be asked.
+        resolvedByUserId: req.user.id,
+        // Both identities where a step-up produced this session, which is what
+        // `actingStaffId` exists for.
+        resolvedByActingStaffId: req.user.actingStaffId ?? null,
+      });
+    } catch (err) {
+      if (err instanceof NativeRoundError) {
+        const status =
+          err.reason === 'order_not_found' ? HttpStatus.NOT_FOUND : HttpStatus.CONFLICT;
+        throw new HttpException(
+          {
+            statusCode: status,
+            message: err.message,
+            error: err.reason,
+            // Nothing was sent by this route under any outcome, so the field
+            // that means "may a waiter press Send" is about the ROUND, and a
+            // round this route refused to settle is a round nobody may send.
+            safeToRetry: false,
+          },
+          status,
+        );
+      }
+      throw err;
+    }
   }
 
   /**

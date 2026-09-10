@@ -303,8 +303,8 @@ export class NativeRoundReconciliationService implements OnModuleInit, OnModuleD
     now: Date,
     basis: string,
   ): Promise<void> {
-    await this.prisma.nativeTableRound.update({
-      where: { id: roundId },
+    const { count } = await this.prisma.nativeTableRound.updateMany({
+      where: { id: roundId, state: { in: RECONCILABLE } },
       data: {
         state: NativeRoundState.confirmed,
         nativeSaleId: token,
@@ -312,6 +312,13 @@ export class NativeRoundReconciliationService implements OnModuleInit, OnModuleD
         nativeObservedAt: now,
       },
     });
+    if (count === 0) {
+      this.logger.log(
+        `Round ${roundId} was settled by someone else while this sweep was reading it; ` +
+          'leaving their resolution in place.',
+      );
+      return;
+    }
     this.logger.log(`Round ${roundId} CONFIRMED on the till: ${basis}`);
   }
 
@@ -328,16 +335,30 @@ export class NativeRoundReconciliationService implements OnModuleInit, OnModuleD
    * token row at all AND nothing processed. Ambiguity never reaches here.
    */
   private async markNotApplied(roundId: string, now: Date, basis: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+    const won = await this.prisma.$transaction(async (tx) => {
+      // STATE FIRST, and conditionally. If a human settled this round between
+      // the read at the top of the sweep and this write, the update matches no
+      // rows and the lines are never touched - which matters more here than
+      // anywhere else in the sweep, because releasing the lines of a round a
+      // manager has just vouched for would put its food on a second bill.
+      const { count } = await tx.nativeTableRound.updateMany({
+        where: { id: roundId, state: { in: RECONCILABLE } },
+        data: { state: NativeRoundState.failed, nativeObservedAt: now },
+      });
+      if (count === 0) return false;
       await tx.orderItem.updateMany({
         where: { nativeRoundId: roundId },
         data: { nativeRoundId: null },
       });
-      await tx.nativeTableRound.update({
-        where: { id: roundId },
-        data: { state: NativeRoundState.failed, nativeObservedAt: now },
-      });
+      return true;
     });
+    if (!won) {
+      this.logger.log(
+        `Round ${roundId} was settled by someone else while this sweep was reading it; ` +
+          'leaving their resolution in place and releasing nothing.',
+      );
+      return;
+    }
     this.logger.warn(
       `Round ${roundId} did NOT reach the till: ${basis}. Its lines are back on the order ` +
         'and will go with the next round.',
@@ -353,10 +374,14 @@ export class NativeRoundReconciliationService implements OnModuleInit, OnModuleD
    * the truthful thing to do.
    */
   private async escalate(roundId: string, basis: string): Promise<void> {
-    await this.prisma.nativeTableRound.update({
-      where: { id: roundId },
+    // Conditional on the round still being the one this sweep read. Escalating
+    // a round a human has just settled would drag it back out of a terminal
+    // state and re-block the table.
+    const { count } = await this.prisma.nativeTableRound.updateMany({
+      where: { id: roundId, state: NativeRoundState.awaiting_native_confirmation },
       data: { state: NativeRoundState.unresolved },
     });
+    if (count === 0) return;
     this.logger.warn(
       `Round ${roundId} has been awaiting confirmation past its window and is now UNRESOLVED - ` +
         `a human must check the table on the till. ${basis}`,

@@ -49,7 +49,7 @@ import {
   type TableRoundLine,
   type WaiterPadWriteResult,
 } from './waiterpad-table-round-writer';
-import type { OrderRound } from '../../orders/rounds/order-round.model';
+import type { ManualResolutionOutcome, OrderRound } from '../../orders/rounds/order-round.model';
 
 export type NativeRoundFailureReason =
   | 'unmapped_table'
@@ -58,7 +58,11 @@ export type NativeRoundFailureReason =
   | 'round_in_flight'
   | 'order_not_found'
   | 'not_dine_in'
-  | 'not_native_owned';
+  | 'not_native_owned'
+  /** A round was asked to be resolved by hand and it is not `unresolved`. */
+  | 'not_resolvable'
+  /** Somebody else resolved it between this request reading it and writing. */
+  | 'already_resolved';
 
 export class NativeRoundError extends Error {
   constructor(
@@ -118,6 +122,14 @@ export type SendToKitchenResult =
 export type RoundReadStatus =
   /** On the table in IdealPOS, proven by the till holding our own token. */
   | 'confirmed'
+  /**
+   * On the table according to a PERSON who checked, not according to the till.
+   *
+   * Kept apart from `confirmed` for the same reason the durable states are:
+   * one is evidence and the other is testimony, and a screen that renders them
+   * identically has thrown away the difference on the operator's behalf.
+   */
+  | 'resolvedManually'
   /** Sent and ACKed, not yet proven. The ordinary state for the first minutes. */
   | 'awaitingConfirmation'
   /** Nobody knows, and a human must look at the till. */
@@ -154,6 +166,26 @@ export interface RoundStatusView {
    */
   readonly sendInitiatedAt: Date | null;
   readonly lineCount: number;
+}
+
+/** What a human's resolution did. Every field is something the tablet renders. */
+export interface ManualResolutionResult {
+  readonly roundId: string;
+  readonly sequence: number;
+  readonly outcome: ManualResolutionOutcome;
+  /** The durable state written, unmapped - see `RoundStatusView.state`. */
+  readonly state: NativeRoundState;
+  /**
+   * Whether this round's lines went back on the order.
+   *
+   * The single most consequential fact about a resolution, so it is returned
+   * as a field rather than left to be inferred from `outcome`: a client that
+   * has to derive "will these items be sent again?" from a vocabulary word is
+   * a client that will one day derive it wrong.
+   */
+  readonly linesReleased: boolean;
+  readonly resolvedAt: Date;
+  readonly message: string;
 }
 
 export interface NewRoundLine {
@@ -463,9 +495,42 @@ export class NativeTableRoundService {
       );
     }
 
-    // Resolve BEFORE freezing: an unmapped PLU is a deterministic refusal that
-    // should leave the round exactly as it was, editable and re-sendable.
-    const lines = await this.resolveLines(round.items);
+    // ── RESOLVE BEFORE FREEZING, AND RELEASE THE LINES IF IT REFUSES. ──
+    //
+    // An unmapped PLU is a deterministic refusal reached before the round is
+    // frozen, before an attempt row exists and before any socket: nothing can
+    // have been sent, and that is what licenses the release below.
+    //
+    // AN EARLIER VERSION LET THE THROW ESCAPE, and the comment here claimed it
+    // left the round "exactly as it was, editable and re-sendable". It was
+    // neither. The round stayed `drafting` holding its lines, `drafting` is not
+    // an IN_FLIGHT state, and so the NEXT press opened a fresh round whose
+    // "lines no round has carried yet" query found only the newly-typed ones.
+    // The stranded lines were never sent and never mentioned again: an order
+    // for lamb, tiramisu and a Coke reached the kitchen as a Coke, and the
+    // tablet said `sentAwaitingConfirmation`. The refusal even advertised
+    // `safeToRetry: true`, and every retry answered `nothing_to_send` - an
+    // invitation to keep pressing a button that could never work.
+    //
+    // This is the identical trap `settleWithoutSendAndRelease` was written to
+    // close for the writer's own refusals. It is the same precondition and it
+    // gets the same treatment.
+    let lines: TableRoundLine[];
+    try {
+      lines = await this.resolveLines(round.items);
+    } catch (err) {
+      await this.settleWithoutSendAndRelease(roundId, NativeRoundState.abandoned);
+      this.logger.warn(
+        `round ${roundId} refused before any send boundary: ` +
+          `${err instanceof Error ? err.message : 'line resolution failed'}. Its lines are back ` +
+          'on the order and the next send will carry them.',
+      );
+      // Rethrown rather than converted: the caller turns it into the refusal
+      // that names WHICH item has no till code, which is the one thing that
+      // makes it fixable. The lines are already released, so the retry that
+      // refusal invites can genuinely carry them now.
+      throw err;
+    }
 
     const frozenAt = new Date();
     await this.prisma.nativeTableRound.update({
@@ -502,7 +567,7 @@ export class NativeTableRoundService {
       // The writer refused BEFORE opening a socket - disabled, misconfigured,
       // or a seat it will not send. Nothing left the host, so the round is
       // abandoned and its lines are RELEASED back to unclaimed.
-      await this.abandonAndRelease(roundId);
+      await this.settleWithoutSendAndRelease(roundId, NativeRoundState.abandoned);
       const message = err instanceof Error ? err.message : 'the native writer refused this round';
       this.logger.warn(`round ${roundId} refused before send: ${message}`);
       return { status: 'failedBeforeSend', roundId, message };
@@ -555,6 +620,145 @@ export class NativeTableRoundService {
   }
 
   /**
+   * SETTLE AN UNRESOLVED ROUND ON A HUMAN'S WORD. Sends nothing, opens nothing.
+   *
+   * THE DEAD END THIS OPENS. `unresolved` holds the table's single in-flight
+   * slot, so while one stands `openRound` refuses every further round on that
+   * table. Its two machine exits - `confirmed` and `failed` - are both written
+   * by the reconciler, and both need evidence read from the till. No connector
+   * build binds an evidence reader yet. So in the configuration this
+   * integration actually ships in, the reconciler's verdict is permanently
+   * `manualResolutionRequired`, every round escalates to `unresolved` once its
+   * window runs out, and the table is finished for the rest of the service with
+   * no way back. The verdict has been named `manualResolutionRequired` since
+   * the predicate was written; this is the manual resolution it names.
+   *
+   * IT CANNOT SEND. There is no writer on this path and no transport call in
+   * it. That is not an accident of implementation, it is the point: this route
+   * is reached precisely when a round MAY ALREADY BE ON THE TAB, which is the
+   * worst possible moment to give code the ability to send it. The resolution
+   * of a round that may be in the kitchen is a bookkeeping act. Where the
+   * lines need to go to the kitchen after all, they go on the NEXT round, sent
+   * by a waiter pressing Send - deliberately, with the table unblocked and the
+   * screen showing what happened.
+   *
+   * ONLY `unresolved` IS RESOLVABLE. Not `awaiting_native_confirmation`: that
+   * round is still inside its window and the machine may yet settle it on real
+   * evidence, so letting testimony pre-empt it would replace evidence that is
+   * coming with evidence that is weaker. Not `submitting`: a socket may be open
+   * for it this instant. Not the terminal states: they are settled, and
+   * re-settling them is rewriting history.
+   *
+   * THE RACE IS WON AT THE DATABASE, not by a read-then-write. Two managers on
+   * two tablets, or a manager and a reconciler sweep landing a real `confirmed`
+   * at the same moment, are both ordinary on a busy service. The update is
+   * conditional on the row STILL being `unresolved`, so exactly one writer can
+   * win; the loser is told what the round is now rather than being handed an
+   * error that invites a retry.
+   */
+  async resolveRound(options: {
+    readonly orderId: string;
+    readonly sequence: number;
+    readonly outcome: ManualResolutionOutcome;
+    readonly basis: string;
+    readonly resolvedByUserId: string;
+    readonly resolvedByActingStaffId?: string | null;
+    readonly now?: Date;
+  }): Promise<ManualResolutionResult> {
+    const now = options.now ?? new Date();
+
+    const round = await this.prisma.nativeTableRound.findFirst({
+      where: { orderId: options.orderId, sequence: options.sequence },
+      select: { id: true, state: true, resolvedByUserId: true, resolvedAt: true },
+    });
+    if (!round) {
+      throw new NativeRoundError(
+        'order_not_found',
+        `no round ${options.sequence} exists on order ${options.orderId}`,
+      );
+    }
+
+    // Checked here so the refusal can name the state, and enforced again by the
+    // conditional write below - which is the check that actually holds.
+    if (round.state !== NativeRoundState.unresolved) {
+      throw new NativeRoundError(
+        round.state === NativeRoundState.resolved_manually || round.resolvedAt !== null
+          ? 'already_resolved'
+          : 'not_resolvable',
+        describeWhyNotResolvable(round.state),
+      );
+    }
+
+    // `landed` keeps the lines claimed by this round, which is what stops them
+    // reaching a later one. `didNotLand` releases them so the next Send carries
+    // them - the same edge the reconciler's `notApplied` takes, and the only
+    // line movement on this path.
+    const landed = options.outcome === 'landed';
+    const nextState = landed ? NativeRoundState.resolved_manually : NativeRoundState.failed;
+
+    const won = await this.prisma.$transaction(async (tx) => {
+      // THE GUARD. `updateMany` with the state in the WHERE clause is an atomic
+      // compare-and-set: whichever of two concurrent resolutions gets there
+      // second matches no rows and changes nothing.
+      const { count } = await tx.nativeTableRound.updateMany({
+        where: { id: round.id, state: NativeRoundState.unresolved },
+        data: {
+          state: nextState,
+          resolvedByUserId: options.resolvedByUserId,
+          resolvedByActingStaffId: options.resolvedByActingStaffId ?? null,
+          resolvedAt: now,
+          resolutionBasis: options.basis,
+        },
+      });
+      if (count === 0) return false;
+
+      if (!landed) {
+        await tx.orderItem.updateMany({
+          where: { nativeRoundId: round.id },
+          data: { nativeRoundId: null },
+        });
+      }
+      return true;
+    });
+
+    if (!won) {
+      // Somebody else got there first. Re-read rather than guess, so the
+      // message names what the round actually is now.
+      const current = await this.prisma.nativeTableRound.findUnique({
+        where: { id: round.id },
+        select: { state: true, resolvedByUserId: true, resolvedAt: true },
+      });
+      throw new NativeRoundError(
+        'already_resolved',
+        `round ${options.sequence} was settled by someone else while this was being submitted; ` +
+          `it is now ${current?.state ?? 'unknown'}. Nothing was changed by this request.`,
+      );
+    }
+
+    this.logger.warn(
+      `Round ${round.id} (order ${options.orderId} seq ${options.sequence}) RESOLVED BY HAND as ` +
+        `${options.outcome} by user ${options.resolvedByUserId}: ${options.basis}. ` +
+        (landed
+          ? 'Its lines stay claimed by this round and will NOT go with a later one.'
+          : 'Its lines are back on the order and will go with the next round.'),
+    );
+
+    return {
+      roundId: round.id,
+      sequence: options.sequence,
+      outcome: options.outcome,
+      state: nextState,
+      linesReleased: !landed,
+      resolvedAt: now,
+      message: landed
+        ? 'Recorded: this round is on the table in IdealPOS. It will not be sent again, and its ' +
+          'items will not appear on a later round. The table is free for the next round.'
+        : 'Recorded: this round never reached the table. Its items are back on the order and ' +
+          'will go with the next round you send. The table is free for the next round.',
+    };
+  }
+
+  /**
    * Map the outcome to a durable state and a staff-facing message.
    *
    * THE DURABLE STATE IS NOT DECIDED HERE. It comes from
@@ -580,7 +784,7 @@ export class NativeTableRoundService {
     const { outcome, decision } = result;
 
     if (!outcome.bytesLeftHost) {
-      await this.abandonAndRelease(roundId);
+      await this.settleWithoutSendAndRelease(roundId, NativeRoundState.abandoned);
       return {
         status: 'failedBeforeSend',
         roundId,
@@ -591,6 +795,59 @@ export class NativeTableRoundService {
     }
 
     const to = decision.transition.to;
+
+    // ── `rejected` IS COUPLED TO `not_accepted`, AND THE COUPLING IS CHECKED. ──
+    //
+    // `rejected` is the one post-send state that gives the lines back, so it is
+    // the one post-send state that could ever duplicate a customer's food. Its
+    // licence is not the name of the transition - it is `nativeEffect`, which
+    // the decision table grants ONLY to LOCK, whose "LOCKED BY" check returns
+    // before the receiver's buffering loop runs.
+    //
+    // Read from the decision rather than from the state, because a future
+    // response type mapped to `rejected` without that proof would inherit the
+    // release silently. If one ever appears, it lands on `unresolved` instead:
+    // a table a human must look at, which is survivable, rather than a second
+    // docket, which is not.
+    if (to === 'rejected' && decision.nativeEffect !== 'not_accepted') {
+      this.logger.error(
+        `round ${roundId} mapped to 'rejected' with nativeEffect '${decision.nativeEffect}', ` +
+          "which does not prove non-acceptance. Downgrading to 'unresolved' rather than " +
+          'releasing its lines. This is a decision-table bug and needs fixing.',
+      );
+      await this.setState(roundId, NativeRoundState.unresolved);
+      return {
+        status: 'uncertain',
+        roundId,
+        message:
+          'This round MAY already be on the table in IdealPOS - the till did not answer ' +
+          'clearly. DO NOT send it again. Check the table in IdealPOS before doing anything ' +
+          'else.',
+      };
+    }
+
+    if (to === 'rejected') {
+      // POSITIVE EVIDENCE NOTHING WAS CREATED, so the lines go back on the
+      // order in the SAME write that records the rejection.
+      //
+      // The API answers this outcome with `safeToRetry: true`. Until now that
+      // was a promise the database could not keep: the round kept its lines,
+      // so the retry it invited hit `nothing_to_send` - "every line on this
+      // order has already been assigned to a round" - and the order was
+      // stranded on a table nobody could clear. `safeToRetry: true` now means
+      // what it says, because the next press genuinely carries these lines.
+      //
+      // The state stays `rejected` rather than becoming `abandoned`: the till
+      // refusing a round and Verdura declining to send one are different
+      // events, and an incident review a week later needs to tell them apart.
+      await this.settleWithoutSendAndRelease(roundId, NativeRoundState.rejected);
+      return {
+        status: 'rejected',
+        roundId,
+        message: `IdealPOS did not take this round, and nothing was created. ${decision.reason}`,
+      };
+    }
+
     await this.setState(roundId, toNativeState(to));
 
     if (to === 'awaiting_native_confirmation') {
@@ -600,17 +857,6 @@ export class NativeTableRoundService {
         message:
           'Sent to IdealPOS. Waiting for the till to confirm the round landed on the table - ' +
           'this is not yet proof the kitchen has it.',
-      };
-    }
-
-    if (to === 'rejected') {
-      // Reachable only for an outcome with positive evidence of
-      // non-acceptance - today that is LOCK, whose check runs before the
-      // receiver buffers anything.
-      return {
-        status: 'rejected',
-        roundId,
-        message: `IdealPOS did not take this round, and nothing was created. ${decision.reason}`,
       };
     }
 
@@ -656,11 +902,31 @@ export class NativeTableRoundService {
    * table was stuck, and the only visible symptom was a refusal that read like
    * the order had already gone.
    *
-   * The round is `abandoned` rather than deleted so the attempt history stays
+   * The round is kept rather than deleted so the attempt history stays
    * readable: an incident review can still see that a round was opened, frozen
    * and refused, and why.
+   *
+   * THE STATE IS A PARAMETER BECAUSE TWO DIFFERENT EVENTS END HERE, and an
+   * incident review needs to tell them apart:
+   *
+   *   `abandoned` - VERDURA declined to send. The writer was disabled or
+   *                 misconfigured, a seat it will not send, an unmapped PLU, or
+   *                 the connection never established. Nothing left this device.
+   *   `rejected`  - the TILL declined it, with positive evidence that nothing
+   *                 was created (`nativeEffect: 'not_accepted'`, which only
+   *                 LOCK earns). Bytes left; nothing was accepted.
+   *
+   * Both are settled, both created nothing, and both therefore give the lines
+   * back. Collapsing them into one state would lose the only distinction that
+   * matters at 9pm on a Friday: whether to look at the till or at the config.
    */
-  private async abandonAndRelease(roundId: string): Promise<void> {
+  private async settleWithoutSendAndRelease(
+    roundId: string,
+    state: Extract<
+      NativeRoundState,
+      typeof NativeRoundState.abandoned | typeof NativeRoundState.rejected
+    >,
+  ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.orderItem.updateMany({
         where: { nativeRoundId: roundId },
@@ -668,7 +934,7 @@ export class NativeTableRoundService {
       });
       await tx.nativeTableRound.update({
         where: { id: roundId },
-        data: { state: NativeRoundState.abandoned, payloadFrozenAt: null },
+        data: { state, payloadFrozenAt: null },
       });
     });
   }
@@ -796,6 +1062,19 @@ function describeExistingRound(roundId: string, state: NativeRoundState): SendTo
           'This round may already be on the table and may not be - it has not been resolved. ' +
           'DO NOT send it again. Check the table in IdealPOS, or ask a manager to resolve it.',
       };
+    case NativeRoundState.resolved_manually:
+      // Somebody has already checked the till and vouched for this round, so a
+      // second tap has nothing to do. `sentAwaitingConfirmation` for the same
+      // reason `confirmed` uses it: this vocabulary has no settled-and-proven
+      // member, and the one thing that must be unambiguous is that this
+      // request sent nothing.
+      return {
+        status: 'sentAwaitingConfirmation',
+        roundId,
+        message:
+          'A staff member has already checked IdealPOS and recorded that this round is on the ' +
+          'table. Nothing was sent again.',
+      };
     case NativeRoundState.drafting:
       // A round found by request key that is STILL DRAFTING means another
       // request carrying the same key got here first and is mid-send right
@@ -876,10 +1155,29 @@ function describeRoundForReadback(state: NativeRoundState): {
         requiresReconciliation: true,
         settled: false,
       };
+    case NativeRoundState.resolved_manually:
+      // Settled on a person's word, and SAID SO. The message names the human
+      // origin rather than borrowing `confirmed`'s sentence, because a waiter
+      // reading "the till is holding this round" would reasonably believe the
+      // machine had checked - and nothing has. What is true is narrower and is
+      // what gets said: somebody looked, and this will not be sent again.
+      return {
+        status: 'resolvedManually',
+        message:
+          'Settled by hand: a staff member checked IdealPOS and recorded that this round is ' +
+          'on the table. It will not be sent again.',
+        requiresReconciliation: false,
+        settled: true,
+      };
     case NativeRoundState.rejected:
+      // Settled, created nothing, and its lines are BACK ON THE ORDER - which
+      // is the half a waiter has to act on. Saying only "refused" left them
+      // wondering whether the food still needed ordering.
       return {
         status: 'rejected',
-        message: 'IdealPOS refused this round, and nothing was created on the table.',
+        message:
+          'The till refused this round and nothing was created on the table. Its items are ' +
+          'back on the order and will go with the next round you send.',
         requiresReconciliation: false,
         settled: true,
       };
@@ -920,4 +1218,42 @@ function isUniqueViolation(err: unknown, column: string): boolean {
   const target = e.meta?.target;
   if (Array.isArray(target)) return target.some((t) => String(t).includes(column));
   return typeof target === 'string' ? target.includes(column) : false;
+}
+
+/**
+ * Why a round cannot be settled by hand, phrased for the person holding the
+ * tablet rather than for a log.
+ *
+ * Exhaustive with no default, so a state added later fails the type check here
+ * instead of inheriting a sentence written about some other state.
+ */
+function describeWhyNotResolvable(state: NativeRoundState): string {
+  switch (state) {
+    case NativeRoundState.awaiting_native_confirmation:
+      return (
+        'This round is still waiting for the till, and the server may yet settle it on real ' +
+        'evidence. Nothing was changed. If it is still unresolved in a few minutes it can be ' +
+        'settled by hand then.'
+      );
+    case NativeRoundState.submitting:
+    case NativeRoundState.drafting:
+      return 'This round is being sent right now. Nothing was changed - wait for it to finish.';
+    case NativeRoundState.confirmed:
+      return 'The till itself confirmed this round; there is nothing to settle. Nothing was changed.';
+    case NativeRoundState.resolved_manually:
+      return 'A staff member has already settled this round. Nothing was changed.';
+    case NativeRoundState.rejected:
+      return 'IdealPOS refused this round and created nothing. Nothing was changed.';
+    case NativeRoundState.failed:
+    case NativeRoundState.abandoned:
+      return (
+        `This round ended as ${state}; its lines are already back on the order. ` +
+        'Nothing was changed.'
+      );
+    case NativeRoundState.unresolved:
+      // Not reachable: the caller checks for this state before asking. Kept so
+      // the switch stays exhaustive over the enum rather than needing a
+      // default that would swallow a state added later.
+      return 'This round is unresolved and can be settled by hand.';
+  }
 }

@@ -267,8 +267,18 @@ export function installHarnessLifecycle(): void {
   });
 }
 
-export async function build(env: Record<string, string>): Promise<Harness> {
-  const ledger = new Ledger();
+/**
+ * Build a harness over a set of durable rows.
+ *
+ * `existing` IS HOW A RESTART IS MODELLED. A crash is not a state a process
+ * enters - it is a process ending and a different one starting over the same
+ * database. Passing the previous harness's ledger to a new `build` gives
+ * exactly that: brand new services, brand new timers, brand new sockets, and
+ * the same rows. Anything the new instance concludes it concluded from the
+ * database, which is the only place a real restart could have learned it from.
+ */
+export async function build(env: Record<string, string>, existing?: Ledger): Promise<Harness> {
+  const ledger = existing ?? new Ledger();
   const webitCommands: Row[] = [];
   const queued: Row[] = [];
 
