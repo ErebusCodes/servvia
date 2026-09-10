@@ -33,6 +33,7 @@ import { PosStrategyResolver } from '../pos-strategy-resolver';
 import { IdealposOrderDispatcherService } from '../idealpos-order-dispatcher.service';
 import { PosSyncDispatcherService } from '../pos-sync-dispatcher.service';
 import { NativeTableRoundService } from '../waiterpad/native-table-round.service';
+import { NativeRoundReconciliationService } from '../waiterpad/native-round-reconciliation.service';
 import {
   WaiterPadTableRoundWriter,
   type ITableRoundWriter,
@@ -264,6 +265,11 @@ export interface Harness {
    * specs, and what these tests are about is what reaches the till.
    */
   rounds: NativeRoundsController;
+  /**
+   * The reconciler, reader-unbound exactly as production is. Tests drive
+   * `sweep(now)` directly - the unattended timer never runs under the suite.
+   */
+  reconciler: NativeRoundReconciliationService;
   module: TestingModule;
 }
 
@@ -361,6 +367,13 @@ export async function build(env: Record<string, string>): Promise<Harness> {
         provide: NativeTableRoundService,
         useFactory: () => new NativeTableRoundService(prisma, writer),
       },
+      {
+        // Built with NO evidence reader, which is production today and every
+        // build. So the only thing it can do here is the half that needs no
+        // till access: escalate a round that has gone unproven for too long.
+        provide: NativeRoundReconciliationService,
+        useFactory: () => new NativeRoundReconciliationService(prisma, config, null),
+      },
     ],
   }).compile();
 
@@ -374,6 +387,7 @@ export async function build(env: Record<string, string>): Promise<Harness> {
     nativeSendCount: () => currentServer?.requests.length ?? 0,
     queuedForProcessing: () => queued.length,
     rounds: module.get(NativeRoundsController),
+    reconciler: module.get(NativeRoundReconciliationService),
     module,
   };
 }
@@ -403,7 +417,10 @@ function buildWriter(env: Record<string, string>, prisma: unknown): ITableRoundW
         data: {
           roundId: record.roundId,
           attemptId: record.attemptId,
+          externalOrderId: record.externalOrderId,
+          deviceId: record.deviceId,
           token: record.token,
+          payloadHash: record.payloadHash,
           posTableCode: String(record.table),
           sendInitiatedAt: record.sendInitiatedAt,
         },
@@ -616,6 +633,65 @@ export function buildPrisma(ledger: Ledger): PrismaService {
         if (!r) return Promise.reject(new Error('no such round'));
         Object.assign(r, data);
         return Promise.resolve(r);
+      },
+      /**
+       * The two callers that sweep rounds rather than fetch one: the
+       * reconciler's tick (`where: { state: { in } }`) and the read route
+       * (`where: { orderId }`). Both ask for the same two includes and both
+       * depend on the ordering, so both are modelled here rather than
+       * approximated per caller.
+       *
+       * `attempts` is ordered NEWEST FIRST and sliced to `take`, because that
+       * ordering is load-bearing in both: the till's token row is one deep, and
+       * the "waiting since" clock staff are shown must be the same instant
+       * escalation measures from.
+       */
+      findMany: ({
+        where,
+        orderBy,
+        take,
+        include,
+      }: {
+        where?: Row;
+        orderBy?: Row;
+        take?: number;
+        include?: Row;
+      }) => {
+        let rows = ledger.rounds.filter((r) => matches(r, where));
+
+        const [field, dir] = Object.entries(orderBy ?? {})[0] ?? [];
+        if (field) {
+          rows = [...rows].sort((a, b) => {
+            const x = a[field] as number | Date;
+            const y = b[field] as number | Date;
+            const cmp = x < y ? -1 : x > y ? 1 : 0;
+            return dir === 'desc' ? -cmp : cmp;
+          });
+        }
+        if (typeof take === 'number') rows = rows.slice(0, take);
+
+        return Promise.resolve(
+          rows.map((r) => {
+            const out: Row = { ...r };
+            if (include?.items) out.items = ledger.items.filter((i) => i.nativeRoundId === r.id);
+            if (include?.attempts) {
+              const spec = include.attempts as { orderBy?: Row; take?: number };
+              let attempts = ledger.attempts.filter((a) => a.roundId === r.id);
+              const [af, ad] = Object.entries(spec.orderBy ?? {})[0] ?? [];
+              if (af) {
+                attempts = [...attempts].sort((a, b) => {
+                  const x = a[af] as Date;
+                  const y = b[af] as Date;
+                  const cmp = x < y ? -1 : x > y ? 1 : 0;
+                  return ad === 'desc' ? -cmp : cmp;
+                });
+              }
+              if (typeof spec.take === 'number') attempts = attempts.slice(0, spec.take);
+              out.attempts = attempts;
+            }
+            return out;
+          }),
+        );
       },
     },
 

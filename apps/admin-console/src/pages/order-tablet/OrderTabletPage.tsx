@@ -16,6 +16,11 @@ import {
   type TaxProfile,
   type BillingLine,
 } from './billing';
+import {
+  mergeRoundReadback,
+  type NativeRoundView,
+  type RoundStatusRow,
+} from './nativeRoundView';
 import './OrderTabletPage.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -55,22 +60,10 @@ interface PosSyncView {
  * outcome that is not provably nothing - not merely for the ones that look
  * like failures. This screen never re-derives it from `status`.
  */
-interface NativeRoundView {
-  roundId: string;
-  sequence: number;
-  status:
-    | 'sentAwaitingConfirmation'
-    | 'uncertain'
-    | 'registrationRejected'
-    | 'rejected'
-    | 'failedBeforeSend';
-  message: string;
-  safeToRetry: boolean;
-  requiresReconciliation: boolean;
-  replayed: boolean;
-  /** Set when the server REFUSED before opening a round at all (round_in_flight, etc.). */
-  refusal?: string;
-}
+// The banner's shape, and the rule for how a poll may change it, both live in
+// ./nativeRoundView -- see that file's header. It is a safety rule ("a round is
+// never talked down"), and a safety rule inside this component would be one
+// nobody could test without rendering the whole screen.
 
 // Mirrors GET /api/admin/orders/:id/print-jobs's real response shape (an
 // array of raw PrinterJob rows) -- only the fields the KOT status panel
@@ -1265,6 +1258,46 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
     }
   }
 
+  /**
+   * WHERE THIS ORDER'S ROUNDS NOW STAND, from the server rather than from
+   * whatever the last Send press happened to answer.
+   *
+   * THE HOLE THIS CLOSES. `POST /rounds` answers once, and the best it may ever
+   * say is "sent, awaiting the till" - the receiver ACKs before durable
+   * processing, so no send can report more. Everything after that belongs to
+   * reconciliation, which confirms a round against the till's own token or,
+   * when nothing ever confirms it, ESCALATES it to unresolved so a human looks.
+   * Without this poll that escalation reached nobody: the banner kept showing
+   * the send's reassuring sentence for the rest of the service, about a round
+   * the server had already stopped believing in.
+   *
+   * A FAILED POLL CHANGES NOTHING. There is deliberately no error state and no
+   * `setNativeRound(null)` on any failure path here. The banner is the only
+   * thing standing between an uncertain round and a waiter pressing Send again,
+   * and a screen that cleared it whenever the network hiccupped would clear it
+   * hardest at exactly the moment the till was unreachable.
+   */
+  async function fetchNativeRounds(orderId: string): Promise<void> {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/orders/${orderId}/rounds`, {
+        headers: authHeaders(),
+      });
+      if (!res.ok) {
+        if (res.status === 401) clearAuthOnUnauthorized();
+        return;
+      }
+      const body = (await res.json()) as { rounds?: RoundStatusRow[] };
+      const rows = body.rounds ?? [];
+      // `mergeRoundReadback` owns the decision, including refusing to relax a
+      // red banner on anything short of a settled round. Applied through the
+      // functional setter so a poll that lands between renders still merges
+      // against the banner as it actually is.
+      setNativeRound((current) => mergeRoundReadback(current, rows));
+    } catch {
+      // Same reason as above: silence is not evidence.
+    }
+  }
+
   const TERMINAL_PRINT_JOB_STATES = new Set(['delivered', 'manual', 'failed', 'cancelled']);
 
   useEffect(() => {
@@ -1281,6 +1314,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
     let cancelled = false;
     void fetchPosSyncStatus(createdOrderRef);
     void fetchPrintJobsStatus(createdOrderRef);
+    void fetchNativeRounds(createdOrderRef);
     const interval = setInterval(() => {
       if (cancelled) return;
       const idealposDone = posSyncView?.status && TERMINAL_POS_SYNC_STATES.has(posSyncView.status);
@@ -1289,6 +1323,12 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
         printJobsView !== null &&
         printJobsView.every((job) => TERMINAL_PRINT_JOB_STATES.has(job.status));
       if (!kotDone) void fetchPrintJobsStatus(createdOrderRef);
+      // Polled unconditionally, with no terminal-state shortcut like the two
+      // above. A native round has no state this screen may stop watching: the
+      // one it would most want to stop at - "sent, awaiting the till" - is
+      // precisely the one escalation turns red later on, and a poll that
+      // stopped there would stop just before the only news worth having.
+      void fetchNativeRounds(createdOrderRef);
     }, 3000);
     return () => {
       cancelled = true;
@@ -2557,53 +2597,67 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                 //       disabled. The round MAY be on the table. Pressing Send
                 //       again is the single most damaging thing available on
                 //       this screen, so it is not available.
+                //   confirmed on the till             GREEN, and reachable
+                //       ONLY from the readback poll. No send may ever produce
+                //       it: the receiver ACKs before durable processing, so
+                //       green here means the till was seen holding our own
+                //       token, and nothing weaker.
                 //   sent, awaiting confirmation       BLUE. It went; the till
                 //       has not confirmed it yet. Not an error and not a
                 //       success - and deliberately not green, because green
-                //       means "confirmed" and nothing here has confirmed it.
+                //       means "confirmed" and a send has confirmed nothing.
                 //   never sent, safe to repeat        AMBER. Nothing left the
                 //       device; the lines are still on the order.
                 //
                 // The message is the SERVER's, not this screen's. Re-writing
                 // it here would create a second vocabulary for the same states
                 // that could drift from the one with the evidence behind it.
-                <div
-                  data-testid="native-round-banner"
-                  data-round-status={nativeRound.status}
-                  data-requires-reconciliation={nativeRound.requiresReconciliation ? 'true' : 'false'}
-                  style={{
-                    fontSize: '12px',
-                    borderRadius: '6px',
-                    padding: '8px 10px',
-                    marginBottom: '8px',
-                    background: nativeRound.requiresReconciliation
-                      ? 'var(--color-danger-bg)'
+                //
+                // Resolved as a lookup rather than nested ternaries so that
+                // each state's colour and headline can be read off one line and
+                // checked against the list above.
+                (() => {
+                  const tone = nativeRound.requiresReconciliation
+                    ? 'danger'
+                    : nativeRound.status === 'confirmed'
+                      ? 'success'
                       : nativeRound.status === 'sentAwaitingConfirmation'
-                        ? 'var(--color-info-bg)'
-                        : 'var(--color-warning-bg)',
-                    color: nativeRound.requiresReconciliation
-                      ? 'var(--color-danger)'
-                      : nativeRound.status === 'sentAwaitingConfirmation'
-                        ? 'var(--color-info)'
-                        : 'var(--color-warning)',
-                    border: `1px solid ${
-                      nativeRound.requiresReconciliation
-                        ? 'var(--color-danger-border)'
-                        : nativeRound.status === 'sentAwaitingConfirmation'
-                          ? 'var(--color-info-border)'
-                          : 'var(--color-warning-border)'
-                    }`,
-                  }}
-                >
-                  <div style={{ fontWeight: 700, letterSpacing: '0.03em', marginBottom: '3px' }}>
-                    {nativeRound.requiresReconciliation
-                      ? `ROUND ${nativeRound.sequence || ''} UNCERTAIN — DO NOT SEND AGAIN`
+                        ? 'info'
+                        : 'warning';
+                  const headline = nativeRound.requiresReconciliation
+                    ? `ROUND ${nativeRound.sequence || ''} UNCERTAIN — DO NOT SEND AGAIN`
+                    : nativeRound.status === 'confirmed'
+                      ? `ROUND ${nativeRound.sequence} ON THE TABLE IN IDEALPOS`
                       : nativeRound.status === 'sentAwaitingConfirmation'
                         ? `ROUND ${nativeRound.sequence} SENT — AWAITING TILL CONFIRMATION`
-                        : `ROUND ${nativeRound.sequence || ''} NOT SENT`}
-                  </div>
-                  <div>{nativeRound.message}</div>
-                </div>
+                        : `ROUND ${nativeRound.sequence || ''} NOT SENT`;
+                  return (
+                    <div
+                      data-testid="native-round-banner"
+                      data-round-status={nativeRound.status}
+                      data-round-tone={tone}
+                      data-requires-reconciliation={
+                        nativeRound.requiresReconciliation ? 'true' : 'false'
+                      }
+                      style={{
+                        fontSize: '12px',
+                        borderRadius: '6px',
+                        padding: '8px 10px',
+                        marginBottom: '8px',
+                        background: `var(--color-${tone}-bg)`,
+                        color: `var(--color-${tone})`,
+                        border: `1px solid var(--color-${tone}-border)`,
+                      }}
+                    >
+                      <div
+                        style={{ fontWeight: 700, letterSpacing: '0.03em', marginBottom: '3px' }}
+                      >
+                        {headline}
+                      </div>
+                      <div>{nativeRound.message}</div>
+                    </div>
+                  );
+                })()
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-text-secondary)', padding: '2px 0' }}><span>Subtotal</span><span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPrice(totals.sub)}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-text-secondary)', padding: '2px 0' }}><span>GST included</span><span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPrice(totals.gst)}</span></div>

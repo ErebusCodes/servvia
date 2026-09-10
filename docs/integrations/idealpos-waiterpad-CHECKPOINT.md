@@ -1167,3 +1167,129 @@ WEBORDER / INSERTORDERS / DOSHII: ABSENT from the native path
 LIVE ACTIVATION:                  BLOCKED - handheld licence capacity only
 PRODUCTION READY:                 NO
 ```
+
+---
+
+## Addendum — 2026-09-10, the readback: escalation that reaches a person
+
+Reconciliation has been able to escalate an unproven round since `e5446b8`. It
+could not tell anybody. This closes that.
+
+### The hole
+
+`POST /api/admin/orders/:id/rounds` answers once, about the instant it ran, and
+the best it may ever say is `sentAwaitingConfirmation` — the receiver ACKs
+before durable processing, so no send can honestly report more. Everything after
+that belongs to reconciliation: `confirmed` against the till's own token row, or,
+when nothing ever confirms it, **escalated to `unresolved`** after a bounded wait
+so that a human looks at the till.
+
+That escalation was real, durable, and invisible. It changed a row nothing read.
+The tablet's banner was set once from the POST's answer and never revisited, so
+a waiter went on reading **"ROUND 1 SENT — AWAITING TILL CONFIRMATION"** for the
+rest of the service about a round the server had already given up on — and the
+Send button stayed alive underneath it.
+
+A stale reassuring message is worse than an alarming true one. On this
+integration it is worse in the specific direction that costs money: the whole
+point of escalation is that an unproven round should get *more* alarming with
+age, and the screen was doing the opposite.
+
+### What was built
+
+| Piece | What it is |
+| --- | --- |
+| `NativeTableRoundService.readRounds` | Reads every round of an order. No writer, no transport, returns rows. |
+| `GET /api/admin/orders/:id/rounds` | The read route. Same guards, same venue/org scoping as the POST — now via one shared `assertInScope`, so the two cannot drift. |
+| `describeRoundForReadback` | Durable state → a sentence for someone *looking*. Exhaustive over the enum, no default. |
+| `nativeRoundView.ts` (console) | The merge rule, extracted so it is testable without rendering the screen. |
+| The poll | Runs beside the existing `pos-sync` / `print-jobs` polls, with **no terminal-state shortcut**. |
+
+### The two vocabularies, and why they are not one
+
+`SendToKitchenResult` has no `confirmed` member and must never gain one — no
+send may report a round confirmed. `RoundReadStatus` has one, because by the time
+the readback is asked, reconciliation may genuinely have got there. Collapsing
+them would mean one of the two lying: a confirmed round reported forever as
+`sentAwaitingConfirmation`, or a value in the send path's type that the send path
+is forbidden to produce.
+
+Same reasoning for the messages. `describeExistingRound` speaks to the instant
+after a *second tap* ("nothing was sent again"); the readback speaks to someone
+who pressed nothing. Sharing them would force one context's sentence onto the
+other.
+
+### A round is never talked down
+
+The merge rule is the safety-critical half, and it is one-directional:
+
+* The banner may always become **more** alarming.
+* It becomes less alarming **only** on a `settled` row — `confirmed`, `rejected`,
+  or provably never sent. `unresolved` is deliberately *not* settled, so a round
+  nobody can explain keeps its red banner for as long as nobody can explain it.
+* **Silence changes nothing.** A failed poll, a network drop, a poll returning
+  rows about other rounds — none of them reach the merge with a matching row, and
+  the banner is left untouched. There is no error path that clears it. A screen
+  that relaxed whenever it lost the server would relax hardest at exactly the
+  moment the till was unreachable.
+* `safeToRetry` is never inferred from ignorance — only from a settled row that
+  created nothing.
+* A poll must not *cost* information: while a round is still a human's problem,
+  the send-time cause is kept, because `registrationRejected` ("it is a licence")
+  is something a waiter can act on and the readback's general "nobody knows" is not.
+
+The banner gained a fourth state, GREEN, reachable **only** from the readback —
+which makes the existing comment true rather than aspirational: green means the
+till was seen holding our own token, and a send can never produce it.
+
+After a reload the poll adopts an alarming round from nothing, and only an
+alarming one. A red "do not send again" that a refresh would otherwise have
+silently discarded is exactly what must survive; materialising a reassuring
+"sent, awaiting the till" for a press this device never made would be the screen
+inventing history.
+
+### It cannot send
+
+The read route has no writer in its dependency graph, and `readRounds` returns
+rows. This matters more here than in the reconciler: staff can refresh this at
+will, and a route that reacted to finding a worrying round by resending it would
+be the single most damaging thing on the screen. Asserted with a live fake till
+that hears nothing across ten reads of an escalated round, and by tests that the
+read changes no round state and releases no line.
+
+### Verification
+
+```
+api             99 suites / 1536 tests   PASS
+admin-console   17 files  /  196 tests   PASS
+tsc --noEmit    both apps                CLEAN
+eslint          all changed files        CLEAN
+```
+
+The two new component tests were mutation-checked: with the poll disabled, both
+fail. `native-round-readback.spec.ts` drives the real POST handler, a real
+reconciliation sweep and the real GET handler over one order.
+
+The harness gained `nativeTableRound.findMany` and the reconciler (reader
+**unbound**, as production is), so the escalation path is now exercised
+end-to-end rather than only in the reconciler's own unit spec.
+
+### What this does NOT change
+
+Still true, unchanged by this work:
+
+```
+WIRED WRITER:      DisabledTableRoundWriter
+MIGRATION:         present, NOT applied (deliberately)
+LIVE ACTIVATION:   BLOCKED - handheld licence capacity (WAITERPAD-LICENCE-001)
+EVIDENCE READER:   UNBOUND in every build, so `confirmed` is unreachable in
+                   production today and the readback's working half is
+                   escalation - which is the half that needs no till access
+PRODUCTION READY:  NO
+```
+
+The green banner is implemented and tested but cannot appear in production until
+a connector build can read the till's token row. That is deliberate: the code
+path exists so that binding a reader is a configuration change rather than a
+feature, and until then every evidence field stays `undefined`, which the
+predicate reads as ignorance and never as absence.

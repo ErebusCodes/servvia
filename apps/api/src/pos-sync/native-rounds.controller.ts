@@ -1,7 +1,9 @@
 /**
  * THE BUTTON. `POST /api/admin/orders/:id/rounds` is what Send to Kitchen calls
  * on the Order Tablet for a native IdealPOS venue, and there is no other route
- * into the native path from the running application.
+ * into the native path from the running application. `GET` on the same path is
+ * the way back OUT: it reads where those rounds now stand and can send nothing.
+ * One writing route and one reading one, and only the first can reach the till.
  *
  * IT IS NOT A DEVELOPER ENDPOINT. There is deliberately no second, unguarded
  * route for testing: a debug endpoint that can put a real docket on a real
@@ -48,6 +50,7 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Get,
   HttpCode,
   HttpException,
   HttpStatus,
@@ -71,6 +74,7 @@ import { OrdersService } from '../orders/orders.service';
 import {
   NativeRoundError,
   NativeTableRoundService,
+  type RoundStatusView,
   type SubmitRoundResult,
 } from './waiterpad/native-table-round.service';
 import { SubmitNativeRoundDto } from './dto/submit-native-round.dto';
@@ -195,10 +199,7 @@ export class NativeRoundsController {
     // Same venue scoping as every other staff order route. Done before
     // anything is resolved or written, so a caller outside this venue cannot
     // even learn what the order contains.
-    resolveVenueScope(req.user, order.venueId);
-    if (order.venue.organizationId !== req.user.organizationId) {
-      throw new ForbiddenException('Venue does not belong to your organization');
-    }
+    this.assertInScope(req, order);
 
     // ── ROUTE EXCLUSIVITY, CHECKED AT THE EDGE AS WELL AS IN THE SERVICE. ──
     //
@@ -291,6 +292,71 @@ export class NativeRoundsController {
       throw new HttpException({ ...body }, outcome.httpStatus);
     }
     return body;
+  }
+
+  /**
+   * WHERE THIS ORDER'S ROUNDS STAND. A read, and only a read.
+   *
+   * THE HOLE THIS CLOSES. `POST /rounds` answers once, about the instant it ran,
+   * and the best it may ever say is `sentAwaitingConfirmation` - the receiver
+   * ACKs before durable processing, so no send can report more. Everything that
+   * happens after belongs to reconciliation: a round is confirmed against the
+   * till's own token row, or, when nothing ever confirms it, ESCALATED to
+   * `unresolved` so that a human looks at the till.
+   *
+   * Until this route existed that escalation reached nobody. It changed a row
+   * the tablet never read, so the screen went on showing the POST's answer -
+   * "SENT, AWAITING TILL CONFIRMATION" - for the rest of the service, about a
+   * round the server had already stopped believing in. A stale reassuring
+   * message is worse than an alarming true one, and this is the route that
+   * lets the true one arrive.
+   *
+   * STAFF ROLES ONLY, unlike `GET /orders/:id/pos-sync` next door, which DL-087
+   * widened to `viewer` so a guest could watch their own order. A native round
+   * is opened by a waiter pressing Send to Kitchen and by nothing else; no guest
+   * device has one to watch, and till state is not theirs to read.
+   *
+   * IT CANNOT SEND ANYTHING. `readRounds` returns rows. There is no branch here
+   * that could react to finding a round in a worrying state by resending it -
+   * which matters more on a route staff can refresh at will than anywhere else
+   * in this module.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @Roles(...STAFF_ORDER_ROLES)
+  @Get('admin/orders/:id/rounds')
+  async listRounds(
+    @Req() req: AuthedRequest,
+    @Param('id') orderId: string,
+  ): Promise<{ rounds: RoundStatusView[] }> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, venueId: true, venue: { select: { organizationId: true } } },
+    });
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    this.assertInScope(req, order);
+
+    // Wrapped in an object rather than returned as a bare array so that a field
+    // can be added later - a sweep timestamp, a venue-level reconciliation
+    // notice - without every existing client's parse breaking.
+    return { rounds: await this.native.readRounds(orderId) };
+  }
+
+  /**
+   * The venue/organization scoping every route on this controller applies.
+   *
+   * ONE IMPLEMENTATION ON PURPOSE. The read route and the send route must agree
+   * exactly about who may see an order: a scoping check that drifts is how a
+   * route that "only reads" becomes the one that leaks a neighbouring venue's
+   * table state.
+   */
+  private assertInScope(
+    req: AuthedRequest,
+    order: { venueId: string; venue: { organizationId: string } },
+  ): void {
+    resolveVenueScope(req.user, order.venueId);
+    if (order.venue.organizationId !== req.user.organizationId) {
+      throw new ForbiddenException('Venue does not belong to your organization');
+    }
   }
 
   /**

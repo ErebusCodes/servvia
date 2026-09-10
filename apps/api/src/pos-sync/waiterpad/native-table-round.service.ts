@@ -99,6 +99,63 @@ export type SendToKitchenResult =
  * service does not resolve prices, and must not, because the one authority on
  * what a line costs is the same code that priced the order it belongs to.
  */
+/**
+ * WHERE A ROUND STANDS RIGHT NOW, for a screen that is looking rather than sending.
+ *
+ * A separate vocabulary from `SendToKitchenResult` on purpose. That type answers
+ * "you pressed Send and here is what became of it" - a sentence about one
+ * request, which is why it has no `confirmed` member at all: no send may ever
+ * report `confirmed`, because the receiver ACKs before durable processing. This
+ * one answers "here is where that round stands now", asked minutes later by a
+ * screen that sent nothing, and by then `confirmed` is a real answer because
+ * reconciliation may have reached it.
+ *
+ * Collapsing the two would mean one of them lying. Reusing the send vocabulary
+ * here would report a confirmed round as `sentAwaitingConfirmation` forever;
+ * adding `confirmed` to the send vocabulary would put a value in the send path's
+ * type that the send path must never produce.
+ */
+export type RoundReadStatus =
+  /** On the table in IdealPOS, proven by the till holding our own token. */
+  | 'confirmed'
+  /** Sent and ACKed, not yet proven. The ordinary state for the first minutes. */
+  | 'awaitingConfirmation'
+  /** Nobody knows, and a human must look at the till. */
+  | 'unresolved'
+  /** The till refused it and created nothing. */
+  | 'rejected'
+  /** Provably never sent; the lines are back on the order. */
+  | 'notSent'
+  /** Being assembled or mid-send this instant. */
+  | 'assembling';
+
+/** One round of an order, as read back. Every field is something the UI renders. */
+export interface RoundStatusView {
+  readonly roundId: string;
+  readonly sequence: number;
+  /**
+   * The durable enum, unmapped and uninterpreted.
+   *
+   * Carried alongside the derived fields so that a state added to the enum
+   * later is still VISIBLE to a client built today, rather than being silently
+   * folded into whichever derived value happened to be the closest fit.
+   */
+  readonly state: NativeRoundState;
+  readonly status: RoundReadStatus;
+  readonly message: string;
+  /** True when only a human looking at the till can settle this round. */
+  readonly requiresReconciliation: boolean;
+  /** True when this round can no longer change on its own. */
+  readonly settled: boolean;
+  /**
+   * When the bytes went out, from the most recent attempt - the clock that
+   * escalation runs against, so a screen can say how long this has been unproven
+   * instead of only that it is. Null when nothing was ever sent.
+   */
+  readonly sendInitiatedAt: Date | null;
+  readonly lineCount: number;
+}
+
 export interface NewRoundLine {
   readonly menuItemId: string;
   readonly menuItemTitle: string;
@@ -455,6 +512,49 @@ export class NativeTableRoundService {
   }
 
   /**
+   * READ EVERY ROUND OF AN ORDER. Opens nothing, sends nothing, writes nothing.
+   *
+   * WHY THIS EXISTS. Until it did, a round's state after the POST answered was
+   * unobservable from the tablet. The send returns
+   * `sentAwaitingConfirmation` and the screen holds that sentence forever -
+   * including after reconciliation has escalated the round to `unresolved`
+   * because nothing ever confirmed it. The escalation was real and durable and
+   * reached nobody: staff went on reading "waiting for the till" all night about
+   * a round the server had already given up on. Escalation only changes what
+   * staff are told if something tells them.
+   *
+   * IT IS A READ, AND HAS NO SHAPE THROUGH WHICH IT COULD BECOME MORE. There is
+   * no writer here, no transport, and no branch that could decide to resend
+   * something it found in a worrying state - it returns rows. The same rule the
+   * reconciler is built around applies with more force to a route staff can
+   * refresh at will: a round that may be on the tab is LOOKED AT, never sent
+   * again.
+   */
+  async readRounds(orderId: string): Promise<RoundStatusView[]> {
+    const rounds = await this.prisma.nativeTableRound.findMany({
+      where: { orderId },
+      orderBy: { sequence: 'asc' },
+      include: {
+        // Newest first, and only one: the "waiting since" clock staff are shown
+        // must be the same instant escalation measures from, which is the most
+        // recent attempt's. An older attempt's timestamp would make a round
+        // look more overdue than the sweep considers it.
+        attempts: { orderBy: { sendInitiatedAt: 'desc' }, take: 1 },
+        items: { select: { id: true } },
+      },
+    });
+
+    return rounds.map((round) => ({
+      roundId: round.id,
+      sequence: round.sequence,
+      state: round.state,
+      ...describeRoundForReadback(round.state),
+      sendInitiatedAt: round.attempts[0]?.sendInitiatedAt ?? null,
+      lineCount: round.items.length,
+    }));
+  }
+
+  /**
    * Map the outcome to a durable state and a staff-facing message.
    *
    * THE DURABLE STATE IS NOT DECIDED HERE. It comes from
@@ -719,6 +819,88 @@ function describeExistingRound(roundId: string, state: NativeRoundState): SendTo
         message:
           `This round ended as ${state} and was not sent. Its lines are back on the order ` +
           'and will go with the next round.',
+      };
+  }
+}
+
+/**
+ * The durable state, as a sentence for staff who are LOOKING rather than sending.
+ *
+ * Deliberately not shared with `describeExistingRound` above, which maps the
+ * same enum. That one is written for the instant after a second tap, and every
+ * message it produces says some form of "nothing was sent again" - which is
+ * true there and meaningless here, where the reader pressed nothing. Sharing
+ * them would force one context's sentence onto the other, and the wrong half of
+ * that trade is a screen telling a waiter about a send they did not make.
+ *
+ * Exhaustive over the enum with no default, so a state added later fails the
+ * type check here rather than quietly inheriting whichever branch was last.
+ *
+ * THE ASYMMETRY THIS TABLE ENCODES. `requiresReconciliation` is TRUE only for
+ * `unresolved`, and that is the one state a round can arrive in without anybody
+ * pressing anything - escalation puts it there when a send has gone unproven
+ * for too long. Every other state is either settled or still legitimately in
+ * flight. A round is never talked down: nothing in this table turns an
+ * unresolved round back into a reassuring message.
+ */
+function describeRoundForReadback(state: NativeRoundState): {
+  status: RoundReadStatus;
+  message: string;
+  requiresReconciliation: boolean;
+  settled: boolean;
+} {
+  switch (state) {
+    case NativeRoundState.confirmed:
+      return {
+        status: 'confirmed',
+        message: 'On the table in IdealPOS. The till is holding this round.',
+        requiresReconciliation: false,
+        settled: true,
+      };
+    case NativeRoundState.awaiting_native_confirmation:
+      return {
+        status: 'awaitingConfirmation',
+        message: 'Sent to the till. Waiting for confirmation that it landed.',
+        requiresReconciliation: false,
+        settled: false,
+      };
+    case NativeRoundState.unresolved:
+      // The escalation target, and the reason this readback exists. A round
+      // reaches it either from an ambiguous send or from having claimed to be
+      // "awaiting the till" for longer than anyone should believe.
+      return {
+        status: 'unresolved',
+        message:
+          'This round may be on the table and may not be - nobody knows. ' +
+          'DO NOT send it again. Check the table in IdealPOS, or ask a manager.',
+        requiresReconciliation: true,
+        settled: false,
+      };
+    case NativeRoundState.rejected:
+      return {
+        status: 'rejected',
+        message: 'IdealPOS refused this round, and nothing was created on the table.',
+        requiresReconciliation: false,
+        settled: true,
+      };
+    case NativeRoundState.failed:
+    case NativeRoundState.abandoned:
+      return {
+        status: 'notSent',
+        message: `This round ended as ${state} and never reached the till. Its lines are back on the order.`,
+        requiresReconciliation: false,
+        settled: true,
+      };
+    case NativeRoundState.drafting:
+    case NativeRoundState.submitting:
+      // Mid-flight this instant. Not settled and not a human's problem yet -
+      // but emphatically not "safe to send again" either, which is why the
+      // in-flight slot rather than this message is what guards a second tap.
+      return {
+        status: 'assembling',
+        message: 'This round is being sent right now.',
+        requiresReconciliation: false,
+        settled: false,
       };
   }
 }

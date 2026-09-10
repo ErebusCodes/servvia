@@ -114,6 +114,14 @@ const NEVER_SENT: RoundReply = {
 function installFetchMock(options: {
   strategy?: 'webit' | 'native_table_round';
   rounds?: RoundReply[];
+  /**
+   * What `GET /orders/:id/rounds` reports, read fresh on every poll.
+   *
+   * A mutable holder rather than a fixed list, because the behaviour under
+   * test is a round CHANGING under the screen while nobody touches it - which
+   * is the only way an escalation ever happens.
+   */
+  readback?: { rows: Record<string, unknown>[] };
 }) {
   const calls: FetchCall[] = [];
   const strategy = options.strategy ?? 'native_table_round';
@@ -157,6 +165,14 @@ function installFetchMock(options: {
         ]),
         { status: 200 },
       );
+    }
+
+    // The READ side of the round endpoint. Answers with whatever the holder
+    // currently says, so a test can escalate a round mid-service.
+    if (/\/api\/admin\/orders\/[^/]+\/rounds$/.test(url) && init?.method !== 'POST') {
+      return new Response(JSON.stringify({ rounds: options.readback?.rows ?? [] }), {
+        status: 200,
+      });
     }
 
     // The round endpoint - the thing under test.
@@ -453,6 +469,162 @@ describe('an uncertain round', () => {
     // still unsent, so the button has something to send.
     const button = await screen.findByTestId('send-to-kitchen');
     expect(button).not.toBeDisabled();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+describe('the banner tracks the till, not just the send', () => {
+  /**
+   * THE SEND'S ANSWER HAS A SHELF LIFE, AND NOTHING USED TO NOTICE.
+   *
+   * `POST /rounds` can never report better than "sent, awaiting the till" - the
+   * receiver ACKs before durable processing. Everything after that is
+   * reconciliation's: it confirms a round against the till's own token, or,
+   * when nothing ever confirms it, escalates it to unresolved so a human looks.
+   *
+   * Before the readback poll existed, that escalation changed a row this screen
+   * never read. So the waiter went on being told "SENT - AWAITING TILL
+   * CONFIRMATION" for the rest of the night about a round the server had
+   * already given up on - and, worse, the Send button stayed alive.
+   */
+
+  /** One escalated round, exactly as the read route reports it. */
+  const ESCALATED = (roundId: string, sequence: number) => ({
+    roundId,
+    sequence,
+    state: 'unresolved',
+    status: 'unresolved',
+    message:
+      'This round may be on the table and may not be - nobody knows. ' +
+      'DO NOT send it again. Check the table in IdealPOS, or ask a manager.',
+    requiresReconciliation: true,
+    settled: false,
+    sendInitiatedAt: new Date().toISOString(),
+    lineCount: 1,
+  });
+
+  it('goes red on its own, and kills the button, when the server escalates the round', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const readback = { rows: [] as Record<string, unknown>[] };
+      const { calls } = installFetchMock({ strategy: 'native_table_round', readback });
+      renderTablet();
+
+      await openTable('T12 seats');
+      await addItem();
+      await pressSend();
+      await waitFor(() => expect(roundCalls(calls)).toHaveLength(1));
+
+      // The send's own answer: blue, and the table is not blocked.
+      const sent = await screen.findByTestId('native-round-banner');
+      expect(sent).toHaveAttribute('data-round-tone', 'info');
+      expect(sent.textContent).toMatch(/AWAITING TILL CONFIRMATION/i);
+
+      // ── Nobody touches the tablet. The till never confirms. The server's
+      //    reconciliation sweep gives up and escalates the round. ──
+      readback.rows = [ESCALATED('round-1', 1)];
+      await vi.advanceTimersByTimeAsync(3200);
+
+      // ── THE POINT. The screen changed its mind without a single tap. ──
+      await waitFor(() => {
+        const banner = screen.getByTestId('native-round-banner');
+        expect(banner).toHaveAttribute('data-requires-reconciliation', 'true');
+      });
+      const banner = screen.getByTestId('native-round-banner');
+      expect(banner).toHaveAttribute('data-round-tone', 'danger');
+      expect(banner.textContent).toMatch(/UNCERTAIN/);
+      expect(banner.textContent).toMatch(/DO NOT SEND AGAIN/i);
+
+      // And the button is dead, exactly as it would have been had the send
+      // itself come back uncertain. A round that became a human's problem five
+      // minutes late is no less a human's problem.
+      const button = await screen.findByTestId('send-to-kitchen');
+      expect(button).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('turns green only when the till is proven to hold the round', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const readback = { rows: [] as Record<string, unknown>[] };
+      const { calls } = installFetchMock({ strategy: 'native_table_round', readback });
+      renderTablet();
+
+      await openTable('T12 seats');
+      await addItem();
+      await pressSend();
+      await waitFor(() => expect(roundCalls(calls)).toHaveLength(1));
+
+      // Green is unreachable from a send and reachable only from here -
+      // reconciliation having seen the till hold OUR token against OUR device.
+      readback.rows = [
+        {
+          ...ESCALATED('round-1', 1),
+          state: 'confirmed',
+          status: 'confirmed',
+          message: 'On the table in IdealPOS. The till is holding this round.',
+          requiresReconciliation: false,
+          settled: true,
+        },
+      ];
+      await vi.advanceTimersByTimeAsync(3200);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('native-round-banner')).toHaveAttribute(
+          'data-round-tone',
+          'success',
+        );
+      });
+      expect(screen.getByTestId('native-round-banner').textContent).toMatch(/ON THE TABLE/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('will not let a poll talk a red banner back down', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const readback = { rows: [] as Record<string, unknown>[] };
+      const { calls } = installFetchMock({
+        strategy: 'native_table_round',
+        rounds: [UNCERTAIN],
+        readback,
+      });
+      renderTablet();
+
+      await openTable('T12 seats');
+      await addItem();
+      await pressSend();
+      await waitFor(() => expect(roundCalls(calls)).toHaveLength(1));
+      expect(await screen.findByTestId('native-round-banner')).toHaveAttribute(
+        'data-requires-reconciliation',
+        'true',
+      );
+
+      // A poll that reports the round as neither alarming nor settled. That is
+      // IGNORANCE, and ignorance must not read as reassurance - the round may
+      // still be sitting on the customer's tab.
+      readback.rows = [
+        {
+          ...ESCALATED('round-1', 1),
+          state: 'awaiting_native_confirmation',
+          status: 'awaitingConfirmation',
+          message: 'Sent to the till. Waiting for confirmation that it landed.',
+          requiresReconciliation: false,
+          settled: false,
+        },
+      ];
+      await vi.advanceTimersByTimeAsync(6400);
+
+      // Still red, and the button still dead.
+      const banner = screen.getByTestId('native-round-banner');
+      expect(banner).toHaveAttribute('data-requires-reconciliation', 'true');
+      expect(await screen.findByTestId('send-to-kitchen')).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
