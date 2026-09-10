@@ -16,6 +16,7 @@ import { OrdersModule } from '../orders/orders.module';
 import { tableRoundWriterProvider } from './waiterpad/waiterpad-writer.provider';
 import { NativeSendAttemptStore } from './waiterpad/native-send-attempt.store';
 import { NativeTableRoundService } from './waiterpad/native-table-round.service';
+import { NativeRoundsController } from './native-rounds.controller';
 
 @Module({
   // Story 9-3: QueueModule is imported so PosSyncDispatcherService can
@@ -28,7 +29,17 @@ import { NativeTableRoundService } from './waiterpad/native-table-round.service'
   // transitions to staff over the same WebSocket rooms order creation/
   // kitchen-status updates already use, instead of a second mechanism.
   imports: [AuthModule, QueueModule, ConnectorModule, OrdersModule],
-  controllers: [PosSyncController, PosSyncRecordsController, PosCatalogController],
+  controllers: [
+    PosSyncController,
+    PosSyncRecordsController,
+    PosCatalogController,
+    // POST /api/admin/orders/:id/rounds - the Order Tablet's Send to Kitchen
+    // for a native venue, and the only route into the native path. It lives
+    // here rather than on OrdersController because NativeTableRoundService is
+    // a provider of this module and this module already imports OrdersModule;
+    // the reverse edge would need a forwardRef.
+    NativeRoundsController,
+  ],
   providers: [
     PosSyncRecordsService,
     PosSyncDispatcherService,

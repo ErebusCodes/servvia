@@ -92,6 +92,38 @@ export type SendToKitchenResult =
   | { readonly status: 'uncertain'; readonly roundId: string; readonly message: string }
   | { readonly status: 'failedBeforeSend'; readonly roundId: string; readonly message: string };
 
+/**
+ * A line the waiter has entered but that does not exist in the database yet.
+ *
+ * Already priced and validated by the caller against the venue's menu - this
+ * service does not resolve prices, and must not, because the one authority on
+ * what a line costs is the same code that priced the order it belongs to.
+ */
+export interface NewRoundLine {
+  readonly menuItemId: string;
+  readonly menuItemTitle: string;
+  readonly menuItemCategory: string;
+  readonly unitPriceCents: number;
+  readonly quantity: number;
+  readonly lineTotalCents: number;
+  readonly selectedModifiers: unknown;
+  readonly notes: string | null;
+  readonly seat: number | null;
+}
+
+export type SubmitRoundResult = SendToKitchenResult & {
+  readonly sequence: number;
+  /**
+   * True when this request did NOT send anything because a request carrying
+   * the same key already had. The status describes the EXISTING round.
+   *
+   * A caller must not read `replayed: true` as reassurance. If that round is
+   * uncertain it is still uncertain; a second tap is not evidence about the
+   * first tap's outcome.
+   */
+  readonly replayed: boolean;
+};
+
 /** States in which a round still occupies the session's single in-flight slot. */
 const IN_FLIGHT: NativeRoundState[] = [
   NativeRoundState.submitting,
@@ -122,6 +154,83 @@ export class NativeTableRoundService {
   }
 
   /**
+   * WHAT THE SEND TO KITCHEN BUTTON ACTUALLY CALLS.
+   *
+   * `sendToKitchen` above sends whatever is already unclaimed on an order.
+   * This is the shape the tablet needs: the waiter has entered NEW lines since
+   * the last round, and those lines do not exist in the database yet. Round 1
+   * carries the lines the order was created with and passes none here; round 2
+   * carries the mains the waiter has just typed.
+   *
+   * THE APPEND AND THE CLAIM ARE ONE TRANSACTION. If they were two, a crash
+   * between them would leave the new lines unclaimed - recoverable, but it
+   * would also let a concurrent second press claim them into a DIFFERENT round
+   * from the one this request is going to send. Doing both under one commit
+   * means the lines this request created are the lines this request sends, or
+   * neither happened.
+   *
+   * THE DOUBLE TAP. `requestKey` is the client's own key for one press of the
+   * button, and `NativeTableRound.requestKey` is unique. Two taps carrying the
+   * same key cannot both open a round: the loser fails on the constraint, and
+   * is answered with the winner's round rather than an error. That is the
+   * difference between "your second tap did nothing" and "your second tap put
+   * another Lamb Shank in the kitchen".
+   *
+   * IT RETURNS `replayed` FOR THAT CASE, and the caller must NOT treat it as a
+   * fresh send. In particular a replayed round that is `unresolved` is still
+   * unresolved - a second tap is not evidence about the first one's outcome.
+   */
+  async submitRound(params: {
+    readonly orderId: string;
+    /** One press of Send to Kitchen. Two requests carrying this key are one press. */
+    readonly requestKey: string;
+    /** Lines entered since the last round. Empty for the first round of an order. */
+    readonly newLines: readonly NewRoundLine[];
+  }): Promise<SubmitRoundResult> {
+    const { orderId, requestKey, newLines } = params;
+
+    // A round already opened under this key means this request is a repeat of
+    // one that has been handled. Report what became of it; do not send again.
+    const alreadyDone = await this.prisma.nativeTableRound.findUnique({
+      where: { requestKey },
+      select: { id: true, sequence: true, state: true },
+    });
+    if (alreadyDone) return this.replayOf(alreadyDone);
+
+    let opened: { id: string; sequence: number };
+    try {
+      opened = await this.openRound(orderId, { requestKey, newLines });
+    } catch (err) {
+      // The other tap won the constraint between our read above and our write.
+      // Its round is the real one; answer with that rather than with an error
+      // the waiter would read as "it did not go".
+      if (isUniqueViolation(err, 'requestKey')) {
+        const winner = await this.prisma.nativeTableRound.findUnique({
+          where: { requestKey },
+          select: { id: true, sequence: true, state: true },
+        });
+        if (winner) return this.replayOf(winner);
+      }
+      throw err;
+    }
+
+    const sent = await this.sendRound(opened.id);
+    return { ...sent, sequence: opened.sequence, replayed: false };
+  }
+
+  private replayOf(round: {
+    id: string;
+    sequence: number;
+    state: NativeRoundState;
+  }): SubmitRoundResult {
+    return {
+      ...describeExistingRound(round.id, round.state),
+      sequence: round.sequence,
+      replayed: true,
+    };
+  }
+
+  /**
    * Claim the unsent lines of an order into a new round.
    *
    * ONE TRANSACTION, and the claim is the point of it. Creating the round and
@@ -129,7 +238,13 @@ export class NativeTableRoundService {
    * belonging to a round that does not describe them - and the next round
    * would then either double-send them or skip them.
    */
-  async openRound(orderId: string): Promise<{ id: string; sequence: number }> {
+  async openRound(
+    orderId: string,
+    options: {
+      readonly requestKey?: string;
+      readonly newLines?: readonly NewRoundLine[];
+    } = {},
+  ): Promise<{ id: string; sequence: number }> {
     return await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -200,7 +315,38 @@ export class NativeTableRoundService {
         );
       }
 
-      // The delta: only lines no round has carried yet.
+      // ── The lines the waiter has just entered, written here and nowhere
+      //    else. ──
+      //
+      // AFTER the in-flight check on purpose. If a previous round on this
+      // table is unresolved, this request is refused, and these lines must
+      // NOT have been written: an order that silently grew by three lines
+      // during a refusal is an order whose next round carries food the waiter
+      // does not remember ordering.
+      for (const line of options.newLines ?? []) {
+        await tx.orderItem.create({
+          data: {
+            orderId,
+            menuItemId: line.menuItemId,
+            menuItemTitle: line.menuItemTitle,
+            menuItemCategory: line.menuItemCategory,
+            unitPriceCents: line.unitPriceCents,
+            quantity: line.quantity,
+            lineTotalCents: line.lineTotalCents,
+            selectedModifiers: line.selectedModifiers as Prisma.InputJsonValue,
+            notes: line.notes,
+            seat: line.seat,
+            // Explicit, though it is also the column default. This line is
+            // unclaimed for exactly as long as it takes the claim below to
+            // run, inside this same transaction.
+            nativeRoundId: null,
+          },
+        });
+      }
+
+      // The delta: only lines no round has carried yet. The lines just
+      // appended are among them, and so is anything a previous refused
+      // attempt left behind.
       const unsent = await tx.orderItem.findMany({
         where: { orderId, nativeRoundId: null },
         select: { id: true },
@@ -223,6 +369,11 @@ export class NativeTableRoundService {
           // Durable before any send, derived from ids that survive a restart -
           // never minted in browser state at submit time.
           idempotencyKey: `${orderId}:r${sequence}`,
+          // The client's key for this press of Send. Unique, so a second tap
+          // carrying the same key cannot open a second round - see
+          // submitRound, which turns that constraint failure into an answer
+          // rather than an error.
+          requestKey: options.requestKey ?? null,
           state: NativeRoundState.drafting,
           posTableCode,
           guests: order.guests ?? 0,
@@ -292,13 +443,9 @@ export class NativeTableRoundService {
       });
     } catch (err) {
       // The writer refused BEFORE opening a socket - disabled, misconfigured,
-      // or a seat it will not send. Nothing left the host, so the round returns
-      // to drafting with its lines still claimed, re-sendable under the SAME
-      // round identity once the cause is fixed.
-      await this.prisma.nativeTableRound.update({
-        where: { id: roundId },
-        data: { state: NativeRoundState.drafting, payloadFrozenAt: null },
-      });
+      // or a seat it will not send. Nothing left the host, so the round is
+      // abandoned and its lines are RELEASED back to unclaimed.
+      await this.abandonAndRelease(roundId);
       const message = err instanceof Error ? err.message : 'the native writer refused this round';
       this.logger.warn(`round ${roundId} refused before send: ${message}`);
       return { status: 'failedBeforeSend', roundId, message };
@@ -333,7 +480,7 @@ export class NativeTableRoundService {
     const { outcome, decision } = result;
 
     if (!outcome.bytesLeftHost) {
-      await this.setState(roundId, NativeRoundState.drafting, { payloadFrozenAt: null });
+      await this.abandonAndRelease(roundId);
       return {
         status: 'failedBeforeSend',
         roundId,
@@ -390,6 +537,40 @@ export class NativeTableRoundService {
         'clearly. DO NOT send it again. Check the table in IdealPOS before doing anything ' +
         'else.',
     };
+  }
+
+  /**
+   * End a round that PROVABLY never sent, and give its lines back.
+   *
+   * REACHED ONLY WHERE `bytesLeftHost` IS FALSE - the writer refused before
+   * opening a socket, or the connection never established. That precondition
+   * is the whole licence for what this does: releasing the lines of a round
+   * that MIGHT have been sent would let the next round carry them a second
+   * time, which is the one failure this module exists to prevent.
+   *
+   * WHY RELEASE RATHER THAN LEAVE THEM CLAIMED. An earlier version returned the
+   * round to `drafting` with its lines still stamped. That looked conservative
+   * and was actually a trap: the next press opened a NEW round, whose "lines no
+   * round has carried yet" query found nothing, and the waiter got
+   * `nothing_to_send` on an order whose food had never been sent anywhere. The
+   * table was stuck, and the only visible symptom was a refusal that read like
+   * the order had already gone.
+   *
+   * The round is `abandoned` rather than deleted so the attempt history stays
+   * readable: an incident review can still see that a round was opened, frozen
+   * and refused, and why.
+   */
+  private async abandonAndRelease(roundId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.orderItem.updateMany({
+        where: { nativeRoundId: roundId },
+        data: { nativeRoundId: null },
+      });
+      await tx.nativeTableRound.update({
+        where: { id: roundId },
+        data: { state: NativeRoundState.abandoned, payloadFrozenAt: null },
+      });
+    });
   }
 
   private async setState(
@@ -471,4 +652,90 @@ function toNativeState(
     case 'unresolved':
       return NativeRoundState.unresolved;
   }
+}
+
+/**
+ * What to tell staff about a round this request did NOT send.
+ *
+ * Reached only from the duplicate-request path, and every branch is written
+ * for a waiter looking at a tablet mid-service rather than for a log reader.
+ *
+ * THE RULE THAT SHAPES ALL OF IT: a second tap is not evidence about the first
+ * tap's outcome. A round that was unresolved before this request is unresolved
+ * after it, and the message says so plainly rather than letting a hopeful
+ * reading of "already sent" turn into a third tap.
+ */
+function describeExistingRound(roundId: string, state: NativeRoundState): SendToKitchenResult {
+  switch (state) {
+    case NativeRoundState.confirmed:
+      return {
+        status: 'sentAwaitingConfirmation',
+        roundId,
+        message: 'This round is already on the table in IdealPOS. Nothing was sent again.',
+      };
+    case NativeRoundState.awaiting_native_confirmation:
+    case NativeRoundState.submitting:
+      return {
+        status: 'sentAwaitingConfirmation',
+        roundId,
+        message:
+          'This round has already been sent and is waiting for the till to confirm it. ' +
+          'Nothing was sent again.',
+      };
+    case NativeRoundState.rejected:
+      return {
+        status: 'rejected',
+        roundId,
+        message: 'IdealPOS did not take this round, and nothing was created on the table.',
+      };
+    case NativeRoundState.unresolved:
+      return {
+        status: 'uncertain',
+        roundId,
+        message:
+          'This round may already be on the table and may not be - it has not been resolved. ' +
+          'DO NOT send it again. Check the table in IdealPOS, or ask a manager to resolve it.',
+      };
+    case NativeRoundState.drafting:
+      // A round found by request key that is STILL DRAFTING means another
+      // request carrying the same key got here first and is mid-send right
+      // now. It is emphatically not "safe to send again": the other request's
+      // packet may be on the wire as this one answers.
+      return {
+        status: 'sentAwaitingConfirmation',
+        roundId,
+        message:
+          'This send is already being processed. Nothing was sent again - wait for it to ' +
+          'finish rather than pressing again.',
+      };
+    case NativeRoundState.failed:
+    case NativeRoundState.abandoned:
+      // Provably nothing left the host, and the lines have been released back
+      // onto the order - so they will go with the next round, and pressing
+      // Send again is exactly the right thing to do.
+      return {
+        status: 'failedBeforeSend',
+        roundId,
+        message:
+          `This round ended as ${state} and was not sent. Its lines are back on the order ` +
+          'and will go with the next round.',
+      };
+  }
+}
+
+/**
+ * Is this the unique-constraint failure for a specific column?
+ *
+ * Narrow on purpose. A broad "was it a P2002" would also swallow a collision
+ * on `idempotencyKey` or on `(orderId, sequence)`, and those two mean
+ * something entirely different - two rounds racing for the same sequence
+ * number, which must surface rather than be answered with somebody else's
+ * round.
+ */
+function isUniqueViolation(err: unknown, column: string): boolean {
+  const e = err as { code?: string; meta?: { target?: unknown } } | null;
+  if (!e || e.code !== 'P2002') return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return target.some((t) => String(t).includes(column));
+  return typeof target === 'string' ? target.includes(column) : false;
 }

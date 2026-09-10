@@ -181,10 +181,25 @@ class Venue {
                 (where.nativeRoundId === null ? i.nativeRoundId === null : true),
             ),
           ),
+        // TWO SHAPES, both real:
+        //   { orderId, nativeRoundId: null }  the CLAIM, when a round opens
+        //   { nativeRoundId: <id> }           the RELEASE, when a round that
+        //                                     provably never sent is abandoned
+        // Modelling only the first would make the release a silent no-op, and
+        // the assertion that the lines came back would pass without the code
+        // that brings them back existing at all.
         updateMany: ({ where, data }: { where: Row; data: Row }) => {
           let count = 0;
           for (const i of this.items) {
-            if (i.orderId === where.orderId && i.nativeRoundId === null) {
+            const byOrder =
+              where.orderId !== undefined &&
+              i.orderId === where.orderId &&
+              (where.nativeRoundId === null ? i.nativeRoundId === null : true);
+            const byRound =
+              where.orderId === undefined &&
+              where.nativeRoundId != null &&
+              i.nativeRoundId === where.nativeRoundId;
+            if (byOrder || byRound) {
               i.nativeRoundId = data.nativeRoundId;
               count += 1;
             }
@@ -420,11 +435,7 @@ describe('a table across a whole service: drinks, then mains, then dessert', () 
 
     // Every round carried its own durable idempotency key, derived from ids
     // that survive a restart - never minted in browser state.
-    expect(rounds.map((r) => r.idempotencyKey)).toEqual([
-      'order-a:r1',
-      'order-a:r2',
-      'order-a:r3',
-    ]);
+    expect(rounds.map((r) => r.idempotencyKey)).toEqual(['order-a:r1', 'order-a:r2', 'order-a:r3']);
   });
 });
 
@@ -625,7 +636,7 @@ describe('a waiter presses Send twice', () => {
     const rejected = settled.filter((r) => r.status === 'rejected');
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    const failure = (rejected[0] as PromiseRejectedResult).reason as NativeRoundError;
+    const failure = rejected[0].reason as NativeRoundError;
     expect(failure).toBeInstanceOf(NativeRoundError);
     expect(failure.reason).toBe('nothing_to_send');
 

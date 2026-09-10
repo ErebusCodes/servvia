@@ -114,10 +114,25 @@ class FakeDb {
                 (where.nativeRoundId === null ? i.nativeRoundId === null : true),
             ),
           ),
+        // TWO SHAPES, both real:
+        //   { orderId, nativeRoundId: null }  the CLAIM, when a round opens
+        //   { nativeRoundId: <id> }           the RELEASE, when a round that
+        //                                     provably never sent is abandoned
+        // Modelling only the first would make the release a silent no-op, and
+        // the assertion that the lines came back would pass without the code
+        // that brings them back existing at all.
         updateMany: ({ where, data }: { where: Row; data: Row }) => {
           let count = 0;
           for (const i of this.items) {
-            if (i.orderId === where.orderId && i.nativeRoundId === null) {
+            const byOrder =
+              where.orderId !== undefined &&
+              i.orderId === where.orderId &&
+              (where.nativeRoundId === null ? i.nativeRoundId === null : true);
+            const byRound =
+              where.orderId === undefined &&
+              where.nativeRoundId != null &&
+              i.nativeRoundId === where.nativeRoundId;
+            if (byOrder || byRound) {
               i.nativeRoundId = data.nativeRoundId;
               count += 1;
             }
@@ -406,9 +421,13 @@ describe('a waiter sends Table 5, seat 1, one Lemon Slice', () => {
     expect(server.connections).toBe(0);
     expect(server.requests).toHaveLength(0);
     expect(result.status).toBe('failedBeforeSend');
-    // The round is editable again, under the SAME identity.
-    expect(db.rounds[0].state).toBe('drafting');
+    // The round is abandoned and its LINES ARE RELEASED - which is the part
+    // that matters. Leaving them claimed by a round that never sent would make
+    // the next press answer `nothing_to_send` on an order whose food had gone
+    // nowhere: a stuck table whose only symptom reads like "already sent".
+    expect(db.rounds[0].state).toBe('abandoned');
     expect(db.rounds[0].payloadFrozenAt).toBeNull();
+    expect(db.items.every((i) => i.nativeRoundId === null)).toBe(true);
   });
 });
 
@@ -558,8 +577,10 @@ describe('what it refuses rather than guess', () => {
     expect(result.status).toBe('failedBeforeSend');
     expect(result.message).toMatch(/seat/i);
     expect(server!.connections).toBe(0);
-    // Editable again under the same identity once the gate is opened.
-    expect(db.rounds[0].state).toBe('drafting');
+    // Nothing left the host, so the lines go back on the order and will be
+    // carried by the next round once the gate is opened.
+    expect(db.rounds[0].state).toBe('abandoned');
+    expect(db.items.every((i) => i.nativeRoundId === null)).toBe(true);
   });
 });
 
@@ -626,7 +647,10 @@ describe('what staff are told when the till does not answer cleanly', () => {
     const result = await service.sendToKitchen('order-1');
     expect(result.status).toBe('failedBeforeSend');
     expect(result.message).toMatch(/safe to send again/i);
-    expect(db.rounds[0].state).toBe('drafting');
+    // And "safe to send again" is TRUE rather than merely reassuring: the
+    // lines are unclaimed, so the next round genuinely carries them.
+    expect(db.rounds[0].state).toBe('abandoned');
+    expect(db.items.every((i) => i.nativeRoundId === null)).toBe(true);
   });
 });
 

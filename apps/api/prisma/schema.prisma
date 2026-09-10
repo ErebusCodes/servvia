@@ -1675,6 +1675,23 @@ model NativeTableRound {
 
   state NativeRoundState @default(drafting)
 
+  /// The client's own key for the Send press that opened this round.
+  ///
+  /// THE DOUBLE-TAP GUARD, AND IT HAS TO BE A CONSTRAINT RATHER THAN A CHECK.
+  /// A waiter pressing Send twice in the same second produces two requests
+  /// carrying the same key. Both would otherwise append their items to the
+  /// order and open a round, and the second round would carry a second copy
+  /// of the same food. `@unique` makes the second one lose at the database
+  /// rather than at whichever read happened to run first: it fails with a
+  /// unique violation, and the handler answers with the round the winner
+  /// opened.
+  ///
+  /// Nullable because a round opened by anything other than an HTTP submit -
+  /// a test, an operational tool - has no client request behind it, and
+  /// Postgres does not consider two NULLs equal, so those rounds do not
+  /// collide with each other.
+  requestKey String? @unique
+
   /// The native IdealPOS table this round was built against, captured at
   /// OPEN time from `Table.posTableCode`. Stored on the round rather than
   /// read through the order at send time so that a later edit to the table's

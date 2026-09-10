@@ -54,7 +54,7 @@ interface ResolvedSelectedModifier {
   priceDeltaCents: number;
 }
 
-interface ResolvedOrderItem {
+export interface ResolvedOrderItem {
   menuItemId: string;
   menuItemTitle: string;
   menuItemCategory: string;
@@ -1213,6 +1213,34 @@ export class OrdersService {
    * public kiosk path, preserved exactly as it worked before this story
    * (Window Display's separate, out-of-scope legacy flow depends on it).
    */
+  /**
+   * Price and validate lines for a further native round on an EXISTING order.
+   *
+   * WHY THIS EXISTS RATHER THAN THE ROUND CONTROLLER DOING ITS OWN LOOKUP.
+   * There must be exactly one authority on what a line costs, what it is
+   * called, and which category it belongs to, and it is the same code that
+   * priced round one. A second implementation would drift, and the drift would
+   * show up as round two of a table priced differently from round one - on one
+   * bill, in front of the customer who ordered both.
+   *
+   * `strict: true` matches the staff-order path: an unknown item, an
+   * unavailable item or an unresolvable modifier is a rejection, never a
+   * silently-dropped line. A round that quietly lost an item is a customer who
+   * does not get their food.
+   */
+  async resolveRoundLines(
+    venueId: string,
+    organizationId: string,
+    items: CreateOrderItemDto[],
+  ): Promise<ResolvedOrderItem[]> {
+    const venue = await this.resolveVenue(venueId);
+    if (venue.organizationId !== organizationId) {
+      throw new ForbiddenException('Venue does not belong to your organization');
+    }
+    const { resolvedItems } = await this.resolveOrderItems(items, venue, true);
+    return resolvedItems;
+  }
+
   private async resolveOrderItems(
     items: CreateOrderItemDto[],
     venue: Venue,
