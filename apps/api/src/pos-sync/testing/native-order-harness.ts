@@ -46,6 +46,7 @@ import {
 import { NativeRoundsController } from '../native-rounds.controller';
 import { QUEUE_NAMES } from '../../queue/queue.constants';
 import { getQueueToken } from '@nestjs/bullmq';
+import { applyUpdateMany, matches, type Row } from './prisma-filter';
 
 // ═════════════════════════════════════════════════════════════════════════
 // A store that actually evaluates Prisma filters.
@@ -53,61 +54,15 @@ import { getQueueToken } from '@nestjs/bullmq';
 // The whole point of these tests is the `where` clauses. A mock that returned
 // every row regardless of filter would pass with the guards deleted, which
 // makes it worse than no test at all - it would assert that the protection
-// exists while proving nothing. So `matches` implements the operator subset the
-// two sweeps genuinely use, and anything outside that subset throws rather than
-// being silently treated as "no constraint".
+// exists while proving nothing.
+//
+// The filter semantics themselves live in `prisma-filter.ts` and are SHARED
+// with the smaller store inside native-round-reconciliation.spec.ts. They were
+// copied once and diverged once, which is how `updateMany` came to exist in
+// the production code and in neither double.
 // ═════════════════════════════════════════════════════════════════════════
 
-export type Row = Record<string, unknown>;
-
-export function matchesLeaf(value: unknown, condition: unknown): boolean {
-  if (condition === null) return value === null || value === undefined;
-  if (typeof condition !== 'object' || condition instanceof Date || Array.isArray(condition)) {
-    return value === condition;
-  }
-
-  for (const [op, operand] of Object.entries(condition as Row)) {
-    switch (op) {
-      case 'not':
-        if (matchesLeaf(value, operand)) return false;
-        break;
-      case 'in':
-        if (!(operand as unknown[]).includes(value)) return false;
-        break;
-      case 'lt':
-        if (!(value != null && (value as number) < (operand as number))) return false;
-        break;
-      case 'lte':
-        if (!(value != null && (value as number) <= (operand as number))) return false;
-        break;
-      case 'gte':
-        if (!(value != null && (value as number) >= (operand as number))) return false;
-        break;
-      default:
-        // Deliberately loud. A filter operator this harness does not model
-        // would otherwise be quietly ignored, and a test that ignores a filter
-        // is a test that cannot fail for the reason it exists.
-        throw new Error(`route-exclusivity harness does not model Prisma operator '${op}'`);
-    }
-  }
-  return true;
-}
-
-export function matches(row: Row, where: Row | undefined): boolean {
-  if (!where) return true;
-  for (const [key, condition] of Object.entries(where)) {
-    if (key === 'OR') {
-      if (!(condition as Row[]).some((c) => matches(row, c))) return false;
-      continue;
-    }
-    if (key === 'AND') {
-      if (!(condition as Row[]).every((c) => matches(row, c))) return false;
-      continue;
-    }
-    if (!matchesLeaf(row[key], condition)) return false;
-  }
-  return true;
-}
+export { matches, matchesLeaf, type Row } from './prisma-filter';
 
 /** The venue, its orders, and every row the two pipelines read or write. */
 export class Ledger {
@@ -634,6 +589,18 @@ export function buildPrisma(ledger: Ledger): PrismaService {
         Object.assign(r, data);
         return Promise.resolve(r);
       },
+      /**
+       * THE COMPARE-AND-SET EVERY SAFETY-CRITICAL WRITE ON THIS TABLE USES.
+       *
+       * Manual resolution, the reconciler's three verdict writers and the
+       * restart recovery sweep all carry the round's CURRENT STATE in the
+       * `where` clause, so that a row another writer has already moved matches
+       * nothing. `count` is how the loser finds out, and answering 1
+       * unconditionally would assert the exact opposite of the property those
+       * writes exist to have.
+       */
+      updateMany: ({ where, data }: { where?: Row; data: Row }) =>
+        Promise.resolve(applyUpdateMany(ledger.rounds, where, data)),
       /**
        * The two callers that sweep rounds rather than fetch one: the
        * reconciler's tick (`where: { state: { in } }`) and the read route

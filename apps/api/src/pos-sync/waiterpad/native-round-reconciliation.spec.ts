@@ -34,10 +34,11 @@ import {
   type FakeWaiterPadServer,
 } from './testing/fake-waiterpad-server';
 import type { PrismaService } from '../../prisma/prisma.service';
-
-interface Row {
-  [k: string]: unknown;
-}
+// Shared with `native-order-harness.ts` on purpose. When each store owned a
+// private copy of these semantics they diverged, and the production code that
+// began issuing `updateMany` failed nine tests in the store that had never
+// heard of it.
+import { applyUpdateMany, type Row } from '../testing/prisma-filter';
 
 const DEVICE = 'VERDURA-ACCEPT-0001';
 
@@ -139,18 +140,23 @@ class Store {
           Object.assign(r, data);
           return Promise.resolve(r);
         },
+        /**
+         * The conditional write every verdict in this sweep goes through.
+         *
+         * `markConfirmed`, `markNotApplied` and `escalate` all name the state
+         * they expect to still find, so that a round a MANAGER settled between
+         * this sweep's read and its write matches nothing and keeps their
+         * resolution. `count === 0` is how the sweep learns it lost, and
+         * `markNotApplied` in particular refuses to touch the lines when it
+         * does - which is the difference between leaving a settled round alone
+         * and putting its food onto a second bill.
+         */
+        updateMany: ({ where, data }: { where?: Row; data: Row }) =>
+          Promise.resolve(applyUpdateMany(this.rounds, where, data)),
       },
       orderItem: {
-        updateMany: ({ where, data }: { where: Row; data: Row }) => {
-          let count = 0;
-          for (const i of this.items) {
-            if (i.nativeRoundId === where.nativeRoundId) {
-              i.nativeRoundId = data.nativeRoundId;
-              count += 1;
-            }
-          }
-          return Promise.resolve({ count });
-        },
+        updateMany: ({ where, data }: { where: Row; data: Row }) =>
+          Promise.resolve(applyUpdateMany(this.items, where, data)),
       },
     };
     return api as unknown as PrismaService;
