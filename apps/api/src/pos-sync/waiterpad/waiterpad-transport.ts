@@ -23,6 +23,13 @@
  *
  * The socket is opened only by `sendOrder2Once`. Nothing else in this module
  * tree imports `node:net`.
+ *
+ * THE TIMER RULE, which is separate from the retry rule and was got wrong once:
+ * a deadline may only end the phase it was set for. Connect, write and read are
+ * three bounded phases, each disarming its own timer at its own boundary, and
+ * at most one is armed at a time. A single shared timer list let the connect
+ * deadline stay armed into the response phase and truncate it - see the
+ * comment on `connectTimer` for what that cost.
  */
 
 import { createConnection, type Socket } from 'node:net';
@@ -111,10 +118,33 @@ export async function sendOrder2Once(
     const chunks: Buffer[] = [];
     let socket: Socket;
 
-    const timers: NodeJS.Timeout[] = [];
+    // ── THREE PHASES, THREE TIMERS, AND AT MOST ONE OF THEM ARMED. ──
+    //
+    // Held individually rather than in a list, because the bug this shape
+    // exists to prevent was a timer that could not be cancelled on its own.
+    // The connect deadline used to be pushed onto a shared array and cleared
+    // only at settlement, so it stayed armed through the response phase and
+    // fired inside it: with connectMs 5000 and readMs 10000, the effective read
+    // window was `5000 minus however long connecting took`, and more than half
+    // the configured budget was unreachable. A till answering at 6s - ordinary
+    // under load - was recorded as `noResponse`, which is UNCERTAIN, which
+    // blocks the table for the rest of the service. It failed safe and it
+    // failed constantly.
+    //
+    // Each phase now disarms its own timer at its own boundary, so a deadline
+    // can only ever end the phase it was set for.
+    let connectTimer: NodeJS.Timeout | null = null;
+    let writeTimer: NodeJS.Timeout | null = null;
+    let readTimer: NodeJS.Timeout | null = null;
+
+    const disarm = (t: NodeJS.Timeout | null): null => {
+      if (t) clearTimeout(t);
+      return null;
+    };
     const clearTimers = (): void => {
-      for (const t of timers) clearTimeout(t);
-      timers.length = 0;
+      connectTimer = disarm(connectTimer);
+      writeTimer = disarm(writeTimer);
+      readTimer = disarm(readTimer);
     };
 
     const settle = (outcome: WaiterPadSendOutcome): void => {
@@ -174,27 +204,65 @@ export async function sendOrder2Once(
 
     socket.setNoDelay(true);
 
-    timers.push(
-      setTimeout(() => {
-        if (wrote) settleAfterWrite('connect/write deadline elapsed after write');
-        else
-          settle({
-            kind: 'failedBeforeSend',
-            bytesLeftHost: false,
-            detail: 'connect timeout',
-            elapsedMs: since(),
-          });
-      }, target.timeouts.connectMs),
-    );
+    // ── PHASE 1: CONNECT. ──
+    //
+    // The only phase whose deadline may report `failedBeforeSend`, because it
+    // is the only one that runs while nothing can have been written. The
+    // `wrote` guard is belt-and-braces: this timer is disarmed the instant the
+    // socket connects, so it cannot reach a state where bytes have gone - but
+    // if it somehow did, answering `failedBeforeSend` would license a resend of
+    // an order that may be in the kitchen, so the safe branch stays.
+    connectTimer = setTimeout(() => {
+      connectTimer = null;
+      if (wrote) settleAfterWrite('connect deadline elapsed after write');
+      else
+        settle({
+          kind: 'failedBeforeSend',
+          bytesLeftHost: false,
+          detail: 'connect timeout',
+          elapsedMs: since(),
+        });
+    }, target.timeouts.connectMs);
 
     socket.on('connect', () => {
+      // THE FIX. Connected, so the connect deadline is spent and must not be
+      // able to end any later phase.
+      connectTimer = disarm(connectTimer);
+
       // Mark BEFORE write(): once the syscall is issued we can no longer prove
       // that nothing reached the till.
       wrote = true;
-      socket.write(bytes);
-      timers.push(
-        setTimeout(() => settleAfterWrite('read deadline elapsed'), target.timeouts.readMs),
-      );
+
+      // ── PHASE 2: WRITE. ──
+      //
+      // Bounded separately because a peer that accepts a connection and then
+      // stops reading stalls here rather than in the read phase, and the two
+      // want different numbers. `writeMs` was configured, validated and bounded
+      // long before anything consumed it; this is where it starts meaning
+      // something. Its deadline is UNCERTAIN, never failure - `wrote` is
+      // already true.
+      writeTimer = setTimeout(() => {
+        writeTimer = null;
+        settleAfterWrite('write deadline elapsed');
+      }, target.timeouts.writeMs);
+
+      socket.write(bytes, () => {
+        // Flushed to the kernel. Nothing to do if the exchange already ended -
+        // a reply can beat this callback, and re-arming a timer on a settled
+        // promise would leave a handle behind.
+        if (settled) return;
+        writeTimer = disarm(writeTimer);
+
+        // ── PHASE 3: READ. ──
+        //
+        // Starts at the write boundary, which is what makes `readMs` the real
+        // budget for the till's answer rather than a number the connect
+        // deadline quietly overrode.
+        readTimer = setTimeout(() => {
+          readTimer = null;
+          settleAfterWrite('read deadline elapsed');
+        }, target.timeouts.readMs);
+      });
     });
 
     socket.on('data', (d: Buffer) => {
