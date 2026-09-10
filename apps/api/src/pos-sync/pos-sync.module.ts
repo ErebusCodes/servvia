@@ -18,6 +18,7 @@ import { NativeSendAttemptStore } from './waiterpad/native-send-attempt.store';
 import { NativeTableRoundService } from './waiterpad/native-table-round.service';
 import { NativeRoundsController } from './native-rounds.controller';
 import { NativeRoundReconciliationService } from './waiterpad/native-round-reconciliation.service';
+import { NativeRoundRecoveryService } from './waiterpad/native-round-recovery.service';
 
 @Module({
   // Story 9-3: QueueModule is imported so PosSyncDispatcherService can
@@ -73,7 +74,19 @@ import { NativeRoundReconciliationService } from './waiterpad/native-round-recon
     // connector build can read the till's token row yet, and the escalation
     // half of the job works without one.
     NativeRoundReconciliationService,
+    // Settles rounds that a CRASH left in a state no route and no other sweep
+    // can reach. `submitting` holds a table's in-flight slot and was swept by
+    // nothing, so a restart mid-send killed that table permanently. It holds no
+    // writer and no transport either: recovery decides from our own durable
+    // rows whether the writer reached the send boundary, and never guesses
+    // toward retry.
+    NativeRoundRecoveryService,
   ],
-  exports: [IdealposConfirmationService, NativeTableRoundService, NativeRoundReconciliationService],
+  exports: [
+    IdealposConfirmationService,
+    NativeTableRoundService,
+    NativeRoundReconciliationService,
+    NativeRoundRecoveryService,
+  ],
 })
 export class PosSyncModule {}

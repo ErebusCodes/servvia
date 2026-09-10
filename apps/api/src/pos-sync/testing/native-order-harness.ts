@@ -34,6 +34,7 @@ import { IdealposOrderDispatcherService } from '../idealpos-order-dispatcher.ser
 import { PosSyncDispatcherService } from '../pos-sync-dispatcher.service';
 import { NativeTableRoundService } from '../waiterpad/native-table-round.service';
 import { NativeRoundReconciliationService } from '../waiterpad/native-round-reconciliation.service';
+import { NativeRoundRecoveryService } from '../waiterpad/native-round-recovery.service';
 import {
   WaiterPadTableRoundWriter,
   type ITableRoundWriter,
@@ -225,6 +226,11 @@ export interface Harness {
    * `sweep(now)` directly - the unattended timer never runs under the suite.
    */
   reconciler: NativeRoundReconciliationService;
+  /**
+   * The restart sweep. Settles rounds a crash left in a state no route and no
+   * other sweep can reach, from durable evidence alone.
+   */
+  recovery: NativeRoundRecoveryService;
   module: TestingModule;
 }
 
@@ -339,6 +345,12 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
         provide: NativeRoundReconciliationService,
         useFactory: () => new NativeRoundReconciliationService(prisma, config, null),
       },
+      {
+        // What a RESTART does to a round that was mid-send. Driven directly by
+        // tests; its unattended timer never runs under the suite.
+        provide: NativeRoundRecoveryService,
+        useFactory: () => new NativeRoundRecoveryService(prisma, config),
+      },
     ],
   }).compile();
 
@@ -353,6 +365,7 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
     queuedForProcessing: () => queued.length,
     rounds: module.get(NativeRoundsController),
     reconciler: module.get(NativeRoundReconciliationService),
+    recovery: module.get(NativeRoundRecoveryService),
     module,
   };
 }
@@ -579,7 +592,13 @@ export function buildPrisma(ledger: Ledger): PrismaService {
             }),
           );
         }
-        const row = { ...data, id: ledger.id('round') };
+        // `createdAt`/`updatedAt` are `@default(now())` / `@updatedAt` in the
+        // schema, so Prisma supplies them and callers never pass them. Recovery
+        // reads `updatedAt` to decide whether a round is old enough to judge,
+        // so a double that left it undefined would let that check silently
+        // compare against NaN.
+        const at = new Date();
+        const row = { createdAt: at, updatedAt: at, ...data, id: ledger.id('round') };
         ledger.rounds.push(row);
         return Promise.resolve(row);
       },
@@ -596,7 +615,7 @@ export function buildPrisma(ledger: Ledger): PrismaService {
       update: ({ where, data }: { where: { id: string }; data: Row }) => {
         const r = ledger.rounds.find((x) => x.id === where.id);
         if (!r) return Promise.reject(new Error('no such round'));
-        Object.assign(r, data);
+        Object.assign(r, data, { updatedAt: new Date() });
         return Promise.resolve(r);
       },
       /**
@@ -610,7 +629,7 @@ export function buildPrisma(ledger: Ledger): PrismaService {
        * writes exist to have.
        */
       updateMany: ({ where, data }: { where?: Row; data: Row }) =>
-        Promise.resolve(applyUpdateMany(ledger.rounds, where, data)),
+        Promise.resolve(applyUpdateMany(ledger.rounds, where, { ...data, updatedAt: new Date() })),
       /**
        * The two callers that sweep rounds rather than fetch one: the
        * reconciler's tick (`where: { state: { in } }`) and the read route
