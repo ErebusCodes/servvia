@@ -45,6 +45,33 @@ interface PosSyncView {
   errorMessage?: string | null;
 }
 
+/**
+ * Mirrors POST /api/admin/orders/:id/rounds's real response shape - the same
+ * object whether the handler answered 202 or put it inside a 4xx/5xx, so this
+ * screen reads one contract regardless of which it was.
+ *
+ * `safeToRetry` IS THE FIELD THAT MATTERS. It is the server's answer to the
+ * only question a waiter's next tap depends on, and it is false for every
+ * outcome that is not provably nothing - not merely for the ones that look
+ * like failures. This screen never re-derives it from `status`.
+ */
+interface NativeRoundView {
+  roundId: string;
+  sequence: number;
+  status:
+    | 'sentAwaitingConfirmation'
+    | 'uncertain'
+    | 'registrationRejected'
+    | 'rejected'
+    | 'failedBeforeSend';
+  message: string;
+  safeToRetry: boolean;
+  requiresReconciliation: boolean;
+  replayed: boolean;
+  /** Set when the server REFUSED before opening a round at all (round_in_flight, etc.). */
+  refusal?: string;
+}
+
 // Mirrors GET /api/admin/orders/:id/print-jobs's real response shape (an
 // array of raw PrinterJob rows) -- only the fields the KOT status panel
 // actually renders are declared here.
@@ -360,6 +387,20 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   const [createdTakeawayReference, setCreatedTakeawayReference] = useState<string | null>(null);
   const [orderActionError, setOrderActionError] = useState<string | null>(null);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
+
+  // ── The native IdealPOS round this table is currently living with. ──
+  //
+  // WHY THE TABLET HOLDS THIS AT ALL. On the native path a round can end in a
+  // state that is neither success nor failure: the bytes left the device and
+  // the till did not answer. The single most dangerous thing a waiter can do
+  // then is press Send again - the round may already be on the tab, and a
+  // second one is a second Lamb Shank on a real bill. So the outcome of the
+  // last round is UI state, it is shown, and it gates the button.
+  //
+  // Null means "no native round has been attempted from this device for this
+  // table", which is not the same as "the table is clear" - a reopened table
+  // learns the truth from the server's own refusal, never from this being null.
+  const [nativeRound, setNativeRound] = useState<NativeRoundView | null>(null);
 
   // See PENDING_SUBMISSION_STORAGE_KEY's doc comment. Read once, lazily, at
   // mount -- this is the ONLY way a reload/restart mid-submission can be
@@ -830,6 +871,114 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
     }));
   }
 
+  /**
+   * Is this order delivered by the native IdealPOS handheld workflow?
+   *
+   * Read from the SERVER's own ownership record, never from anything this
+   * client decides. The tablet has no business holding POS configuration, and
+   * a client that guessed would eventually guess differently from the API -
+   * which on this path means sending a round the API will refuse, or failing
+   * to send one it is waiting for.
+   *
+   * Absent means `webit`, which is what every order was before the column
+   * existed and is what production is today.
+   */
+  function isNativeOrder(order: LiveOrder | null | undefined): boolean {
+    return order?.posSyncRecord?.strategy === 'native_table_round';
+  }
+
+  /**
+   * ONE PRESS OF SEND TO KITCHEN, for a native order.
+   *
+   * POST /api/admin/orders/:id/rounds carries the lines entered since the last
+   * round; the server appends them, claims them into a new round and sends
+   * that round and nothing else. Round one passes no items - the order was
+   * created with its lines already.
+   *
+   * `requestKey` IS MINTED ONCE PER PRESS and is what makes a double tap
+   * harmless: the server's uniqueness on it means the second request is
+   * answered with the first one's round rather than opening a second. It must
+   * NOT be reused for a genuinely new course, or that course would be answered
+   * with the previous round's outcome and never sent.
+   *
+   * A NON-2XX HERE IS NOT NECESSARILY A FAILURE, and this function must not
+   * flatten it into one. `uncertain` answers 409 precisely so no generic
+   * client reads it as success - but its body is the same shape as a 202's,
+   * and it means the round may already be on the table. So every response with
+   * a round in it is recorded as the current round state, whatever its status
+   * code, and only a response with no body at all is treated as an error.
+   */
+  async function sendNativeRound(
+    orderId: string,
+    items: ReturnType<typeof buildOrderItemsPayload>,
+  ): Promise<NativeRoundView | null> {
+    const requestKey = `${orderId}:${crypto.randomUUID()}`;
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/orders/${orderId}/rounds`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ items, requestKey }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | (NativeRoundView & { error?: string; message?: string })
+        | null;
+
+      if (!body) {
+        setOrderActionError(
+          `The till round could not be sent and the server gave no detail (${res.status}). ` +
+            'Check IdealPOS before sending again.',
+        );
+        return null;
+      }
+
+      // A REFUSAL: the server declined before opening a round, so there is no
+      // round id. `round_in_flight` is the important one - it means a previous
+      // round on this table is still unresolved, which is exactly the state a
+      // reopened table discovers after a browser refresh.
+      if (!body.roundId) {
+        const view: NativeRoundView = {
+          roundId: '',
+          sequence: 0,
+          status: 'failedBeforeSend',
+          message: body.message ?? `The round was refused (${res.status}).`,
+          safeToRetry: body.safeToRetry ?? false,
+          requiresReconciliation: body.requiresReconciliation ?? false,
+          replayed: false,
+          refusal: body.error,
+        };
+        setNativeRound(view);
+        setOrderActionError(view.message);
+        return view;
+      }
+
+      setNativeRound(body);
+      // Only an outcome that is BOTH not sent and safe to repeat belongs in
+      // the error line. Everything else is round state, shown by the round
+      // banner, because calling an uncertain round an "error" is how a waiter
+      // decides to try again.
+      setOrderActionError(body.status === 'failedBeforeSend' ? body.message : null);
+      return body;
+    } catch (err) {
+      // No response at all. The request may have reached the API and the API
+      // may have reached the till - the one thing this cannot claim is that
+      // nothing happened.
+      const view: NativeRoundView = {
+        roundId: '',
+        sequence: 0,
+        status: 'uncertain',
+        message:
+          'The tablet lost contact while sending this round. It MAY already be on the ' +
+          'table in IdealPOS. Do not send it again - check the table first.',
+        safeToRetry: false,
+        requiresReconciliation: true,
+        replayed: false,
+        refusal: err instanceof Error ? err.message : undefined,
+      };
+      setNativeRound(view);
+      return view;
+    }
+  }
+
   // Creates a real order via POST /api/admin/orders (staff/Order-Tablet
   // creation path — see apps/api/src/orders/orders.controller.ts). Returns
   // the backend-persisted order on success, or null on failure (with
@@ -992,6 +1141,31 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
       // will reconcile it again shortly after.
       queryClient.setQueryData<LiveOrder[]>(liveOrdersQueryKey(restrictedOrdersEndpoint), current =>
         current ? [created, ...current.filter(o => o.id !== created.id)] : [created]);
+
+      // ── ROUND ONE, for a native order. ──
+      //
+      // Creating the order is NOT the send on this path. The order row records
+      // what the waiter entered and who owns its delivery; the round is what
+      // puts an Order2 packet on the till. Two steps rather than one because
+      // they have opposite failure semantics - a failed create leaves nothing,
+      // and a failed send may have left a docket - and because the second step
+      // is the one that must never be retried automatically.
+      //
+      // A crash between them is safe and recoverable: the order exists with
+      // its lines unclaimed, and the next press sends them as round one.
+      if (isNativeOrder(created)) {
+        const round = await sendNativeRound(created.id, []);
+        setCreatedOrderRef(created.id);
+        setCreatedTakeawayReference(created.takeawayReference ?? null);
+        // Lines are only "sent" if a round actually carried them. A round that
+        // provably never left the device leaves them unsent and re-sendable,
+        // which is exactly what the server did with them too.
+        if (round && round.status !== 'failedBeforeSend') {
+          setCart(prev => prev.map(item => ({ ...item, sent: true })));
+        }
+        return round && round.status !== 'failedBeforeSend' ? created : null;
+      }
+
       setCart(prev => prev.map(item => ({ ...item, sent: true })));
       setCreatedOrderRef(created.id);
       setCreatedTakeawayReference(created.takeawayReference ?? null);
@@ -1209,22 +1383,63 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
       const activeOrder = getActiveOrderForTable(tableNumber);
 
       if (activeOrder) {
-        // The backend enforces one active dine-in order per table (see
-        // OrdersService.validateTableForOrder) — there is no "append items to
-        // an existing order" endpoint, so a second round can't be silently
-        // merged in the way the previous client-only mock allowed.
         setCreatedOrderRef(activeOrder.id);
+        const unsentLines = cart.filter((l) => !l.sent);
+
+        // ── A FURTHER ROUND ON AN OPEN TABLE. ──
+        //
+        // This is the ordinary drinks -> mains -> dessert pattern, and on the
+        // native IdealPOS path it is now a real operation rather than a
+        // refusal: POST /admin/orders/:id/rounds appends these lines to the
+        // open order and sends a round carrying ONLY them. The earlier rounds
+        // are already on the tab and are never re-sent - the server's line
+        // claim makes that structural rather than a rule this screen has to
+        // remember.
+        if (isNativeOrder(activeOrder) && unsentLines.length > 0) {
+          // The uncertain round is the one case where the right answer is to
+          // do nothing at all. Its packet may already be on the table, and a
+          // further round opened on top of it would be sent against a table
+          // whose real contents nobody knows. The server refuses this too;
+          // stopping here means the waiter reads WHY rather than a 409.
+          if (nativeRound?.requiresReconciliation) {
+            setOrderActionError(
+              `Round ${nativeRound.sequence} on table ${tableNumber} has not been resolved — ` +
+                'it may already be on the till. These items were NOT sent. Check the table in ' +
+                'IdealPOS and resolve that round before sending anything else.',
+            );
+            return;
+          }
+
+          setIsSubmittingOrder(true);
+          setOrderActionError(null);
+          try {
+            const round = await sendNativeRound(activeOrder.id, buildOrderItemsPayload());
+            // Marked sent ONLY when a round genuinely carried them. A round
+            // that never left the device leaves them unsent and re-sendable,
+            // which is what the server did with them too.
+            if (round && round.status !== 'failedBeforeSend') {
+              setCart((prev) => prev.map((item) => ({ ...item, sent: true })));
+            }
+          } finally {
+            setIsSubmittingOrder(false);
+          }
+          return;
+        }
 
         // 2026-08-31: previously this always jumped straight to the 'pay'
         // screen with a message that never mentioned the cart. When staff had
-        // entered a further round (the ordinary drinks -> mains -> dessert
-        // pattern), those unsent lines were left stranded behind a screen
-        // that said nothing about them — easily read as "it went through".
-        // Name the real outcome and stay put so the lines remain visible.
-        const unsentLines = cart.filter((l) => !l.sent);
+        // entered a further round, those unsent lines were left stranded
+        // behind a screen that said nothing about them — easily read as "it
+        // went through". Name the real outcome and stay put so the lines
+        // remain visible.
+        //
+        // Still reached for a NON-native (Webit) order, whose delivery happens
+        // at order creation and which genuinely has no append path. That
+        // behaviour is unchanged on purpose: nothing about route exclusivity
+        // or the native round endpoint alters how a legacy order works.
         if (unsentLines.length > 0) {
           setOrderActionError(
-            `Table ${tableNumber} already has an active order — these ${unsentLines.length} new item(s) have NOT been sent to the kitchen. Adding a further round to an open table isn't supported yet: close the table out first, then send them.`,
+            `Table ${tableNumber} already has an active order — these ${unsentLines.length} new item(s) have NOT been sent to the kitchen. Adding a further round to an open table isn't supported for this venue's POS path: close the table out first, then send them.`,
           );
           return;
         }
@@ -1236,7 +1451,16 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
     }
 
     const created = await submitOrderToKitchen();
-    if (created) setScreen('pay');
+    // ── A NATIVE ORDER STAYS ON THE ORDER SCREEN. ──
+    //
+    // The dispatch/status screen is where a Webit order goes because, for that
+    // path, creating the order WAS the whole delivery and there is nothing
+    // further to do at the table. A native table is the opposite: the waiter
+    // has just sent one round and will be taking the next course from the same
+    // table in a minute. Navigating away would hide the round banner - which is
+    // where an UNCERTAIN round is reported - behind a screen about a different
+    // subject, at the exact moment it most needs to be read.
+    if (created && !isNativeOrder(created)) setScreen('pay');
   };
 
   // The single primary customer/guest action -- mirrors handleSendToKitchen
@@ -1298,6 +1522,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // "Seat N" grouping that would misleadingly imply per-guest seating.
   const handleStartTakeaway = () => {
     setServiceMode('takeaway');
+    setNativeRound(null);
     setCreatedOrderRef(null);
     setCreatedTakeawayReference(null);
     setTableId(null);
@@ -1316,6 +1541,15 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
 
     // Selecting a table on the floor plan is unambiguously a dine-in action.
     setServiceMode('dine_in');
+
+    // THE ROUND STATE BELONGS TO THE TABLE IT CAME FROM, and to no other.
+    // Carrying table 5's unresolved round onto table 7 would block a table
+    // that is perfectly fine, and - far worse - carrying a CLEARED state onto
+    // a table that does have an unresolved round would invite the one tap
+    // this whole design exists to prevent. Cleared on every selection; the
+    // server is the authority on what the newly-selected table's real state
+    // is, and says so by refusing.
+    setNativeRound(null);
 
     if (tableId === tb.id) {
       setTableId(null);
@@ -2313,6 +2547,64 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                   <button onClick={() => setOrderActionError(null)} style={{ border: 'none', background: 'none', color: 'inherit', cursor: 'pointer', fontWeight: 700 }}>✕</button>
                 </div>
               )}
+              {nativeRound && (
+                // ── THE ROUND BANNER. ──
+                //
+                // Four visually distinct states, because they call for four
+                // different actions and a waiter reads colour before words:
+                //
+                //   uncertain / needs reconciliation  RED, and the button is
+                //       disabled. The round MAY be on the table. Pressing Send
+                //       again is the single most damaging thing available on
+                //       this screen, so it is not available.
+                //   sent, awaiting confirmation       BLUE. It went; the till
+                //       has not confirmed it yet. Not an error and not a
+                //       success - and deliberately not green, because green
+                //       means "confirmed" and nothing here has confirmed it.
+                //   never sent, safe to repeat        AMBER. Nothing left the
+                //       device; the lines are still on the order.
+                //
+                // The message is the SERVER's, not this screen's. Re-writing
+                // it here would create a second vocabulary for the same states
+                // that could drift from the one with the evidence behind it.
+                <div
+                  data-testid="native-round-banner"
+                  data-round-status={nativeRound.status}
+                  data-requires-reconciliation={nativeRound.requiresReconciliation ? 'true' : 'false'}
+                  style={{
+                    fontSize: '12px',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                    marginBottom: '8px',
+                    background: nativeRound.requiresReconciliation
+                      ? 'var(--color-danger-bg)'
+                      : nativeRound.status === 'sentAwaitingConfirmation'
+                        ? 'var(--color-info-bg)'
+                        : 'var(--color-warning-bg)',
+                    color: nativeRound.requiresReconciliation
+                      ? 'var(--color-danger)'
+                      : nativeRound.status === 'sentAwaitingConfirmation'
+                        ? 'var(--color-info)'
+                        : 'var(--color-warning)',
+                    border: `1px solid ${
+                      nativeRound.requiresReconciliation
+                        ? 'var(--color-danger-border)'
+                        : nativeRound.status === 'sentAwaitingConfirmation'
+                          ? 'var(--color-info-border)'
+                          : 'var(--color-warning-border)'
+                    }`,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, letterSpacing: '0.03em', marginBottom: '3px' }}>
+                    {nativeRound.requiresReconciliation
+                      ? `ROUND ${nativeRound.sequence || ''} UNCERTAIN — DO NOT SEND AGAIN`
+                      : nativeRound.status === 'sentAwaitingConfirmation'
+                        ? `ROUND ${nativeRound.sequence} SENT — AWAITING TILL CONFIRMATION`
+                        : `ROUND ${nativeRound.sequence || ''} NOT SENT`}
+                  </div>
+                  <div>{nativeRound.message}</div>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-text-secondary)', padding: '2px 0' }}><span>Subtotal</span><span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPrice(totals.sub)}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--color-text-secondary)', padding: '2px 0' }}><span>GST included</span><span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatPrice(totals.gst)}</span></div>
               {taxConfigUnavailable ? (
@@ -2327,10 +2619,18 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                   // on the shared order-status/dispatch screen below. No
                   // payment step exists before or after this.
                   (() => {
-                    const disabledNow = cartEmpty || taxConfigUnavailable || !unsent || isSubmittingOrder || !!pendingSubmission;
+                    // AN UNRESOLVED NATIVE ROUND DISABLES THE BUTTON, and
+                    // this is the most important term in the expression. The
+                    // round may already be on the table; a second one would be
+                    // a second copy of the same food on a real customer's real
+                    // bill, and the only way to find out which happened is to
+                    // look at the till. Nothing on this screen can resolve it,
+                    // so this screen must not offer to try.
+                    const roundUnresolved = !!nativeRound?.requiresReconciliation;
+                    const disabledNow = cartEmpty || taxConfigUnavailable || !unsent || isSubmittingOrder || !!pendingSubmission || roundUnresolved;
                     return (
-                      <button onClick={() => void handleSendToKitchen()} disabled={disabledNow} style={{ flex: '1', height: '46px', border: 'none', borderRadius: '8px', background: disabledNow ? 'var(--color-surface-3)' : 'var(--color-primary)', color: disabledNow ? 'var(--color-text-tertiary)' : '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: '600', cursor: disabledNow ? 'default' : 'pointer', boxShadow: 'var(--shadow-xs)' }}>
-                        {taxConfigUnavailable ? 'Totals unavailable' : isSubmittingOrder ? 'Sending…' : !unsent ? 'Sent ✓' : 'Send to Kitchen'}
+                      <button data-testid="send-to-kitchen" onClick={() => void handleSendToKitchen()} disabled={disabledNow} style={{ flex: '1', height: '46px', border: 'none', borderRadius: '8px', background: disabledNow ? 'var(--color-surface-3)' : 'var(--color-primary)', color: disabledNow ? 'var(--color-text-tertiary)' : '#fff', fontFamily: 'inherit', fontSize: '13px', fontWeight: '600', cursor: disabledNow ? 'default' : 'pointer', boxShadow: 'var(--shadow-xs)' }}>
+                        {taxConfigUnavailable ? 'Totals unavailable' : roundUnresolved ? 'Resolve the uncertain round first' : isSubmittingOrder ? 'Sending…' : !unsent ? 'Sent ✓' : 'Send to Kitchen'}
                       </button>
                     );
                   })()
@@ -2503,6 +2803,13 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                               failed: 'Idealpos delivery failed — needs attention',
                               not_applicable: 'No Idealpos integration configured for this venue',
                               unsupported: 'This venue’s POS adapter is not yet supported',
+                              // Not a progress state. This order is delivered
+                              // by the native handheld rounds shown above, and
+                              // the Webit connector pipeline will never touch
+                              // it — so its POSSyncRecord has nothing to
+                              // report and must not look like it is stalled.
+                              owned_by_native: 'Delivered by the native IdealPOS handheld rounds — see round status',
+                              cancelled: 'Cancelled by staff before dispatch',
                             } as Record<string, string>
                           )[posSyncView.status] ?? `Unrecognized state (${posSyncView.status}) — treat as needing attention`}
                         </div>

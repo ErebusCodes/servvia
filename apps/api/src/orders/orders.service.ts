@@ -2028,7 +2028,14 @@ export class OrdersService {
       // the newly-selected table's label.
       const withItems = await tx.order.findUnique({
         where: { id: newOrder.id },
-        include: { items: true },
+        // posSyncRecord included for the same reason `items` is: every other
+        // order-serving path (findAll, findOne, broadcastOrder) carries it, and
+        // this response was the one inconsistent shape. The Order Tablet now
+        // reads `posSyncRecord.strategy` from it to learn whether this order
+        // takes the native handheld path - which it must know BEFORE it can
+        // send round one, and which it would otherwise have to guess from
+        // configuration the client has no business holding.
+        include: { items: true, posSyncRecord: true },
       });
       // Unreachable in practice -- this row was created earlier in this
       // same transaction -- but never silently fall back to the

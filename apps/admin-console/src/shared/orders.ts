@@ -29,7 +29,30 @@ export type LiveOrderPosSyncStatus =
   | 'synced'
   | 'failed'
   | 'not_applicable'
-  | 'unsupported';
+  | 'unsupported'
+  // This order's POS submission is owned by the native IdealPOS handheld
+  // workflow (NativeTableRound -> Order2 over TCP), not the Webit connector
+  // pipeline. It is not a progress state: a native order's real delivery
+  // state lives in its rounds, and this row exists to say who owns the order.
+  | 'owned_by_native'
+  // Staff cancelled the order while its dispatch was still stoppable.
+  // Pre-existing on the server; it was simply missing from this union.
+  | 'cancelled';
+
+/**
+ * Which POS pipeline owns an order - see
+ * apps/api/src/pos-sync/pos-submission-strategy.ts.
+ *
+ * THE TABLET READS THIS TO DECIDE WHICH BUTTON IT IS PRESSING. A `webit` order
+ * is sent by being created, exactly as it always has been. A
+ * `native_table_round` order is created first and then sent, round by round,
+ * through POST /admin/orders/:id/rounds - which is also what makes a second
+ * round on an open table possible at all.
+ *
+ * Absent on an older cached response; treat that as `webit`, which is what
+ * every order was before the column existed.
+ */
+export type LiveOrderPosStrategy = 'webit' | 'native_table_round';
 
 /** Mirrors the subset of POSSyncRecord this order's staff-facing status
  * indicator needs — attemptCount/nextRetryAt distinguish "never attempted"
@@ -42,6 +65,8 @@ export interface LiveOrderPosSyncRecord {
   attemptCount: number;
   nextRetryAt: string | null;
   errorMessage: string | null;
+  /** Absent on an older cached response — treat as 'webit'. */
+  strategy?: LiveOrderPosStrategy;
 }
 
 /**
