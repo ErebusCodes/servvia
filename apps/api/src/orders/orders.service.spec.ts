@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import {
   ConflictException,
   ForbiddenException,
@@ -11,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
+import { PosStrategyResolver } from '../pos-sync/pos-strategy-resolver';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
 import { OrderSource, OrderStatus, POSSyncStatus, ServiceMode, StaffRole } from '@prisma/client';
@@ -79,6 +81,15 @@ describe('OrdersService', () => {
         { provide: OrdersGateway, useValue: mockGateway },
         { provide: AuditLogService, useValue: mockAuditLog },
         { provide: ConnectorCommandService, useValue: mockConnectorCommandService },
+        // The REAL resolver over an empty ConfigService - i.e. exactly
+        // production's configuration, where IDEALPOS_POS_STRATEGY is unset and
+        // the native writer is off. Every assertion in this file therefore
+        // continues to describe the certified Webit behaviour, which is the
+        // point: route exclusivity must not have changed what a legacy order
+        // does. Route-specific behaviour is proven in
+        // pos-sync/route-exclusivity.spec.ts, against a configured resolver.
+        PosStrategyResolver,
+        { provide: ConfigService, useValue: { get: () => undefined } },
       ],
     }).compile();
 
@@ -211,13 +222,22 @@ describe('OrdersService', () => {
       // (apps/api/src/pos-sync/idealpos-order-dispatcher.service.ts) claims
       // eligible `not_synced` rows directly via its own sweepDispatch(), so
       // persistOrder writes no additional reconciliation-specific signal here.
+      //
+      // ROUTE EXCLUSIVITY: this is the LEGACY half of the invariant, and it is
+      // the half most worth pinning. With IDEALPOS_POS_STRATEGY unset - which
+      // is production - an order must come out exactly as it always did:
+      // `strategy: 'webit'` and `status: 'not_synced'`, which is precisely
+      // what both dispatcher sweeps select. If this assertion ever has to
+      // change, production routing has changed with it.
       expect(mockPrisma.pOSSyncRecord.create).toHaveBeenCalledWith({
         data: {
           orderId: 'order-uuid',
           venueId,
           adapterType: 'api',
+          strategy: 'webit',
           status: 'not_synced',
           attemptCount: 0,
+          errorMessage: null,
         },
       });
     });

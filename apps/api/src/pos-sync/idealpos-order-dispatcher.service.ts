@@ -1,6 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ConnectorCommand, ConnectorCommandStatus, POSSyncStatus, Prisma } from '@prisma/client';
+import {
+  ConnectorCommand,
+  ConnectorCommandStatus,
+  POSSyncStatus,
+  PosSubmissionStrategy,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
 import { OrdersGateway } from '../orders/orders.gateway';
@@ -268,6 +274,13 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
     const candidates = await this.prisma.pOSSyncRecord.findMany({
       where: {
         status: POSSyncStatus.not_synced,
+        // ROUTE EXCLUSIVITY. A native-owned order is not this pipeline's work
+        // and can never become it. `status` alone already excludes it - a
+        // native record is created at `owned_by_native`, never `not_synced` -
+        // so this clause is the second, independent layer, and it holds even
+        // if some future code path moved such a row back to `not_synced`.
+        // See pos-submission-strategy.ts.
+        strategy: PosSubmissionStrategy.webit,
         attemptCount: { lt: this.maxDispatchAttempts },
         // DL-092: a record that has never been attempted has
         // nextRetryAt=null, same as one whose backoff window already
@@ -289,6 +302,11 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
         venueId: true,
         attemptCount: true,
         connectorSubmitCommandId: true,
+        // Re-checked per row inside dispatchOne. A filter in a candidate query
+        // is advisory discovery; the guard that matters runs against the row
+        // this worker actually holds, immediately before it can create a
+        // ConnectorCommand.
+        strategy: true,
       },
     });
 
@@ -325,10 +343,34 @@ export class IdealposOrderDispatcherService implements OnModuleInit, OnModuleDes
       venueId: string;
       attemptCount: number;
       connectorSubmitCommandId?: string | null;
+      strategy?: PosSubmissionStrategy;
     },
     result: IdealposDispatchSweepResult,
   ): Promise<void> {
     const { id, orderId, venueId, attemptCount } = candidate;
+
+    // ── ROUTE EXCLUSIVITY, RE-CHECKED AGAINST THE ROW THIS WORKER HOLDS. ──
+    //
+    // The candidate query already filters `strategy: webit`. This is not that
+    // check repeated for comfort - it is the one that runs at the last moment
+    // before a ConnectorCommand could be created, on the row as it actually
+    // is. A candidate query is advisory: its result was read at some earlier
+    // instant, and this method is reachable from a caller that assembled a
+    // candidate some other way.
+    //
+    // It returns rather than marking the row `failed`. A native-owned order is
+    // not a failed Webit dispatch, it is somebody else's order entirely, and
+    // writing a failure onto it would put a false error in front of staff
+    // whose round is on its way to the till perfectly normally.
+    if (candidate.strategy != null && candidate.strategy !== PosSubmissionStrategy.webit) {
+      this.logger.warn(
+        `Skipping POSSyncRecord ${id} (order ${orderId}): it is owned by the ` +
+          `'${candidate.strategy}' strategy, not the Webit connector pipeline. ` +
+          'Dispatching it here would put a second copy of this order into IdealPOS.',
+      );
+      result.ineligible++;
+      return;
+    }
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },

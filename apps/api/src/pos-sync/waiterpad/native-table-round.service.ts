@@ -38,7 +38,7 @@
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { NativeRoundState, type Prisma } from '@prisma/client';
+import { NativeRoundState, PosSubmissionStrategy, type Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveNativeProductCode } from '../resolve-native-product-code';
@@ -57,7 +57,8 @@ export type NativeRoundFailureReason =
   | 'nothing_to_send'
   | 'round_in_flight'
   | 'order_not_found'
-  | 'not_dine_in';
+  | 'not_dine_in'
+  | 'not_native_owned';
 
 export class NativeRoundError extends Error {
   constructor(
@@ -132,10 +133,41 @@ export class NativeTableRoundService {
     return await this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { table: true, nativeRounds: { select: { sequence: true, state: true } } },
+        include: {
+          table: true,
+          nativeRounds: { select: { sequence: true, state: true } },
+          // The durable ownership record. Read inside this transaction, with
+          // the round creation it guards, rather than in a separate earlier
+          // query - see the check below.
+          posSyncRecord: { select: { strategy: true, status: true } },
+        },
       });
       if (!order) {
         throw new NativeRoundError('order_not_found', `order ${orderId} does not exist`);
+      }
+
+      // ── ROUTE EXCLUSIVITY, ENFORCED IN THE OTHER DIRECTION. ──
+      //
+      // The dispatchers refuse native-owned orders. This is the mirror: the
+      // native path refuses an order the Webit pipeline owns. Without it the
+      // exclusion would be one-sided - a caller could hand this service any
+      // order id and put an Order2 packet on a table for an order that a
+      // ConnectorCommand is already carrying to the Bridge.
+      //
+      // An order with NO POSSyncRecord is allowed through. That is a venue
+      // with `posAdapterType: 'none'`, which has no Webit pipeline at all, so
+      // there is no second claimant to exclude. Refusing it would break the
+      // only configuration in which a native round is unambiguously the sole
+      // path an order can take.
+      const owner = order.posSyncRecord?.strategy ?? null;
+      if (owner !== null && owner !== PosSubmissionStrategy.native_table_round) {
+        throw new NativeRoundError(
+          'not_native_owned',
+          `order ${orderId} is owned by the '${owner}' POS strategy, not the native ` +
+            'handheld workflow. Refusing to open a round: that order is already on its ' +
+            'way to IdealPOS by another transport, and sending it again would put a ' +
+            "second copy of it on the customer's bill.",
+        );
       }
       if (order.serviceMode !== 'dine_in') {
         throw new NativeRoundError(

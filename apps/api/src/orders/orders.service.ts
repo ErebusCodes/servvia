@@ -34,6 +34,8 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
+import { PosStrategyResolver } from '../pos-sync/pos-strategy-resolver';
+import { PosSubmissionStrategy } from '../pos-sync/pos-submission-strategy';
 
 /**
  * Snapshot shape matches `docs/domain-model.md`'s `SelectedModifier` — for
@@ -94,6 +96,11 @@ export class OrdersService {
     private readonly ordersGateway: OrdersGateway,
     private readonly auditLogService: AuditLogService,
     private readonly connectorCommandService: ConnectorCommandService,
+    // Which POS pipeline owns an order created here. Injected rather than
+    // read from ConfigService inline so the decision has one testable owner -
+    // see pos-submission-strategy.ts for why the decision must happen HERE,
+    // inside the creating transaction, and nowhere later.
+    private readonly posStrategy: PosStrategyResolver,
   ) {}
 
   async create(dto: CreateOrderDto): Promise<Order> {
@@ -1695,6 +1702,29 @@ export class OrdersService {
       createTable19ValidationRun,
     } = params;
 
+    // ── ROUTE EXCLUSIVITY, DECIDED ONCE, BEFORE ANY ROW EXISTS. ──
+    //
+    // Resolved here rather than at each call site so that EVERY order-creating
+    // path - kiosk, staff tablet, restricted tablet - gets the same decision
+    // from the same code. A call site that forgot to pass one could otherwise
+    // create an order with no owner.
+    //
+    // Deliberately OUTSIDE the transaction below and BEFORE the takeaway
+    // sequence is drawn: a refusal must cost nothing and leave nothing behind,
+    // not roll back a partly-built order and burn a reference number.
+    //
+    // A refusal here means an operator configured the native route while the
+    // native writer cannot send. The order is rejected outright. It is NOT
+    // quietly routed through Webit - see pos-submission-strategy.ts for why a
+    // silent transport switch is the worse of the two failures.
+    const strategyDecision = this.posStrategy.decide(serviceMode);
+    if (strategyDecision.decision === 'refuse') {
+      throw new ServiceUnavailableException(
+        `This order was not created and nothing was sent to the POS. ${strategyDecision.reason}`,
+      );
+    }
+    const posStrategy = strategyDecision.strategy;
+
     // Story 15-13: a stable, human-readable takeaway reference, minted from
     // a dedicated Postgres sequence (never a "latest row + 1" read — see
     // this migration's own comment on why that pattern is not repeated
@@ -1851,13 +1881,44 @@ export class OrdersService {
         // pick this row up via that dispatcher's own sweepDispatch(),
         // which claims eligible `not_synced` rows directly — no additional
         // signal is written here.
+        //
+        // ROUTE EXCLUSIVITY (see pos-sync/pos-submission-strategy.ts).
+        //
+        // This is the ONLY place a POS strategy is ever chosen, and it happens
+        // inside the transaction that creates the order. Two consequences,
+        // both load-bearing:
+        //
+        //   * there is no later decision point, so there is no race - two
+        //     dispatch workers cannot claim different routes for one order
+        //     because neither of them decides anything;
+        //   * the decision commits atomically with the order, so an order that
+        //     exists always has an owner, and a crash mid-creation leaves
+        //     neither.
+        //
+        // `strategy` is the authoritative, askable record. `status` is the
+        // structural guard: `owned_by_native` is not `not_synced`, and BOTH
+        // dispatcher sweeps require `not_synced`, so a native order is outside
+        // their candidate sets even for a query that has never heard of the
+        // strategy column.
+        //
+        // The refusal above (`assertPosStrategy`, called before this
+        // transaction opens) means we can only reach here with a real
+        // strategy - never with a config that asked for native while the
+        // native writer could not send.
+        const nativeOwned = posStrategy === PosSubmissionStrategy.native_table_round;
         await tx.pOSSyncRecord.create({
           data: {
             orderId: newOrder.id,
             venueId: venue.id,
             adapterType: venue.posAdapterType,
-            status: POSSyncStatus.not_synced,
+            strategy: posStrategy,
+            status: nativeOwned ? POSSyncStatus.owned_by_native : POSSyncStatus.not_synced,
             attemptCount: 0,
+            errorMessage: nativeOwned
+              ? 'Owned by the native IdealPOS handheld workflow (NativeTableRound). This ' +
+                'order is deliberately outside the Webit connector pipeline; its real ' +
+                'delivery state lives in NativeTableRound/NativeSendAttempt.'
+              : null,
           },
         });
       }

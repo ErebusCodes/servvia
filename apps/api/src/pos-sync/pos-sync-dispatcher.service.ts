@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { QUEUE_NAMES } from '../queue/queue.constants';
-import { POSAdapterType, POSSyncStatus } from '@prisma/client';
+import { POSAdapterType, POSSyncStatus, PosSubmissionStrategy } from '@prisma/client';
 
 export interface PosSyncDispatchSweepResult {
   eligible: number;
@@ -153,6 +153,15 @@ export class PosSyncDispatcherService implements OnModuleInit, OnModuleDestroy {
     const candidates = await this.prisma.pOSSyncRecord.findMany({
       where: {
         status: POSSyncStatus.not_synced,
+        // ROUTE EXCLUSIVITY. A native-owned order belongs to
+        // NativeTableRoundService and to nothing in this file. Its record is
+        // created at `owned_by_native`, so the status filter above already
+        // excludes it; this clause is the independent second layer that holds
+        // regardless of what any other code does to `status`. Enqueuing such a
+        // row would have PosSyncProcessor mark it `unsupported`, permanently
+        // mislabelling an order that is on its way to the till by design.
+        // See pos-submission-strategy.ts.
+        strategy: PosSubmissionStrategy.webit,
         dispatchExhaustedAt: null,
         // Defense-in-depth, independent of the POS_SYNC_DISPATCH_ENABLED
         // gate above: 'api'-adapter rows are IdealposOrderDispatcherService's
@@ -234,6 +243,13 @@ export class PosSyncDispatcherService implements OnModuleInit, OnModuleDestroy {
       where: {
         id,
         status: POSSyncStatus.not_synced,
+        // ROUTE EXCLUSIVITY, on the compare-and-swap itself. This is the
+        // strongest of the guards in this file: the candidate SELECT above is
+        // advisory, but this predicate is evaluated by the database at the
+        // instant the row is claimed. A native-owned row cannot be claimed
+        // here, so it can never be enqueued, so PosSyncProcessor can never
+        // see it. See pos-submission-strategy.ts.
+        strategy: PosSubmissionStrategy.webit,
         dispatchExhaustedAt: null,
         OR: [
           {

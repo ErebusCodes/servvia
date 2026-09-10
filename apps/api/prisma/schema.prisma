@@ -57,6 +57,23 @@ enum POSSyncStatus {
   failed // a real adapter attempted submission and Idealpos rejected it, or attempts were exhausted
   not_applicable // posAdapterType is `none` (NullAdapter) — POS sync was never attempted by design
   unsupported // posAdapterType is a real type, but no adapter implementation exists yet — POS sync was never attempted because no adapter could run it
+  // This order's POS submission is owned by the NATIVE IdealPOS handheld
+  // workflow (NativeTableRound -> Order2 over TCP), not by the Webit
+  // connector pipeline. Written at order creation and never changed.
+  //
+  // It is a distinct status specifically so that BOTH pre-existing dispatcher
+  // sweeps stop selecting this row without either query needing to know this
+  // strategy exists: PosSyncDispatcherService.sweep() and
+  // IdealposOrderDispatcherService.sweepDispatch() both require
+  // `status = not_synced`, and this is not that. See
+  // pos-submission-strategy.ts for why exclusivity is enforced in three
+  // independent layers rather than one.
+  //
+  // NOT a terminal state in the "we finished" sense - the native round's own
+  // lifecycle lives in NativeTableRound/NativeSendAttempt, which is where a
+  // native order's real progress is recorded. This row is the durable
+  // OWNERSHIP marker, nothing more.
+  owned_by_native
   // OrdersService.updateStatus set this order to `cancelled` while its
   // dispatch was still stoppable (not_synced, or queued_for_connector with
   // the underlying ConnectorCommand still pending/claimed — never once it
@@ -159,6 +176,20 @@ enum KdsDeliveryStatus {
   pushed // a WebSocket emit to the venue's KDS room was attempted by the dispatcher; NOT evidence a Kitchen Display received or rendered it
   cancelled // the source order was cancelled before/at push time
   exhausted // dispatch attempt budget exceeded; requires manual KDS refresh/verification by staff
+}
+
+/// Which POS submission pipeline owns an order. See
+/// apps/api/src/pos-sync/pos-submission-strategy.ts for the decision rules and
+/// the three enforcement layers; the short version is that a dine-in order
+/// takes exactly one of these, chosen in the transaction that creates the
+/// order, and nothing changes it afterwards.
+enum PosSubmissionStrategy {
+  /// The certified Bridge path: POSSyncRecord -> ConnectorCommand
+  /// (idealpos.submit_order.v1) -> IdealposBridge -> dbo.WebPendingOrder.
+  webit
+  /// The handheld path: NativeTableRound -> Order2 over TCP to the till's
+  /// WaiterPad listener. No connector, no Bridge, no WebPendingOrder row.
+  native_table_round
 }
 
 enum POSAdapterType {
@@ -1007,6 +1038,18 @@ model POSSyncRecord {
   venueId         String
   adapterType     POSAdapterType
   status          POSSyncStatus  @default(not_synced)
+
+  /// WHICH PIPELINE OWNS THIS ORDER. Written once, in the same transaction
+  /// that creates the order, and never updated by any code path in this
+  /// repository. `webit` is the default, so every row that existed before this
+  /// column did means exactly what it always meant and production is
+  /// unchanged.
+  ///
+  /// This is the authoritative routing decision. `status = owned_by_native`
+  /// keeps a native order out of both sweeps' candidate sets on its own; this
+  /// column is what lets a sweep, a retry worker or a repair script ASK who
+  /// owns a row rather than infer it from a status that other code may move.
+  strategy        PosSubmissionStrategy @default(webit)
   requestPayload  Json?
   responsePayload Json?
   posOrderId      String?
