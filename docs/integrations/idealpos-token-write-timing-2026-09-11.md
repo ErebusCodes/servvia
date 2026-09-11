@@ -98,7 +98,7 @@ requires **both halves**:
 | Half | Question it answers | Evidence |
 | --- | --- | --- |
 | **Causal** | did OUR packet cause this? | the till holds our attempt token against our DeviceID in `AAAExampleData` |
-| **Durable** | does the customer's bill actually hold the lines? | a readback shows at least `expectedLineCount` lines on the table |
+| **Durable** | does the customer's bill actually hold the lines? | a **delta**: the table's line multiset AFTER, minus a baseline captured BEFORE the socket opened, equals exactly this round's items |
 
 Neither is sufficient. A readback alone is correlation — a waiter keying the
 same items produces identical evidence. The token alone is now understood to be
@@ -107,6 +107,51 @@ about the bill.
 
 No connector build binds an evidence reader, so the old rule never ran against
 real evidence in any environment. The correction is pre-emptive.
+
+#### Correction, 2026-09-12: the durable half is a delta, not a count
+
+The row above originally read *"a readback shows at least `expectedLineCount`
+lines on the table"*. That was written the same day and was wrong, in a way
+worth recording because it looked exactly like a durability check.
+
+`observedLineCount >= expectedLineCount` is satisfied by almost any occupied
+table. A tab already carrying five lines "proves" a two-line round that never
+arrived. So on any table with prior content the predicate reduced to token
+equality — which is precisely what this entire document exists to forbid. It
+also could not distinguish the one coincidence the causal half is there to
+exclude: a line that was *already on the tab* stood in perfectly well for one
+that never came.
+
+The durable half is therefore a subtraction, evaluated as a multiset keyed by
+native code:
+
+```
+(native lines AFTER)  minus  (native lines BEFORE)  ===  this round's items
+```
+
+The BEFORE term is a baseline captured and committed **before the socket
+opened** (`NativeSendAttempt.preSendTableSnapshot`), and the expected items are
+frozen with the attempt (`NativeSendAttempt.expectedNativeItems`) rather than
+re-derived later from a PLU mapping that may since have been edited.
+
+That single change is what makes these decidable rather than lucky:
+
+| case | why the delta gets it right |
+| --- | --- |
+| same PLU already on the table | it is in the baseline, so it is not in the delta |
+| round 2 repeats round 1's item | round 1's line is part of round 2's baseline |
+| qty 1, then qty 1 again | baseline 1 → after 2 → delta 1 |
+| qty 2 against two earlier qty-1 lines | baseline 2 → after 4 → delta 2 |
+| someone else adds a line | unexplained growth → `conflicting` |
+| a line is voided underneath us | prior lines changed → `conflicting` |
+
+Both halves are mutation-proven: removing the token comparison fails 3 tests,
+removing the delta comparison fails 7, and one test states the old count rule's
+failure directly. See `waiterpad-native-evidence.ts` and its spec.
+
+A baseline that was never captured, or that is too old to describe the table,
+yields no delta at all — the round stays unconfirmed and escalates to a human.
+It cannot produce a wrong `confirmed`.
 
 ### There is a data-loss window on the till, and it is not ours to fix
 
