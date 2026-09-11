@@ -39,6 +39,7 @@ import {
   WaiterPadTableRoundWriter,
   type ITableRoundWriter,
 } from '../waiterpad/waiterpad-table-round-writer';
+import { NativeSendAttemptStore } from '../waiterpad/native-send-attempt.store';
 import { resolveWaiterPadConfig } from '../waiterpad/waiterpad-config';
 import {
   startFakeWaiterPadServer,
@@ -46,6 +47,7 @@ import {
 } from '../waiterpad/testing/fake-waiterpad-server';
 import { NativeRoundsController } from '../native-rounds.controller';
 import { QUEUE_NAMES } from '../../queue/queue.constants';
+import { REDIS_CLIENT } from '../../redis/redis.constants';
 import { getQueueToken } from '@nestjs/bullmq';
 import { applyUpdateMany, matches, type Row } from './prisma-filter';
 
@@ -347,6 +349,23 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
       },
       { provide: ConnectorCommandService, useValue: connectorCommandService },
       {
+        /**
+         * Redis, because `NativeRoundsController` now carries `RateLimitGuard`
+         * and Nest must be able to CONSTRUCT every guard a controller declares
+         * even in a harness that calls the handlers directly and runs none of
+         * them.
+         *
+         * IT ALWAYS ALLOWS, and that is the honest thing for it to do here:
+         * these tests are about what reaches the till, and a limiter that
+         * refused mid-suite would fail them for a reason that has nothing to
+         * do with the property under test. What the limits actually ARE is
+         * asserted where it can be asserted meaningfully - on the decorator
+         * metadata, in `native-rounds-rate-limit.spec.ts`.
+         */
+        provide: REDIS_CLIENT,
+        useValue: { eval: jest.fn().mockResolvedValue([0, 1]) },
+      },
+      {
         provide: getQueueToken(QUEUE_NAMES.POS_SYNC),
         useValue: {
           add: jest.fn((name: string, data: Row) => {
@@ -400,7 +419,8 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
  * the disabled state, because the point of several tests below is that the
  * disabled state is reached by the ordinary path, not by a test-only branch.
  */
-function buildWriter(env: Record<string, string>, prisma: unknown): ITableRoundWriter {
+function buildWriter(env: Record<string, string>, prisma: PrismaService): ITableRoundWriter {
+  const store = new NativeSendAttemptStore(prisma);
   const resolution = resolveWaiterPadConfig(env);
   if (!resolution.enabled) {
     return {
@@ -409,23 +429,19 @@ function buildWriter(env: Record<string, string>, prisma: unknown): ITableRoundW
       },
     };
   }
+  // THE REAL STORE, over the harness's database double.
+  //
+  // This used to be a hand-written hook object implementing only
+  // `recordSendInitiated`, and the divergence was not cosmetic: production
+  // binds three hooks, so every attempt row in these tests was missing the
+  // outcome and the decision that a real one carries. Restart-recovery tests
+  // ran against attempts that ALWAYS looked like "the process died before the
+  // outcome was written" - the widest and most dangerous window - and could
+  // not have noticed if the production path stopped recording outcomes at all.
   return new WaiterPadTableRoundWriter(resolution.config, {
-    async recordSendInitiated(record) {
-      await (
-        prisma as { nativeSendAttempt: { create: (a: Row) => Promise<unknown> } }
-      ).nativeSendAttempt.create({
-        data: {
-          roundId: record.roundId,
-          attemptId: record.attemptId,
-          externalOrderId: record.externalOrderId,
-          deviceId: record.deviceId,
-          token: record.token,
-          payloadHash: record.payloadHash,
-          posTableCode: String(record.table),
-          sendInitiatedAt: record.sendInitiatedAt,
-        },
-      });
-    },
+    recordSendInitiated: (record) => store.recordSendInitiated(record),
+    recordOutcome: (record, outcome) => store.recordOutcome(record, outcome),
+    recordDecision: (record, decision) => store.recordDecision(record, decision),
   });
 }
 
@@ -857,6 +873,13 @@ function applyUpdate(row: Row, data: Row): void {
 export async function openTill(
   behaviour: Parameters<typeof startFakeWaiterPadServer>[0] = { kind: 'ack' },
 ) {
+  // CLOSE WHATEVER THIS IS REPLACING. Only the most recent server is tracked
+  // for teardown, so a test that opens a second till - to watch two receiver
+  // behaviours in one run - silently leaked the first one's listener. It
+  // leaves no failing assertion behind, just a test runner that finishes its
+  // tests and then never exits, which reads as a hang in the spec that
+  // happened to be last.
+  await currentServer?.close();
   currentServer = await startFakeWaiterPadServer(behaviour);
   return currentServer;
 }

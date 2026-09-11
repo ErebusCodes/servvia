@@ -104,6 +104,17 @@ export interface WaiterPadWriterHooks {
   recordSendInitiated(record: SendInitiatedRecord): Promise<void>;
   /** Optional: record the raw outcome for later reconciliation. */
   recordOutcome?(record: SendInitiatedRecord, outcome: WaiterPadSendOutcome): Promise<void>;
+  /**
+   * Optional: record the LICENSED TRANSITION this writer derived from that
+   * outcome. Separate from `recordOutcome` because they are different claims -
+   * one is what the transport observed, the other is what we concluded is
+   * permitted - and a single column holding both has already been a source of
+   * confusion between "the till said NAK" and "we decided this is uncertain".
+   *
+   * MUST NOT THROW, AND MUST NOT BE AWAITED IN A WAY THAT CHANGES THE RESULT.
+   * By the time it is called the bytes have already gone. See the call site.
+   */
+  recordDecision?(record: SendInitiatedRecord, decision: WaiterPadOutcomeDecision): Promise<void>;
   now?(): Date;
 }
 
@@ -233,6 +244,34 @@ export class WaiterPadTableRoundWriter implements ITableRoundWriter {
         : outcome.kind === 'failedBeforeSend'
           ? decideFromNonResponse({ kind: 'connection_lost' })
           : decideFromNonResponse({ kind: 'timeout', waitedMs: outcome.elapsedMs });
+
+    // (8) THE CONCLUSION, WRITTEN DOWN. Diagnostic only, and deliberately the
+    // LAST thing that happens.
+    //
+    // WHY IT IS AFTER THE CLASSIFICATION AND NOT BEFORE. There is no decision
+    // to record until the outcome has been mapped; a column written earlier
+    // would be a guess, and a guess in the one field an incident review reads
+    // to find out what we thought at the time is worse than an empty column.
+    //
+    // WHY IT CANNOT AFFECT THE RESULT. `decision` is already computed and is
+    // returned whatever happens here. A rejection is swallowed by the hook
+    // itself, but this call is ALSO wrapped, because the safety argument must
+    // not rest on a hook implementation somebody may replace: by this point
+    // the bytes have gone, and an exception escaping here would surface to the
+    // caller as a thrown send - which reads as "the send failed", the single
+    // conclusion this protocol does not license and the one that gets a second
+    // docket onto a customer's bill.
+    //
+    // NOTHING READS IT BACK TO MAKE A SAFETY DECISION. Restart recovery
+    // classifies a round from `bytesLeftHost` and whether an outcome was
+    // recorded at all, never from this column - so a decision that failed to
+    // persist cannot make a round look settled, and one that persisted cannot
+    // make a round look releasable.
+    try {
+      await this.hooks.recordDecision?.(record, decision);
+    } catch {
+      /* see above: a diagnostic write may never turn a completed send into a failure */
+    }
 
     return { decision, outcome, record };
   }

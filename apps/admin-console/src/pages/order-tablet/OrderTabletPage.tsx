@@ -961,11 +961,25 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
       // round on this table is still unresolved, which is exactly the state a
       // reopened table discovers after a browser refresh.
       if (!body.roundId) {
+        // THE SERVER'S OWN SENTENCE, EXCEPT WHERE IT IS NOT ABOUT THIS ORDER.
+        //
+        // A 429 or a 503 here comes from the rate limiter, which runs BEFORE
+        // the handler - so no round was opened and nothing left this device,
+        // and the safe-to-retry default of false below is the only part that
+        // has to be right. But its wording is written for an auth route
+        // ("Too many requests", "Authentication is temporarily unavailable"),
+        // and a waiter reading that on a Send button learns nothing they can
+        // act on. Replaced with what is actually true and actually useful.
+        const throttled = res.status === 429 || res.status === 503;
+        const message = throttled
+          ? 'This round was NOT sent - the tablet is being asked to wait. Nothing has gone ' +
+            'to the till. Wait a few seconds and press Send again.'
+          : (body.message ?? `The round was refused (${res.status}).`);
         const view: NativeRoundView = {
           roundId: '',
           sequence: 0,
           status: 'failedBeforeSend',
-          message: body.message ?? `The round was refused (${res.status}).`,
+          message,
           safeToRetry: body.safeToRetry ?? false,
           requiresReconciliation: body.requiresReconciliation ?? false,
           replayed: false,

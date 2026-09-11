@@ -73,7 +73,9 @@ import { PosSubmissionStrategy, ServiceMode, StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TabletTokenActiveGuard } from '../auth/guards/tablet-token-active.guard';
+import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -195,6 +197,55 @@ const REFUSALS: Record<string, HttpStatus> = {
   not_native_owned: HttpStatus.CONFLICT,
 };
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * RATE LIMITS, AND WHY THE READ ROUTE'S IS TWENTY TIMES THE SEND'S.
+ *
+ * `RateLimitGuard` buckets per CLIENT IP PER ROUTE, so in a restaurant every
+ * tablet behind the same NAT shares one bucket. That is what sets the floor
+ * here: a limit picked for one device throttles the sixth one on a Friday
+ * night, and a tablet that cannot poll is a tablet that goes on showing
+ * "waiting for the till" about a round the server escalated ten minutes ago.
+ *
+ * IT FAILS CLOSED. A Redis outage makes the guard answer 503 rather than let
+ * the request through, which is the right default for a route that can put a
+ * docket on a real table: a send that never happened is a waiter walking to
+ * the till, and there is no ambiguity to resolve because the guard runs BEFORE
+ * the handler - no round is opened and no byte leaves the host. The tablet
+ * reads a body with no `roundId` as "not sent", and - because `safeToRetry`
+ * is absent and it defaults to false - does not invite a re-press.
+ */
+
+/**
+ * THE SEND. One press per round, and a round is minutes of a table's service,
+ * so the honest rate is around one a minute across a whole venue. Sixty leaves
+ * an order of magnitude for a dinner rush in which every table sends at once,
+ * and still stops a client stuck in a loop from pressing Send four hundred
+ * times - which is the only thing a limit on this route can usefully do, since
+ * the `requestKey` unique constraint already makes a double-tap harmless.
+ */
+const SEND_RATE_LIMIT = { limit: 60, windowSeconds: 60 } as const;
+
+/**
+ * THE POLL, AND IT MUST NOT BE THE THING THAT BREAKS THE STATUS LOOP.
+ *
+ * The tablet polls every 3 seconds while an order is open - 20 requests a
+ * minute per device - and the poll is how a round that escalated to
+ * `unresolved` ever reaches a waiter's screen at all. Throttling it does not
+ * degrade a nicety; it reinstates the exact bug the readback was built to fix,
+ * silently, under load. 600 a minute carries thirty devices on one IP with
+ * room to spare and still bounds a runaway client.
+ */
+const READ_RATE_LIMIT = { limit: 600, windowSeconds: 60 } as const;
+
+/**
+ * SETTLING BY HAND. A manager walks to a till, reads a bill, and types what
+ * they saw; twenty a minute from one address is already far beyond anything a
+ * person does. Lower than the send deliberately - this route is rarer, is
+ * restricted to two roles, and writes a terminal state on a customer's bill.
+ */
+const RESOLVE_RATE_LIMIT = { limit: 20, windowSeconds: 60 } as const;
+
 @Controller()
 export class NativeRoundsController {
   constructor(
@@ -204,8 +255,9 @@ export class NativeRoundsController {
     private readonly audit: AuditLogService,
   ) {}
 
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
   @Roles(...STAFF_ORDER_ROLES)
+  @RateLimit(SEND_RATE_LIMIT)
   @HttpCode(HttpStatus.ACCEPTED)
   @Post('admin/orders/:id/rounds')
   async submitRound(
@@ -350,8 +402,9 @@ export class NativeRoundsController {
    * which matters more on a route staff can refresh at will than anywhere else
    * in this module.
    */
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
   @Roles(...STAFF_ORDER_ROLES)
+  @RateLimit(READ_RATE_LIMIT)
   @Get('admin/orders/:id/rounds')
   async listRounds(
     @Req() req: AuthedRequest,
@@ -397,8 +450,9 @@ export class NativeRoundsController {
    *
    * MANAGER AND ADMIN ONLY - see `ROUND_RESOLUTION_ROLES`.
    */
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
   @Roles(...ROUND_RESOLUTION_ROLES)
+  @RateLimit(RESOLVE_RATE_LIMIT)
   @HttpCode(HttpStatus.OK)
   @Post('admin/orders/:id/rounds/:sequence/resolve')
   async resolveRound(

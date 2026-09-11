@@ -94,6 +94,12 @@ export function createTableRoundWriter(
   return new WaiterPadTableRoundWriter(resolution.config, {
     recordSendInitiated: (record) => store.recordSendInitiated(record),
     recordOutcome: (record, outcome) => store.recordOutcome(record, outcome),
+    // The conclusion, not just the observation. Bound here rather than left
+    // optional-and-unbound: the method existed for three commits with no
+    // production caller, which meant every attempt row in the database had an
+    // empty `decision` column and a support engineer reading one could see
+    // what the till said but not what we decided about it.
+    recordDecision: (record, decision) => store.recordDecision(record, decision),
   });
 }
 

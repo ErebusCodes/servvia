@@ -29,6 +29,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { SendInitiatedRecord } from './waiterpad-table-round-writer';
 import type { WaiterPadSendOutcome } from './waiterpad-transport';
+import type { WaiterPadOutcomeDecision } from './waiterpad-round-state';
 
 /** Cap on stored receiver text. A response is diagnostic, never a payload. */
 const MAX_RESPONSE_NOTE = 500;
@@ -101,20 +102,53 @@ export class NativeSendAttemptStore {
    * transport's observation, and conflating them in one column has already
    * been a source of confusion between "the till said NAK" and "we decided
    * this is uncertain".
+   *
+   * WHAT GOES IN THE COLUMN. The state the decision licenses, plus whether it
+   * still needs a readback - `awaiting_native_confirmation:readback`. Not the
+   * operator sentence, which is prose that changes with wording edits; not the
+   * raw response, which `outcomeKind` already holds. The pair is what a
+   * support engineer actually asks of this row: what did we conclude, and did
+   * we consider the round finished?
+   *
+   * BEST EFFORT, for exactly the reason `recordOutcome` is. By the time this
+   * runs the bytes have gone, so a failure to write a diagnostic column must
+   * not become an exception a caller could read as a failed send. The attempt
+   * row already stands and reconciliation already reads it correctly without
+   * this field.
    */
-  async recordDecision(attemptId: string, decision: string): Promise<void> {
+  async recordDecision(
+    record: SendInitiatedRecord,
+    decision: WaiterPadOutcomeDecision,
+  ): Promise<void> {
     try {
       await this.prisma.nativeSendAttempt.update({
-        where: { attemptId },
-        data: { decision },
+        where: { attemptId: record.attemptId },
+        data: { decision: describeDecision(decision) },
       });
     } catch (err) {
       this.logger.error(
-        `could not record the decision for attempt ${attemptId}: ` +
+        `could not record the decision for attempt ${record.attemptId} (round ` +
+          `${record.roundId}). The attempt row stands and every safety read - ` +
+          'restart recovery included - uses `bytesLeftHost` and `outcomeKind`, ' +
+          'never this column, so nothing is misread as a result: ' +
           (err instanceof Error ? err.message : 'unknown error'),
       );
     }
   }
+}
+
+/**
+ * The decision as one short, stable string.
+ *
+ * `readback` is carried because it is the difference between "we consider this
+ * round finished" and "only the till can say" - and reconstructing it later
+ * from the state alone is not possible: `awaiting_native_confirmation` is
+ * reached both by an ACK that needs a readback and by paths that do not.
+ */
+function describeDecision(decision: WaiterPadOutcomeDecision): string {
+  return decision.requiresReadback
+    ? `${decision.transition.to}:readback`
+    : String(decision.transition.to);
 }
 
 /**

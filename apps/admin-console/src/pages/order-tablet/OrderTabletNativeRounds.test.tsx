@@ -89,6 +89,19 @@ const UNCERTAIN: RoundReply = {
   },
 };
 
+/**
+ * The rate limiter's refusal, which runs BEFORE the handler - so nothing was
+ * sent - and whose wording is written for an auth route.
+ */
+const THROTTLED: RoundReply = {
+  status: 429,
+  body: {
+    statusCode: 429,
+    message: 'Too many requests, please try again later.',
+    error: 'Too Many Requests',
+  },
+};
+
 /** Provably nothing left the device - the one outcome that invites another try. */
 const NEVER_SENT: RoundReply = {
   status: 503,
@@ -922,5 +935,35 @@ describe('settling a stuck round by hand', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+describe('a throttled send says what a waiter can act on', () => {
+  it('tells them nothing was sent and to wait, not that authentication failed', async () => {
+    const { calls } = installFetchMock({
+      strategy: 'native_table_round',
+      rounds: [THROTTLED],
+    });
+    renderTablet();
+
+    await openTable('T12 seats');
+    await addItem();
+    await pressSend();
+    await waitFor(() => expect(roundCalls(calls)).toHaveLength(1));
+
+    const banner = await screen.findByTestId('native-round-banner');
+    // NOT the guard's own sentence. "Too many requests" and "Authentication is
+    // temporarily unavailable" are true of the infrastructure and useless to
+    // somebody holding a tablet in a dining room.
+    expect(banner.textContent).not.toMatch(/too many requests/i);
+    expect(banner.textContent).not.toMatch(/authentication/i);
+
+    // What IS true: the limiter runs before the handler, so no round was
+    // opened and nothing left the device. That is the one case where telling
+    // staff to press Send again is correct.
+    expect(banner.textContent).toMatch(/NOT sent/i);
+    expect(banner.textContent).toMatch(/press Send again/i);
+    expect(banner).toHaveAttribute('data-requires-reconciliation', 'false');
   });
 });
