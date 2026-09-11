@@ -44,6 +44,7 @@ vi.mock('../../shared/orders', async () => {
 const { useMenuStore } = await import('../../store/menu.store');
 const { useReservationStore } = await import('../../store/reservation.store');
 const { useTabletDeviceAuthStore } = await import('../../store/tabletDeviceAuth.store');
+const { useAuthStore } = await import('../../store/auth.store');
 const { OrderTabletPage } = await import('./OrderTabletPage');
 
 const NZ_TAX = { currency: 'NZD', taxJurisdiction: 'NZ_GST', pricesIncludeTax: true, taxRateBps: 1500 };
@@ -664,5 +665,262 @@ describe('switching tables', () => {
     await pressSend();
     await waitFor(() => expect(roundCalls(calls)).toHaveLength(2));
     expect(roundCalls(calls)[1].url).toContain('/api/admin/orders/order-2/rounds');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+/**
+ * SETTLING A STUCK ROUND BY HAND, FROM THE SCREEN.
+ *
+ * The dangerous half of this dialog is the answer a manager gives when they
+ * CANNOT see the round. An earlier version offered "this round is NOT on the
+ * table" and put the food back on the order to be sent again - which is a
+ * duplicate docket one honest mistake away, because the till accepts an order
+ * before it shows up, the printer runs behind, and a manager can be at the
+ * wrong table. These tests hold the two answers apart at the pixel.
+ */
+describe('settling a stuck round by hand', () => {
+  /** The docket the server attaches to a round that needs a human. */
+  const DOCKET = {
+    posTableCode: '5',
+    guests: 2,
+    lines: [
+      { description: 'Test Kebab', quantity: 1, plu: '101', seat: 2 },
+    ],
+    externalOrderId: 'order-1:r1',
+    sentAt: '2026-09-10T08:42:00.000Z',
+    tokenPrefix: 'a1b2c3d4...',
+  };
+
+  const STUCK = {
+    roundId: 'round-1',
+    sequence: 1,
+    state: 'unresolved',
+    status: 'unresolved',
+    message:
+      'This round may be on the table and may not be - nobody knows. ' +
+      'DO NOT send it again. Check the table in IdealPOS, or ask a manager.',
+    requiresReconciliation: true,
+    settled: false,
+    sendInitiatedAt: new Date().toISOString(),
+    lineCount: 1,
+    attestation: DOCKET,
+  };
+
+  /** A manager is signed in, which is who this button is for. */
+  function signInAsManager() {
+    useAuthStore.setState({
+      user: { id: 'u-1', email: 'manager@verdura.test', role: 'manager' },
+    } as never);
+  }
+
+  /** Drive a table to a round the till never answered, with the docket loaded. */
+  async function reachStuckRound(readback: { rows: Record<string, unknown>[] }) {
+    await openTable('T12 seats');
+    await addItem();
+    await pressSend();
+    readback.rows = [STUCK];
+    await waitFor(() => {
+      expect(screen.getByTestId('native-round-banner')).toHaveAttribute(
+        'data-requires-reconciliation',
+        'true',
+      );
+    });
+  }
+
+  it('shows the manager the whole docket before it asks them to vouch for it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      signInAsManager();
+      const readback = { rows: [] as Record<string, unknown>[] };
+      installFetchMock({ strategy: 'native_table_round', rounds: [UNCERTAIN], readback });
+      renderTablet();
+      await reachStuckRound(readback);
+
+      fireEvent.click(await screen.findByTestId('resolve-round-open'));
+
+      // THE POINT. Not a blank textarea under a question - the round as it was
+      // sent, so the answer can be a comparison rather than a guess.
+      const panel = await screen.findByTestId('resolve-evidence');
+      // The IDEALPOS code, which is what is written on the till. The Verdura
+      // display number is T1 here, so a panel showing that would fail.
+      expect(panel.textContent).toMatch(/table 5/i);
+      expect(panel.textContent).toMatch(/Round 1/);
+      expect(panel.textContent).toMatch(/2 covers/i);
+      expect(panel.textContent).toMatch(/1 .\s*Test Kebab/);
+      expect(panel.textContent).toMatch(/101/);
+      expect(panel.textContent).toMatch(/seat 2/i);
+      expect(panel.textContent).toMatch(/order-1:r1/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('offers NO answer that sends the round again, and says so next to the one that might look like it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      signInAsManager();
+      const readback = { rows: [] as Record<string, unknown>[] };
+      installFetchMock({ strategy: 'native_table_round', rounds: [UNCERTAIN], readback });
+      renderTablet();
+      await reachStuckRound(readback);
+
+      fireEvent.click(await screen.findByTestId('resolve-round-open'));
+      const panel = await screen.findByTestId('resolve-round-panel');
+
+      // The removed outcome is GONE - not hidden, not disabled, absent.
+      expect(screen.queryByTestId('resolve-outcome-didNotLand')).toBeNull();
+      expect(screen.queryByTestId('resolve-outcome-landed')).toBeNull();
+      expect(screen.getByTestId('resolve-outcome-present')).toBeTruthy();
+      expect(screen.getByTestId('resolve-outcome-notFound')).toBeTruthy();
+
+      // And the "I cannot see it" answer states its own consequence, which is
+      // that NOTHING happens - the sentence a manager would otherwise have to
+      // infer from a system they do not have.
+      const notFound = screen.getByTestId('resolve-outcome-notFound');
+      expect(notFound.textContent).toMatch(/nothing changes/i);
+      expect(notFound.textContent).toMatch(/NOT sent again/i);
+      // Nowhere in the dialog is a promise to re-send anything.
+      expect(panel.textContent).not.toMatch(/sent with the next round/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('will not submit until an answer is chosen AND something is written', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      signInAsManager();
+      const readback = { rows: [] as Record<string, unknown>[] };
+      installFetchMock({ strategy: 'native_table_round', rounds: [UNCERTAIN], readback });
+      renderTablet();
+      await reachStuckRound(readback);
+
+      fireEvent.click(await screen.findByTestId('resolve-round-open'));
+      const submit = await screen.findByTestId('resolve-round-submit');
+      expect(submit).toBeDisabled();
+
+      // An answer alone is not enough: the statement is the only evidence this
+      // path will ever have.
+      fireEvent.click(screen.getByRole('radio', { name: /I can see this round/i }));
+      expect(submit).toBeDisabled();
+
+      fireEvent.change(screen.getByTestId('resolve-basis'), {
+        target: { value: 'Kebab is on table 5 in IdealPOS, checked against the bill.' },
+      });
+      expect(submit).not.toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('posts the outcome the server understands, and never a line-releasing one', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      signInAsManager();
+      const readback = { rows: [] as Record<string, unknown>[] };
+      const { calls } = installFetchMock({
+        strategy: 'native_table_round',
+        rounds: [UNCERTAIN],
+        readback,
+      });
+      renderTablet();
+      await reachStuckRound(readback);
+
+      fireEvent.click(await screen.findByTestId('resolve-round-open'));
+      fireEvent.click(screen.getByRole('radio', { name: /I cannot see it/i }));
+      fireEvent.change(screen.getByTestId('resolve-basis'), {
+        target: { value: 'Nothing on table 5 that I can see, and the printer is up to date.' },
+      });
+      fireEvent.click(screen.getByTestId('resolve-round-submit'));
+
+      await waitFor(() => {
+        expect(
+          calls.some((c) => /\/rounds\/1\/resolve$/.test(c.url) && c.init?.method === 'POST'),
+        ).toBe(true);
+      });
+      const call = calls.find((c) => /\/rounds\/1\/resolve$/.test(c.url))!;
+      const sent = JSON.parse(call.init!.body as string) as { outcome: string; basis: string };
+      expect(sent.outcome).toBe('notFound');
+      expect(sent.basis).toMatch(/Nothing on table 5/);
+
+      // AND NOT A SECOND SEND. The whole risk of this dialog is that settling a
+      // round becomes a way to re-send one.
+      expect(roundCalls(calls)).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not offer the button to a waiter - they are told to fetch somebody', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      useAuthStore.setState({
+        user: { id: 'u-2', email: 'waiter@verdura.test', role: 'cashier' },
+      } as never);
+      const readback = { rows: [] as Record<string, unknown>[] };
+      installFetchMock({ strategy: 'native_table_round', rounds: [UNCERTAIN], readback });
+      renderTablet();
+      await reachStuckRound(readback);
+
+      expect(screen.queryByTestId('resolve-round-open')).toBeNull();
+      // The red banner still says what to do about it.
+      expect(screen.getByTestId('native-round-banner').textContent).toMatch(/DO NOT SEND AGAIN/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shows a round settled by a person in its OWN colour, never the green of a proven one', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      signInAsManager();
+      const readback = { rows: [] as Record<string, unknown>[] };
+      installFetchMock({ strategy: 'native_table_round', rounds: [UNCERTAIN], readback });
+      renderTablet();
+      await reachStuckRound(readback);
+
+      // The server settles it on a manager's word.
+      readback.rows = [
+        {
+          ...STUCK,
+          state: 'resolved_manually',
+          status: 'resolvedManually',
+          message:
+            'A staff member checked IdealPOS and confirmed this round is on the table. ' +
+            'It will not be sent again.',
+          requiresReconciliation: false,
+          settled: true,
+          attestation: null,
+        },
+      ];
+      await vi.advanceTimersByTimeAsync(3200);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('native-round-banner')).toHaveAttribute(
+          'data-requires-reconciliation',
+          'false',
+        );
+      });
+      const banner = screen.getByTestId('native-round-banner');
+      // VIOLET, NOT GREEN. Green means the till was seen holding our own token;
+      // this means a person said they saw the food. A screen that renders them
+      // identically has thrown the difference away on the operator's behalf.
+      expect(banner).toHaveAttribute('data-round-tone', 'accent');
+      expect(banner.textContent).toMatch(/SETTLED BY HAND/i);
+      expect(banner.textContent).not.toMatch(/ON THE TABLE IN IDEALPOS/);
+
+      // AND THE TABLE IS FREE AGAIN, which is the operational point of the
+      // whole route: the round that was holding the table is settled, so a
+      // waiter may add the next course and send it. Asserted by adding an item
+      // first - an empty cart disables Send for its own reason, and a test that
+      // skipped that step would pass whether or not the table had been freed.
+      await addItem();
+      await waitFor(() => {
+        expect(screen.getByTestId('send-to-kitchen')).not.toBeDisabled();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

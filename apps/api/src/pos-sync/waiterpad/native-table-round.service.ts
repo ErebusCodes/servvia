@@ -166,6 +166,53 @@ export interface RoundStatusView {
    */
   readonly sendInitiatedAt: Date | null;
   readonly lineCount: number;
+  /**
+   * EXACTLY WHAT A MANAGER IS BEING ASKED TO VOUCH FOR.
+   *
+   * Present only on a round that needs a human, because that is the only
+   * screen it belongs on: this is the list somebody stands at a till holding,
+   * comparing line by line against a customer's bill before putting their name
+   * to it.
+   *
+   * It exists because the first version of the attestation dialog asked "what
+   * do you see on this table in IdealPOS?" over a blank text box, and offered
+   * no way to know what SHOULD be there. Being asked to confirm a round you
+   * have not been shown is not a check - it is a formality with a signature on
+   * it, and a formality is exactly what a tired manager will produce at 9pm.
+   */
+  readonly attestation: RoundAttestationEvidence | null;
+}
+
+/** The facts a human needs in front of them to settle a round honestly. */
+export interface RoundAttestationEvidence {
+  /** The IdealPOS table, not the Verdura display number - that is the one they read on the till. */
+  readonly posTableCode: string;
+  readonly guests: number;
+  readonly lines: readonly {
+    readonly description: string;
+    readonly quantity: number;
+    /** The native code, where the item has one. Useful when two items read alike on a bill. */
+    readonly plu: string | null;
+    readonly seat: number | null;
+  }[];
+  /** Our own id for the order, as the till would know it. */
+  readonly externalOrderId: string;
+  /**
+   * WHEN IT WENT, as a wall clock for the manager to match against the till's
+   * own order list. Carried inside the docket rather than beside it because it
+   * is one of the facts being attested to, and because a panel that had to be
+   * assembled from two places is a panel that can be rendered half-empty.
+   */
+  readonly sentAt: Date | null;
+  /**
+   * A SHORT PREFIX OF THE DUPLICATE TOKEN, never the whole thing.
+   *
+   * Enough to match a row during an incident review; not enough to reconstruct
+   * a token and present it to a till. It is on this screen because staff
+   * occasionally need to read it to somebody on the phone, not because the
+   * attestation depends on it.
+   */
+  readonly tokenPrefix: string | null;
 }
 
 /** What a human's resolution did. Every field is something the tablet renders. */
@@ -178,12 +225,16 @@ export interface ManualResolutionResult {
   /**
    * Whether this round's lines went back on the order.
    *
-   * The single most consequential fact about a resolution, so it is returned
-   * as a field rather than left to be inferred from `outcome`: a client that
-   * has to derive "will these items be sent again?" from a vocabulary word is
-   * a client that will one day derive it wrong.
+   * ALWAYS FALSE. No manual path releases a line - see `attestRoundPresent`
+   * for why the outcome that used to is gone. It is still returned as an
+   * explicit field rather than left to be inferred, for two reasons: a client
+   * that has to derive "will these items be sent again?" from a vocabulary word
+   * will one day derive it wrong, and a future change that made it true would
+   * have to say so here, in front of a reviewer.
    */
-  readonly linesReleased: boolean;
+  readonly linesReleased: false;
+  /** True only for `present`. A `notFound` round is still unresolved. */
+  readonly settled: boolean;
   readonly resolvedAt: Date;
   readonly message: string;
 }
@@ -605,18 +656,54 @@ export class NativeTableRoundService {
         // recent attempt's. An older attempt's timestamp would make a round
         // look more overdue than the sweep considers it.
         attempts: { orderBy: { sendInitiatedAt: 'desc' }, take: 1 },
-        items: { select: { id: true } },
+        // The whole line, not just a count: a round that needs a human needs
+        // its contents rendered so somebody can compare them to a real bill.
+        items: {
+          select: {
+            id: true,
+            menuItemTitle: true,
+            quantity: true,
+            seat: true,
+            menuItem: { select: { posProductCode: true } },
+          },
+        },
       },
     });
 
-    return rounds.map((round) => ({
-      roundId: round.id,
-      sequence: round.sequence,
-      state: round.state,
-      ...describeRoundForReadback(round.state),
-      sendInitiatedAt: round.attempts[0]?.sendInitiatedAt ?? null,
-      lineCount: round.items.length,
-    }));
+    return rounds.map((round) => {
+      const described = describeRoundForReadback(round.state);
+      return {
+        roundId: round.id,
+        sequence: round.sequence,
+        state: round.state,
+        ...described,
+        sendInitiatedAt: round.attempts[0]?.sendInitiatedAt ?? null,
+        lineCount: round.items.length,
+        // ONLY WHERE A HUMAN IS BEING ASKED. Attaching it to every round would
+        // put a customer's order contents on screens that have no question to
+        // answer, and would invite a UI to render an attestation panel beside a
+        // round nobody may attest to.
+        attestation: described.requiresReconciliation
+          ? {
+              posTableCode: round.posTableCode,
+              guests: round.guests,
+              lines: round.items.map((i) => ({
+                description: i.menuItemTitle,
+                quantity: i.quantity,
+                plu: i.menuItem?.posProductCode ?? null,
+                seat: i.seat,
+              })),
+              externalOrderId: round.idempotencyKey,
+              sentAt: round.attempts[0]?.sendInitiatedAt ?? null,
+              // A PREFIX ONLY. Enough to match a row during an incident review,
+              // never enough to reconstruct a token and hand it to a till.
+              tokenPrefix: round.attempts[0]?.token
+                ? `${round.attempts[0].token.slice(0, 8)}...`
+                : null,
+            }
+          : null,
+      };
+    });
   }
 
   /**
@@ -667,6 +754,25 @@ export class NativeTableRoundService {
   }): Promise<ManualResolutionResult> {
     const now = options.now ?? new Date();
 
+    // ── AN OUTCOME THIS METHOD DOES NOT KNOW SETTLES NOTHING. ──
+    //
+    // The DTO's `IsIn` is the guard on the HTTP boundary, and this is the one
+    // behind it. It exists because of what the FALL-THROUGH would be: the
+    // `notFound` branch below is an early return and everything after it is the
+    // `present` path, so an outcome that is neither - a reinstated
+    // `didNotLand`, a client on an older contract, an internal caller that
+    // skips validation - would be silently treated as an attestation and settle
+    // a round nobody attested to. Named explicitly rather than restructured
+    // into a switch, because the property worth asserting is "unknown means
+    // refuse", not "the branches happen to be ordered safely today".
+    if (options.outcome !== 'present' && options.outcome !== 'notFound') {
+      throw new NativeRoundError(
+        'not_resolvable',
+        `'${String(options.outcome)}' is not something a person can report about a round. ` +
+          'Nothing was changed.',
+      );
+    }
+
     const round = await this.prisma.nativeTableRound.findFirst({
       where: { orderId: options.orderId, sequence: options.sequence },
       select: { id: true, state: true, resolvedByUserId: true, resolvedAt: true },
@@ -689,44 +795,72 @@ export class NativeTableRoundService {
       );
     }
 
-    // `landed` keeps the lines claimed by this round, which is what stops them
-    // reaching a later one. `didNotLand` releases them so the next Send carries
-    // them - the same edge the reconciler's `notApplied` takes, and the only
-    // line movement on this path.
-    const landed = options.outcome === 'landed';
-    const nextState = landed ? NativeRoundState.resolved_manually : NativeRoundState.failed;
+    // ── `notFound` RECORDS AND CHANGES NOTHING. ──
+    //
+    // Not a resolution, and not the other half of a pair. A manager failing to
+    // see a round is a FAILURE TO OBSERVE, not evidence of absence: the
+    // receiver ACKs before durable processing, a packet can sit in a 200-slot
+    // buffer waiting for a drain loop, and the manager may be at the wrong
+    // table or ahead of the kitchen printer. Every one of those reads as "I
+    // cannot see it" while the food is on its way to the customer.
+    //
+    // So the round stays exactly as unresolved as it was, its lines stay
+    // claimed, and the table stays blocked. The observation is written to the
+    // audit log by the caller, which is where a statement by a named person
+    // belongs, and staff are told what to do with a table only they can clear.
+    if (options.outcome === 'notFound') {
+      this.logger.warn(
+        `Round ${round.id} (order ${options.orderId} seq ${options.sequence}) was CHECKED BY ` +
+          `user ${options.resolvedByUserId} who could not see it: ${options.basis}. Nothing was ` +
+          'changed - its lines stay claimed, it will not be sent again, and the table stays ' +
+          'blocked until somebody settles the customer in IdealPOS.',
+      );
+      return {
+        roundId: round.id,
+        sequence: options.sequence,
+        outcome: 'notFound',
+        state: NativeRoundState.unresolved,
+        linesReleased: false,
+        settled: false,
+        resolvedAt: now,
+        message:
+          'Recorded: you checked IdealPOS and could not see this round. NOTHING HAS CHANGED ' +
+          'and these items have NOT been sent again - the till can accept an order before it ' +
+          'shows up, so not seeing it is not proof it is missing. Settle this customer on the ' +
+          'till in IdealPOS. Do not re-send this round from the tablet.',
+      };
+    }
 
-    const won = await this.prisma.$transaction(async (tx) => {
-      // THE GUARD. `updateMany` with the state in the WHERE clause is an atomic
-      // compare-and-set: whichever of two concurrent resolutions gets there
-      // second matches no rows and changes nothing.
-      const { count } = await tx.nativeTableRound.updateMany({
+    // ── `present` SETTLES IT, AND KEEPS THE LINES CLAIMED. ──
+    //
+    // Claimed lines cannot be swept into a later round, so the worst case of a
+    // mistaken attestation is a customer who ordered food and did not get it -
+    // noticed within minutes, fixed by ordering it again. There is no line
+    // movement anywhere on this path.
+    const won = await this.prisma.nativeTableRound
+      .updateMany({
+        // THE GUARD. `updateMany` with the state in the WHERE clause is an
+        // atomic compare-and-set: whichever of two concurrent attestations gets
+        // there second matches no rows and changes nothing. It also means a
+        // round the reconciler CONFIRMED a moment ago keeps its confirmation -
+        // machine evidence is never overwritten by testimony.
         where: { id: round.id, state: NativeRoundState.unresolved },
         data: {
-          state: nextState,
+          state: NativeRoundState.resolved_manually,
           resolvedByUserId: options.resolvedByUserId,
           resolvedByActingStaffId: options.resolvedByActingStaffId ?? null,
           resolvedAt: now,
           resolutionBasis: options.basis,
         },
-      });
-      if (count === 0) return false;
-
-      if (!landed) {
-        await tx.orderItem.updateMany({
-          where: { nativeRoundId: round.id },
-          data: { nativeRoundId: null },
-        });
-      }
-      return true;
-    });
+      })
+      .then(({ count }) => count > 0);
 
     if (!won) {
       // Somebody else got there first. Re-read rather than guess, so the
       // message names what the round actually is now.
       const current = await this.prisma.nativeTableRound.findUnique({
         where: { id: round.id },
-        select: { state: true, resolvedByUserId: true, resolvedAt: true },
+        select: { state: true },
       });
       throw new NativeRoundError(
         'already_resolved',
@@ -736,25 +870,28 @@ export class NativeTableRoundService {
     }
 
     this.logger.warn(
-      `Round ${round.id} (order ${options.orderId} seq ${options.sequence}) RESOLVED BY HAND as ` +
-        `${options.outcome} by user ${options.resolvedByUserId}: ${options.basis}. ` +
-        (landed
-          ? 'Its lines stay claimed by this round and will NOT go with a later one.'
-          : 'Its lines are back on the order and will go with the next round.'),
+      `Round ${round.id} (order ${options.orderId} seq ${options.sequence}) ATTESTED PRESENT by ` +
+        `user ${options.resolvedByUserId}: ${options.basis}. Its lines stay claimed by this ` +
+        'round and will NOT go with a later one. This is testimony, not till evidence.',
     );
 
     return {
       roundId: round.id,
       sequence: options.sequence,
-      outcome: options.outcome,
-      state: nextState,
-      linesReleased: !landed,
+      outcome: 'present',
+      state: NativeRoundState.resolved_manually,
+      // NEVER TRUE ON THIS PATH. Kept as an explicit field rather than left to
+      // be inferred, because "will these items be sent again?" is the one
+      // question a client must never derive wrong - and because a future
+      // change that made it true would have to say so here, in front of a
+      // reviewer, rather than by quietly adding a branch.
+      linesReleased: false,
+      settled: true,
       resolvedAt: now,
-      message: landed
-        ? 'Recorded: this round is on the table in IdealPOS. It will not be sent again, and its ' +
-          'items will not appear on a later round. The table is free for the next round.'
-        : 'Recorded: this round never reached the table. Its items are back on the order and ' +
-          'will go with the next round you send. The table is free for the next round.',
+      message:
+        'Recorded: a staff member checked IdealPOS and confirmed this round is on the table. ' +
+        'It will not be sent again, and its items will not appear on a later round. The table ' +
+        'is free for the next round.',
     };
   }
 

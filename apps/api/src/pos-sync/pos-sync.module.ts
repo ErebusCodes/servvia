@@ -10,6 +10,7 @@ import { BRIDGE_ORDER_STATUS_READER } from './bridge-order-status';
 import { PosCatalogController } from './pos-catalog.controller';
 import { PosCatalogService } from './pos-catalog.service';
 import { AuthModule } from '../auth/auth.module';
+import { AuditModule } from '../audit/audit.module';
 import { QueueModule } from '../queue/queue.module';
 import { ConnectorModule } from '../connector/connector.module';
 import { OrdersModule } from '../orders/orders.module';
@@ -30,7 +31,11 @@ import { NativeRoundRecoveryService } from './waiterpad/native-round-recovery.se
   // IdealposOrderDispatcherService can push real-time order.posSyncStatus
   // transitions to staff over the same WebSocket rooms order creation/
   // kitchen-status updates already use, instead of a second mechanism.
-  imports: [AuthModule, QueueModule, ConnectorModule, OrdersModule],
+  // AuditModule is imported so NativeRoundsController can record WHO settled an
+  // unresolved round by hand, and when. The four columns on the round carry the
+  // attestation; the audit log carries the act - including the checks that
+  // changed no state and would otherwise leave no trace that anybody looked.
+  imports: [AuthModule, AuditModule, QueueModule, ConnectorModule, OrdersModule],
   controllers: [
     PosSyncController,
     PosSyncRecordsController,

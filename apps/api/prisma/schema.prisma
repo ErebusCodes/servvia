@@ -1656,6 +1656,23 @@ enum NativeRoundState {
   /// The send produced NO definite outcome. Never auto-retried, never auto
   /// -discarded, and the only state that requires a human to leave.
   unresolved
+  /// A HUMAN walked to the till, looked at the table, and vouched that this
+  /// round IS on it.
+  ///
+  /// DELIBERATELY NOT `confirmed`. `confirmed` means one thing only: the till
+  /// was observed holding OUR attempt token against OUR DeviceID, which
+  /// nothing but our own packet could have put there. A manager reading a
+  /// table's bill sees items; they cannot tell "our round put these here"
+  /// from "somebody keyed the same food while we were deciding" - which is
+  /// precisely the correlated-vs-causal distinction the whole module is built
+  /// to protect. Folding testimony into `confirmed` would make the strongest
+  /// claim in the system unfalsifiable by making it unattributable.
+  ///
+  /// It is terminal and it is settled: the round is done, its lines stay
+  /// claimed by it, and the table's in-flight slot is released so the next
+  /// round can open. What it is NOT is proof of delivery, and no consumer may
+  /// upgrade it to one.
+  resolved_manually
   abandoned
 }
 
@@ -1709,6 +1726,30 @@ model NativeTableRound {
   nativeSaleId   String?
   nativeSaleTier String?
   nativeObservedAt DateTime?
+
+  /// WHO TOOK RESPONSIBILITY, and for what. Written only by the manual
+  /// resolution route, never by the reconciler.
+  ///
+  /// These exist because `resolved_manually` and a human-called `failed` are
+  /// assertions by a named person rather than observations by a machine, and
+  /// an assertion whose author is not recorded is a rumour. When a bill is
+  /// disputed a week later, "the round was settled" is useless and "settled by
+  /// this user at this time, who wrote that they saw three items on table 5"
+  /// is answerable.
+  ///
+  /// All nullable: every round that existed before this migration, and every
+  /// round the machine settles, has no human behind it and must not appear to.
+  resolvedByUserId String?
+  /// The elevated staff identity behind a `tablet_manager` step-up, when the
+  /// resolver reached this action through one. `JwtPayload.actingStaffId`
+  /// exists so "a privileged action's audit trail can record both identities
+  /// together", and settling a customer's bill by hand is that action. Null
+  /// when the resolver was already a staff/manager session in their own right.
+  resolvedByActingStaffId String?
+  resolvedAt       DateTime?
+  /// What the person said they saw. Required by the route, so a non-null
+  /// `resolvedAt` always has one.
+  resolutionBasis  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

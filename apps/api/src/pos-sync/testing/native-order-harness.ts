@@ -215,6 +215,18 @@ export interface Harness {
   nativeSendCount: () => number;
   queuedForProcessing: () => number;
   /**
+   * EVERY AUDIT ROW THE ROUTES WROTE, in order.
+   *
+   * Exposed because the manual-resolution path's whole value is that a named
+   * person's assertion is recorded somewhere append-only. Four nullable
+   * columns on the round say what its final state rests on; they say nothing
+   * about the `notFound` check that changed no state at all. A spec that
+   * asserted only on the round would pass with the audit call deleted, which
+   * would leave the one outcome that exists PURELY to be recorded proving
+   * nothing.
+   */
+  auditEvents: () => Row[];
+  /**
    * The real HTTP handler the Order Tablet's Send to Kitchen calls. Exercised
    * as the controller method rather than over a socket: the guards it carries
    * are the same ones order creation carries and are covered by their own
@@ -287,6 +299,7 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
   const ledger = existing ?? new Ledger();
   const webitCommands: Row[] = [];
   const queued: Row[] = [];
+  const auditEvents: Row[] = [];
 
   const prisma = buildPrisma(ledger);
 
@@ -323,7 +336,15 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
       { provide: PrismaService, useValue: prisma },
       { provide: ConfigService, useValue: config },
       { provide: OrdersGateway, useValue: { sendOrderUpdate: jest.fn() } },
-      { provide: AuditLogService, useValue: { logAuthEvent: jest.fn() } },
+      {
+        provide: AuditLogService,
+        useValue: {
+          logAuthEvent: jest.fn((dto: Row) => {
+            auditEvents.push(dto);
+            return Promise.resolve({ id: ledger.id('audit') });
+          }),
+        },
+      },
       { provide: ConnectorCommandService, useValue: connectorCommandService },
       {
         provide: getQueueToken(QUEUE_NAMES.POS_SYNC),
@@ -363,6 +384,7 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
     webitSendCount: () => webitCommands.length,
     nativeSendCount: () => currentServer?.requests.length ?? 0,
     queuedForProcessing: () => queued.length,
+    auditEvents: () => auditEvents,
     rounds: module.get(NativeRoundsController),
     reconciler: module.get(NativeRoundReconciliationService),
     recovery: module.get(NativeRoundRecoveryService),
@@ -598,7 +620,30 @@ export function buildPrisma(ledger: Ledger): PrismaService {
         // so a double that left it undefined would let that check silently
         // compare against NaN.
         const at = new Date();
-        const row = { createdAt: at, updatedAt: at, ...data, id: ledger.id('round') };
+        const row = {
+          createdAt: at,
+          updatedAt: at,
+          // THE NULLABLE COLUMNS, SPELLED NULL RATHER THAN LEFT ABSENT.
+          //
+          // Postgres hands back `null` for a nullable column nobody wrote;
+          // an object literal hands back `undefined` for a key nobody set.
+          // `undefined !== null` is true, so a double that omitted these
+          // would make `resolvedAt !== null` - the test manual resolution
+          // uses to tell "already settled by a person" from "never resolvable
+          // in the first place" - answer true for EVERY round, and the route
+          // would report the wrong refusal for every state it declines.
+          requestKey: null,
+          payloadFrozenAt: null,
+          nativeSaleId: null,
+          nativeSaleTier: null,
+          nativeObservedAt: null,
+          resolvedByUserId: null,
+          resolvedByActingStaffId: null,
+          resolvedAt: null,
+          resolutionBasis: null,
+          ...data,
+          id: ledger.id('round'),
+        };
         ledger.rounds.push(row);
         return Promise.resolve(row);
       },
@@ -611,6 +656,32 @@ export function buildPrisma(ledger: Ledger): PrismaService {
           ...r,
           items: ledger.items.filter((i) => i.nativeRoundId === r.id),
         });
+      },
+      /**
+       * The non-unique single lookup: `{ orderId, sequence }`. That pair is
+       * unique in practice - a round number is only issued once per order -
+       * but it carries no unique index, so the service must ask for it with
+       * `findFirst`, and the double has to answer the same shape.
+       *
+       * IT RETURNS ONLY WHAT WAS SELECTED. Manual resolution decides whether a
+       * round may be attested from `state` and `resolvedAt` alone, and a
+       * double that handed back the whole row would let a future read of an
+       * unselected field pass here and fail against Prisma.
+       */
+      findFirst: ({ where, select, orderBy }: { where?: Row; select?: Row; orderBy?: Row }) => {
+        let rows = ledger.rounds.filter((r) => matches(r, where));
+        const [field, dir] = Object.entries(orderBy ?? {})[0] ?? [];
+        if (field) {
+          rows = [...rows].sort((a, b) => {
+            const x = a[field] as number | Date;
+            const y = b[field] as number | Date;
+            const cmp = x < y ? -1 : x > y ? 1 : 0;
+            return dir === 'desc' ? -cmp : cmp;
+          });
+        }
+        const r = rows[0];
+        if (!r) return Promise.resolve(null);
+        return Promise.resolve(select ? project(r, select) : { ...r });
       },
       update: ({ where, data }: { where: { id: string }; data: Row }) => {
         const r = ledger.rounds.find((x) => x.id === where.id);
@@ -669,7 +740,36 @@ export function buildPrisma(ledger: Ledger): PrismaService {
         return Promise.resolve(
           rows.map((r) => {
             const out: Row = { ...r };
-            if (include?.items) out.items = ledger.items.filter((i) => i.nativeRoundId === r.id);
+            if (include?.items) {
+              // THE `select` ON THE INCLUDE IS HONOURED, AND SO IS THE
+              // `menuItem` RELATION UNDER IT.
+              //
+              // The readback asks for the item's menu item purely to put the
+              // AUTHORITATIVE PLU in front of the manager who is about to put
+              // their name to a bill. A double that returned the raw item row
+              // would hand back no `menuItem` at all, `plu` would read null for
+              // every line, and the evidence panel would look complete while
+              // omitting the one field that tells two similarly-named dishes
+              // apart on a till.
+              const spec = include.items as { select?: Row };
+              out.items = ledger.items
+                .filter((i) => i.nativeRoundId === r.id)
+                .map((i) => {
+                  if (!spec.select) return { ...i };
+                  const picked: Row = {};
+                  for (const [key, want] of Object.entries(spec.select)) {
+                    if (!want) continue;
+                    if (key === 'menuItem') {
+                      const m = MENU_ITEMS.find((x) => x.id === i.menuItemId);
+                      const nested = (want as Row).select as Row | undefined;
+                      picked.menuItem = m ? (nested ? project(m, nested) : { ...m }) : null;
+                    } else {
+                      picked[key] = i[key];
+                    }
+                  }
+                  return picked;
+                });
+            }
             if (include?.attempts) {
               const spec = include.attempts as { orderBy?: Row; take?: number };
               let attempts = ledger.attempts.filter((a) => a.roundId === r.id);
@@ -693,7 +793,18 @@ export function buildPrisma(ledger: Ledger): PrismaService {
 
     nativeSendAttempt: {
       create: ({ data }: { data: Row }) => {
-        const row = { ...data, id: ledger.id('attempt') };
+        // Same reason as the round's nullable columns: Postgres answers `null`
+        // for a column nobody wrote, and `decision` in particular is read back
+        // by restart recovery to tell a settled attempt from an abandoned one.
+        const row = {
+          outcomeKind: null,
+          bytesLeftHost: null,
+          decision: null,
+          responseNote: null,
+          settledAt: null,
+          ...data,
+          id: ledger.id('attempt'),
+        };
         ledger.attempts.push(row);
         return Promise.resolve(row);
       },

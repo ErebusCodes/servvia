@@ -294,6 +294,22 @@ function MenuItemThumbnail({ src, alt }: { src: string | null; alt: string }) {
   );
 }
 
+/**
+ * The clock time a round went, for the attestation docket.
+ *
+ * A WALL CLOCK, NOT AN ELAPSED TIME. "Sent 8:42 pm" is the thing a manager can
+ * match against a till's own order list; "sent 37 minutes ago" is a number they
+ * would have to do arithmetic on while standing at the POS. Returns null rather
+ * than a placeholder if the server's timestamp is unparseable, so the line
+ * disappears instead of rendering "Invalid Date" on a screen somebody is about
+ * to make a decision from.
+ */
+function formatSentAt(iso: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  return at.toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' });
+}
+
 // ────────────────────────────── Main Component ──────────────────────────────
 
 export function OrderTabletPage({ standalone = false }: { standalone?: boolean }) {
@@ -394,6 +410,22 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // table", which is not the same as "the table is clear" - a reopened table
   // learns the truth from the server's own refusal, never from this being null.
   const [nativeRound, setNativeRound] = useState<NativeRoundView | null>(null);
+  // The settle-by-hand dialog. Closed unless a manager opened it deliberately:
+  // there is no path on which it appears by itself, because a dialog offering
+  // to settle a round is a dialog offering to dismiss a warning.
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const [resolveOutcome, setResolveOutcome] = useState<'present' | 'notFound' | null>(null);
+  const [resolveBasis, setResolveBasis] = useState('');
+  const [resolveBusy, setResolveBusy] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  // WHAT THE SERVER SAID AFTER A SUCCESSFUL RECORD.
+  //
+  // It exists for `notFound`, the outcome whose whole point is that NOTHING
+  // CHANGES. Without it, a manager types what they saw, presses the button,
+  // and the screen closes the panel and shows the same red banner as before -
+  // which reads as "it did not work", and the next thing a person does when a
+  // button appears not to work is press it again, or press Send.
+  const [resolveNote, setResolveNote] = useState<string | null>(null);
 
   // See PENDING_SUBMISSION_STORAGE_KEY's doc comment. Read once, lazily, at
   // mount -- this is the ONLY way a reload/restart mid-submission can be
@@ -1298,6 +1330,78 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
     }
   }
 
+  /**
+   * SETTLE AN UNRESOLVED ROUND ON WHAT A MANAGER SAW. Sends nothing.
+   *
+   * The one way out of the state the machine cannot leave. `unresolved` holds
+   * the table's in-flight slot, and its machine exits both need till evidence
+   * no connector build can read yet - so without this the table is finished for
+   * the service.
+   *
+   * IT DOES NOT TOUCH THE BANNER ITSELF. On success it re-polls and lets
+   * `mergeRoundReadback` decide, which keeps one merge rule rather than two:
+   * this screen must never be able to calm its own warning by asserting an
+   * outcome the server has not written. On failure the banner is left exactly
+   * as it was - a refused resolution is a round that is still unresolved, and
+   * that is precisely when the red must not move.
+   */
+  async function handleResolveRound(): Promise<void> {
+    if (!createdOrderRef || !nativeRound?.sequence || !resolveOutcome) return;
+    if (resolveBasis.trim().length < 10) {
+      setResolveError('Please write what you saw on the till (at least a few words).');
+      return;
+    }
+    setResolveBusy(true);
+    setResolveError(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/orders/${createdOrderRef}/rounds/${nativeRound.sequence}/resolve`,
+        {
+          method: 'POST',
+          headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ outcome: resolveOutcome, basis: resolveBasis.trim() }),
+        },
+      );
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAuthOnUnauthorized();
+          return;
+        }
+        // The server's sentence, not one written here. Every refusal it can
+        // produce already says what happened and what was NOT changed, and a
+        // second vocabulary for the same states would drift from the one with
+        // the evidence behind it.
+        const body = (await res.json().catch(() => null)) as { message?: string } | null;
+        setResolveError(
+          body?.message ??
+            'This round could not be settled. Nothing was changed. Check the till and try again.',
+        );
+        // Re-poll even on refusal: the usual cause is that somebody else
+        // settled it first, and the screen should show that rather than keep
+        // arguing with it.
+        void fetchNativeRounds(createdOrderRef);
+        return;
+      }
+      // The server's own sentence, kept on screen. For `present` the banner
+      // turns violet a moment later and says the same thing; for `notFound`
+      // this is the ONLY acknowledgement there will be, because the round is
+      // deliberately exactly as unresolved as it was.
+      const body = (await res.json().catch(() => null)) as { message?: string } | null;
+      setResolveNote(body?.message ?? 'Recorded.');
+      setResolveOpen(false);
+      setResolveOutcome(null);
+      setResolveBasis('');
+      await fetchNativeRounds(createdOrderRef);
+    } catch {
+      setResolveError(
+        'The server could not be reached, so nothing was changed. This round is still ' +
+          'unresolved - do not send it again.',
+      );
+    } finally {
+      setResolveBusy(false);
+    }
+  }
+
   const TERMINAL_PRINT_JOB_STATES = new Set(['delivered', 'manual', 'failed', 'cancelled']);
 
   useEffect(() => {
@@ -1981,6 +2085,17 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
   // STAFF_ORDER_ROLES. That set is one coarse bundle shared by every order
   // endpoint, not a statement that either role should close a table; closing
   // stays supervisory. Narrowing below what the API permits is safe.
+  // Settling a round by hand mirrors the API's ROUND_RESOLUTION_ROLES
+  // (admin, manager) plus `owner`, which RolesGuard short-circuits before it
+  // consults the @Roles set at all - the same reasoning as hasClosePerm below.
+  // Deliberately NOT cashier or kitchen: resolving means walking to the till
+  // and putting your name to a customer's bill.
+  const hasResolvePerm = isStaff && (
+    userRole === 'manager' ||
+    userRole === 'admin' ||
+    userRole === 'owner'
+  );
+
   const hasClosePerm = isStaff && (
     userRole === 'manager' ||
     userRole === 'admin' ||
@@ -2590,7 +2705,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
               {nativeRound && (
                 // ── THE ROUND BANNER. ──
                 //
-                // Four visually distinct states, because they call for four
+                // Five visually distinct states, because they call for five
                 // different actions and a waiter reads colour before words:
                 //
                 //   uncertain / needs reconciliation  RED, and the button is
@@ -2602,6 +2717,14 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                 //       it: the receiver ACKs before durable processing, so
                 //       green here means the till was seen holding our own
                 //       token, and nothing weaker.
+                //   settled by hand                   VIOLET, and reachable
+                //       only from the readback. Somebody walked to the till
+                //       and vouched for this round. It is SETTLED - the table
+                //       is free and the round will not be sent again - but it
+                //       is not PROVEN, and it does not get to wear green.
+                //       Testimony and evidence are different claims, and this
+                //       is the last place the difference could quietly be
+                //       lost.
                 //   sent, awaiting confirmation       BLUE. It went; the till
                 //       has not confirmed it yet. Not an error and not a
                 //       success - and deliberately not green, because green
@@ -2621,16 +2744,28 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                     ? 'danger'
                     : nativeRound.status === 'confirmed'
                       ? 'success'
-                      : nativeRound.status === 'sentAwaitingConfirmation'
-                        ? 'info'
-                        : 'warning';
+                      : nativeRound.status === 'resolvedManually'
+                        ? 'accent'
+                        : nativeRound.status === 'sentAwaitingConfirmation'
+                          ? 'info'
+                          : 'warning';
+                  // One predicate, used by the submit button's disabled
+                  // state, its colour and its cursor. Three copies of a
+                  // condition that gates an irreversible action is three
+                  // chances for them to disagree, and the disagreement that
+                  // matters is an enabled-looking button that submits nothing
+                  // - or worse, a disabled-looking one that does.
+                  const resolveSubmitDisabled =
+                    resolveBusy || !resolveOutcome || resolveBasis.trim().length < 10;
                   const headline = nativeRound.requiresReconciliation
                     ? `ROUND ${nativeRound.sequence || ''} UNCERTAIN — DO NOT SEND AGAIN`
                     : nativeRound.status === 'confirmed'
                       ? `ROUND ${nativeRound.sequence} ON THE TABLE IN IDEALPOS`
-                      : nativeRound.status === 'sentAwaitingConfirmation'
-                        ? `ROUND ${nativeRound.sequence} SENT — AWAITING TILL CONFIRMATION`
-                        : `ROUND ${nativeRound.sequence || ''} NOT SENT`;
+                      : nativeRound.status === 'resolvedManually'
+                        ? `ROUND ${nativeRound.sequence} SETTLED BY HAND — CHECKED ON THE TILL`
+                        : nativeRound.status === 'sentAwaitingConfirmation'
+                          ? `ROUND ${nativeRound.sequence} SENT — AWAITING TILL CONFIRMATION`
+                          : `ROUND ${nativeRound.sequence || ''} NOT SENT`;
                   return (
                     <div
                       data-testid="native-round-banner"
@@ -2655,6 +2790,274 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
                         {headline}
                       </div>
                       <div>{nativeRound.message}</div>
+                      {/*
+                        THE WAY OUT, and it is offered ONLY on a round that is
+                        actually stuck and ONLY to somebody who may settle it.
+                        A waiter sees the red banner and no button, which is
+                        the same thing this screen has always told them: go and
+                        look at the till, or find a manager. What has changed is
+                        that when the manager arrives there is now somewhere for
+                        their answer to go.
+                      */}
+                      {resolveNote && !resolveOpen && (
+                        <div
+                          data-testid="resolve-note"
+                          style={{
+                            marginTop: '8px',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            border: `1px solid var(--color-${tone}-border)`,
+                            fontSize: '12px',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {resolveNote}
+                        </div>
+                      )}
+                      {nativeRound.requiresReconciliation && hasResolvePerm && !resolveOpen && (
+                        <button
+                          data-testid="resolve-round-open"
+                          onClick={() => {
+                            setResolveOpen(true);
+                            setResolveOutcome(null);
+                            setResolveBasis('');
+                            setResolveError(null);
+                            setResolveNote(null);
+                          }}
+                          style={{
+                            marginTop: '8px',
+                            width: '100%',
+                            height: '34px',
+                            borderRadius: '6px',
+                            border: `1px solid var(--color-${tone}-border)`,
+                            background: 'transparent',
+                            color: `var(--color-${tone})`,
+                            fontFamily: 'inherit',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          I checked the till - settle this round
+                        </button>
+                      )}
+                      {nativeRound.requiresReconciliation && hasResolvePerm && resolveOpen && (
+                        <div data-testid="resolve-round-panel" style={{ marginTop: '8px' }}>
+                          {/*
+                            THE DOCKET, ABOVE THE QUESTION.
+
+                            The first version of this dialog asked "what do you
+                            see on this table?" over a blank text box and showed
+                            NOTHING to compare against. Being asked to vouch for
+                            a round you have not been shown is not a check, and
+                            a manager cannot answer honestly from two radio
+                            buttons. So the panel renders the round the way it
+                            was sent - the IdealPOS table code as it is written
+                            on the till, the covers, and every line with its
+                            quantity, seat and native code - and the question
+                            comes after it.
+                          */}
+                          {nativeRound.evidence && (
+                            <div
+                              data-testid="resolve-evidence"
+                              style={{
+                                marginBottom: '8px',
+                                padding: '8px',
+                                borderRadius: '6px',
+                                border: `1px solid var(--color-${tone}-border)`,
+                                background: 'var(--color-surface-1)',
+                                color: 'var(--color-text)',
+                                fontSize: '12px',
+                              }}
+                            >
+                              <div style={{ fontWeight: 700, marginBottom: '4px' }}>
+                                Check this against IdealPOS table{' '}
+                                {nativeRound.evidence.posTableCode}
+                              </div>
+                              <div style={{ opacity: 0.85, marginBottom: '6px' }}>
+                                Round {nativeRound.sequence} &middot; {nativeRound.evidence.guests}{' '}
+                                {nativeRound.evidence.guests === 1 ? 'cover' : 'covers'}
+                                {nativeRound.evidence.sentAt && (
+                                  <> &middot; sent {formatSentAt(nativeRound.evidence.sentAt)}</>
+                                )}
+                              </div>
+                              <ul
+                                data-testid="resolve-evidence-lines"
+                                style={{ margin: 0, paddingLeft: '18px' }}
+                              >
+                                {nativeRound.evidence.lines.map((l, idx) => (
+                                  <li
+                                    key={`${l.description}-${idx}`}
+                                    style={{ marginBottom: '2px' }}
+                                  >
+                                    <strong>{l.quantity} &times;</strong> {l.description}
+                                    {l.plu && <span style={{ opacity: 0.7 }}> (#{l.plu})</span>}
+                                    {l.seat != null && l.seat > 0 && (
+                                      <span style={{ opacity: 0.7 }}> &middot; seat {l.seat}</span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                              {/*
+                                The reference and the short code are here for
+                                one reason: staff read them down a phone to
+                                somebody looking at the till. They are not part
+                                of the decision, so they sit last and small.
+                              */}
+                              <div style={{ opacity: 0.7, marginTop: '6px', fontSize: '11px' }}>
+                                Order reference {nativeRound.evidence.externalOrderId}
+                                {nativeRound.evidence.tokenPrefix && (
+                                  <> &middot; reference code {nativeRound.evidence.tokenPrefix}</>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {/*
+                            NO DEFAULT SELECTION, and the submit stays disabled
+                            until one is chosen.
+
+                            THE TWO ANSWERS ARE NOT OPPOSITES, and the wording
+                            says so. An earlier version offered "it IS on the
+                            table" and "it is NOT on the table", and the second
+                            put this round's food back on the order to be sent
+                            again. That is a duplicate docket waiting for one
+                            honest mistake: the till accepts an order before it
+                            shows up anywhere, the kitchen printer runs behind,
+                            and a manager can be at the wrong table - each of
+                            which reads as "I cannot see it" while the food is
+                            on its way to the customer. So NOT SEEING IT
+                            CHANGES NOTHING, and the consequence line says
+                            exactly that rather than leaving a manager to
+                            assume the symmetry.
+                          */}
+                          <div style={{ fontWeight: 600, marginBottom: '6px' }}>
+                            What do you see on this table in IdealPOS?
+                          </div>
+                          {(
+                            [
+                              [
+                                'present',
+                                'I can see this round on the table',
+                                'The table is freed for the next round. These items will not be sent again.',
+                              ],
+                              [
+                                'notFound',
+                                'I cannot see it',
+                                'Recorded only - nothing changes, and these items are NOT sent again. Settle this customer on the till.',
+                              ],
+                            ] as const
+                          ).map(([value, label, consequence]) => (
+                            <label
+                              key={value}
+                              data-testid={`resolve-outcome-${value}`}
+                              style={{
+                                display: 'block',
+                                marginBottom: '6px',
+                                padding: '6px 8px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                border: `1px solid var(--color-${tone}-border)`,
+                                background:
+                                  resolveOutcome === value
+                                    ? `var(--color-${tone}-bg)`
+                                    : 'transparent',
+                              }}
+                            >
+                              <input
+                                type="radio"
+                                name="resolve-outcome"
+                                checked={resolveOutcome === value}
+                                onChange={() => setResolveOutcome(value)}
+                                style={{ marginRight: '6px' }}
+                              />
+                              <span style={{ fontWeight: 600 }}>{label}</span>
+                              {/*
+                                The consequence sits next to the choice, not
+                                after it. Somebody picking between two
+                                irreversible answers should not have to know the
+                                system to know what each one does.
+                              */}
+                              <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>
+                                {consequence}
+                              </div>
+                            </label>
+                          ))}
+                          <textarea
+                            data-testid="resolve-basis"
+                            value={resolveBasis}
+                            onChange={(e) => setResolveBasis(e.target.value)}
+                            placeholder="What did you see? e.g. 3 mains on table 5, no drinks"
+                            rows={2}
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              marginTop: '2px',
+                              padding: '6px 8px',
+                              borderRadius: '6px',
+                              border: `1px solid var(--color-${tone}-border)`,
+                              background: 'var(--color-surface-1)',
+                              color: 'var(--color-text)',
+                              fontFamily: 'inherit',
+                              fontSize: '12px',
+                              resize: 'vertical',
+                            }}
+                          />
+                          {resolveError && (
+                            <div
+                              data-testid="resolve-error"
+                              style={{ marginTop: '6px', fontWeight: 600 }}
+                            >
+                              {resolveError}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                            <button
+                              data-testid="resolve-round-cancel"
+                              onClick={() => {
+                                setResolveOpen(false);
+                                setResolveError(null);
+                              }}
+                              disabled={resolveBusy}
+                              style={{
+                                flex: 1,
+                                height: '34px',
+                                borderRadius: '6px',
+                                border: `1px solid var(--color-${tone}-border)`,
+                                background: 'transparent',
+                                color: `var(--color-${tone})`,
+                                fontFamily: 'inherit',
+                                fontSize: '12px',
+                                cursor: resolveBusy ? 'default' : 'pointer',
+                              }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              data-testid="resolve-round-submit"
+                              onClick={() => void handleResolveRound()}
+                              disabled={resolveSubmitDisabled}
+                              style={{
+                                flex: 1.4,
+                                height: '34px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: resolveSubmitDisabled
+                                  ? 'var(--color-surface-3)'
+                                  : `var(--color-${tone})`,
+                                color: resolveSubmitDisabled
+                                  ? 'var(--color-text-tertiary)'
+                                  : '#fff',
+                                fontFamily: 'inherit',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: resolveSubmitDisabled ? 'default' : 'pointer',
+                              }}
+                            >
+                              {resolveBusy ? 'Recording...' : 'Record what I saw'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()

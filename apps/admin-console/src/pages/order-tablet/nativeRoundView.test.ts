@@ -58,6 +58,19 @@ const row = (over: Partial<RoundStatusRow> = {}): RoundStatusRow => ({
   ...over,
 });
 
+/** The docket the server attaches to a round that needs a human. */
+const DOCKET = {
+  posTableCode: '5',
+  guests: 2,
+  lines: [
+    { description: 'Lamb Shank', quantity: 1, plu: '101', seat: 0 },
+    { description: 'Coke No Sugar', quantity: 2, plu: '201', seat: 1 },
+  ],
+  externalOrderId: 'order-1:r1',
+  sentAt: '2026-09-10T08:42:00.000Z',
+  tokenPrefix: 'a1b2c3d4...',
+};
+
 const UNRESOLVED_ROW = row({
   state: 'unresolved',
   status: 'unresolved',
@@ -235,5 +248,92 @@ describe('a screen with no banner at all', () => {
     ]);
 
     expect(merged?.sequence).toBe(3);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+describe('the docket a manager is asked to vouch from', () => {
+  it('arrives with the readback and is kept on the banner', () => {
+    const next = mergeRoundReadback(UNCERTAIN, [
+      { ...UNRESOLVED_ROW, attestation: DOCKET },
+    ]);
+
+    expect(next?.evidence).toEqual(DOCKET);
+    // The IDEALPOS code, not the Verdura display number - it is what is
+    // written on the till the manager is standing at.
+    expect(next?.evidence?.posTableCode).toBe('5');
+    expect(next?.evidence?.lines).toHaveLength(2);
+  });
+
+  it('is NOT blanked out when a later poll stops carrying it', () => {
+    // The server rightly stops attaching a panel to a round nobody may attest
+    // to. A manager reading the docket mid-decision must not have it vanish.
+    const withDocket = mergeRoundReadback(UNCERTAIN, [
+      { ...UNRESOLVED_ROW, attestation: DOCKET },
+    ]);
+    const later = mergeRoundReadback(withDocket, [
+      { ...UNRESOLVED_ROW, attestation: null },
+    ]);
+
+    expect(later?.evidence).toEqual(DOCKET);
+  });
+
+  it('is adopted on a reload, which is when nobody has it in memory', () => {
+    const adopted = mergeRoundReadback(null, [{ ...UNRESOLVED_ROW, attestation: DOCKET }]);
+
+    expect(adopted?.requiresReconciliation).toBe(true);
+    expect(adopted?.evidence?.externalOrderId).toBe('order-1:r1');
+  });
+
+  it('leaves an ordinary round the same object - a docket-less poll re-renders nothing', () => {
+    // Pins the normalisation in `same()`. A banner that has never been polled
+    // carries no `evidence` key; a row with no panel yields null. Both mean
+    // "no docket", and treating them as different would re-render the banner
+    // on the first poll of every round in the building.
+    expect(mergeRoundReadback(AWAITING, [row()])).toBe(AWAITING);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+describe('settled by a person is not the same claim as proven by the till', () => {
+  const RESOLVED_ROW = row({
+    state: 'resolved_manually',
+    status: 'resolvedManually',
+    message:
+      'A staff member checked IdealPOS and confirmed this round is on the table. It will not ' +
+      'be sent again.',
+    requiresReconciliation: false,
+    settled: true,
+  });
+
+  it('reaches the banner as its own status, never folded into confirmed', () => {
+    const next = mergeRoundReadback(
+      { ...UNCERTAIN, requiresReconciliation: false },
+      [RESOLVED_ROW],
+    );
+
+    expect(next?.status).toBe('resolvedManually');
+    expect(next?.status).not.toBe('confirmed');
+  });
+
+  it('settles the round, so the table is free and the message is the server\'s', () => {
+    const next = mergeRoundReadback(
+      { ...UNCERTAIN, requiresReconciliation: false },
+      [RESOLVED_ROW],
+    );
+
+    expect(next?.requiresReconciliation).toBe(false);
+    expect(next?.message).toContain('will not be sent again');
+    // NEVER retryable. It is settled, but settled because a person vouched for
+    // it - which is the one settlement that must never invite a re-send.
+    expect(next?.safeToRetry).toBe(false);
+  });
+
+  it('does not let a stale readback talk a still-red round down', () => {
+    // The never-talked-down rule still applies: a round the screen believes is
+    // a human's problem stays that way until the server says it is settled.
+    const next = mergeRoundReadback(UNCERTAIN, [UNRESOLVED_ROW]);
+    expect(next?.requiresReconciliation).toBe(true);
+    expect(next?.status).toBe('uncertain');
   });
 });

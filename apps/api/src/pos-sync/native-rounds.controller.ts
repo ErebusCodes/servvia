@@ -78,6 +78,7 @@ import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersService } from '../orders/orders.service';
+import { AuditLogService } from '../audit/audit.service';
 import {
   NativeRoundError,
   NativeTableRoundService,
@@ -200,6 +201,7 @@ export class NativeRoundsController {
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
     private readonly native: NativeTableRoundService,
+    private readonly audit: AuditLogService,
   ) {}
 
   @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
@@ -428,7 +430,7 @@ export class NativeRoundsController {
     }
 
     try {
-      return await this.native.resolveRound({
+      const result = await this.native.resolveRound({
         orderId,
         sequence: seq,
         outcome: dto.outcome,
@@ -441,6 +443,53 @@ export class NativeRoundsController {
         // `actingStaffId` exists for.
         resolvedByActingStaffId: req.user.actingStaffId ?? null,
       });
+
+      // ── THE AUDIT ROW, and it is written for BOTH outcomes. ──
+      //
+      // The four columns on the round carry the attestation; this carries the
+      // ACT. They are not the same record and neither replaces the other: the
+      // columns say what a round's final state rests on, and are overwritten by
+      // nothing because the state is terminal, while the audit log is the
+      // append-only account of who did what - including the `notFound` checks
+      // that changed no state at all and would otherwise leave no trace that
+      // anybody ever looked.
+      //
+      // Written AFTER the resolution, deliberately. A failure to record the act
+      // must not roll back a settlement a manager has already been told about,
+      // and an audit row for a resolution that did not happen is worse than a
+      // missing one for a resolution that did.
+      await this.audit
+        .logAuthEvent({
+          organizationId: req.user.organizationId,
+          venueId: order.venueId,
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          actorRole: req.user.role,
+          action:
+            result.outcome === 'present'
+              ? 'NATIVE_ROUND_ATTESTED_PRESENT'
+              : 'NATIVE_ROUND_CHECKED_NOT_FOUND',
+          resource: 'native_table_round',
+          resourceId: result.roundId,
+          after: {
+            orderId,
+            sequence: seq,
+            outcome: result.outcome,
+            state: result.state,
+            settled: result.settled,
+            // Recorded explicitly rather than implied, so an incident review
+            // never has to infer whether a customer's food could have been
+            // sent twice off the back of this action.
+            linesReleased: result.linesReleased,
+            basis: dto.basis,
+            actingStaffId: req.user.actingStaffId ?? null,
+          },
+        })
+        .catch(() => {
+          /* see above: never fail a settled resolution over its own audit row */
+        });
+
+      return result;
     } catch (err) {
       if (err instanceof NativeRoundError) {
         const status =

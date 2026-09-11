@@ -38,6 +38,12 @@
  * recoveries: a rejection is the POS refusing a payload a human can fix and
  * resubmit; a failure is exhausted delivery attempts against an unchanged
  * payload.
+ *
+ * `resolved_manually` is the only exit from `unresolved` that does not need a
+ * machine to have seen anything, and it exists because without it `unresolved`
+ * is a dead end that holds the table forever. It is kept apart from
+ * `confirmed` on purpose: testimony and causal evidence are different claims,
+ * and a state machine that cannot tell them apart cannot be audited.
  */
 export type RoundState =
   | 'drafting'
@@ -47,12 +53,22 @@ export type RoundState =
   | 'rejected'
   | 'failed'
   | 'unresolved'
+  /**
+   * A HUMAN looked at the real till and vouched that this round is on the
+   * table. Terminal, settled, and emphatically NOT `confirmed` -- see
+   * `attestRoundPresent`.
+   */
+  | 'resolved_manually'
   | 'abandoned';
 
 /** States from which no further transition is possible. */
 export const TERMINAL_ROUND_STATES: ReadonlySet<RoundState> = new Set<RoundState>([
   'confirmed',
   'failed',
+  // Terminal because a person has taken responsibility for it. Re-resolving
+  // would let a second opinion silently overwrite the first, and the record of
+  // who settled a disputed bill is the only thing that makes it settled.
+  'resolved_manually',
   'abandoned',
 ]);
 
@@ -102,6 +118,12 @@ const LEGAL_TRANSITIONS: Readonly<Record<RoundState, ReadonlySet<RoundState>>> =
     'confirmed',
     'rejected',
     'failed',
+    // The human exit. The ONLY state from which it is reachable: a round that
+    // nobody has been asked about has nothing for a person to have vouched
+    // for, and letting testimony short-circuit a round that is merely still in
+    // flight would replace evidence that is coming with evidence that is
+    // weaker.
+    'resolved_manually',
     'abandoned',
   ]),
   // A rejected round is repairable: its lines return to draft under the SAME
@@ -109,6 +131,7 @@ const LEGAL_TRANSITIONS: Readonly<Record<RoundState, ReadonlySet<RoundState>>> =
   rejected: new Set<RoundState>(['drafting', 'abandoned']),
   confirmed: new Set<RoundState>([]),
   failed: new Set<RoundState>([]),
+  resolved_manually: new Set<RoundState>([]),
   abandoned: new Set<RoundState>([]),
 };
 
@@ -209,7 +232,9 @@ export function openRound(params: {
     );
   }
   if (params.rounds.some((r) => r.idempotencyKey === params.idempotencyKey)) {
-    throw new RoundInvariantError('idempotencyKey is already used by another round on this session');
+    throw new RoundInvariantError(
+      'idempotencyKey is already used by another round on this session',
+    );
   }
   return {
     roundId: params.roundId,
@@ -297,6 +322,93 @@ export function failRound(round: OrderRound): OrderRound {
  */
 export function markUnresolved(round: OrderRound): OrderRound {
   return transition(round, 'unresolved');
+}
+
+/**
+ * What a person reported after physically looking at the till.
+ *
+ * NOTE WHAT IS ABSENT: there is no outcome meaning "it is not there, so send it
+ * again". An earlier version had one. See `attestRoundPresent` for why it was
+ * removed rather than kept behind a warning.
+ */
+export type ManualResolutionOutcome =
+  /** They can see this round on the table. It is settled; its lines stay claimed. */
+  | 'present'
+  /**
+   * They looked and could not see it. RECORDED, AND NOTHING ELSE CHANGES.
+   *
+   * Deliberately not a resolution. It settles no state, releases no line, and
+   * leaves the round exactly as unresolved as it was - because a person failing
+   * to see a round is not evidence that the round is absent.
+   */
+  | 'notFound';
+
+/**
+ * THE HUMAN EXIT FROM `unresolved`, and the only one that exists.
+ *
+ * WHY IT HAD TO BE BUILT. `unresolved` occupies the session's in-flight slot,
+ * so no further round may open while one stands. Its machine exits both need
+ * evidence read from the till, and no build binds a reader yet -- so in the
+ * configuration this integration actually ships in, a round escalates to
+ * `unresolved` and the table is finished for the night. `unresolved` was
+ * documented from the first commit as "the only state that requires a human to
+ * leave", and until now there was no way for a human to leave it.
+ *
+ * IT IS NOT `confirmRound`, AND MUST NEVER BECOME IT. `confirmed` asserts that
+ * the till was seen holding OUR token against OUR DeviceID -- a fact only our
+ * own packet could have produced. A manager reading a bill sees FOOD, and food
+ * on a table cannot distinguish "our round put it there" from "somebody keyed
+ * the same items while we were deciding". That is the correlated-vs-causal
+ * distinction this module exists to protect, wearing a person instead of a
+ * PLU match. Testimony is good enough to settle a table and not good enough to
+ * be called proof, so it gets its own terminal state and keeps its own name.
+ *
+ * IT KEEPS THE LINES CLAIMED, which is the entire safety of it. Lines that stay
+ * claimed cannot be swept into a later round, so the worst case of a mistaken
+ * attestation is a customer who ordered food and did not get it -- which a
+ * waiter notices within minutes, and which is fixed by ordering it again.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * THERE IS NO OPPOSITE OF THIS FUNCTION, AND THAT IS DELIBERATE.
+ *
+ * An earlier version of this module offered a second outcome - the manager
+ * reports the round is NOT on the table, its lines are released, and the next
+ * Send carries them. It is removed, and it must not come back, because the two
+ * directions are not symmetrical and treating them as a pair is what makes the
+ * second one look reasonable.
+ *
+ * "I can see it" is an OBSERVATION. "I cannot see it" is a FAILURE TO OBSERVE,
+ * and the difference is the whole argument:
+ *
+ *   * the receiver ACKs before durable processing, so a packet can be accepted
+ *     and not yet visible anywhere;
+ *   * a round can sit in a 200-slot buffer waiting for a drain loop;
+ *   * the manager may be looking at the wrong table, the wrong POS terminal, or
+ *     the right table before the kitchen printer has caught up.
+ *
+ * Every one of those produces "I cannot see it" while the food is on its way to
+ * the customer. Releasing the lines then puts a second copy of the round on a
+ * bill nobody re-reads - the exact failure this entire module exists to
+ * prevent, arrived at through a dialog instead of a retry loop.
+ *
+ * The cost of refusing is real and is accepted: a table stays blocked, and the
+ * customer's food has to be re-entered as a new order by a human who knows what
+ * they are doing. That is visible, recoverable, and survivable for one service.
+ * A double-charged bill is none of those things.
+ *
+ * If a defensible negative rule is ever wanted, it needs POSITIVE evidence that
+ * nothing was created - the till's own token row absent for our DeviceID, or a
+ * full table readback cross-checked against our line set. Both need the
+ * evidence reader. Neither needs a person to guess.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+export function attestRoundPresent(round: OrderRound): OrderRound {
+  if (round.state !== 'unresolved') {
+    throw new RoundInvariantError(
+      `only an unresolved round may be settled by hand; this one is '${round.state}'`,
+    );
+  }
+  return transition(round, 'resolved_manually');
 }
 
 /**
