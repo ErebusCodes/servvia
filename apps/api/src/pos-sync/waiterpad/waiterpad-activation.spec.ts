@@ -217,9 +217,51 @@ describe('reconciliation of an ambiguous send', () => {
     sendInitiatedAt: new Date('2026-09-09T02:00:00Z'),
   };
 
-  it('confirms only when the till holds OUR token for OUR device', () => {
-    const v = reconcileAmbiguousSend(record, { storedTokenForDevice: record.token });
+  it('confirms only on BOTH halves: our token, and a readback showing the lines', () => {
+    const v = reconcileAmbiguousSend(record, {
+      // CAUSAL: only our packet could have put our token there.
+      storedTokenForDevice: record.token,
+      // DURABLE: the lines are actually on the tab.
+      nativeLineCountForTable: 3,
+      expectedLineCount: 3,
+    });
     expect(v.kind).toBe('confirmed');
+  });
+
+  /**
+   * THE CORRECTION OF 2026-09-11, AND THE REASON FOR IT.
+   *
+   * `SaveChecksum` - the only writer of the token row - is called from inside
+   * `ProcessHandheldOrder` at 0x01827301, which is BEFORE the receiver deletes
+   * the table's pending sale at 0x01827664/0x01827709 and before any line is
+   * written. So the token proves our packet was PICKED UP and proves nothing
+   * about the customer's bill. A crash in that window leaves a till whose
+   * token says "seen", whose table has lost its previous order, and whose new
+   * lines were never written.
+   */
+  it('does NOT confirm on our token alone - it is written before the sale exists', () => {
+    const v = reconcileAmbiguousSend(record, { storedTokenForDevice: record.token });
+    expect(v.kind).toBe('manualResolutionRequired');
+    expect(v.basis).toMatch(/receipt and not application/i);
+  });
+
+  it('does NOT confirm when the readback shows fewer lines than the round was to add', () => {
+    // The exact shape of the crash window: token written, lines not.
+    const v = reconcileAmbiguousSend(record, {
+      storedTokenForDevice: record.token,
+      nativeLineCountForTable: 1,
+      expectedLineCount: 3,
+    });
+    expect(v.kind).toBe('manualResolutionRequired');
+  });
+
+  it('does NOT confirm when the token matches but nobody looked at the table', () => {
+    // `undefined` is "did not look", never "nothing there".
+    const v = reconcileAmbiguousSend(record, {
+      storedTokenForDevice: record.token,
+      expectedLineCount: 3,
+    });
+    expect(v.kind).toBe('manualResolutionRequired');
   });
 
   it('reports notApplied when a different token is stored and nothing was processed', () => {

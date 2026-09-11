@@ -173,12 +173,28 @@ function config(over: Record<string, string> = {}): ConfigService {
 }
 
 /** A reader that answers with fixed evidence, and records that it was asked. */
+/**
+ * A bound evidence reader.
+ *
+ * IT SUPPLIES BOTH HALVES OF A CONFIRMATION BY DEFAULT, because since
+ * 2026-09-11 neither half alone reaches `confirmed`: the till's token proves
+ * our packet was picked up (causal) and a readback proves the lines are on the
+ * tab (durable), and the token is written by `ProcessHandheldOrder` BEFORE the
+ * lines are, so it cannot speak for them. A test that wants to withhold the
+ * durable half passes `nativeLineCountForTable: undefined` explicitly, which is
+ * how "did not look" is spelled.
+ */
 function reader(evidence: ReconciliationEvidence): NativeRoundEvidenceReader & { calls: number } {
+  const withDurable: ReconciliationEvidence = {
+    nativeLineCountForTable: 1,
+    expectedLineCount: 1,
+    ...evidence,
+  };
   const r = {
     calls: 0,
     readEvidence: () => {
       r.calls += 1;
-      return Promise.resolve(evidence);
+      return Promise.resolve(withDurable);
     },
   };
   return r;
@@ -257,7 +273,7 @@ describe('it cannot resend, by construction', () => {
 
 // ═════════════════════════════════════════════════════════════════════════
 describe('confirming, and refusing to confirm', () => {
-  it('confirms ONLY on the till holding our own token against our own device', async () => {
+  it('confirms ONLY on our own token against our own device AND a readback', async () => {
     const store = new Store();
     store.addSentRound({
       id: 'r1',
@@ -324,6 +340,98 @@ describe('confirming, and refusing to confirm', () => {
     expect(result.confirmed).toBe(0);
     expect(result.notApplied).toBe(0);
     expect(result.stillPending).toBe(1);
+    expect(store.round('r1').state).toBe('awaiting_native_confirmation');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+/**
+ * THE TOKEN IS WRITTEN BEFORE THE SALE EXISTS, so it cannot confirm on its own.
+ *
+ * `SaveChecksum` - the only writer of AAAExampleData for our DeviceID - is
+ * called from inside `ProcessHandheldOrder` at 0x01827301, ahead of the
+ * receiver's own `DELETE * FROM PendingSales` at 0x01827709 and ahead of every
+ * line write. A stored token therefore proves our packet was PICKED UP and
+ * says nothing about the customer's bill; the window it leaves open is a till
+ * that has deleted the table's previous order and not yet written the new one.
+ */
+describe('our token alone is receipt, not application', () => {
+  it('does not confirm when nobody read the table back', async () => {
+    const store = new Store();
+    store.addSentRound({
+      id: 'r1',
+      state: 'awaiting_native_confirmation',
+      token: 'tok-1',
+      sentAgoMs: 0,
+    });
+
+    const result = await build(
+      store,
+      reader({
+        storedTokenForDevice: 'tok-1',
+        // "Did not look" - which is ignorance, never absence.
+        nativeLineCountForTable: undefined,
+        expectedLineCount: undefined,
+      }),
+    ).sweep();
+
+    expect(result.confirmed).toBe(0);
+    expect(store.round('r1').state).toBe('awaiting_native_confirmation');
+    // And nothing is fabricated onto the round on the way past.
+    expect(store.round('r1').nativeSaleTier ?? null).toBeNull();
+    expect(store.round('r1').nativeSaleId ?? null).toBeNull();
+  });
+
+  it('does not confirm when the readback shows fewer lines than the round was to add', async () => {
+    // The crash window, exactly: token written, lines not.
+    const store = new Store();
+    store.addSentRound({
+      id: 'r1',
+      state: 'awaiting_native_confirmation',
+      token: 'tok-1',
+      sentAgoMs: 0,
+      lines: 3,
+    });
+
+    const result = await build(
+      store,
+      reader({
+        storedTokenForDevice: 'tok-1',
+        nativeLineCountForTable: 1,
+        expectedLineCount: 3,
+      }),
+    ).sweep();
+
+    expect(result.confirmed).toBe(0);
+    expect(store.round('r1').state).toBe('awaiting_native_confirmation');
+    // NOR does it go the other way. Failing to confirm is not proof of absence,
+    // and the lines stay claimed by this round.
+    expect(result.notApplied).toBe(0);
+    expect(store.linesOf('r1')).toHaveLength(3);
+  });
+
+  it('does not confirm on a readback alone - that is correlation, not causality', async () => {
+    const store = new Store();
+    store.addSentRound({
+      id: 'r1',
+      state: 'awaiting_native_confirmation',
+      token: 'tok-1',
+      sentAgoMs: 0,
+      lines: 2,
+    });
+
+    // The lines are on the table, but nothing ties them to OUR packet: a
+    // waiter keying the same two items produces exactly this evidence.
+    const result = await build(
+      store,
+      reader({
+        storedTokenForDevice: undefined,
+        nativeLineCountForTable: 2,
+        expectedLineCount: 2,
+      }),
+    ).sweep();
+
+    expect(result.confirmed).toBe(0);
     expect(store.round('r1').state).toBe('awaiting_native_confirmation');
   });
 });
@@ -505,7 +613,12 @@ describe('a reader that misbehaves', () => {
       readEvidence: () => {
         call += 1;
         if (call === 1) return Promise.reject(new Error('the till log was unreadable'));
-        return Promise.resolve({ storedTokenForDevice: 'tok-2' });
+        // Both halves, because since 2026-09-11 neither confirms alone.
+        return Promise.resolve({
+          storedTokenForDevice: 'tok-2',
+          nativeLineCountForTable: 1,
+          expectedLineCount: 1,
+        });
       },
     };
 

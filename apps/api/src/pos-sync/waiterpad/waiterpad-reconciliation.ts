@@ -61,19 +61,58 @@ export type ReconciliationVerdict =
   | { readonly kind: 'manualResolutionRequired'; readonly basis: string };
 
 /**
- * The predicate the next acceptance run will finalise.
+ * The predicate, and the ONE question it used to get wrong.
  *
- * DELIBERATELY CONSERVATIVE. It returns `confirmed` on exactly one condition —
- * the till is holding OUR token against OUR device — and `notApplied` on
- * exactly one — the till is holding a DIFFERENT token AND nothing was processed
- * for the table. Everything else is a human's call, which is the correct
- * default for a protocol where ACK precedes processing and a NAK can follow an
- * accepted order.
+ * ─────────────────────────────────────────────────────────────────────────
+ * THE TOKEN IS WRITTEN BEFORE THE SALE EXISTS. RESOLVED 2026-09-11, STATIC.
  *
- * WHAT WOULD MAKE THIS STRONGER, and what the live run should measure:
- *   * whether the token row is written BEFORE or AFTER the sale is durable —
- *     if before, a stored token proves receipt but not application;
- *   * whether `Totally finished` is reliably observable from Verdura's side.
+ * This function previously returned `confirmed` on token equality alone, and
+ * carried a note saying the live run should measure "whether the token row is
+ * written BEFORE or AFTER the sale is durable - if before, a stored token
+ * proves receipt but not application". It is written BEFORE, and it did not
+ * take a live run to find out. From `IPS.exe`, statically:
+ *
+ *   SaveChecksum (0x018267f0) is the only writer of AAAExampleData.Data for
+ *   ColumnType='IH-<DeviceID>'. Its ONLY caller is 0x01827301, inside
+ *   ProcessHandheldOrder (0x01826b90). Within that function the call sits
+ *   BEFORE both
+ *       0x01827664  DELETE * FROM PendingSaleLines WHERE Code='...'
+ *       0x01827709  DELETE * FROM PendingSales     WHERE Code='...'
+ *   and before every line-building read that follows them. The only two
+ *   branches that bypass the call land at 0x01827306 - the instruction
+ *   immediately after it - and no branch anywhere in the function jumps
+ *   backward into or before it. So on every path that reaches the writes, the
+ *   token has already been dealt with.
+ *
+ * WHAT THAT MEANS. A stored token proves our packet was PICKED UP by
+ * ProcessHandheldOrder. It does not prove a single line exists. Worse, the
+ * window it opens is not empty: between the token write and the line writes the
+ * receiver DELETES the table's existing pending sale, so a crash in that window
+ * leaves a till whose token says "seen", whose table has lost its previous
+ * order, and whose new lines were never written. Confirming on the token alone
+ * would report that state to a waiter as food on the table.
+ *
+ * SO `confirmed` NOW NEEDS BOTH HALVES, and they answer different questions:
+ *
+ *   CAUSAL   the till holds OUR token against OUR DeviceID. Only our packet
+ *            could have put it there - this is what rules out "a waiter keyed
+ *            the same items while we were deciding".
+ *   DURABLE  a readback shows the table actually holds at least the lines this
+ *            round was meant to add. This is what rules out "processing began
+ *            and died before writing anything".
+ *
+ * Neither is sufficient. Content matching alone is CORRELATION and never
+ * reaches `confirmed` - that was always true and is unchanged. Token equality
+ * alone is now correlation of a different kind: evidence about our packet's
+ * receipt, not about the customer's bill.
+ *
+ * NOTHING IN PRODUCTION EVER RAN THE OLD RULE. No connector build binds an
+ * evidence reader, so this predicate has never been reached with real evidence.
+ * The correction is pre-emptive, which is the only good time to make it.
+ *
+ * `notApplied` is unchanged and still needs positive evidence that the table
+ * was not processed at all - which, by the same trace, also means the receiver
+ * never reached the DELETE, so the table still holds whatever it held before.
  */
 export function reconcileAmbiguousSend(
   record: SendInitiatedRecord,
@@ -82,12 +121,40 @@ export function reconcileAmbiguousSend(
   const stored = evidence.storedTokenForDevice;
 
   if (stored === record.token) {
+    // CAUSAL, and now we need DURABLE beside it. `expectedLineCount` of 0 is
+    // not a licence either: a round that expected nothing is a round that
+    // should never have been sent, and it is not this predicate's job to
+    // rescue one.
+    const observed = evidence.nativeLineCountForTable;
+    const expected = evidence.expectedLineCount;
+    const durable =
+      typeof observed === 'number' &&
+      typeof expected === 'number' &&
+      expected > 0 &&
+      observed >= expected;
+
+    if (durable) {
+      return {
+        kind: 'confirmed',
+        basis:
+          'the till is holding this attempt token against this DeviceID in ' +
+          "AAAExampleData (ColumnType='IH-<DeviceID>'), which only our packet could " +
+          `have put there, AND a readback shows ${String(observed)} line(s) on the ` +
+          `table against the ${String(expected)} this round was to add - so the ` +
+          'round was both caused by us and is durably on the tab',
+      };
+    }
+
     return {
-      kind: 'confirmed',
+      kind: 'manualResolutionRequired',
       basis:
-        'the till is holding this attempt token against this DeviceID in ' +
-        "AAAExampleData (ColumnType='IH-<DeviceID>'), which only our packet could " +
-        'have put there',
+        'the till holds this attempt token for this DeviceID, so our packet WAS ' +
+        'picked up - but the token is written by ProcessHandheldOrder BEFORE the ' +
+        'sale lines are written (SaveChecksum at 0x01827301, ahead of the ' +
+        'PendingSales deletes at 0x01827664/0x01827709), so it proves receipt and ' +
+        'not application. Without a readback showing the lines on the table this ' +
+        'round cannot be called confirmed. ' +
+        describeGap(record, evidence),
     };
   }
 
