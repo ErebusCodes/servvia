@@ -54,7 +54,7 @@ import {
   type Ledger,
 } from './testing/native-order-harness';
 import { NativeRoundError } from './waiterpad/native-table-round.service';
-import { POSSyncStatus, PosSubmissionStrategy, ServiceMode } from '@prisma/client';
+import { POSAdapterType, POSSyncStatus, PosSubmissionStrategy, ServiceMode } from '@prisma/client';
 import { ServiceUnavailableException } from '@nestjs/common';
 
 installHarnessLifecycle();
@@ -408,5 +408,202 @@ describe('10. two independent dispatch workers', () => {
     } finally {
       await closeHarness(secondWorker);
     }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// 11. THE CORRUPTED ROW: native strategy, `not_synced` status.
+// ═════════════════════════════════════════════════════════════════════════
+/**
+ * A STATE THIS APPLICATION CANNOT PRODUCE, AND THE ONE THE GUARD EXISTS FOR.
+ *
+ * A native record is created at `owned_by_native` and nothing moves it back,
+ * so `strategy = native_table_round` with `status = not_synced` cannot arise
+ * from any code path here. That is precisely why it is the dangerous one:
+ *
+ *   * `status` is what BOTH dispatcher sweeps select on. It is the guard that
+ *     actually runs in production, and it is doing all the work.
+ *   * `strategy` is the SECOND, independent layer - the one whose absence
+ *     changes nothing observable today, and which every test in this file so
+ *     far would still pass without.
+ *
+ * So the strategy clause could be deleted from either sweep by a refactor and
+ * the entire suite would stay green, right up until the day something put a
+ * native row back to `not_synced` - a support script unsticking a table, a
+ * migration, a manual UPDATE at 11pm during an incident. Then both Webit
+ * surfaces would pick up an order that is already on a native tab and put a
+ * second copy of it into IdealPOS.
+ *
+ * This scenario constructs that row directly and asserts both surfaces refuse
+ * it: the SWEEP, whose candidate query filters on strategy, and the
+ * PER-RECORD DISPATCH, which re-checks the row it actually holds at the last
+ * moment before a ConnectorCommand could be created. They are separate
+ * defences and are asserted separately, because a test that only drove the
+ * sweep could not tell whether the second one still existed.
+ */
+describe('11. a native-owned record that something put back to not_synced', () => {
+  /** The corrupted row: native strategy, but wearing the status Webit sweeps on. */
+  async function corruptedNativeRecord(): Promise<{ h: Harness; orderId: string }> {
+    const till = await openTill();
+    const h = await open(NATIVE_ENV(till.port));
+
+    const order = await createDineInOrder(h);
+    await h.native.sendToKitchen(order.id);
+    expect(h.nativeSendCount()).toBe(1);
+
+    const record = h.ledger.recordFor(order.id)!;
+    expect(record.strategy).toBe(PosSubmissionStrategy.native_table_round);
+
+    // THE CORRUPTION. Exactly what a support script "unsticking a table" would
+    // do, and the only thing it changes is the field both sweeps select on.
+    record.status = POSSyncStatus.not_synced;
+    record.attemptCount = 0;
+    record.nextRetryAt = null;
+
+    return { h, orderId: order.id };
+  }
+
+  it('is never even a CANDIDATE - the sweep query excludes it on strategy alone', async () => {
+    const { h } = await corruptedNativeRecord();
+
+    const swept = await h.webitSweep.sweepDispatch();
+
+    // `eligible` IS THE ASSERTION, and it is the only one that isolates this
+    // layer. Asserting "no command was created" would pass with this filter
+    // deleted, because the per-record check below would catch the row a moment
+    // later - which is what defence in depth means and exactly why the outer
+    // layer can rot unnoticed. A row that was never selected reports eligible
+    // 0; a row that was selected and then refused reports eligible 1 and
+    // ineligible 1, and those are different sentences about the same
+    // non-event.
+    expect(swept.eligible).toBe(0);
+    expect(swept.ineligible).toBe(0);
+    expect(swept.dispatched).toBe(0);
+  });
+
+  it('is never claimed by the LEGACY dispatcher either - its own second layer', async () => {
+    const { h, orderId } = await corruptedNativeRecord();
+    const record = h.ledger.recordFor(orderId)!;
+
+    // ── AND `adapterType` IS CORRUPTED TOO, DELIBERATELY. ──
+    //
+    // This dispatcher also filters `adapterType: { not: api }`, and a native
+    // venue is an `api` venue - so in the configuration this integration ships
+    // in, that clause alone excludes every native row and the strategy clause
+    // beside it can never be the thing that fires. Leaving the fixture at
+    // `api` produces a test that passes with the strategy filter DELETED,
+    // which is the same blind spot in a different guard.
+    //
+    // So the row is made as wrong as a person could make it: native strategy,
+    // `not_synced`, and an adapter type that puts it squarely in this
+    // dispatcher's territory. What is left holding it back is exactly the
+    // clause under test.
+    expect(record.adapterType).toBe(POSAdapterType.api);
+    record.adapterType = POSAdapterType.sql;
+
+    const swept = await h.legacySweep.sweep();
+
+    // THE OTHER WEBIT SURFACE, and it needs its own assertion for the same
+    // reason the first one did: this dispatcher reaches the queue by a
+    // completely different route - a compare-and-swap claim, then a BullMQ
+    // job - and a row it claimed would be marked `unsupported` by
+    // PosSyncProcessor, permanently mislabelling an order that is on its way
+    // to the till by design.
+    expect(swept.eligible).toBe(0);
+    expect(swept.claimed).toBe(0);
+    expect(swept.published).toBe(0);
+    expect(h.queuedForProcessing()).toBe(0);
+  });
+
+  it('is not claimable by the legacy compare-and-swap, the strongest guard in that file', async () => {
+    const { h, orderId } = await corruptedNativeRecord();
+    const record = h.ledger.recordFor(orderId)!;
+    record.adapterType = POSAdapterType.sql;
+
+    // The candidate SELECT is advisory; the CLAIM is the predicate the
+    // database evaluates at the instant the row would be taken. Driven past
+    // the SELECT so that the claim is the only thing standing between this row
+    // and the queue.
+    await (
+      h.legacySweep as unknown as {
+        processCandidate: (c: unknown, now: Date, cutoff: Date, r: unknown) => Promise<void>;
+      }
+    ).processCandidate(
+      { id: record.id, venueId: VENUE.id, orderId, dispatchAttemptCount: 0 },
+      new Date(),
+      new Date(Date.now() - 60 * 60_000),
+      { eligible: 1, claimed: 0, published: 0, publishFailed: 0, exhausted: 0 },
+    );
+
+    // NOT CLAIMED, so never enqueued, so PosSyncProcessor never sees it.
+    expect(record.dispatchClaimId ?? null).toBeNull();
+    expect(h.queuedForProcessing()).toBe(0);
+  });
+
+  it('survives repeated ticks of BOTH sweeps without producing a single command', async () => {
+    const { h } = await corruptedNativeRecord();
+
+    for (let tick = 0; tick < 5; tick += 1) await runBothSweeps(h);
+
+    // NOT ONE ConnectorCommand, from either dispatcher.
+    expect(h.webitSendCount()).toBe(0);
+    expect(h.queuedForProcessing()).toBe(0);
+    // And not a second native packet either - nothing here re-sends.
+    expect(tillServer().requests).toHaveLength(1);
+  });
+
+  it('is refused by the per-record dispatch, the layer nearest the send', async () => {
+    const { h, orderId } = await corruptedNativeRecord();
+    const record = h.ledger.recordFor(orderId)!;
+
+    // Driven PAST the candidate query, as a caller that assembled a candidate
+    // some other way would. This is the check that runs on the row as it
+    // actually is, at the last moment before a command could be created - and
+    // it is the one a `sweepDispatch`-only test can never reach.
+    const result = { dispatched: 0, failed: 0, ineligible: 0, retried: 0 } as never;
+    await (
+      h.webitSweep as unknown as {
+        processDispatchCandidate: (c: unknown, r: unknown) => Promise<void>;
+      }
+    ).processDispatchCandidate(
+      {
+        id: record.id,
+        orderId,
+        venueId: VENUE.id,
+        attemptCount: 0,
+        connectorSubmitCommandId: null,
+        strategy: PosSubmissionStrategy.native_table_round,
+      },
+      result,
+    );
+
+    expect(h.webitSendCount()).toBe(0);
+    expect((result as { ineligible: number }).ineligible).toBe(1);
+    expect(tillServer().requests).toHaveLength(1);
+  });
+
+  it("is not marked failed - it is somebody else's order, not a broken one", async () => {
+    const { h, orderId } = await corruptedNativeRecord();
+
+    for (let tick = 0; tick < 5; tick += 1) await runBothSweeps(h);
+
+    // A refusal must leave the row alone. Writing `failed` onto it would put a
+    // false error in front of staff whose round is on a native tab perfectly
+    // normally, and would invite somebody to "retry" it.
+    const record = h.ledger.recordFor(orderId)!;
+    expect(record.failedAt ?? null).toBeNull();
+    expect(record.connectorSubmitCommandId ?? null).toBeNull();
+  });
+
+  it('leaves the round itself untouched - the native side still owns its lines', async () => {
+    const { h, orderId } = await corruptedNativeRecord();
+
+    for (let tick = 0; tick < 5; tick += 1) await runBothSweeps(h);
+
+    // No line went back on the order, so nothing is eligible to be swept into
+    // a later round by either pipeline.
+    expect(h.ledger.items.filter((i) => i.orderId === orderId && i.nativeRoundId === null)).toEqual(
+      [],
+    );
   });
 });
