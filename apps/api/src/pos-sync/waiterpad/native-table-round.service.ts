@@ -267,6 +267,33 @@ export interface NativeRoundSupportView {
     /** A PREFIX. The whole token is the till's equality comparand. */
     readonly tokenPrefix: string | null;
     readonly payloadHashPrefix: string | null;
+
+    /**
+     * THE TWO TERMS OF THE CONFIRMATION DELTA, which is what an operator
+     * actually needs during an incident.
+     *
+     * The question that brings someone to this endpoint is almost never "what
+     * did we send" - it is "why has this not gone green". The answer is
+     * always one of: no baseline was captured, the baseline could not be read,
+     * or the table did not change by what we asked for. None of those is
+     * legible from the state alone, and all three are legible from these.
+     */
+    readonly expectedNativeItems: readonly {
+      readonly nativeCode: string;
+      readonly quantity: number;
+    }[];
+    /**
+     * How the pre-send read of the table resolved, and what it saw. `null`
+     * means no baseline was captured at all - the round can never be
+     * machine-confirmed and will go to a human.
+     */
+    readonly preSendBaseline: {
+      readonly status: string;
+      readonly tableCode: string | null;
+      readonly lineCount: number | null;
+      readonly observedAt: string | null;
+      readonly reason: string | null;
+    } | null;
   }[];
   readonly reconciliation: {
     readonly nativeSaleId: string | null;
@@ -919,6 +946,8 @@ export class NativeTableRoundService {
         decision: a.decision,
         tokenPrefix: a.token ? `${a.token.slice(0, 8)}...` : null,
         payloadHashPrefix: a.payloadHash ? `${a.payloadHash.slice(0, 12)}...` : null,
+        expectedNativeItems: describeExpectedItems(a.expectedNativeItems),
+        preSendBaseline: describeBaseline(a.preSendTableSnapshot),
       })),
       reconciliation: {
         nativeSaleId: round.nativeSaleId,
@@ -1623,4 +1652,53 @@ function describeWhyNotResolvable(state: NativeRoundState): string {
       // default that would swallow a state added later.
       return 'This round is unresolved and can be settled by hand.';
   }
+}
+
+/**
+ * The frozen expectation, for an operator's eyes.
+ *
+ * Native codes and quantities only - the same two things confirmation is
+ * allowed to reason about. A round whose expectation cannot be read comes back
+ * EMPTY rather than partially, because a half-read expectation would let a
+ * support engineer conclude the delta was short when it never was.
+ */
+function describeExpectedItems(value: unknown): { nativeCode: string; quantity: number }[] {
+  if (!Array.isArray(value)) return [];
+  const out: { nativeCode: string; quantity: number }[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') return [];
+    const { nativeCode, quantity } = entry as { nativeCode?: unknown; quantity?: unknown };
+    if (typeof nativeCode !== 'string' || typeof quantity !== 'number') return [];
+    out.push({ nativeCode, quantity });
+  }
+  return out;
+}
+
+/**
+ * The pre-send baseline, summarised.
+ *
+ * A COUNT AND A STATUS, NOT THE LINES. The baseline can hold every item on a
+ * customer's tab, and this endpoint is read during an incident by people who
+ * need to know whether a round landed - not what else the table is eating.
+ * The count plus the status answers every question the endpoint exists for:
+ * "no baseline", "the read failed", or "the table held N groups and here is
+ * when we looked".
+ */
+function describeBaseline(value: unknown): {
+  status: string;
+  tableCode: string | null;
+  lineCount: number | null;
+  observedAt: string | null;
+  reason: string | null;
+} | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.status !== 'string') return null;
+  return {
+    status: v.status,
+    tableCode: typeof v.tableCode === 'string' ? v.tableCode : null,
+    lineCount: Array.isArray(v.lines) ? v.lines.length : null,
+    observedAt: typeof v.observedAt === 'string' ? v.observedAt : null,
+    reason: typeof v.reason === 'string' ? v.reason : null,
+  };
 }

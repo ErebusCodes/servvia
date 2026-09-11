@@ -109,6 +109,73 @@ describe('what an incident review can actually see', () => {
     expect(view.lines.map((l) => l.description).sort()).toEqual(['Coke No Sugar', 'Lamb Shank']);
   });
 
+  it('shows WHY a round has not gone green, which is what support is called about', async () => {
+    const { h, orderId } = await tableWithAnUnresolvedRound();
+
+    const view = await h.rounds.supportView(MANAGER, orderId, '1');
+    const attempt = view.attempts[0];
+
+    // WHAT WE ASKED THE TILL FOR, frozen with the attempt. Without it, "the
+    // delta was short" is unfalsifiable from this endpoint.
+    expect(attempt.expectedNativeItems).toEqual(
+      expect.arrayContaining([
+        { nativeCode: MENU.lamb.posProductCode, quantity: 1 },
+        { nativeCode: MENU.coke.posProductCode, quantity: 2 },
+      ]),
+    );
+
+    // AND WHAT THE TABLE HELD BEFORE. Null here is the production default and
+    // is itself the answer: no baseline was captured, so the delta has nothing
+    // to subtract and this round can never be machine-confirmed.
+    expect(attempt.preSendBaseline).toBeNull();
+  });
+
+  it('shows a captured baseline as a count and a status, never as a bill', async () => {
+    // An operator needs to know the table held something and when we looked.
+    // They do not need to read what else the table is eating, and this
+    // endpoint is opened during an incident by people who should not.
+    const till = await openTill({ kind: 'silent' });
+    const h = setHarness(
+      await build(ENV(till.port), undefined, {
+        baselineSource: {
+          readBaseline: () =>
+            Promise.resolve({
+              status: 'observed' as const,
+              tableCode: '5',
+              pos: 1,
+              map: '1',
+              lines: [
+                { nativeCode: '999', quantity: 1 },
+                { nativeCode: '998', quantity: 1 },
+              ],
+              observedAt: new Date().toISOString(),
+            }),
+        },
+      }),
+    );
+    const order = await createDineInOrder(h, {
+      tableId: 'tbl-a',
+      items: [{ menuItemId: MENU.lamb.id, quantity: 1 }],
+    });
+    try {
+      await h.rounds.submitRound(asRole(ACTOR.role), order.id, { items: [], requestKey: REQ(9) });
+    } catch (err) {
+      if (!(err instanceof HttpException)) throw err;
+    }
+
+    const view = await h.rounds.supportView(MANAGER, order.id, '1');
+    const baseline = view.attempts[0].preSendBaseline;
+
+    expect(baseline).not.toBeNull();
+    expect(baseline?.status).toBe('observed');
+    expect(baseline?.tableCode).toBe('5');
+    expect(baseline?.lineCount).toBe(2);
+    expect(baseline?.observedAt).toEqual(expect.any(String));
+
+    // The other table's PLUs are nowhere in the response.
+    expect(JSON.stringify(view)).not.toContain('999');
+  });
+
   it('shows the transport facts, which is the whole reason it exists', async () => {
     const { h, orderId } = await tableWithAnUnresolvedRound();
 

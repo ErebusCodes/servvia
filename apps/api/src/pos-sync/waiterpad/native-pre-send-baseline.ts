@@ -59,6 +59,25 @@ import type { NativeTableSnapshot } from './waiterpad-native-evidence';
 export const DEFAULT_BASELINE_MAX_AGE_MS = 2 * 60_000;
 
 /**
+ * How far into the future an observation's timestamp may sit and still be
+ * believed.
+ *
+ * IT CANNOT BE ZERO, and finding that out cost a flaky test. The observation is
+ * stamped by whatever read the table — another process, and in production
+ * another MACHINE — while the age is measured against this process's clock. Two
+ * clocks are never identical, so a perfectly fresh observation routinely
+ * arrives a few milliseconds "in the future". Refusing those outright would
+ * discard the freshest evidence available and, on a venue whose connector clock
+ * runs slightly ahead, would refuse EVERY baseline while looking like a
+ * capability that was simply never configured.
+ *
+ * A minute is generous for NTP-synced machines and still far too small to let a
+ * genuinely wrong clock through: an observation an hour in the future is a
+ * misconfiguration, not skew, and is still refused.
+ */
+export const MAX_BASELINE_CLOCK_SKEW_MS = 60_000;
+
+/**
  * The port. One method, and it returns an observation or nothing.
  *
  * DELIBERATELY CANNOT FAIL LOUDLY. It returns `undefined` rather than throwing,
@@ -109,11 +128,13 @@ export function isUsableBaseline(
   if (!Number.isFinite(observedAt)) return false;
 
   const ageMs = now.getTime() - observedAt;
-  // A future timestamp is a clock disagreement between this process and
-  // whatever produced the observation. Refused rather than treated as
-  // maximally fresh: an observation "from the future" would otherwise be the
-  // most trusted one we have.
-  if (ageMs < 0) return false;
+
+  // A timestamp slightly AHEAD of this clock is ordinary skew between two
+  // machines, not evidence of anything, and the freshest observation available
+  // is exactly the one most likely to land there. Tolerated up to a bound.
+  // Beyond that bound it is a wrong clock rather than a fast one, and an
+  // observation from an hour in the future would otherwise be trusted forever.
+  if (ageMs < 0) return -ageMs <= MAX_BASELINE_CLOCK_SKEW_MS;
 
   return ageMs <= maxAgeMs;
 }
