@@ -37,13 +37,19 @@
  * WHAT IT NEVER DOES: retry, fall back to Webit, or report success on an ACK.
  */
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { NativeRoundState, PosSubmissionStrategy, type Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveNativeProductCode } from '../resolve-native-product-code';
 import { newAttemptId } from './waiterpad-token';
 import { TABLE_ROUND_WRITER } from './waiterpad-writer.provider';
+import {
+  isUsableBaseline,
+  PRE_SEND_BASELINE_SOURCE,
+  type PreSendBaselineSource,
+} from './native-pre-send-baseline';
+import type { NativeTableSnapshot } from './waiterpad-native-evidence';
 import {
   type ITableRoundWriter,
   type TableRoundLine,
@@ -338,6 +344,19 @@ export class NativeTableRoundService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(TABLE_ROUND_WRITER) private readonly writer: ITableRoundWriter,
+    /**
+     * Where the "before" of the confirmation delta comes from.
+     *
+     * OPTIONAL, and unbound in every build that has no connector capability -
+     * which is production today. Unbound means no baseline, which means rounds
+     * are sent exactly as they are now and simply cannot be machine-confirmed.
+     * It never means a round is refused: the Send is what a customer is
+     * waiting for, and an unconfirmable round escalates to a human rather than
+     * failing in a dining room.
+     */
+    @Optional()
+    @Inject(PRE_SEND_BASELINE_SOURCE)
+    private readonly baselineSource: PreSendBaselineSource | null = null,
   ) {}
 
   /**
@@ -673,6 +692,7 @@ export class NativeTableRoundService {
         table: Number(round.posTableCode),
         guests: round.guests,
         lines,
+        preSendBaseline: await this.readBaseline(round.venueId, round.posTableCode),
       });
     } catch (err) {
       // The writer refused BEFORE opening a socket - disabled, misconfigured,
@@ -685,6 +705,44 @@ export class NativeTableRoundService {
     }
 
     return await this.applyDecision(roundId, result);
+  }
+
+  /**
+   * The freshest usable observation of this table, or nothing.
+   *
+   * NEVER THROWS, AND NEVER DELAYS THE SEND BEYOND ITS OWN CALL. Every failure
+   * mode - no source bound, a source that rejected, an observation too old to
+   * describe the table now - produces the same answer: no baseline. The round
+   * still goes. It just cannot be machine-confirmed afterwards, which is a
+   * consequence a human can absorb and a refused Send is not.
+   *
+   * The freshness rule lives in `isUsableBaseline` rather than here, so every
+   * source is held to the same tolerance instead of each choosing its own.
+   */
+  private async readBaseline(
+    venueId: string,
+    posTableCode: string,
+  ): Promise<NativeTableSnapshot | undefined> {
+    if (!this.baselineSource) return undefined;
+    const now = new Date();
+    try {
+      const snapshot = await this.baselineSource.readBaseline({ venueId, posTableCode, now });
+      if (!isUsableBaseline(snapshot, now)) {
+        this.logger.debug(
+          `no usable pre-send baseline for table ${posTableCode}; this round will not be ` +
+            'machine-confirmable and will escalate to a human if the wire does not settle it.',
+        );
+        return undefined;
+      }
+      return snapshot;
+    } catch (err) {
+      this.logger.warn(
+        `reading the pre-send baseline for table ${posTableCode} failed: ` +
+          `${err instanceof Error ? err.message : 'unknown error'}. The round is sent without ` +
+          'one, which costs a confirmation and cannot cost correctness.',
+      );
+      return undefined;
+    }
   }
 
   /**

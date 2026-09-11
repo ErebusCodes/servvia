@@ -18,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   ACCEPT_NO_CONFIRMATION_VALUE,
   ACTIVATION_INVARIANT_ENV_KEYS as K,
+  CONNECTOR_BASELINE_SOURCE,
   CONNECTOR_EVIDENCE_READER,
   checkActivationInvariant,
 } from './waiterpad-activation-invariant';
@@ -45,6 +46,7 @@ const COMPLETE_WRITER_CONFIG: Record<string, string> = {
 
 const CONFIRMATION_AVAILABLE: Record<string, string> = {
   [K.evidenceReader]: CONNECTOR_EVIDENCE_READER,
+  [K.baselineSource]: CONNECTOR_BASELINE_SOURCE,
   [K.reconcileEnabled]: 'true',
 };
 
@@ -61,6 +63,7 @@ describe('the invariant itself', () => {
     const r = checkActivationInvariant({
       [K.nativeEnabled]: 'true',
       [K.reconcileEnabled]: 'true',
+      [K.baselineSource]: CONNECTOR_BASELINE_SOURCE,
     });
 
     expect(r.refuseActivation).toBe(true);
@@ -72,18 +75,48 @@ describe('the invariant itself', () => {
     const r = checkActivationInvariant({
       [K.nativeEnabled]: 'true',
       [K.evidenceReader]: CONNECTOR_EVIDENCE_READER,
+      [K.baselineSource]: CONNECTOR_BASELINE_SOURCE,
     });
 
     expect(r.refuseActivation).toBe(true);
     expect(r.reasons.join(' ')).toMatch(/sweep never runs/i);
   });
 
-  it('names BOTH missing halves rather than making an operator guess', () => {
+  it('names EVERY missing part rather than making an operator guess', () => {
     const r = checkActivationInvariant({ [K.nativeEnabled]: 'true' });
 
     const text = r.reasons.join(' ');
     expect(text).toMatch(/no evidence reader is bound/i);
     expect(text).toMatch(/sweep never runs/i);
+    expect(text).toMatch(/no pre-send baseline is ever captured/i);
+  });
+
+  it('REFUSES a reader and a sweep with no baseline source', () => {
+    // The dangerous case, because it looks configured. A reader and a sweep
+    // can see the table as it is NOW; with nothing to subtract, the delta
+    // cannot be computed at all, so this build is exactly as unable to confirm
+    // as one with neither and far more convincing.
+    const r = checkActivationInvariant({
+      [K.nativeEnabled]: 'true',
+      [K.reconcileEnabled]: 'true',
+      [K.evidenceReader]: CONNECTOR_EVIDENCE_READER,
+    });
+
+    expect(r.refuseActivation).toBe(true);
+    expect(r.canConfirmAutomatically).toBe(false);
+    expect(r.reasons.join(' ')).toMatch(/nothing to subtract/i);
+  });
+
+  it('treats a misspelled baseline source as a misconfiguration, never as "none"', () => {
+    const r = checkActivationInvariant({
+      [K.nativeEnabled]: 'true',
+      [K.reconcileEnabled]: 'true',
+      [K.evidenceReader]: CONNECTOR_EVIDENCE_READER,
+      [K.baselineSource]: 'conector',
+    });
+
+    expect(r.refuseActivation).toBe(true);
+    expect(r.reasons.join(' ')).toContain("'conector'");
   });
 
   it('treats a misspelled reader as a misconfiguration, never as "no reader"', () => {

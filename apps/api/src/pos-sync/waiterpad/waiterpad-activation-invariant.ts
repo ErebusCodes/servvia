@@ -52,12 +52,27 @@ export const ACTIVATION_INVARIANT_ENV_KEYS = {
    * that holds the till credentials.
    */
   evidenceReader: 'IDEALPOS_NATIVE_EVIDENCE_READER',
+  /**
+   * Where the "before" of the confirmation delta comes from. `connector` is the
+   * only implementation.
+   *
+   * A THIRD REQUIREMENT, and it is not redundant with the other two. A reader
+   * and a sweep together can gather the table as it is NOW; without a baseline
+   * there is nothing to subtract it from, so the delta cannot be computed and
+   * no round can ever be confirmed. A build with a reader, a sweep and no
+   * baseline source is exactly as unable to confirm as one with neither, and
+   * looks far more configured.
+   */
+  baselineSource: 'IDEALPOS_NATIVE_BASELINE_SOURCE',
   /** The deliberate, awkward acknowledgement that this build cannot confirm anything. */
   acceptNoConfirmation: 'IDEALPOS_WAITERPAD_ACCEPT_NO_CONFIRMATION',
 } as const;
 
 /** The only accepted evidence reader. A typo is a refusal, never a silent fallback to none. */
 export const CONNECTOR_EVIDENCE_READER = 'connector';
+
+/** The only accepted baseline source. Same rule: a typo is a refusal. */
+export const CONNECTOR_BASELINE_SOURCE = 'connector';
 
 /**
  * The exact value that acknowledges a degraded build. It is a sentence about
@@ -108,6 +123,15 @@ export function checkActivationInvariant(
   const reconcileEnabled = env[K.reconcileEnabled] === 'true';
   const readerSelection = (env[K.evidenceReader] ?? '').trim();
   const readerBound = readerSelection === CONNECTOR_EVIDENCE_READER;
+  const baselineSelection = (env[K.baselineSource] ?? '').trim();
+  const baselineBound = baselineSelection === CONNECTOR_BASELINE_SOURCE;
+
+  if (baselineSelection !== '' && !baselineBound) {
+    reasons.push(
+      `${K.baselineSource} is '${baselineSelection}', which is not a baseline source this build ` +
+        `knows. The only value is '${CONNECTOR_BASELINE_SOURCE}'.`,
+    );
+  }
 
   if (readerSelection !== '' && !readerBound) {
     // A typo must not read as "no reader". It reads as a misconfiguration, and
@@ -119,10 +143,11 @@ export function checkActivationInvariant(
     );
   }
 
-  // Automatic confirmation needs BOTH: something to gather evidence, and
-  // something to act on it. A reader with no sweep never runs; a sweep with no
-  // reader gathers nothing and confirms nothing.
-  const canConfirmAutomatically = readerBound && reconcileEnabled;
+  // Automatic confirmation needs ALL THREE. A reader with no sweep never runs;
+  // a sweep with no reader gathers nothing; and either of them without a
+  // baseline has nothing to subtract, so the delta that IS the durable half
+  // cannot be computed at all.
+  const canConfirmAutomatically = readerBound && reconcileEnabled && baselineBound;
 
   if (!nativeWriterRequested) {
     // The writer is off. Nothing can reach a till, so the invariant has nothing
@@ -149,7 +174,8 @@ export function checkActivationInvariant(
       degradedAcknowledged: false,
       reasons: [
         'the native writer is active and this build can confirm a round automatically: ' +
-          `${K.evidenceReader}=${CONNECTOR_EVIDENCE_READER} and ${K.reconcileEnabled}=true. ` +
+          `${K.evidenceReader}=${CONNECTOR_EVIDENCE_READER}, ` +
+          `${K.baselineSource}=${CONNECTOR_BASELINE_SOURCE} and ${K.reconcileEnabled}=true. ` +
           'Whether the venue end can actually reach the till is not visible from here and is ' +
           'not claimed.',
         ...reasons,
@@ -170,6 +196,13 @@ export function checkActivationInvariant(
     missing.push(
       `${K.reconcileEnabled} is not "true", so the reconciliation sweep never runs and no ` +
         'evidence would be acted on even if it were gathered',
+    );
+  }
+  if (!baselineBound && baselineSelection === '') {
+    missing.push(
+      `${K.baselineSource} is not set, so no pre-send baseline is ever captured and the ` +
+        'confirmation delta has nothing to subtract - the table as it is now cannot be ' +
+        'separated from the lines that were already on it',
     );
   }
 

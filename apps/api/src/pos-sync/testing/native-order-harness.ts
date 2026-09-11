@@ -33,7 +33,11 @@ import { PosStrategyResolver } from '../pos-strategy-resolver';
 import { IdealposOrderDispatcherService } from '../idealpos-order-dispatcher.service';
 import { PosSyncDispatcherService } from '../pos-sync-dispatcher.service';
 import { NativeTableRoundService } from '../waiterpad/native-table-round.service';
-import { NativeRoundReconciliationService } from '../waiterpad/native-round-reconciliation.service';
+import {
+  NativeRoundReconciliationService,
+  type NativeRoundEvidenceReader,
+} from '../waiterpad/native-round-reconciliation.service';
+import type { PreSendBaselineSource } from '../waiterpad/native-pre-send-baseline';
 import { NativeRoundRecoveryService } from '../waiterpad/native-round-recovery.service';
 import {
   WaiterPadTableRoundWriter,
@@ -297,7 +301,22 @@ export function installHarnessLifecycle(): void {
  * the same rows. Anything the new instance concludes it concluded from the
  * database, which is the only place a real restart could have learned it from.
  */
-export async function build(env: Record<string, string>, existing?: Ledger): Promise<Harness> {
+export async function build(
+  env: Record<string, string>,
+  existing?: Ledger,
+  /**
+   * Optional confirmation wiring.
+   *
+   * Both default to ABSENT, which is production today and what every existing
+   * spec in this suite expects: no baseline is captured and the reconciler can
+   * only escalate. A spec that wants to watch a round reach `confirmed` binds
+   * both, exactly as a configured build does.
+   */
+  confirmation: {
+    baselineSource?: PreSendBaselineSource;
+    evidenceReader?: NativeRoundEvidenceReader;
+  } = {},
+): Promise<Harness> {
   const ledger = existing ?? new Ledger();
   const webitCommands: Row[] = [];
   const queued: Row[] = [];
@@ -376,14 +395,17 @@ export async function build(env: Record<string, string>, existing?: Ledger): Pro
       },
       {
         provide: NativeTableRoundService,
-        useFactory: () => new NativeTableRoundService(prisma, writer),
+        useFactory: () =>
+          new NativeTableRoundService(prisma, writer, confirmation.baselineSource ?? null),
       },
       {
-        // Built with NO evidence reader, which is production today and every
-        // build. So the only thing it can do here is the half that needs no
-        // till access: escalate a round that has gone unproven for too long.
+        // Reader-unbound BY DEFAULT, which is production today and every build.
+        // So the only thing it can do is the half that needs no till access:
+        // escalate a round that has gone unproven for too long. A spec that
+        // binds one gets a reconciler that can actually settle a round.
         provide: NativeRoundReconciliationService,
-        useFactory: () => new NativeRoundReconciliationService(prisma, config, null),
+        useFactory: () =>
+          new NativeRoundReconciliationService(prisma, config, confirmation.evidenceReader ?? null),
       },
       {
         // What a RESTART does to a round that was mid-send. Driven directly by

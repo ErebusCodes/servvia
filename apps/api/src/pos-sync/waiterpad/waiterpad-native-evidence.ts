@@ -104,6 +104,17 @@ export interface NativeTableSnapshot {
   readonly reason?: string;
   /** Observational only — POSServer regenerates it on ordinary edits. Never matched on. */
   readonly observedRowId?: number;
+
+  /**
+   * When this observation was taken, as an ISO timestamp.
+   *
+   * Carried so a BASELINE can be aged. It plays no part in the delta itself —
+   * `evaluateStrongNativeEvidence` never reads it — because a timestamp cannot
+   * make two line multisets agree or disagree. Its only job is upstream, where
+   * `isUsableBaseline` refuses an observation too old to describe the table
+   * now. An absent value means the age is unknown, which is refused there.
+   */
+  readonly observedAt?: string;
 }
 
 /** What this round was supposed to add, in native terms. */
