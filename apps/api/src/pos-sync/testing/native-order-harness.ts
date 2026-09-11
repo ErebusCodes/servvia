@@ -701,7 +701,17 @@ export function buildPrisma(ledger: Ledger): PrismaService {
        * double that handed back the whole row would let a future read of an
        * unselected field pass here and fail against Prisma.
        */
-      findFirst: ({ where, select, orderBy }: { where?: Row; select?: Row; orderBy?: Row }) => {
+      findFirst: ({
+        where,
+        select,
+        orderBy,
+        include,
+      }: {
+        where?: Row;
+        select?: Row;
+        orderBy?: Row;
+        include?: Row;
+      }) => {
         let rows = ledger.rounds.filter((r) => matches(r, where));
         const [field, dir] = Object.entries(orderBy ?? {})[0] ?? [];
         if (field) {
@@ -714,7 +724,12 @@ export function buildPrisma(ledger: Ledger): PrismaService {
         }
         const r = rows[0];
         if (!r) return Promise.resolve(null);
-        return Promise.resolve(select ? project(r, select) : { ...r });
+        if (select) return Promise.resolve(project(r, select));
+        // Same hydration as `findMany`, deliberately shared rather than
+        // reimplemented: the support view asks `findFirst` for exactly the
+        // includes the readback asks `findMany` for, and two doubles that
+        // answered them differently would make one of the two specs a fiction.
+        return Promise.resolve(hydrateRound(ledger, r, include));
       },
       update: ({ where, data }: { where: { id: string }; data: Row }) => {
         const r = ledger.rounds.find((x) => x.id === where.id);
@@ -771,55 +786,7 @@ export function buildPrisma(ledger: Ledger): PrismaService {
         if (typeof take === 'number') rows = rows.slice(0, take);
 
         return Promise.resolve(
-          rows.map((r) => {
-            const out: Row = { ...r };
-            if (include?.items) {
-              // THE `select` ON THE INCLUDE IS HONOURED, AND SO IS THE
-              // `menuItem` RELATION UNDER IT.
-              //
-              // The readback asks for the item's menu item purely to put the
-              // AUTHORITATIVE PLU in front of the manager who is about to put
-              // their name to a bill. A double that returned the raw item row
-              // would hand back no `menuItem` at all, `plu` would read null for
-              // every line, and the evidence panel would look complete while
-              // omitting the one field that tells two similarly-named dishes
-              // apart on a till.
-              const spec = include.items as { select?: Row };
-              out.items = ledger.items
-                .filter((i) => i.nativeRoundId === r.id)
-                .map((i) => {
-                  if (!spec.select) return { ...i };
-                  const picked: Row = {};
-                  for (const [key, want] of Object.entries(spec.select)) {
-                    if (!want) continue;
-                    if (key === 'menuItem') {
-                      const m = MENU_ITEMS.find((x) => x.id === i.menuItemId);
-                      const nested = (want as Row).select as Row | undefined;
-                      picked.menuItem = m ? (nested ? project(m, nested) : { ...m }) : null;
-                    } else {
-                      picked[key] = i[key];
-                    }
-                  }
-                  return picked;
-                });
-            }
-            if (include?.attempts) {
-              const spec = include.attempts as { orderBy?: Row; take?: number };
-              let attempts = ledger.attempts.filter((a) => a.roundId === r.id);
-              const [af, ad] = Object.entries(spec.orderBy ?? {})[0] ?? [];
-              if (af) {
-                attempts = [...attempts].sort((a, b) => {
-                  const x = a[af] as Date;
-                  const y = b[af] as Date;
-                  const cmp = x < y ? -1 : x > y ? 1 : 0;
-                  return ad === 'desc' ? -cmp : cmp;
-                });
-              }
-              if (typeof spec.take === 'number') attempts = attempts.slice(0, spec.take);
-              out.attempts = attempts;
-            }
-            return out;
-          }),
+          rows.map((r) => hydrateRound(ledger, r, include)),
         );
       },
     },
@@ -867,6 +834,56 @@ function hydrate(ledger: Ledger, order: Row, include?: Row): Row {
     out.nativeRounds = ledger.rounds
       .filter((r) => r.orderId === order.id)
       .map((r) => ({ sequence: r.sequence, state: r.state }));
+  return out;
+}
+
+/**
+ * A round with its `include` applied, shared by `findFirst` and `findMany`.
+ *
+ * `items` honours the `select` on the include INCLUDING the `menuItem`
+ * relation, because the readback asks for the item's menu item purely to put
+ * the authoritative PLU in front of a manager about to vouch for a bill.
+ * `attempts` is ordered and sliced as asked, because "newest first, take one"
+ * is load-bearing in the readback and "newest first, take all" is the whole
+ * history in the support view.
+ */
+function hydrateRound(ledger: Ledger, r: Row, include?: Row): Row {
+  const out: Row = { ...r };
+  if (include?.items) {
+    const spec = include.items as { select?: Row };
+    out.items = ledger.items
+      .filter((i) => i.nativeRoundId === r.id)
+      .map((i) => {
+        if (!spec.select) return { ...i };
+        const picked: Row = {};
+        for (const [key, want] of Object.entries(spec.select)) {
+          if (!want) continue;
+          if (key === 'menuItem') {
+            const m = MENU_ITEMS.find((x) => x.id === i.menuItemId);
+            const nested = (want as Row).select as Row | undefined;
+            picked.menuItem = m ? (nested ? project(m, nested) : { ...m }) : null;
+          } else {
+            picked[key] = i[key];
+          }
+        }
+        return picked;
+      });
+  }
+  if (include?.attempts) {
+    const spec = include.attempts as { orderBy?: Row; take?: number };
+    let attempts = ledger.attempts.filter((a) => a.roundId === r.id);
+    const [af, ad] = Object.entries(spec.orderBy ?? {})[0] ?? [];
+    if (af) {
+      attempts = [...attempts].sort((a, b) => {
+        const x = a[af] as Date;
+        const y = b[af] as Date;
+        const cmp = x < y ? -1 : x > y ? 1 : 0;
+        return ad === 'desc' ? -cmp : cmp;
+      });
+    }
+    if (typeof spec.take === 'number') attempts = attempts.slice(0, spec.take);
+    out.attempts = attempts;
+  }
   return out;
 }
 

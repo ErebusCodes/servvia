@@ -85,6 +85,7 @@ import {
   NativeRoundError,
   NativeTableRoundService,
   type ManualResolutionResult,
+  type NativeRoundSupportView,
   type RoundStatusView,
   type SubmitRoundResult,
 } from './waiterpad/native-table-round.service';
@@ -245,6 +246,15 @@ const READ_RATE_LIMIT = { limit: 600, windowSeconds: 60 } as const;
  * restricted to two roles, and writes a terminal state on a customer's bill.
  */
 const RESOLVE_RATE_LIMIT = { limit: 20, windowSeconds: 60 } as const;
+
+/**
+ * THE SUPPORT VIEW. Opened by a person investigating one round, not by a
+ * screen on a loop - there is no poller behind it and there should never be
+ * one. Generous enough to page through a service's worth of rounds while
+ * somebody is on the phone, and far below anything that could be used to
+ * enumerate a venue's orders quickly.
+ */
+const SUPPORT_RATE_LIMIT = { limit: 60, windowSeconds: 60 } as const;
 
 @Controller()
 export class NativeRoundsController {
@@ -421,6 +431,71 @@ export class NativeRoundsController {
     // can be added later - a sweep timestamp, a venue-level reconciliation
     // notice - without every existing client's parse breaking.
     return { rounds: await this.native.readRounds(orderId) };
+  }
+
+  /**
+   * THE SUPPORT VIEW. Everything durable about one round, for a person who has
+   * been asked what happened to a table three days ago.
+   *
+   * WHY IT IS A SEPARATE ROUTE FROM THE READBACK. The readback is a waiter's
+   * screen and must stay small: a status, a sentence, and the docket a manager
+   * attests from. Widening it would put transport diagnostics in front of
+   * somebody mid-service who has no use for them and one more thing to misread
+   * - and would hand every tablet in the building the till's duplicate-token
+   * prefixes and device identities along the way.
+   *
+   * ADMIN AND MANAGER ONLY, the same set that may settle a round by hand. This
+   * returns who vouched for a bill and what they wrote, which is a named
+   * person's statement about a customer's order, and it is not floor-staff
+   * reading.
+   *
+   * IT IS READ-ONLY AND STRUCTURALLY CANNOT BE MORE - `readRoundForSupport`
+   * returns rows and holds no writer and no transport. That matters most here,
+   * because the rounds somebody opens this route for are exactly the rounds
+   * that may already be on a tab.
+   *
+   * NO SECRETS AND NO CUSTOMER CONTENT. The duplicate token and the payload
+   * hash come back as PREFIXES - the whole token is the receiver's equality
+   * comparand, and anyone holding it and our DeviceID can make the till answer
+   * DUPLICATE to a genuine round. The payload itself is never stored and never
+   * returned.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
+  @Roles(...ROUND_RESOLUTION_ROLES)
+  @RateLimit(SUPPORT_RATE_LIMIT)
+  @Get('admin/orders/:id/rounds/:sequence/support')
+  async supportView(
+    @Req() req: AuthedRequest,
+    @Param('id') orderId: string,
+    @Param('sequence') sequence: string,
+  ): Promise<NativeRoundSupportView> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { id: true, venueId: true, venue: { select: { organizationId: true } } },
+    });
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    this.assertInScope(req, order);
+
+    const seq = Number.parseInt(sequence, 10);
+    if (!Number.isInteger(seq) || seq < 1) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: `'${sequence}' is not a round number.`,
+          error: 'bad_sequence',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      return await this.native.readRoundForSupport(orderId, seq);
+    } catch (err) {
+      if (err instanceof NativeRoundError && err.reason === 'order_not_found') {
+        throw new NotFoundException(err.message);
+      }
+      throw err;
+    }
   }
 
   /**

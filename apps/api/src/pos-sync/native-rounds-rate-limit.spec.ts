@@ -44,6 +44,7 @@ const HANDLERS: Record<string, Handler> = {
   send: NativeRoundsController.prototype.submitRound as Handler,
   read: NativeRoundsController.prototype.listRounds as Handler,
   resolve: NativeRoundsController.prototype.resolveRound as Handler,
+  support: NativeRoundsController.prototype.supportView as Handler,
 };
 
 const guardsOn = (handler: Handler): unknown[] =>
@@ -75,6 +76,16 @@ describe('every native round route is rate limited', () => {
       expect(guards).toContain(RolesGuard);
       expect(guards).toContain(TabletTokenActiveGuard);
     }
+  });
+
+  it('restricts the support view to admin and manager, like settling by hand', () => {
+    // It returns who vouched for a bill and what they wrote about a customer's
+    // order, plus the till's duplicate-token prefixes and device identities.
+    // That is not floor-staff reading.
+    expect(Reflect.getMetadata(ROLES_KEY, HANDLERS.support)).toEqual([
+      StaffRole.admin,
+      StaffRole.manager,
+    ]);
   });
 
   it('still restricts settling a bill by hand to admin and manager', () => {
@@ -129,5 +140,7 @@ describe('the poll is not throttled into breaking the tablet status loop', () =>
     // manager settles a round after walking to a till and reading a bill.
     expect(limitOn(HANDLERS.send)!.limit).toBeLessThanOrEqual(120);
     expect(limitOn(HANDLERS.resolve)!.limit).toBeLessThanOrEqual(60);
+    // Opened by a person investigating one round, never by a poller.
+    expect(limitOn(HANDLERS.support)!.limit).toBeLessThanOrEqual(120);
   });
 });

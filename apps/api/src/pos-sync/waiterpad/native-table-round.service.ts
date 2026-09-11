@@ -215,6 +215,66 @@ export interface RoundAttestationEvidence {
   readonly tokenPrefix: string | null;
 }
 
+/**
+ * ONE ROUND, FOR SUPPORT. Everything durable that is safe to show a person.
+ *
+ * Separate from `RoundStatusView` on purpose: that one is a waiter's screen and
+ * must stay small and unambiguous, and widening it would put transport
+ * diagnostics in front of somebody mid-service who has no use for them and one
+ * more thing to misread.
+ */
+export interface NativeRoundSupportView {
+  readonly roundId: string;
+  readonly orderId: string;
+  readonly venueId: string;
+  readonly sequence: number;
+  /** The IdealPOS table code, as captured at OPEN time - not the current mapping. */
+  readonly posTableCode: string;
+  readonly guests: number;
+  readonly state: NativeRoundState;
+  readonly status: RoundReadStatus;
+  readonly requiresReconciliation: boolean;
+  readonly settled: boolean;
+  /** The id the till would know this round by. */
+  readonly externalOrderId: string;
+  readonly requestKeyPrefix: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly payloadFrozenAt: Date | null;
+  readonly lines: readonly {
+    readonly description: string;
+    readonly quantity: number;
+    readonly seat: number | null;
+  }[];
+  readonly attempts: readonly {
+    readonly attemptId: string;
+    readonly deviceId: string;
+    readonly posTableCode: string;
+    readonly externalOrderId: string;
+    readonly sendInitiatedAt: Date;
+    readonly settledAt: Date | null;
+    /** `false` = provably nothing sent. `null` = the outcome was never recorded. */
+    readonly bytesLeftHost: boolean | null;
+    readonly outcomeKind: string | null;
+    readonly responseNote: string | null;
+    readonly decision: string | null;
+    /** A PREFIX. The whole token is the till's equality comparand. */
+    readonly tokenPrefix: string | null;
+    readonly payloadHashPrefix: string | null;
+  }[];
+  readonly reconciliation: {
+    readonly nativeSaleId: string | null;
+    readonly nativeSaleTier: string | null;
+    readonly nativeObservedAt: Date | null;
+  };
+  readonly manualResolution: {
+    readonly resolvedByUserId: string | null;
+    readonly resolvedByActingStaffId: string | null;
+    readonly resolvedAt: Date;
+    readonly basis: string | null;
+  } | null;
+}
+
 /** What a human's resolution did. Every field is something the tablet renders. */
 export interface ManualResolutionResult {
   readonly roundId: string;
@@ -704,6 +764,118 @@ export class NativeTableRoundService {
           : null,
       };
     });
+  }
+
+  /**
+   * EVERYTHING KNOWN ABOUT ONE ROUND, FOR THE PERSON ON THE PHONE.
+   *
+   * WHY IT IS NOT THE READBACK. `readRounds` is written for a waiter's screen:
+   * a status, a sentence, and the docket a manager attests from. This is
+   * written for whoever is asked "what actually happened to table 5 at 19:42?"
+   * three days later, and it answers with the transport facts the tablet has no
+   * business rendering - which attempt, from which device, whether bytes left
+   * the host, what the till said, and what we concluded from it.
+   *
+   * IT IS A READ, AND STRUCTURALLY CANNOT BE MORE. No writer, no transport, no
+   * branch that could react to what it finds. Same guarantee the readback and
+   * the reconciler have, and for the same reason: everything on this route is
+   * looked at precisely when a round MAY ALREADY BE ON THE TAB.
+   *
+   * WHAT IT DELIBERATELY WILL NOT RETURN:
+   *
+   *   the full duplicate token   A PREFIX ONLY. The whole value is the
+   *                              receiver's equality comparand: anyone holding
+   *                              it and our DeviceID can make the till answer
+   *                              DUPLICATE to a genuine round. Eight characters
+   *                              are enough to match a row during an incident
+   *                              and not enough to replay one.
+   *   the payload                Never stored and never returned. `payloadHash`
+   *                              proves two attempts carried the same lines
+   *                              without keeping a second copy of a customer's
+   *                              order anywhere.
+   *   the raw packet or response `responseNote` is already a sanitised, capped
+   *                              summary; this passes it through unchanged
+   *                              rather than adding a second, looser copy.
+   *   the resolver's basis text  Returned, because it is the whole evidence of
+   *                              a manual settlement - but it is a staff
+   *                              member's own sentence about a till, not
+   *                              customer content, and the route is restricted
+   *                              to admin and manager for that reason.
+   */
+  async readRoundForSupport(orderId: string, sequence: number): Promise<NativeRoundSupportView> {
+    const round = await this.prisma.nativeTableRound.findFirst({
+      where: { orderId, sequence },
+      include: {
+        items: {
+          select: { id: true, menuItemTitle: true, quantity: true, seat: true },
+        },
+        attempts: { orderBy: { sendInitiatedAt: 'desc' } },
+      },
+    });
+    if (!round) {
+      throw new NativeRoundError(
+        'order_not_found',
+        `no round ${sequence} exists on order ${orderId}`,
+      );
+    }
+
+    const described = describeRoundForReadback(round.state);
+    return {
+      roundId: round.id,
+      orderId: round.orderId,
+      venueId: round.venueId,
+      sequence: round.sequence,
+      posTableCode: round.posTableCode,
+      guests: round.guests,
+      state: round.state,
+      status: described.status,
+      requiresReconciliation: described.requiresReconciliation,
+      settled: described.settled,
+      externalOrderId: round.idempotencyKey,
+      // A PREFIX, for the same reason the attempt token is one: it is a
+      // client-chosen key and printing it whole invites somebody to reuse it.
+      requestKeyPrefix: round.requestKey ? `${round.requestKey.slice(0, 8)}...` : null,
+      createdAt: round.createdAt,
+      updatedAt: round.updatedAt,
+      payloadFrozenAt: round.payloadFrozenAt,
+      lines: round.items.map((i) => ({
+        description: i.menuItemTitle,
+        quantity: i.quantity,
+        seat: i.seat,
+      })),
+      // NEWEST FIRST. A second attempt is a second row and never an update, so
+      // the list is the whole history of what was tried for this round.
+      attempts: round.attempts.map((a) => ({
+        attemptId: a.attemptId,
+        deviceId: a.deviceId,
+        posTableCode: a.posTableCode,
+        externalOrderId: a.externalOrderId,
+        sendInitiatedAt: a.sendInitiatedAt,
+        settledAt: a.settledAt,
+        // THE SAFETY-CRITICAL FIELD, and the first thing to read. `false` is
+        // the only value that means provably nothing was sent; `null` means
+        // the outcome was never recorded, which is the widest window there is.
+        bytesLeftHost: a.bytesLeftHost,
+        outcomeKind: a.outcomeKind,
+        responseNote: a.responseNote,
+        decision: a.decision,
+        tokenPrefix: a.token ? `${a.token.slice(0, 8)}...` : null,
+        payloadHashPrefix: a.payloadHash ? `${a.payloadHash.slice(0, 12)}...` : null,
+      })),
+      reconciliation: {
+        nativeSaleId: round.nativeSaleId,
+        nativeSaleTier: round.nativeSaleTier,
+        nativeObservedAt: round.nativeObservedAt,
+      },
+      manualResolution: round.resolvedAt
+        ? {
+            resolvedByUserId: round.resolvedByUserId,
+            resolvedByActingStaffId: round.resolvedByActingStaffId,
+            resolvedAt: round.resolvedAt,
+            basis: round.resolutionBasis,
+          }
+        : null,
+    };
   }
 
   /**
