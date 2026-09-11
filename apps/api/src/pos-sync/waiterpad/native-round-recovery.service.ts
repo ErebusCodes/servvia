@@ -246,14 +246,58 @@ export class NativeRoundRecoveryService implements OnModuleInit, OnModuleDestroy
   }
 
   /**
+   * THE CLOCK THE AGE GATE IS MEASURED ON, and it must be the database's.
+   *
+   * `NativeTableRound.updatedAt` is written by POSTGRES, not by this process -
+   * so comparing it against `new Date()` compares two clocks, and the
+   * difference between them lands directly in `ageMs`. That was found by this
+   * service's own PostgreSQL integration spec failing intermittently: with the
+   * gate at 0 and the database a few milliseconds ahead, `ageMs` came out
+   * NEGATIVE and every orphan was judged `stillInFlight`.
+   *
+   * At the shipped 5-minute gate a few milliseconds are nothing, and this is
+   * not a bug anybody would have seen. THE DIRECTION THAT MATTERS IS THE OTHER
+   * ONE: if the database's clock ever lags this process's by more than the
+   * configured age - a VM resumed with a stale clock, a database host whose
+   * NTP has drifted, a container on a laptop that slept - then `ageMs` is
+   * inflated by exactly that lag, the gate is defeated, and this sweep judges
+   * a round that a LIVE request is still sending. Releasing its lines is the
+   * one outcome this service exists to make impossible.
+   *
+   * So the age is measured end to end on one clock: both `now` and `updatedAt`
+   * come from the database, and no skew can enter the subtraction.
+   *
+   * A CALLER MAY STILL PASS ITS OWN `now`, which is how tests drive the gate
+   * to a chosen age; that path is unchanged. And if the query fails, this
+   * falls back to the process clock - which is exactly the behaviour that
+   * shipped before, and is still bounded by a generous gate.
+   */
+  private async databaseNow(): Promise<Date> {
+    try {
+      const rows = await this.prisma.$queryRaw<{ now: Date }[]>`SELECT now() AS now`;
+      const value = rows?.[0]?.now;
+      if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+    } catch (err) {
+      this.logger.warn(
+        'Could not read the database clock for the recovery age gate; falling back to this ' +
+          "process's clock, which is only safe while the gate stays generous: " +
+          (err instanceof Error ? err.message : 'unknown error'),
+      );
+    }
+    return new Date();
+  }
+
+  /**
    * One bounded pass over the rounds nothing else can reach.
    *
    * EVERY FACT IT USES COMES FROM THE DATABASE. There is no in-process memory
    * of what was in flight, which is what makes this correct after a restart:
    * a brand new instance over the same rows reaches the same verdicts, because
-   * the rows are all there ever was.
+   * the rows are all there ever was. That now includes the CLOCK - see
+   * `databaseNow`.
    */
-  async sweep(now: Date = new Date()): Promise<RecoverySweepResult> {
+  async sweep(explicitNow?: Date): Promise<RecoverySweepResult> {
+    const now = explicitNow ?? (await this.databaseNow());
     const rounds = await this.prisma.nativeTableRound.findMany({
       where: { state: { in: ORPHANABLE } },
       orderBy: { createdAt: 'asc' },

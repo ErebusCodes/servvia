@@ -448,7 +448,24 @@ function buildWriter(env: Record<string, string>, prisma: PrismaService): ITable
 export function buildPrisma(ledger: Ledger): PrismaService {
   const api: Row = {
     $transaction: <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(api),
-    $queryRaw: () => Promise.resolve([{ nextval: 600001n }]),
+    /**
+     * TWO CALLERS, TOLD APART BY THE SQL THEY ACTUALLY WROTE.
+     *
+     * The catalogue path asks a sequence for the next PLU; recovery's age gate
+     * asks the DATABASE CLOCK - because `updatedAt` is written by Postgres,
+     * and measuring an age against this process's clock instead put the skew
+     * between the two straight into the computed age. The double answers the
+     * clock with `new Date()`, which is the clock its own `updatedAt` values
+     * come from, so the comparison stays single-clock here as it now is in
+     * production. Branching on the query text rather than answering one shape
+     * for both keeps a caller that asks for something else from silently
+     * receiving a sequence number.
+     */
+    $queryRaw: (strings?: TemplateStringsArray | string) => {
+      const sql = typeof strings === 'string' ? strings : (strings?.join(' ') ?? '');
+      if (/now\s*\(/i.test(sql)) return Promise.resolve([{ now: new Date() }]);
+      return Promise.resolve([{ nextval: 600001n }]);
+    },
 
     venue: { findUnique: () => Promise.resolve(VENUE) },
     table: {

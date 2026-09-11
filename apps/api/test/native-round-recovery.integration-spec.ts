@@ -76,12 +76,28 @@ describeOrSkip('native round recovery, against real PostgreSQL', () => {
   let prisma: PrismaService;
   let recovery: NativeRoundRecoveryService;
 
+  /**
+   * THE SHIPPED GATE, NOT ZERO.
+   *
+   * This used to configure a minimum age of 0 so that every fixture was judged
+   * immediately. It made the whole suite flaky against a containerised
+   * database: a gate of zero has NO TOLERANCE FOR THE CLOCK MOVING AT ALL, and
+   * a Docker VM's clock slews by milliseconds either side of the host's all
+   * day. A round stamped a moment ago would come out with a negative age and
+   * be judged `stillInFlight`, which failed six or seven tests at a time in
+   * bursts that tracked the drift rather than anything in the code.
+   *
+   * It was also a configuration production never uses. The fixtures below are
+   * now AGED DELIBERATELY, on the database's own clock, past the real gate -
+   * which tests the value that actually ships and cannot be perturbed by a
+   * clock moving a few milliseconds.
+   */
+  const GATE_MS = 5 * 60_000;
   const config = {
     get: (key: string) =>
       ({
         IDEALPOS_NATIVE_RECONCILE_ENABLED: 'true',
-        // Judge everything immediately; the age gate has its own unit tests.
-        IDEALPOS_NATIVE_RECOVERY_MIN_AGE_MS: '0',
+        IDEALPOS_NATIVE_RECOVERY_MIN_AGE_MS: String(GATE_MS),
       })[key],
   } as unknown as ConfigService;
 
@@ -201,7 +217,7 @@ describeOrSkip('native round recovery, against real PostgreSQL', () => {
   async function makeRound(
     orderId: string,
     state: NativeRoundState,
-    opts: { claimLines?: boolean; sequence?: number } = {},
+    opts: { claimLines?: boolean; sequence?: number; fresh?: boolean } = {},
   ): Promise<string> {
     const sequence = opts.sequence ?? 1;
     const round = await prisma.nativeTableRound.create({
@@ -220,6 +236,17 @@ describeOrSkip('native round recovery, against real PostgreSQL', () => {
         where: { orderId, nativeRoundId: null },
         data: { nativeRoundId: round.id },
       });
+    }
+    // AGED ON THE DATABASE'S OWN CLOCK, past the real gate, unless a test
+    // wants a fresh round. Raw SQL on purpose: a Prisma `update` would reset
+    // `updatedAt` to now, which is the field being set. `now()` rather than a
+    // timestamp computed here, so the value is stamped by the same clock the
+    // sweep measures against and no skew can enter the arithmetic.
+    if (opts.fresh !== true) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "NativeTableRound" SET "updatedAt" = now() - interval '30 minutes' WHERE id = $1`,
+        round.id,
+      );
     }
     return round.id;
   }
@@ -535,20 +562,23 @@ describeOrSkip('native round recovery, against real PostgreSQL', () => {
         get: (key: string) =>
           ({
             IDEALPOS_NATIVE_RECONCILE_ENABLED: 'true',
-            IDEALPOS_NATIVE_RECOVERY_MIN_AGE_MS: String(5 * 60_000),
+            IDEALPOS_NATIVE_RECOVERY_MIN_AGE_MS: String(GATE_MS),
           })[key],
       } as unknown as ConfigService);
 
       const orderId = await makeOrder(1);
-      const roundId = await makeRound(orderId, NativeRoundState.submitting);
+      // NOT aged: this is the one test that wants a round stamped a moment ago.
+      const roundId = await makeRound(orderId, NativeRoundState.submitting, { fresh: true });
 
       const swept = await guarded.sweep();
       expect(swept.stillInFlight).toBe(1);
       expect(swept.released).toBe(0);
 
       const after = await prisma.nativeTableRound.findUniqueOrThrow({ where: { id: roundId } });
-      // Untouched: `updatedAt` is Prisma's, and it says this round moved a
-      // moment ago - so a live request is probably still holding it.
+      // Untouched: `updatedAt` says this round moved a moment ago, so a live
+      // request is probably still holding it. (`updatedAt` is written by
+      // POSTGRES, not by Prisma in this process - see the skew test below,
+      // which is what that mistaken belief cost.)
       expect(after.state).toBe(NativeRoundState.submitting);
       expect(await unclaimed(orderId)).toBe(0);
     });
@@ -563,16 +593,100 @@ describeOrSkip('native round recovery, against real PostgreSQL', () => {
         include: { attempts: true },
       });
 
+      // THE AGE IS COMPUTED THE WAY THE SWEEP COMPUTES IT - both ends on the
+      // database clock. Using `Date.now()` here instead is what made this test
+      // flaky: `updatedAt` comes from Postgres, so subtracting a process
+      // timestamp from it measured the skew between two machines as well as
+      // the age, and a database a few milliseconds ahead produced a NEGATIVE
+      // age and a `stillInFlight` verdict. A test that claims to agree with
+      // the sweep has to ask the question the same way the sweep does.
+      const [{ ms }] = await prisma.$queryRawUnsafe<{ ms: bigint }[]>(
+        'SELECT (extract(epoch from now()) * 1000)::bigint AS ms',
+      );
+
       const verdict = decideRecovery(
         {
           state: row.state,
-          ageMs: Date.now() - row.updatedAt.getTime(),
+          ageMs: Number(ms) - row.updatedAt.getTime(),
           hasAttempt: row.attempts.length > 0,
           bytesLeftHost: row.attempts[0]?.bytesLeftHost ?? null,
         },
-        0,
+        GATE_MS,
       );
       expect(verdict.kind).toBe('released');
+    });
+
+    /**
+     * THE AGE IS MEASURED ON ONE CLOCK, AND IT IS THE DATABASE'S.
+     *
+     * `updatedAt` is written by Postgres. The sweep used to compare it against
+     * `new Date()` in this process, so the difference between the two clocks
+     * landed directly in `ageMs` - and this very spec found it, by failing
+     * intermittently against a containerised database whose clock wandered a
+     * few milliseconds either side of the host's. With the gate at 0, a
+     * database a few milliseconds AHEAD made every age negative and every
+     * orphan `stillInFlight`.
+     *
+     * At the shipped 5-minute gate that is nothing. The direction that matters
+     * is the other one: a database clock LAGGING this process by more than the
+     * gate inflates every age by exactly that lag, defeats the gate, and lets
+     * this sweep judge a round a live request is still sending. These two
+     * assertions are what stops the comparison drifting back to two clocks.
+     */
+    it('brackets the real gate on real timestamps: just under is held, just over is judged', async () => {
+      // Both sides of the SHIPPED five-minute gate, aged on the database's own
+      // clock. This is the value production runs with, which the suite never
+      // exercised while it configured a gate of zero.
+      const heldOrder = await makeOrder(1);
+      const heldRound = await makeRound(heldOrder, NativeRoundState.submitting, { fresh: true });
+      await prisma.$executeRawUnsafe(
+        `UPDATE "NativeTableRound" SET "updatedAt" = now() - interval '4 minutes' WHERE id = $1`,
+        heldRound,
+      );
+
+      const judgedOrder = await makeOrder(1);
+      const judgedRound = await makeRound(judgedOrder, NativeRoundState.submitting, {
+        fresh: true,
+      });
+      await prisma.$executeRawUnsafe(
+        `UPDATE "NativeTableRound" SET "updatedAt" = now() - interval '6 minutes' WHERE id = $1`,
+        judgedRound,
+      );
+
+      const swept = await recovery.sweep();
+      expect(swept.stillInFlight).toBe(1);
+      expect(swept.released).toBe(1);
+
+      expect(
+        (await prisma.nativeTableRound.findUniqueOrThrow({ where: { id: heldRound } })).state,
+      ).toBe(NativeRoundState.submitting);
+      expect(
+        (await prisma.nativeTableRound.findUniqueOrThrow({ where: { id: judgedRound } })).state,
+      ).toBe(NativeRoundState.abandoned);
+    });
+
+    it('still honours a caller that supplies its own clock', async () => {
+      // The unit suites drive the gate by passing an explicit `now`, and that
+      // path must keep working - a fix that silently ignored the argument
+      // would make every age-gate test in the tree assert nothing.
+      const orderId = await makeOrder(1);
+      const roundId = await makeRound(orderId, NativeRoundState.submitting);
+
+      const guarded = new NativeRoundRecoveryService(prisma, {
+        get: (key: string) =>
+          ({
+            IDEALPOS_NATIVE_RECONCILE_ENABLED: 'true',
+            IDEALPOS_NATIVE_RECOVERY_MIN_AGE_MS: String(60 * 60_000),
+          })[key],
+      } as unknown as ConfigService);
+
+      // Two hours in the future: past a one-hour gate however the two clocks
+      // sit, so it is judged.
+      const swept = await guarded.sweep(new Date(Date.now() + 121 * 60_000));
+      expect(swept.released).toBe(1);
+
+      const after = await prisma.nativeTableRound.findUniqueOrThrow({ where: { id: roundId } });
+      expect(after.state).toBe(NativeRoundState.abandoned);
     });
   });
 });

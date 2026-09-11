@@ -43,7 +43,10 @@ import {
   type Harness,
 } from '../testing/native-order-harness';
 import { startFakeWaiterPadServer } from './testing/fake-waiterpad-server';
-import { decideRecovery } from './native-round-recovery.service';
+import { ConfigService } from '@nestjs/config';
+
+import type { PrismaService } from '../../prisma/prisma.service';
+import { decideRecovery, NativeRoundRecoveryService } from './native-round-recovery.service';
 
 installHarnessLifecycle();
 
@@ -385,5 +388,138 @@ describe('no durable state is invisible to every sweeper', () => {
     // a table while being unreachable.
     expect(TERMINAL.some((s) => RECOVERABLE.includes(s) || RECONCILABLE.includes(s))).toBe(false);
     expect(tillServer().requests).toHaveLength(0);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+/**
+ * THE AGE GATE IS MEASURED ON THE DATABASE'S CLOCK, NOT THIS PROCESS'S.
+ *
+ * `NativeTableRound.updatedAt` is written by POSTGRES. The sweep used to
+ * compare it against `new Date()` in the API process, so the difference
+ * between two machines' clocks went straight into `ageMs`. The repository's
+ * own PostgreSQL integration spec found it, by failing intermittently against
+ * a containerised database whose clock wandered either side of the host's.
+ *
+ * At the shipped five-minute gate a few milliseconds are nothing and nobody
+ * would ever have seen it. THE DIRECTION THAT MATTERS IS THE OTHER ONE: a
+ * database clock LAGGING the API by more than the gate inflates every age by
+ * exactly that lag, defeats the gate entirely, and lets this sweep judge a
+ * round a LIVE request is still sending - releasing the lines of a send that
+ * is on the wire, which is the one outcome this service exists to prevent.
+ *
+ * Asserted here rather than against a real database because a test that waits
+ * for two machines to disagree by five minutes cannot be written. The database
+ * clock is a stub, moved deliberately, and the only question asked is which of
+ * the two clocks the verdict followed.
+ */
+describe('the clock the age gate is measured on', () => {
+  const GATE_MS = 5 * 60_000;
+
+  /**
+   * One `submitting` round, with BOTH the database's clock and the instant the
+   * database stamped `updatedAt` under the test's control.
+   */
+  function recoveryOver(databaseNow: Date, updatedAt: Date) {
+    const round = {
+      id: 'round-1',
+      state: NativeRoundState.submitting,
+      updatedAt,
+      attempts: [] as unknown[],
+    };
+    const updates: Record<string, unknown>[] = [];
+
+    const prisma = {
+      $queryRaw: () => Promise.resolve([{ now: databaseNow }]),
+      nativeTableRound: {
+        findMany: () => Promise.resolve([round]),
+        updateMany: ({ data }: { data: Record<string, unknown> }) => {
+          updates.push(data);
+          return Promise.resolve({ count: 1 });
+        },
+      },
+      orderItem: { updateMany: () => Promise.resolve({ count: 1 }) },
+      $transaction: <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(prisma),
+    } as unknown as PrismaService;
+
+    const config = {
+      get: (key: string) =>
+        ({
+          IDEALPOS_NATIVE_RECONCILE_ENABLED: 'true',
+          IDEALPOS_NATIVE_RECOVERY_MIN_AGE_MS: String(GATE_MS),
+        })[key],
+    } as unknown as ConfigService;
+
+    return { service: new NativeRoundRecoveryService(prisma, config), round, updates };
+  }
+
+  it('refuses to judge a fresh round even when THIS process thinks it is old', async () => {
+    // THE DANGEROUS SKEW, and the whole reason for the change. The database's
+    // clock is six minutes BEHIND this process. The round was stamped by the
+    // database a moment ago, so by the only clock that wrote it the round is
+    // FRESH - a live request may be holding it this instant. A sweep measuring
+    // against its own clock would compute an age of six minutes, clear the
+    // five-minute gate, and release the lines of a send that is on the wire.
+    const databaseNow = new Date(Date.now() - (GATE_MS + 60_000));
+    const { service, round, updates } = recoveryOver(databaseNow, databaseNow);
+
+    const swept = await service.sweep();
+
+    expect(swept.stillInFlight).toBe(1);
+    expect(swept.released).toBe(0);
+    expect(updates).toHaveLength(0);
+    expect(round.state).toBe(NativeRoundState.submitting);
+  });
+
+  it("judges a genuinely old round on the database's own reckoning", async () => {
+    // The same service and the same gate; the only change is that the round is
+    // old BY THE DATABASE'S CLOCK. Without this, the test above would pass
+    // just as well against a sweep that had stopped working altogether.
+    const databaseNow = new Date(Date.now() - (GATE_MS + 60_000));
+    const { service, updates } = recoveryOver(
+      databaseNow,
+      new Date(databaseNow.getTime() - (GATE_MS + 60_000)),
+    );
+
+    const swept = await service.sweep();
+
+    expect(swept.stillInFlight).toBe(0);
+    expect(swept.released).toBe(1);
+    expect(updates).toHaveLength(1);
+  });
+
+  it('falls back to this process rather than failing when the clock cannot be read', async () => {
+    // A database that will not answer `SELECT now()` must not stop recovery.
+    // The fallback is exactly the behaviour that shipped before this change,
+    // and is still bounded by a gate measured in minutes.
+    const prisma = {
+      $queryRaw: () => Promise.reject(new Error('connection terminated')),
+      nativeTableRound: {
+        findMany: () =>
+          Promise.resolve([
+            {
+              id: 'round-1',
+              state: NativeRoundState.submitting,
+              updatedAt: new Date(Date.now() - 60 * 60_000),
+              attempts: [],
+            },
+          ]),
+        updateMany: () => Promise.resolve({ count: 1 }),
+      },
+      orderItem: { updateMany: () => Promise.resolve({ count: 1 }) },
+      $transaction: <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(prisma),
+    } as unknown as PrismaService;
+
+    const config = {
+      get: (key: string) =>
+        ({
+          IDEALPOS_NATIVE_RECONCILE_ENABLED: 'true',
+          IDEALPOS_NATIVE_RECOVERY_MIN_AGE_MS: String(GATE_MS),
+        })[key],
+    } as unknown as ConfigService;
+
+    // An hour old by any clock in the building.
+    const swept = await new NativeRoundRecoveryService(prisma, config).sweep();
+    expect(swept.released).toBe(1);
   });
 });
