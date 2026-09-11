@@ -215,15 +215,36 @@ describe('reconciliation of an ambiguous send', () => {
     token: 'a'.repeat(32),
     payloadHash: 'b'.repeat(64),
     sendInitiatedAt: new Date('2026-09-09T02:00:00Z'),
+    // What this attempt's packet actually asked the till to add. Frozen with
+    // the attempt, so a later menu edit cannot re-decide a settled round.
+    expectedItems: [
+      { nativeCode: 'PLU1', quantity: 1 },
+      { nativeCode: 'PLU2', quantity: 1 },
+      { nativeCode: 'PLU3', quantity: 1 },
+    ],
   };
+
+  /** The table was free before this round went. */
+  const FREE = { status: 'noOpenSale' as const, reason: 'nothing was open on table 12' };
+
+  /** A readback of table 12 holding exactly the `lines` given. */
+  const tableHolding = (lines: readonly { nativeCode: string; quantity: number }[]) => ({
+    status: 'observed' as const,
+    tableCode: '12',
+    pos: 1,
+    map: '1',
+    lines,
+  });
 
   it('confirms only on BOTH halves: our token, and a readback showing the lines', () => {
     const v = reconcileAmbiguousSend(record, {
       // CAUSAL: only our packet could have put our token there.
       storedTokenForDevice: record.token,
-      // DURABLE: the lines are actually on the tab.
-      nativeLineCountForTable: 3,
-      expectedLineCount: 3,
+      // DURABLE: the table gained EXACTLY this round's three lines, measured
+      // against a baseline captured before the socket opened. A count would
+      // not do - a tab already carrying three lines proves nothing.
+      preSendTable: FREE,
+      currentTable: tableHolding(record.expectedItems),
     });
     expect(v.kind).toBe('confirmed');
   });
@@ -249,8 +270,9 @@ describe('reconciliation of an ambiguous send', () => {
     // The exact shape of the crash window: token written, lines not.
     const v = reconcileAmbiguousSend(record, {
       storedTokenForDevice: record.token,
-      nativeLineCountForTable: 1,
-      expectedLineCount: 3,
+      preSendTable: FREE,
+      // One of the three arrived. The delta is short of what we asked for.
+      currentTable: tableHolding([{ nativeCode: 'PLU1', quantity: 1 }]),
     });
     expect(v.kind).toBe('manualResolutionRequired');
   });
@@ -259,7 +281,8 @@ describe('reconciliation of an ambiguous send', () => {
     // `undefined` is "did not look", never "nothing there".
     const v = reconcileAmbiguousSend(record, {
       storedTokenForDevice: record.token,
-      expectedLineCount: 3,
+      preSendTable: FREE,
+      currentTable: undefined,
     });
     expect(v.kind).toBe('manualResolutionRequired');
   });
@@ -276,13 +299,27 @@ describe('reconciliation of an ambiguous send', () => {
     expect(reconcileAmbiguousSend(record, {}).kind).toBe('manualResolutionRequired');
   });
 
-  it('does NOT confirm on line-count coincidence alone', () => {
+  it('does NOT confirm on content coincidence alone - a waiter could have keyed it', () => {
     const v = reconcileAmbiguousSend(record, {
-      nativeLineCountForTable: 3,
-      expectedLineCount: 3,
+      // Nobody read the token. The lines agree perfectly, and that is exactly
+      // the picture a waiter keying the same three items produces.
+      storedTokenForDevice: undefined,
+      preSendTable: FREE,
+      currentTable: tableHolding(record.expectedItems),
     });
     expect(v.kind).toBe('manualResolutionRequired');
-    expect(v.basis).toMatch(/not causality/i);
+    expect(v.basis).toMatch(/correlation/i);
+  });
+
+  it('does NOT confirm when the round own items were already on the table', () => {
+    // The delta is zero: every line was there before we sent. The old
+    // count-based rule confirmed exactly this case.
+    const v = reconcileAmbiguousSend(record, {
+      storedTokenForDevice: record.token,
+      preSendTable: tableHolding(record.expectedItems),
+      currentTable: tableHolding(record.expectedItems),
+    });
+    expect(v.kind).toBe('manualResolutionRequired');
   });
 
   it('does not confirm on a stored token belonging to another attempt', () => {

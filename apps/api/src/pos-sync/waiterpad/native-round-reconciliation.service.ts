@@ -69,6 +69,7 @@ import { ConfigService } from '@nestjs/config';
 import { NativeRoundState } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import type { ExpectedNativeItem, NativeTableSnapshot } from './waiterpad-native-evidence';
 import { reconcileAmbiguousSend, type ReconciliationEvidence } from './waiterpad-reconciliation';
 import type { SendInitiatedRecord } from './waiterpad-table-round-writer';
 
@@ -237,6 +238,12 @@ export class NativeRoundReconciliationService implements OnModuleInit, OnModuleD
           token: attempt.token,
           payloadHash: attempt.payloadHash,
           sendInitiatedAt: attempt.sendInitiatedAt,
+          // BOTH TERMS OF THE DELTA COME OFF THE ROW, not out of this process.
+          // That is what lets a completely new instance reconcile a round it
+          // never sent: the baseline was committed before the socket opened,
+          // and the expected items are what that packet actually asked for.
+          preSendBaseline: readSnapshot(attempt.preSendTableSnapshot),
+          expectedItems: readExpectedItems(attempt.expectedNativeItems),
         };
 
         // No reader bound means no evidence - NOT absent evidence. Every field
@@ -248,9 +255,15 @@ export class NativeRoundReconciliationService implements OnModuleInit, OnModuleD
           ? await this.reader.readEvidence(record)
           : {};
 
+        // The reader supplies observations. It does NOT supply the round's
+        // own terms: the baseline and the expected items come off the attempt
+        // row, so a reader cannot hand over the value it is being checked
+        // against. Round item COUNT is deliberately not used any more - a
+        // count cannot tell an arriving line from one that was already there.
         const verdict = reconcileAmbiguousSend(record, {
           ...evidence,
-          expectedLineCount: evidence.expectedLineCount ?? round.items.length,
+          preSendTable: evidence.preSendTable ?? record.preSendBaseline,
+          expectedItems: record.expectedItems,
         });
 
         if (verdict.kind === 'confirmed') {
@@ -387,4 +400,49 @@ export class NativeRoundReconciliationService implements OnModuleInit, OnModuleD
         `a human must check the table on the till. ${basis}`,
     );
   }
+}
+
+/**
+ * Read the pre-send baseline back off the attempt row.
+ *
+ * DEFENSIVE BECAUSE THE COLUMN IS `Json`. Postgres will hand back whatever was
+ * written, and rows written before the column existed hand back NULL. Anything
+ * that is not a recognisable snapshot becomes `undefined`, which the predicate
+ * reads as "no baseline was captured" - a state that can never confirm a round
+ * and never releases its lines. A malformed baseline must not become an empty
+ * one: an empty baseline would make every line on the table look new.
+ */
+function readSnapshot(value: unknown): NativeTableSnapshot | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const status = (value as { status?: unknown }).status;
+  if (
+    status !== 'observed' &&
+    status !== 'noOpenSale' &&
+    status !== 'ambiguous' &&
+    status !== 'unavailable'
+  ) {
+    return undefined;
+  }
+  return value as NativeTableSnapshot;
+}
+
+/**
+ * Read the frozen expected items back.
+ *
+ * An unreadable or absent value becomes an EMPTY list rather than `undefined`,
+ * and the predicate refuses an empty expectation outright. That is the safe
+ * direction: a round whose expectation cannot be read is a round with no delta
+ * to prove, and it goes to a human.
+ */
+function readExpectedItems(value: unknown): readonly ExpectedNativeItem[] {
+  if (!Array.isArray(value)) return [];
+  const items: ExpectedNativeItem[] = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== 'object') return [];
+    const { nativeCode, quantity } = entry as { nativeCode?: unknown; quantity?: unknown };
+    if (typeof nativeCode !== 'string' || typeof quantity !== 'number') return [];
+    if (!Number.isFinite(quantity) || quantity <= 0) return [];
+    items.push({ nativeCode, quantity });
+  }
+  return items;
 }

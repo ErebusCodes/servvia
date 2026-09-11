@@ -132,6 +132,17 @@ export interface StrongNativeEvidence {
    */
   readonly processedForTableAfterSend?: boolean;
 
+  /**
+   * Whether a kitchen docket for this table was produced after our send.
+   *
+   * OBSERVATIONAL ONLY. It is carried so an operator reading an incident can
+   * see it, and it contributes to NO branch of the decision below. Two reasons:
+   * a docket does not say whose round produced it, and `PendingSaleLines.Printed`
+   * was observed True on every line at creation while both printer logs recorded
+   * zero bytes — so the flag is written by the sale path, not the printer path.
+   */
+  readonly kitchenFiredAfterSend?: boolean;
+
   /** The native table as it stood BEFORE the socket was opened. */
   readonly preSendTable?: NativeTableSnapshot;
 

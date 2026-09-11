@@ -42,6 +42,25 @@ import { applyUpdateMany, type Row } from '../testing/prisma-filter';
 
 const DEVICE = 'VERDURA-ACCEPT-0001';
 
+/** What a fixture round of `n` lines asked the till to add: PLU1..PLUn, one of each. */
+function expectedFor(n: number): { nativeCode: string; quantity: number }[] {
+  return Array.from({ length: n }, (_, i) => ({ nativeCode: `PLU${i + 1}`, quantity: 1 }));
+}
+
+/**
+ * A readback showing exactly the lines a fixture round of `n` lines was to add,
+ * on a table that was free beforehand — so the delta is precisely the round.
+ */
+function landed(n: number): ReconciliationEvidence['currentTable'] {
+  return {
+    status: 'observed',
+    tableCode: '5',
+    pos: 1,
+    map: '1',
+    lines: expectedFor(n).map((i) => ({ nativeCode: i.nativeCode, quantity: i.quantity })),
+  };
+}
+
 /**
  * The durable rows a restart reads back. Deliberately a plain object graph with
  * no behaviour: everything this service knows must come from here, and a store
@@ -92,6 +111,12 @@ class Store {
       token: params.token,
       payloadHash: 'hash',
       sendInitiatedAt: new Date(Date.now() - params.sentAgoMs),
+      // THE TWO TERMS OF THE DELTA, committed with the attempt. A fixture
+      // round of N lines asked the till for PLU1..PLUN, one of each, against a
+      // table that was free. Tests that want a different "before" override the
+      // baseline; tests that want a different "after" pass `currentTable`.
+      preSendTableSnapshot: { status: 'noOpenSale', reason: 'table was free before the send' },
+      expectedNativeItems: expectedFor(params.lines ?? 1),
     });
     for (let i = 0; i < (params.lines ?? 1); i += 1) {
       this.items.push({
@@ -181,13 +206,18 @@ function config(over: Record<string, string> = {}): ConfigService {
  * our packet was picked up (causal) and a readback proves the lines are on the
  * tab (durable), and the token is written by `ProcessHandheldOrder` BEFORE the
  * lines are, so it cannot speak for them. A test that wants to withhold the
- * durable half passes `nativeLineCountForTable: undefined` explicitly, which is
- * how "did not look" is spelled.
+ * durable half passes `currentTable: undefined` explicitly, which is how "did
+ * not look" is spelled.
+ *
+ * THE DURABLE HALF IS A DELTA, so the default here is a baseline of a FREE
+ * table and a readback showing exactly the one line the fixture round expects.
+ * A count would not do: a readback of "one line present" says nothing unless
+ * you know what was there before.
  */
 function reader(evidence: ReconciliationEvidence): NativeRoundEvidenceReader & { calls: number } {
   const withDurable: ReconciliationEvidence = {
-    nativeLineCountForTable: 1,
-    expectedLineCount: 1,
+    preSendTable: { status: 'noOpenSale', reason: 'table was free before the send' },
+    currentTable: landed(1),
     ...evidence,
   };
   const r = {
@@ -313,7 +343,7 @@ describe('confirming, and refusing to confirm', () => {
       reader({
         processedForTableAfterSend: true,
         kitchenFiredAfterSend: true,
-        nativeLineCountForTable: 2,
+        currentTable: landed(2),
       }),
     ).sweep();
 
@@ -370,8 +400,7 @@ describe('our token alone is receipt, not application', () => {
       reader({
         storedTokenForDevice: 'tok-1',
         // "Did not look" - which is ignorance, never absence.
-        nativeLineCountForTable: undefined,
-        expectedLineCount: undefined,
+        currentTable: undefined,
       }),
     ).sweep();
 
@@ -397,8 +426,8 @@ describe('our token alone is receipt, not application', () => {
       store,
       reader({
         storedTokenForDevice: 'tok-1',
-        nativeLineCountForTable: 1,
-        expectedLineCount: 3,
+        // One of the three arrived. The delta is short, so nothing is proven.
+        currentTable: landed(1),
       }),
     ).sweep();
 
@@ -426,8 +455,7 @@ describe('our token alone is receipt, not application', () => {
       store,
       reader({
         storedTokenForDevice: undefined,
-        nativeLineCountForTable: 2,
-        expectedLineCount: 2,
+        currentTable: landed(2),
       }),
     ).sweep();
 
@@ -616,8 +644,8 @@ describe('a reader that misbehaves', () => {
         // Both halves, because since 2026-09-11 neither confirms alone.
         return Promise.resolve({
           storedTokenForDevice: 'tok-2',
-          nativeLineCountForTable: 1,
-          expectedLineCount: 1,
+          preSendTable: { status: 'noOpenSale' as const, reason: 'free before the send' },
+          currentTable: landed(1),
         });
       },
     };

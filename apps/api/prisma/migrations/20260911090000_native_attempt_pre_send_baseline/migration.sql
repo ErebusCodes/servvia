@@ -1,0 +1,37 @@
+-- The pre-send baseline, so confirmation can be a delta rather than a count.
+--
+-- WHY. A round is confirmed only on CAUSAL evidence (the till holds our token
+-- against our DeviceID) AND DURABLE evidence (the native table gained exactly
+-- this round's lines). The durable half is a subtraction, and a subtraction
+-- needs a minuend: the table as it stood BEFORE the socket opened. Without it
+-- the only available test was `observedLineCount >= expectedLineCount`, which
+-- almost any occupied table satisfies - so confirmation collapsed to token
+-- equality, and the token is written by ProcessHandheldOrder BEFORE a single
+-- sale line exists.
+--
+-- WHY ON THE ATTEMPT AND NOT IN MEMORY. Reconciliation exists to survive a
+-- crash between the send and the answer. A baseline that lived in the sending
+-- process would be gone in exactly that case. Written here, before the socket,
+-- it is read back by any new instance, which is what lets a restart reconcile
+-- a round rather than escalate it to a human.
+--
+-- WHY `expectedNativeItems` IS FROZEN HERE TOO. Judging a historical round
+-- against the venue's CURRENT PLU mapping would let an ordinary menu edit
+-- silently re-decide a round that has already been answered. What the packet
+-- actually asked for is a property of the attempt, so it is stored with it -
+-- the same reasoning that already froze `posTableCode` onto the round.
+--
+-- BACKWARD COMPATIBLE, and additive only:
+--   * two nullable columns with no default, so no existing row changes and no
+--     table rewrite occurs;
+--   * NULL is a supported, meaningful value - "no baseline was captured" - and
+--     it is the value every row written before this migration carries. A round
+--     with a NULL baseline can never reach `confirmed`, and equally can never
+--     have its lines released. It goes to a human, which is correct: nothing
+--     was ever observed about it.
+--   * the previous application build ignores both columns entirely, so this
+--     may be applied ahead of the deploy that uses them.
+
+-- AlterTable
+ALTER TABLE "NativeSendAttempt" ADD COLUMN     "preSendTableSnapshot" JSONB,
+ADD COLUMN     "expectedNativeItems" JSONB;

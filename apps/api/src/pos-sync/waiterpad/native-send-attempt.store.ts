@@ -25,6 +25,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import type { SendInitiatedRecord } from './waiterpad-table-round-writer';
@@ -59,6 +60,22 @@ export class NativeSendAttemptStore {
         token: record.token,
         payloadHash: record.payloadHash,
         sendInitiatedAt: record.sendInitiatedAt,
+        // THE DELTA'S TWO TERMS, COMMITTED BEFORE THE SOCKET OPENS. Neither is
+        // a diagnostic: the baseline is what a later readback is subtracted
+        // from, and the expected items are what that difference must equal.
+        // Held only in memory they would be lost to exactly the crash that
+        // reconciliation exists to survive, so they go in the same `create`
+        // that makes the attempt durable rather than in a later update.
+        //
+        // `undefined` is passed through as SQL NULL, which reads as "no
+        // baseline was captured" - a supported state that can never confirm a
+        // round and never releases its lines.
+        preSendTableSnapshot: (record.preSendBaseline ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
+        expectedNativeItems: (record.expectedItems.length > 0
+          ? record.expectedItems
+          : undefined) as unknown as Prisma.InputJsonValue | undefined,
       },
     });
   }

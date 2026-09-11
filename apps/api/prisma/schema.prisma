@@ -301,24 +301,24 @@ model Venue {
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 
-  organization           Organization            @relation(fields: [organizationId], references: [id])
-  tables                 Table[]
-  floorPlans             FloorPlan[]
-  printers               Printer[]
-  reservations           Reservation[]
-  orders                 Order[]
-  venueAccess            VenueAccess[]
-  menuItemOverrides      MenuItemVenueOverride[]
-  mediaAssets            MediaAsset[]
-  printJobs              PrinterJob[]
-  posSyncRecords         POSSyncRecord[]
-  kdsDeliveryRecords     KdsDeliveryRecord[]
-  auditLogs              AuditLog[]
-  connectorEnrollments   ConnectorEnrollment[]
-  connectorInstallations ConnectorInstallation[]
-  connectorCommands      ConnectorCommand[]
-  tabletEnrollments      TabletEnrollment[]
-  tabletDevices          TabletDevice[]
+  organization             Organization              @relation(fields: [organizationId], references: [id])
+  tables                   Table[]
+  floorPlans               FloorPlan[]
+  printers                 Printer[]
+  reservations             Reservation[]
+  orders                   Order[]
+  venueAccess              VenueAccess[]
+  menuItemOverrides        MenuItemVenueOverride[]
+  mediaAssets              MediaAsset[]
+  printJobs                PrinterJob[]
+  posSyncRecords           POSSyncRecord[]
+  kdsDeliveryRecords       KdsDeliveryRecord[]
+  auditLogs                AuditLog[]
+  connectorEnrollments     ConnectorEnrollment[]
+  connectorInstallations   ConnectorInstallation[]
+  connectorCommands        ConnectorCommand[]
+  tabletEnrollments        TabletEnrollment[]
+  tabletDevices            TabletDevice[]
   table19ValidationRuns    Table19ValidationRun[]
   paymentObservations      PaymentObservation[]
   paymentObservationEvents PaymentObservationEvent[]
@@ -327,16 +327,16 @@ model Venue {
 }
 
 model Table {
-  id          String   @id @default(uuid())
-  venueId     String
-  tableNumber String
-  name        String?
-  capacity    Int
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  floorPlanId String?
-  xPosition   Float?
-  yPosition   Float?
+  id           String   @id @default(uuid())
+  venueId      String
+  tableNumber  String
+  name         String?
+  capacity     Int
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  floorPlanId  String?
+  xPosition    Float?
+  yPosition    Float?
   // The exact native POS table identifier this Verdura table maps to (for
   // IdealPOS via VerduraIdealposBridge: TableMapSetups.Caption, fetched
   // live from the bridge's GET /api/tables — confirmed by direct source
@@ -515,22 +515,22 @@ enum MenuChannel {
 }
 
 model Category {
-  id             String        @id @default(uuid())
-  organizationId String
-  name           String
-  description    String?
-  imageUrl       String?
-  sortOrder      Int           @default(0)
-  isActive       Boolean       @default(true)
+  id              String        @id @default(uuid())
+  organizationId  String
+  name            String
+  description     String?
+  imageUrl        String?
+  sortOrder       Int           @default(0)
+  isActive        Boolean       @default(true)
   // Deny-by-default (empty array): a freshly created/imported category is
   // invisible on every channel until a human explicitly publishes it —
   // never accidentally visible by omission. See MenuItem.visibleChannels
   // for the full rationale; both fields are always evaluated together by
   // the shared channel resolver.
   visibleChannels MenuChannel[] @default([])
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  createdById    String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  createdById     String
 
   organization Organization @relation(fields: [organizationId], references: [id])
   createdBy    Staff        @relation(fields: [createdById], references: [id])
@@ -684,11 +684,11 @@ enum PosCandidateConfidenceTier {
 }
 
 model PosProductIdentity {
-  id             String          @id @default(uuid())
-  organizationId String
-  sourceSystem   PosSourceSystem @default(idealpos)
+  id                String          @id @default(uuid())
+  organizationId    String
+  sourceSystem      PosSourceSystem @default(idealpos)
   // StockItems.Code, verbatim, never derived from a title or id.
-  nativeCode     String
+  nativeCode        String
   // StockItems.Description snapshot at last sync, kept purely for
   // human-readable drift detection (see descriptionDriftDetectedAt) — not
   // rendered to customers anywhere; MenuItem.title is Verdura's own.
@@ -700,7 +700,7 @@ model PosProductIdentity {
   // { hasAnyGridPlacement, hasVisibleGridPlacement, departmentCode,
   // isDepartment41, hasDepartment41TwinSameDescription, twinNativeCode }.
   // Kept for audit/debugging, never parsed by the resolver.
-  evidence Json @default("{}")
+  evidence        Json                        @default("{}")
 
   // IdealPOS's own live sale price (StockItemsValue, Type=1/"Price",
   // Level=1) as of the last sync. The routine background sync
@@ -874,13 +874,13 @@ model Order {
   createdAt                    DateTime      @default(now())
   updatedAt                    DateTime      @updatedAt
 
-  venue                Venue                 @relation(fields: [venueId], references: [id])
-  table                Table?                @relation(fields: [tableId], references: [id])
-  items                OrderItem[]
-  printJobs            PrinterJob[]
-  posSyncRecord        POSSyncRecord?
-  kdsDeliveryRecord    KdsDeliveryRecord?
-  table19ValidationRun Table19ValidationRun?
+  venue                    Venue                     @relation(fields: [venueId], references: [id])
+  table                    Table?                    @relation(fields: [tableId], references: [id])
+  items                    OrderItem[]
+  printJobs                PrinterJob[]
+  posSyncRecord            POSSyncRecord?
+  kdsDeliveryRecord        KdsDeliveryRecord?
+  table19ValidationRun     Table19ValidationRun?
   // Story 15-6: native IdealPOS payment-state OBSERVATION only -- never
   // written by anything in this codebase that initiates, selects tender
   // for, or otherwise processes payment. Absence of this row means
@@ -944,7 +944,7 @@ model OrderItem {
   /// and for any order on the Webit path. A line whose round is `confirmed`
   /// is never swept into a later round: that is what makes a second Send to
   /// Kitchen a delta rather than a replay of the whole tab.
-  nativeRoundId     String?
+  nativeRoundId String?
 
   order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItem    MenuItem          @relation(fields: [menuItemId], references: [id])
@@ -1033,11 +1033,11 @@ model PrinterJob {
 }
 
 model POSSyncRecord {
-  id              String         @id @default(uuid())
-  orderId         String         @unique
-  venueId         String
-  adapterType     POSAdapterType
-  status          POSSyncStatus  @default(not_synced)
+  id          String         @id @default(uuid())
+  orderId     String         @unique
+  venueId     String
+  adapterType POSAdapterType
+  status      POSSyncStatus  @default(not_synced)
 
   /// WHICH PIPELINE OWNS THIS ORDER. Written once, in the same transaction
   /// that creates the order, and never updated by any code path in this
@@ -1057,13 +1057,13 @@ model POSSyncRecord {
   // Reserved for a real Idealpos adapter's own submission attempts
   // (target-operating-model.md; story 9-1). Story 9-3's dispatcher
   // deliberately does NOT touch these — see dispatch* fields below.
-  attemptCount    Int            @default(0)
+  attemptCount    Int                   @default(0)
   lastAttemptAt   DateTime?
   syncedAt        DateTime?
   failedAt        DateTime?
   errorMessage    String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   // Story 9-3: outbox-dispatch bookkeeping only. None of these fields are
   // evidence of anything reaching Idealpos, a connector, or any external
@@ -1214,15 +1214,15 @@ model PaymentObservation {
   // Only ever populated from a proven-authoritative observation event
   // (never any unverified figure -- see unverifiedAmountCents below for
   // where an unverified figure belongs).
-  nativeReference    String?
-  nativeAmountCents  Int?
-  nativeCurrency     String?
-  tenderMethod       String?
-  nativeTimestamp    DateTime?
+  nativeReference   String?
+  nativeAmountCents Int?
+  nativeCurrency    String?
+  tenderMethod      String?
+  nativeTimestamp   DateTime?
 
   // Recorded ONLY for operator visibility -- never promoted to
   // nativeAmountCents/state=paid.
-  unverifiedAmountCents Int?
+  unverifiedAmountCents  Int?
   unverifiedAmountSource String?
 
   discrepancyCents Int?
@@ -1238,16 +1238,16 @@ model PaymentObservation {
   lastAppliedObservationId String?
   lastObservedAt           DateTime?
 
-  reviewedAt          DateTime?
-  reviewedByStaffId   String?
-  reviewNote          String? // sanitized only -- never a raw stack trace or secret
+  reviewedAt        DateTime?
+  reviewedByStaffId String?
+  reviewNote        String? // sanitized only -- never a raw stack trace or secret
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  order             Order   @relation(fields: [orderId], references: [id])
-  venue             Venue   @relation(fields: [venueId], references: [id])
-  reviewedByStaff   Staff?  @relation(fields: [reviewedByStaffId], references: [id])
+  order           Order  @relation(fields: [orderId], references: [id])
+  venue           Venue  @relation(fields: [venueId], references: [id])
+  reviewedByStaff Staff? @relation(fields: [reviewedByStaffId], references: [id])
 
   // Database-enforced: one native payment reference can never silently
   // attach to two different orders (nulls are unrestricted, matching
@@ -1284,7 +1284,7 @@ model PaymentObservationEvent {
   tenderMethod    String?
   nativeTimestamp DateTime?
 
-  receivedAt DateTime @default(now())
+  receivedAt   DateTime             @default(now())
   // fixture_contract is the only value any code path in this repository may
   // write today; the other values exist for a future real connector, never
   // fabricated here.
@@ -1296,8 +1296,8 @@ model PaymentObservationEvent {
 
   // Written once, at insert time, by the same transaction that decided
   // whether this event won the PaymentObservation projection CAS.
-  applied         Boolean @default(false)
-  conflictReason  String?
+  applied        Boolean @default(false)
+  conflictReason String?
 
   createdAt DateTime @default(now())
 
@@ -1723,8 +1723,8 @@ model NativeTableRound {
   /// The native identity, once known. A round may NEVER be `confirmed` while
   /// `nativeSaleTier` is null or `correlated` - only a causal identity
   /// confirms, the same rule `confirmRound` enforces in the domain model.
-  nativeSaleId   String?
-  nativeSaleTier String?
+  nativeSaleId     String?
+  nativeSaleTier   String?
   nativeObservedAt DateTime?
 
   /// WHO TOOK RESPONSIBILITY, and for what. Written only by the manual
@@ -1739,17 +1739,17 @@ model NativeTableRound {
   ///
   /// All nullable: every round that existed before this migration, and every
   /// round the machine settles, has no human behind it and must not appear to.
-  resolvedByUserId String?
+  resolvedByUserId        String?
   /// The elevated staff identity behind a `tablet_manager` step-up, when the
   /// resolver reached this action through one. `JwtPayload.actingStaffId`
   /// exists so "a privileged action's audit trail can record both identities
   /// together", and settling a customer's bill by hand is that action. Null
   /// when the resolver was already a staff/manager session in their own right.
   resolvedByActingStaffId String?
-  resolvedAt       DateTime?
+  resolvedAt              DateTime?
   /// What the person said they saw. Required by the route, so a non-null
   /// `resolvedAt` always has one.
-  resolutionBasis  String?
+  resolutionBasis         String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1804,6 +1804,40 @@ model NativeSendAttempt {
   payloadHash String
 
   sendInitiatedAt DateTime
+
+  /// THE PRE-SEND BASELINE: the native table as it stood BEFORE this attempt's
+  /// socket was opened, captured and committed in the same write as the rest of
+  /// this row.
+  ///
+  /// WHY IT HAS TO BE DURABLE AND HAS TO BE HERE. Confirmation's durable half
+  /// is a DELTA - the lines the table gained between this baseline and a later
+  /// readback must equal exactly `expectedNativeItems`. A baseline held in
+  /// process memory would be lost by the one event reconciliation exists to
+  /// survive: a crash between the send and the answer. Written before the
+  /// socket, it is available to a completely new instance reading these rows
+  /// back, which is what lets a restart reconcile rather than escalate.
+  ///
+  /// Shape is `NativeTableSnapshot` from waiterpad-native-evidence.ts: a status
+  /// plus, when observed, the table context and line multiset. A status of
+  /// `unavailable` or `ambiguous` is stored honestly rather than as an absent
+  /// baseline - "we looked and could not read it" is a different fact from "we
+  /// never looked", and only the first one should stop a round from ever
+  /// confirming.
+  ///
+  /// Null means no baseline was captured. That is a supported state - it is
+  /// every row written before this column existed, and every send made with no
+  /// reader bound - and it can never confirm. It never releases lines either.
+  preSendTableSnapshot Json?
+
+  /// What this attempt's packet actually asked the till to add, in native
+  /// terms: `[{ nativeCode, quantity }]`.
+  ///
+  /// FROZEN WITH THE ATTEMPT, for the same reason `posTableCode` is frozen on
+  /// the round. Deriving it later from the order's items and the venue's
+  /// current PLU mapping would let an edit to that mapping change what a
+  /// historical round is judged against, which would silently re-decide a
+  /// round that has already been answered.
+  expectedNativeItems Json?
 
   /// Null until the transport returns. `bytesLeftHost` is the safety-critical
   /// one, not `outcomeKind`: false ONLY where nothing can have been written.

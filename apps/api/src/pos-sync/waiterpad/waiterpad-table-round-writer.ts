@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto';
 
 import type { OrderRound } from '../../orders/rounds/order-round.model';
 import type { WaiterPadConfig } from './waiterpad-config';
+import type { ExpectedNativeItem, NativeTableSnapshot } from './waiterpad-native-evidence';
 import {
   serialiseOrder2,
   type Order2Line,
@@ -48,6 +49,23 @@ import {
   type WaiterPadSendOutcome,
   type WaiterPadSocketFactory,
 } from './waiterpad-transport';
+
+/**
+ * The native delta this packet asks for, summed by PLU.
+ *
+ * Quantities are summed rather than listed because the native side splits a
+ * quantity across rows - the sealed Table 5 run recorded qty 2 as TWO qty-1
+ * rows, not Col3=2 - so a readback is only comparable to this as a multiset.
+ * Text/instruction siblings are not lines and contribute nothing.
+ */
+function expectedItemsFrom(lines: readonly TableRoundLine[]): readonly ExpectedNativeItem[] {
+  const byCode = new Map<string, number>();
+  for (const line of lines) {
+    const code = line.plu.trim();
+    byCode.set(code, (byCode.get(code) ?? 0) + line.quantity);
+  }
+  return [...byCode.entries()].map(([nativeCode, quantity]) => ({ nativeCode, quantity }));
+}
 
 export class WaiterPadWriterError extends Error {
   constructor(message: string) {
@@ -74,6 +92,20 @@ export interface TableRoundSubmission {
   readonly table: number;
   readonly guests: number;
   readonly lines: readonly TableRoundLine[];
+
+  /**
+   * The native table as it stood BEFORE this send, read by the caller.
+   *
+   * SUPPLIED RATHER THAN READ HERE, deliberately. This writer holds a socket
+   * factory and nothing else; giving it a reader would put a second I/O
+   * dependency on the one path that must stay auditable byte-for-byte. The
+   * caller owns both reads of the delta, which is also what keeps them in the
+   * same table context.
+   *
+   * Optional because a build with no evidence reader bound has no baseline to
+   * offer, and that is a supported configuration - it simply cannot confirm.
+   */
+  readonly preSendBaseline?: NativeTableSnapshot;
 }
 
 /**
@@ -93,6 +125,23 @@ export interface SendInitiatedRecord {
   readonly token: string;
   readonly payloadHash: string;
   readonly sendInitiatedAt: Date;
+
+  /**
+   * The pre-send baseline, carried through to persistence. See
+   * `TableRoundSubmission.preSendBaseline`.
+   */
+  readonly preSendBaseline?: NativeTableSnapshot;
+
+  /**
+   * What this packet actually asked the till to add, derived from the lines
+   * that were built into it rather than from the order.
+   *
+   * DERIVED FROM THE PACKET ON PURPOSE. This is the term confirmation
+   * subtracts the baseline against, so it must describe what LEFT, not what
+   * was intended. Reading it back off the order later would let a menu edit
+   * change what a historical round is judged against.
+   */
+  readonly expectedItems: readonly ExpectedNativeItem[];
 }
 
 export interface WaiterPadWriterHooks {
@@ -208,6 +257,8 @@ export class WaiterPadTableRoundWriter implements ITableRoundWriter {
       token,
       payloadHash: hashPayload(payload),
       sendInitiatedAt: this.hooks.now?.() ?? new Date(),
+      preSendBaseline: submission.preSendBaseline,
+      expectedItems: expectedItemsFrom(lines),
     };
 
     // (5) Durable BEFORE the socket. A rejection here is the only provably
