@@ -393,8 +393,10 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
         // through -- it drives the rotating offset (see sweepConfirm). With a
         // single awaiting row the sweep stays on the skip:0 path, so these
         // end-to-end assertions are unaffected by rotation.
-        count: jest.fn(async () =>
-          syncRows.filter((r) => r.status === POSSyncStatus.submitted_awaiting_confirmation).length,
+        count: jest.fn(
+          async () =>
+            syncRows.filter((r) => r.status === POSSyncStatus.submitted_awaiting_confirmation)
+              .length,
         ),
         findMany: jest.fn(async () =>
           syncRows
@@ -408,14 +410,16 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
         ),
         // Faithful guarded updateMany: only applies while the row is still
         // awaiting, which is what makes terminal states irreversible.
-        updateMany: jest.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
-          const row = syncRows.find(
-            (r) => r.id === args.where.id && r.status === args.where.status,
-          );
-          if (!row) return { count: 0 };
-          Object.assign(row, args.data);
-          return { count: 1 };
-        }),
+        updateMany: jest.fn(
+          async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+            const row = syncRows.find(
+              (r) => r.id === args.where.id && r.status === args.where.status,
+            );
+            if (!row) return { count: 0 };
+            Object.assign(row, args.data);
+            return { count: 1 };
+          },
+        ),
       },
     };
     // The confirmation service resolves the requested table via order.findUnique.
@@ -423,7 +427,12 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
       if (args?.select && 'table' in args.select) {
         return posTableCode === null ? { table: null } : { table: { posTableCode } };
       }
-      return { id: ORDER_ID, createdAt: new Date(), venueId: VENUE_ID, venue: { organizationId: ORG_ID } };
+      return {
+        id: ORDER_ID,
+        createdAt: new Date(),
+        venueId: VENUE_ID,
+        venue: { organizationId: ORG_ID },
+      };
     }) as never;
 
     const reader = makeReader(connector, prisma);
@@ -576,11 +585,21 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
     await svc.sweepConfirm();
     const probeId = connector.latest.id;
     const payload = { body: bridgeBody({ status: 'rejected', lastError: 'bad PLU' }) };
-    connector.report(probeId, ConnectorCommandStatus.succeeded, IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS, payload);
+    connector.report(
+      probeId,
+      ConnectorCommandStatus.succeeded,
+      IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS,
+      payload,
+    );
 
     const first = await svc.sweepConfirm();
     // Connector replays the identical report after a dropped HTTP response.
-    connector.report(probeId, ConnectorCommandStatus.succeeded, IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS, payload);
+    connector.report(
+      probeId,
+      ConnectorCommandStatus.succeeded,
+      IDEALPOS_ORDER_STATUS_RESULT_TYPE.BRIDGE_ORDER_STATUS,
+      payload,
+    );
     const second = await svc.sweepConfirm();
 
     expect(first.failed).toBe(1);

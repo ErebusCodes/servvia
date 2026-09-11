@@ -18,7 +18,11 @@ describe('resolveDineInRoute', () => {
       (configuredValue) => {
         const decision = resolveDineInRoute({ configuredValue });
 
-        expect(decision).toMatchObject({ decision: 'route', route: DineInPosRoute.WEBIT, sticky: false });
+        expect(decision).toMatchObject({
+          decision: 'route',
+          route: DineInPosRoute.WEBIT,
+          sticky: false,
+        });
       },
     );
 
@@ -55,18 +59,21 @@ describe('resolveDineInRoute', () => {
       });
     });
 
-    it.each(['NATIVE', 'native-idealpos-table', 'NATIVE_IDEALPOS_TABEL', 'both', 'WEBIT,NATIVE_IDEALPOS_TABLE'])(
-      'REFUSES an unrecognized value (%s) rather than defaulting',
-      (configuredValue) => {
-        // Defaulting here would be the worst outcome during certification: an
-        // operator who mistyped the native route would believe they were
-        // exercising it while every order quietly went through Webit.
-        const decision = resolveDineInRoute({ configuredValue });
+    it.each([
+      'NATIVE',
+      'native-idealpos-table',
+      'NATIVE_IDEALPOS_TABEL',
+      'both',
+      'WEBIT,NATIVE_IDEALPOS_TABLE',
+    ])('REFUSES an unrecognized value (%s) rather than defaulting', (configuredValue) => {
+      // Defaulting here would be the worst outcome during certification: an
+      // operator who mistyped the native route would believe they were
+      // exercising it while every order quietly went through Webit.
+      const decision = resolveDineInRoute({ configuredValue });
 
-        expect(decision.decision).toBe('refuse');
-        expect(decision.reason).toContain(DINE_IN_ROUTE_CONFIG_KEY);
-      },
-    );
+      expect(decision.decision).toBe('refuse');
+      expect(decision.reason).toContain(DINE_IN_ROUTE_CONFIG_KEY);
+    });
 
     it('a refusal is never a route, so a misconfiguration cannot dispatch anything at all', () => {
       const decision = resolveDineInRoute({ configuredValue: 'garbage' });
@@ -82,7 +89,11 @@ describe('resolveDineInRoute', () => {
         existingCommandType: 'idealpos.submit_order.v1',
       });
 
-      expect(decision).toMatchObject({ decision: 'route', route: DineInPosRoute.WEBIT, sticky: true });
+      expect(decision).toMatchObject({
+        decision: 'route',
+        route: DineInPosRoute.WEBIT,
+        sticky: true,
+      });
     });
 
     it('keeps an order on NATIVE even when configuration now says WEBIT', () => {

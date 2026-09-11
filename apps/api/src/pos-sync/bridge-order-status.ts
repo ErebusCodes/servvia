@@ -185,7 +185,8 @@ export function decideConfirmation(
     // as rejected.
     return {
       nextStatus: null,
-      reason: 'bridge has no record of this externalOrderId (404) — not evidence of failure; leaving awaiting',
+      reason:
+        'bridge has no record of this externalOrderId (404) — not evidence of failure; leaving awaiting',
       tableCorroborated: false,
     };
   }

@@ -90,7 +90,8 @@ export const DINE_IN_ROUTE_CONFIG_KEY = 'IDEALPOS_DINE_IN_ROUTE';
  */
 export function routeOfCommandType(commandType: string | null | undefined): DineInPosRoute | null {
   if (commandType === 'idealpos.submit_order.v1') return DineInPosRoute.WEBIT;
-  if (commandType === IDEALPOS_NATIVE_TABLE_ROUND_COMMAND_TYPE) return DineInPosRoute.NATIVE_IDEALPOS_TABLE;
+  if (commandType === IDEALPOS_NATIVE_TABLE_ROUND_COMMAND_TYPE)
+    return DineInPosRoute.NATIVE_IDEALPOS_TABLE;
   return null;
 }
 

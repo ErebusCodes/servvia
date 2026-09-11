@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { ConnectorCommandStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
-import { BridgeOrderStatusBody, BridgeOrderStatusReader, BridgeStatusReadOutcome } from './bridge-order-status';
+import {
+  BridgeOrderStatusBody,
+  BridgeOrderStatusReader,
+  BridgeStatusReadOutcome,
+} from './bridge-order-status';
 import {
   buildOrderStatusIdempotencyKey,
   IDEALPOS_ORDER_STATUS_COMMAND_TYPE,
@@ -111,7 +115,9 @@ export class ConnectorBridgeOrderStatusReader implements BridgeOrderStatusReader
       return await this.readInner(externalOrderId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`order-status probe failed for externalOrderId=${externalOrderId}: ${message}`);
+      this.logger.error(
+        `order-status probe failed for externalOrderId=${externalOrderId}: ${message}`,
+      );
       return { kind: 'unavailable', reason: `probe transport error: ${message}` };
     }
   }
@@ -222,13 +228,17 @@ export class ConnectorBridgeOrderStatusReader implements BridgeOrderStatusReader
    * `decideConfirmation` would then reason about.
    */
   private extractBody(resultPayload: unknown): BridgeOrderStatusBody | null {
-    if (!resultPayload || typeof resultPayload !== 'object' || Array.isArray(resultPayload)) return null;
+    if (!resultPayload || typeof resultPayload !== 'object' || Array.isArray(resultPayload))
+      return null;
     const body = (resultPayload as Record<string, unknown>).body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
     return body as BridgeOrderStatusBody;
   }
 
-  private async enqueueProbe(externalOrderId: string, attempt: number): Promise<BridgeStatusReadOutcome> {
+  private async enqueueProbe(
+    externalOrderId: string,
+    attempt: number,
+  ): Promise<BridgeStatusReadOutcome> {
     if (attempt >= this.maxProbes) {
       return {
         kind: 'unavailable',
@@ -238,7 +248,12 @@ export class ConnectorBridgeOrderStatusReader implements BridgeOrderStatusReader
 
     const order = await this.prisma.order.findUnique({
       where: { id: externalOrderId },
-      select: { id: true, createdAt: true, venueId: true, venue: { select: { organizationId: true } } },
+      select: {
+        id: true,
+        createdAt: true,
+        venueId: true,
+        venue: { select: { organizationId: true } },
+      },
     });
 
     if (!order?.venue) {

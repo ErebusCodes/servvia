@@ -221,9 +221,7 @@ describe('RateLimitGuard', () => {
   describe('transient Redis fault handling', () => {
     it('retries once when the command times out, then allows a permitted request', async () => {
       getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
-      evalMock
-        .mockRejectedValueOnce(new Error('Command timed out'))
-        .mockResolvedValueOnce([0, 3]);
+      evalMock.mockRejectedValueOnce(new Error('Command timed out')).mockResolvedValueOnce([0, 3]);
 
       const context = createMockContext('127.0.0.1', {}, '/api/connector/commands/poll');
 
@@ -245,17 +243,15 @@ describe('RateLimitGuard', () => {
       getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
       evalMock.mockRejectedValue(new Error('Command timed out'));
 
-      await expect(
-        guard.canActivate(createMockContext('127.0.0.1')),
-      ).rejects.toMatchObject({ status: 503 });
+      await expect(guard.canActivate(createMockContext('127.0.0.1'))).rejects.toMatchObject({
+        status: 503,
+      });
       expect(evalMock).toHaveBeenCalledTimes(2);
     });
 
     it('reuses the same window arguments on the retry', async () => {
       getAllAndOverrideMock.mockReturnValue({ limit: 120, windowSeconds: 60 });
-      evalMock
-        .mockRejectedValueOnce(new Error('Command timed out'))
-        .mockResolvedValueOnce([0, 1]);
+      evalMock.mockRejectedValueOnce(new Error('Command timed out')).mockResolvedValueOnce([0, 1]);
 
       await guard.canActivate(createMockContext('127.0.0.1'));
 
@@ -268,9 +264,9 @@ describe('RateLimitGuard', () => {
       getAllAndOverrideMock.mockReturnValue({ limit: 5, windowSeconds: 60 });
       evalMock.mockResolvedValueOnce([1, 5, Date.now() - 30_000]);
 
-      await expect(
-        guard.canActivate(createMockContext('192.168.1.1')),
-      ).rejects.toMatchObject({ status: 429 });
+      await expect(guard.canActivate(createMockContext('192.168.1.1'))).rejects.toMatchObject({
+        status: 429,
+      });
       expect(evalMock).toHaveBeenCalledTimes(1);
     });
 
@@ -278,9 +274,9 @@ describe('RateLimitGuard', () => {
       getAllAndOverrideMock.mockReturnValue({ limit: 5, windowSeconds: 60 });
       evalMock.mockRejectedValue(new Error('WRONGTYPE Operation against a key'));
 
-      await expect(
-        guard.canActivate(createMockContext('192.168.1.1')),
-      ).rejects.toMatchObject({ status: 503 });
+      await expect(guard.canActivate(createMockContext('192.168.1.1'))).rejects.toMatchObject({
+        status: 503,
+      });
       expect(evalMock).toHaveBeenCalledTimes(1);
     });
 
@@ -288,9 +284,9 @@ describe('RateLimitGuard', () => {
       getAllAndOverrideMock.mockReturnValue({ limit: 5, windowSeconds: 60 });
       evalMock.mockResolvedValueOnce([0]);
 
-      await expect(
-        guard.canActivate(createMockContext('192.168.1.1')),
-      ).rejects.toMatchObject({ status: 503 });
+      await expect(guard.canActivate(createMockContext('192.168.1.1'))).rejects.toMatchObject({
+        status: 503,
+      });
       expect(evalMock).toHaveBeenCalledTimes(1);
     });
   });
@@ -445,9 +441,7 @@ describe('RateLimitGuard', () => {
       //    the documented, harmless over-report by one.
       expect(firstReturn).toEqual([0, 4]);
       expect(retryReturn).toEqual([0, 5]);
-      expect((retryReturn as [number, number])[1]).toBe(
-        (firstReturn as [number, number])[1] + 1,
-      );
+      expect((retryReturn as [number, number])[1]).toBe((firstReturn as [number, number])[1] + 1);
 
       // 5. limiter decision: allowed, from result[0] only. The over-reported
       //    counter is never read, which is why it cannot affect a verdict.
@@ -466,9 +460,9 @@ describe('RateLimitGuard', () => {
         Promise.resolve(model.run(...(args as Parameters<typeof model.run>))),
       );
 
-      await expect(
-        guard.canActivate(createMockContext('127.0.0.1')),
-      ).rejects.toMatchObject({ status: 429 });
+      await expect(guard.canActivate(createMockContext('127.0.0.1'))).rejects.toMatchObject({
+        status: 429,
+      });
       // Refused, and nothing was added.
       expect(model.zset.size).toBe(2);
     });

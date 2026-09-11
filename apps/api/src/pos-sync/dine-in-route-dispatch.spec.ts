@@ -311,7 +311,13 @@ describe('dine-in routing seam (reconcile)', () => {
     // second one there. The server must stop, not fall back.
     service = await buildService(undefined);
     mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([
-      { id: 'sync-1', connectorSubmitCommandId: 'cmd-native-1', orderId: 'order-1', venueId: 'venue-1', attemptCount: 1 },
+      {
+        id: 'sync-1',
+        connectorSubmitCommandId: 'cmd-native-1',
+        orderId: 'order-1',
+        venueId: 'venue-1',
+        attemptCount: 1,
+      },
     ]);
     mockPrisma.connectorCommand.findUnique.mockResolvedValue({
       id: 'cmd-native-1',
@@ -338,7 +344,13 @@ describe('dine-in routing seam (reconcile)', () => {
     // The pre-existing DL-093 behaviour must be untouched by the seam.
     service = await buildService(undefined);
     mockPrisma.pOSSyncRecord.findMany.mockResolvedValueOnce([
-      { id: 'sync-1', connectorSubmitCommandId: 'cmd-webit-1', orderId: 'order-1', venueId: 'venue-1', attemptCount: 1 },
+      {
+        id: 'sync-1',
+        connectorSubmitCommandId: 'cmd-webit-1',
+        orderId: 'order-1',
+        venueId: 'venue-1',
+        attemptCount: 1,
+      },
     ]);
     mockPrisma.connectorCommand.findUnique.mockResolvedValue({
       id: 'cmd-webit-1',

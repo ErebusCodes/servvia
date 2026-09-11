@@ -261,9 +261,9 @@ describe('IdealposConfirmationService.sweepConfirm', () => {
       updateMany: jest.fn().mockResolvedValue({ count: updateCount }),
     },
     order: {
-      findUnique: jest.fn().mockResolvedValue(
-        posTableCode === null ? { table: null } : { table: { posTableCode } },
-      ),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue(posTableCode === null ? { table: null } : { table: { posTableCode } }),
     },
   });
 

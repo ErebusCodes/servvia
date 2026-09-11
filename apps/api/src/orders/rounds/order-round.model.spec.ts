@@ -199,7 +199,12 @@ describe('ambiguity is conservative', () => {
   it('a new round may NOT be opened while one is unresolved', () => {
     expect(canOpenNextRound([at('unresolved')])).toBe(false);
     expect(() =>
-      openRound({ rounds: [at('unresolved')], sessionId: 's1', roundId: 'r2', idempotencyKey: 'k2' }),
+      openRound({
+        rounds: [at('unresolved')],
+        sessionId: 's1',
+        roundId: 'r2',
+        idempotencyKey: 'k2',
+      }),
     ).toThrow(/unresolved/);
   });
 
@@ -248,7 +253,12 @@ describe('prior rounds are never re-sent', () => {
   it('a payload is built from ONE round, not the session', () => {
     const r2 = beginSubmission(
       setRoundLines(
-        openRound({ rounds: [at('confirmed')], sessionId: 's1', roundId: 'r2', idempotencyKey: 'k2' }),
+        openRound({
+          rounds: [at('confirmed')],
+          sessionId: 's1',
+          roundId: 'r2',
+          idempotencyKey: 'k2',
+        }),
         [line({ lineId: 'round2-line' })],
       ),
       new Date(),

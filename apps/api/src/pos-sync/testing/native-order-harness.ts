@@ -785,9 +785,7 @@ export function buildPrisma(ledger: Ledger): PrismaService {
         }
         if (typeof take === 'number') rows = rows.slice(0, take);
 
-        return Promise.resolve(
-          rows.map((r) => hydrateRound(ledger, r, include)),
-        );
+        return Promise.resolve(rows.map((r) => hydrateRound(ledger, r, include)));
       },
     },
 
