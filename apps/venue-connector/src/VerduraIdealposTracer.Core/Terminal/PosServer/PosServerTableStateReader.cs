@@ -46,7 +46,7 @@ namespace VerduraIdealposTracer.Core.Terminal.PosServer;
 public sealed class PosServerTableStateReader(
     Func<DbConnection> connectionFactory,
     NativeTableContext tableContext,
-    int commandTimeoutSeconds = 10) : INativeTableStateReader
+    int commandTimeoutSeconds = 10) : INativeTableStateReader, INativeTableStateReaderWithDetail
 {
     /// <summary>
     /// The one statement this type ever executes.
