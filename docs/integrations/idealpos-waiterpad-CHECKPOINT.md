@@ -1,3 +1,37 @@
+> ## ⚠️ SUPERSEDED — read this box before the document below
+>
+> **This checkpoint describes 2026-09-07. Two working sessions have happened
+> since, and several of its "not done" statements are no longer true.** It is
+> kept unedited as a dated record; nothing below this box has been rewritten.
+>
+> **What has changed since, as of 2026-09-12:**
+>
+> | Then (2026-09-07) | Now |
+> | --- | --- |
+> | `confirmed` unreachable; no evidence reader anywhere | **Strong automatic confirmation works offline**, end to end |
+> | Confirmation rule undecided | **Causal token AND durable line delta**, both required, both mutation-proven |
+> | — | Token equality alone can **never** confirm: `IPS.exe` writes it before any sale line |
+> | — | Native writer **refuses to start** without reader + sweep + baseline source |
+> | Five P0 lifecycle defects open | All five closed (were closed 2026-09-11) |
+> | Site config largely unknown | Map **1**, Location **1**, POSTerminal **901** (the iPad's), Clerk **108** — proven from 42 real captures |
+> | PriceLevel unknown | Still **unproven**, and now known to be *unprovable from the captures* — the prover is built and needs one read-only `StockItems` query |
+> | 11 lint errors | Zero |
+>
+> **What has NOT changed:** the handheld licence seat (`WAITERPAD-LICENCE-001`)
+> is still the external blocker, capacity still 2/2, still no vendor reply.
+> The migration baseline is still **rehearsed, not executed**. Production is
+> still empty and unseeded. Live Order2 acceptance still requires legitimate
+> handheld capacity, and no live order has been sent.
+>
+> **Current state lives in:**
+> - `docs/integrations/idealpos-token-write-timing-2026-09-11.md` — why the token cannot confirm alone, and what the durable half actually is
+> - `docs/runbooks/migration-baseline.md` — the migration position, re-rehearsed 2026-09-12
+> - `docs/integrations/idealpos-handheld-licence-escalation.md` — the licence blocker, updated 2026-09-12
+> - `scripts/site-config/site-config-evidence.json` — what the 42 captures prove
+> - `apps/api/src/pos-sync/waiterpad/waiterpad-native-evidence.ts` — the confirmation rule itself
+>
+> ---
+
 # WaiterPad / Ideal Handheld — checkpoint, 2026-09-07 ~23:55 NZST
 
 **Stopped cleanly. Nothing in flight, nothing half-done.**
