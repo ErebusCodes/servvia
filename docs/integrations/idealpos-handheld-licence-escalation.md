@@ -134,3 +134,78 @@ venue.
 
 If it is useful, we can supply the exact Front-terminal readings above and the
 timestamps of both refused registration attempts.
+
+---
+
+## 9. Update — 2026-09-12
+
+**No reply has been received.** Searched: this repository, and the project
+mailbox over the preceding fortnight. Nothing from the reseller or from
+Idealpos. §1–§8 stand unchanged and unanswered.
+
+### 9.1 What has changed on our side
+
+Everything except the seat. Since this was raised, the Verdura side has closed
+its last software blocker: a round sent to the till is now confirmed
+**automatically**, from evidence read out of IdealPOS, without anyone looking at
+a screen. It required both halves of a proof — the till's own record of which
+packet it accepted, plus a before/after readback showing the table gained
+exactly that round's lines — and both are built, wired and tested offline.
+
+The practical consequence for you is that **the outstanding work on our side is
+still measured in hours once a seat exists**, and is now hours of *verification*
+rather than hours of building.
+
+### 9.2 Two additional questions, which only matter once a seat exists
+
+Both are small, and both would otherwise surface on the day. We would rather ask
+now and be told than discover them at the venue.
+
+**D. What `POSTerminal` number should Verdura send?**
+
+The venue's own iPad sends `POSTerminal 901` on every one of the 42 handheld
+orders we have on record. We will **not** reuse that number — it belongs to the
+iPad's registration and sending it from a different device is precisely the
+impersonation §5 rules out.
+
+So: when a seat is issued, is a `POSTerminal` number assigned as part of
+registration, is it chosen by the venue, or is it derived from something else?
+If we should simply use whatever the registration returns, please say so and we
+will read it from there.
+
+**E. Which `PriceLevel` does this venue trade on?**
+
+This one decides what a customer is charged, so we are being deliberate about
+it.
+
+The venue's iPad sends a **real price** on every line, so the till uses the
+figure the iPad supplied and never looks a price up. Verdura deliberately does
+the opposite: we send the documented `-9999` sentinel so that **IdealPOS decides
+the price**, never Verdura. We are not willing to put a price we computed on a
+customer's bill.
+
+When the till resolves that sentinel it reads `StockItems.Price<PriceLevel>` —
+so the level we send selects which of the venue's price columns becomes the
+customer's price. Send the wrong one and every bill is quietly wrong.
+
+The captured orders cannot answer this: they all carry `PriceLevel 0`, but
+because they also carry a real price, that field is never read by anything. It
+is inert filler, not a venue setting.
+
+We can determine it ourselves from a read-only query — we have 115 of the
+venue's PLUs and the price actually charged for each, so we can simply ask which
+price column reproduces them — and we have built exactly that check. But if you
+can just tell us the level this installation trades on, that is faster and we
+will use your answer and verify against it rather than the other way round.
+
+### 9.3 Timing
+
+The venue's target date is **18 September 2026**, six days from this update.
+
+To be plain about where that stands: the software will be ready. Without a
+legitimate handheld seat there is nothing to accept, because we will not send a
+live order under another device's identity to make a date. If a seat cannot be
+issued before the 18th, we would rather agree a revised date with the venue now
+than have the question decided by silence.
+
+**A reply of "A, B or C — and D and E while you are there" is all we need.**
