@@ -80,7 +80,19 @@ The result was unambiguous:
 ```
 
 **Production is exactly the cumulative effect of migrations 1–25.** Migrations
-26–29 — all four of them the native handheld work — are genuinely missing.
+26 onwards — all of them the native handheld work — are genuinely missing.
+
+> **Re-verified 2026-09-12, read-only.** `verdura_production` still has **no
+> `_prisma_migrations` table**, still holds **29 tables and 31 enums**, and still
+> has **zero rows in every one of them**. The objects absent from it are exactly
+> `NativeTableRound`, `NativeSendAttempt`, `PosSubmissionStrategy` and
+> `NativeRoundState` — which is the same finding as above, independently
+> reproduced. A **fifth** pending migration has since been added:
+> `20260911090000_native_attempt_pre_send_baseline`, two nullable JSONB columns
+> on `NativeSendAttempt`. It is additive, has no default, rewrites no table and
+> is ignored by the previous application build, so it carries the same
+> deploy-ahead property as the other four. Every count below that says "4"
+> should now read **5**.
 
 One caveat, stated rather than glossed: `prisma migrate diff` compares tables,
 columns, indexes, constraints and enums. **It does not model row-level security
@@ -258,3 +270,50 @@ The schema being correct does **not** mean the native path is live. In order:
 3. The native writer stays disabled. See `apps/api/.env.example` for every key
    and what each one does, and note that reconciliation is armed by a
    **separate** flag from the writer.
+
+---
+
+## Re-rehearsed 2026-09-12, with the fifth migration
+
+The rehearsal above was run before
+`20260911090000_native_attempt_pre_send_baseline` existed. It has been repeated
+from scratch, and the script that does it is now in the repository rather than
+in somebody's shell history:
+
+```
+scripts/migration/baseline-rehearsal.sh
+```
+
+It touches nothing but two scratch databases on the disposable
+`verdura-recovery-it` container. **Production is never opened**, not even for
+reading — the script reproduces production's shape instead, by applying
+migrations 1–25 as raw SQL and recording none of them, which is exactly the
+state `prisma db push` left behind.
+
+| Step | Result (2026-09-12) |
+| --- | --- |
+| Apply migrations 1–25 as raw SQL | 25 files applied |
+| `to_regclass('public._prisma_migrations')` | **ABSENT** — production's shape reproduced |
+| Resolve migrations 1–25 as applied | 25 of 25 succeeded |
+| `prisma migrate status` | exactly **5** pending, and they are 26–30 |
+| `prisma migrate deploy` | all 5 applied |
+| `prisma migrate diff` vs the datamodel | **No difference detected** |
+| Diff vs a database built from the whole history on an empty DB — forward | **No difference detected** |
+| Diff vs that database — reverse | **No difference detected** |
+
+The last two rows are the ones that matter. After baselining and deploying, the
+production-shaped database is indistinguishable **in both directions** from one
+created by running all thirty migrations from nothing. There is no residue of
+having been baselined, and nothing the baseline quietly skipped.
+
+Separately, a completely fresh database was created and `prisma migrate deploy`
+run over the whole history in one go: all 30 applied, and the datamodel diff was
+likewise empty. So both routes to the target schema agree.
+
+### What this does NOT establish
+
+The same caveat as before, repeated because it has not stopped being true:
+`prisma migrate diff` does not model row-level security policies. It also says
+nothing about data — and there is none to say anything about, because
+production is empty. Seeding is a separate exercise with a separate runbook,
+and it must not be folded into the migration window.
