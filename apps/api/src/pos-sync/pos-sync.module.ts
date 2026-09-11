@@ -19,6 +19,8 @@ import { NativeSendAttemptStore } from './waiterpad/native-send-attempt.store';
 import { NativeTableRoundService } from './waiterpad/native-table-round.service';
 import { NativeRoundsController } from './native-rounds.controller';
 import { NativeRoundReconciliationService } from './waiterpad/native-round-reconciliation.service';
+import { ConnectorNativeEvidenceReader } from './waiterpad/connector-native-evidence.reader';
+import { nativeEvidenceReaderProvider } from './waiterpad/native-evidence-reader.provider';
 import { NativeRoundRecoveryService } from './waiterpad/native-round-recovery.service';
 
 @Module({
@@ -74,11 +76,22 @@ import { NativeRoundRecoveryService } from './waiterpad/native-round-recovery.se
     NativeTableRoundService,
     // Settles rounds the wire could not settle. It holds NO writer and no
     // transport - reconciliation polls, it never resends, and that is enforced
-    // by its dependency graph rather than by a rule in a branch. Its evidence
-    // reader (NATIVE_ROUND_EVIDENCE_READER) is deliberately left UNBOUND: no
-    // connector build can read the till's token row yet, and the escalation
-    // half of the job works without one.
+    // by its dependency graph rather than by a rule in a branch.
     NativeRoundReconciliationService,
+    // THE EVIDENCE READER, BOUND ONLY WHEN ASKED FOR BY NAME.
+    //
+    // Leaving it unbound stays a supported configuration and is still the
+    // default: the sweep then reports `readerBound: false`, gathers nothing,
+    // confirms nothing, and does the escalation half of its job. What has
+    // changed is that a build may no longer run the native WRITER in that
+    // state without saying so - see `waiterpad-activation-invariant.ts`.
+    //
+    // The value is a NAME rather than a boolean because there may one day be a
+    // second reader, and because a typo must fail loudly rather than read as
+    // "no reader". `checkActivationInvariant` reports the typo; this factory
+    // returns null for it, which is the safe half of the same decision.
+    nativeEvidenceReaderProvider,
+    ConnectorNativeEvidenceReader,
     // Settles rounds that a CRASH left in a state no route and no other sweep
     // can reach. `submitting` holds a table's in-flight slot and was swept by
     // nothing, so a restart mid-send killed that table permanently. It holds no

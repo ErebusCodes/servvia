@@ -33,6 +33,10 @@ import { Logger, type Provider } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  ACTIVATION_INVARIANT_ENV_KEYS,
+  checkActivationInvariant,
+} from './waiterpad-activation-invariant';
 import { resolveWaiterPadConfig, WAITERPAD_ENV_KEYS, type WaiterPadEnv } from './waiterpad-config';
 import { NativeSendAttemptStore } from './native-send-attempt.store';
 import {
@@ -62,6 +66,35 @@ export function createTableRoundWriter(
   prisma: PrismaService,
   logger: Logger = new Logger('WaiterPadWriter'),
 ): ITableRoundWriter {
+  // THE ACTIVATION INVARIANT RUNS FIRST, and it is a different question from
+  // whether the writer's own configuration is complete. A perfectly configured
+  // writer in a build that can never confirm a round is exactly the
+  // combination that must not ship: it does not fail, it guarantees manual
+  // intervention for every round of every service, and it does so silently
+  // until the restaurant is full.
+  const invariantEnv: Record<string, string | undefined> = {};
+  for (const key of Object.values(ACTIVATION_INVARIANT_ENV_KEYS)) {
+    invariantEnv[key] = config.get<string>(key);
+  }
+  const invariant = checkActivationInvariant(invariantEnv);
+
+  if (invariant.refuseActivation) {
+    logger.error(
+      `IdealPOS native table-round writer REFUSED by the activation invariant: ` +
+        invariant.reasons.join(' '),
+    );
+    return new DisabledTableRoundWriter(invariant.reasons);
+  }
+
+  if (invariant.degradedAcknowledged) {
+    // Legal, and loud on every single start. An operator who set the
+    // acknowledgement in staging and deployed the same environment to
+    // production should be reading this in the first screen of logs.
+    logger.warn(
+      `IdealPOS native table-round writer is running DEGRADED: ` + invariant.reasons.join(' '),
+    );
+  }
+
   const resolution = resolveWaiterPadConfig(readWaiterPadEnv(config));
 
   if (!resolution.enabled) {
@@ -86,7 +119,8 @@ export function createTableRoundWriter(
     `IdealPOS native table-round writer is ACTIVE -> ${host}:${port} as DeviceID ` +
       `${identity.deviceId}, price policy ${pricePolicy.kind}` +
       (pricePolicy.kind === 'nativeResolved' ? ` (level ${pricePolicy.priceLevel})` : '') +
-      `, non-zero seat ${allowNonZeroSeat ? 'ALLOWED' : 'refused'}. ` +
+      `, non-zero seat ${allowNonZeroSeat ? 'ALLOWED' : 'refused'}, ` +
+      `automatic confirmation ${invariant.canConfirmAutomatically ? 'AVAILABLE' : 'UNAVAILABLE'}. ` +
       'Rounds sent from here reach a real till.',
   );
 
