@@ -1,0 +1,1474 @@
+{
+  "generatedBy": "scripts/site-config/extract-order2-site-config.cjs",
+  "source": {
+    "path": ".tmp-back-evidence/20260909-124209/derived/order2-vectors.json",
+    "sha256": "acdb2017d95b2be4e15cc17636542718318ca179161b8b246fc2f605947cae26",
+    "packets": 42,
+    "stockItemLines": 314,
+    "distinctStockItems": 115,
+    "provenance": "Ideal Handheld-*.LOG on Front (DESKTOP-70DQTGJ), copied read-only to Back on 2026-09-09 with per-file SHA-256 verified source==copy. See .tmp-back-evidence/20260909-124209/PROVENANCE.txt"
+  },
+  "packetFields": {
+    "Map": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "1",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "1",
+      "status": "UNANIMOUS"
+    },
+    "Location": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "1",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "1",
+      "status": "UNANIMOUS"
+    },
+    "POSTerminal": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "901",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "901",
+      "status": "UNANIMOUS"
+    },
+    "Clerk": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "108",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "108",
+      "status": "UNANIMOUS"
+    },
+    "DeviceID": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "10DF1A7881284E2E95CA107E82EE7D0D",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "10DF1A7881284E2E95CA107E82EE7D0D",
+      "status": "UNANIMOUS"
+    },
+    "PocketPad": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "Version 2.2.51",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "Version 2.2.51",
+      "status": "UNANIMOUS"
+    },
+    "DeviceModel": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "iPad Pro 12.9-inch iPad7,2",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "iPad Pro 12.9-inch iPad7,2",
+      "status": "UNANIMOUS"
+    },
+    "DeviceOS": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "iPadOS 17.7.11",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "iPadOS 17.7.11",
+      "status": "UNANIMOUS"
+    },
+    "LocalAddress": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "192.168.1.161",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "192.168.1.161",
+      "status": "UNANIMOUS"
+    },
+    "SkipKitchen": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "0",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "0",
+      "status": "UNANIMOUS"
+    },
+    "KitchenOnly": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "0",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "0",
+      "status": "UNANIMOUS"
+    },
+    "VoidMode": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "False",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "False",
+      "status": "UNANIMOUS"
+    },
+    "PrintReceipt": {
+      "packetsObserved": 42,
+      "distinct": [
+        {
+          "value": "False",
+          "observations": 42
+        }
+      ],
+      "unanimous": true,
+      "value": "False",
+      "status": "UNANIMOUS"
+    }
+  },
+  "lineFields": {
+    "PriceLevel": {
+      "linesObserved": 314,
+      "distinct": [
+        {
+          "value": "0",
+          "observations": 314
+        }
+      ],
+      "unanimous": true,
+      "value": "0",
+      "status": "UNANIMOUS"
+    },
+    "Seat": {
+      "linesObserved": 314,
+      "distinct": [
+        {
+          "value": "0",
+          "observations": 314
+        }
+      ],
+      "unanimous": true,
+      "value": "0",
+      "status": "UNANIMOUS"
+    },
+    "TaxString": {
+      "linesObserved": 314,
+      "distinct": [
+        {
+          "value": "1",
+          "observations": 314
+        }
+      ],
+      "unanimous": true,
+      "value": "1",
+      "status": "UNANIMOUS"
+    }
+  },
+  "stockItems": [
+    {
+      "nativeCode": "2",
+      "descriptions": [
+        "SHISH - COMBINATION"
+      ],
+      "observedPrices": [
+        "36.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "5",
+      "descriptions": [
+        "Hummus"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "7",
+      "descriptions": [
+        "Shish Mix Grill"
+      ],
+      "observedPrices": [
+        "41.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "10",
+      "descriptions": [
+        "Meze Doner - Mix"
+      ],
+      "observedPrices": [
+        "35.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "28",
+      "descriptions": [
+        "Yoghurt with cucumber"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "29",
+      "descriptions": [
+        "MAABOUCH"
+      ],
+      "observedPrices": [
+        "0.75"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "40",
+      "descriptions": [
+        "Delight - Lamb pizza"
+      ],
+      "observedPrices": [
+        "23.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "47",
+      "descriptions": [
+        "Yoghurt Drink Ayran"
+      ],
+      "observedPrices": [
+        "5.50"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "51",
+      "descriptions": [
+        "Ice Cream scoop"
+      ],
+      "observedPrices": [
+        "2.50"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "53",
+      "descriptions": [
+        "Garlic Yoghurt Sauce"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "54",
+      "descriptions": [
+        "Sweet Chilli Sauce"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "55",
+      "descriptions": [
+        "Mayo"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "57",
+      "descriptions": [
+        "Tomato Sauce"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "58",
+      "descriptions": [
+        "Garlic Aioli"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "64",
+      "descriptions": [
+        "Chicken nuggets Kids"
+      ],
+      "observedPrices": [
+        "16.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "82",
+      "descriptions": [
+        "MEAT SHAWARMA"
+      ],
+      "observedPrices": [
+        "19.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "84",
+      "descriptions": [
+        "Sauvignon  Lirrle Angel  Glass"
+      ],
+      "observedPrices": [
+        "10.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "103",
+      "descriptions": [
+        "Sila shish Kabab Wrap"
+      ],
+      "observedPrices": [
+        "18.50"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "105",
+      "descriptions": [
+        "Scapegrace Premium"
+      ],
+      "observedPrices": [
+        "12.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "121",
+      "descriptions": [
+        "Coke No Sugar"
+      ],
+      "observedPrices": [
+        "4.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "133",
+      "descriptions": [
+        "Lemon Lime Bitters"
+      ],
+      "observedPrices": [
+        "5.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "138",
+      "descriptions": [
+        "Gin"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "147",
+      "descriptions": [
+        "Monteith Apple Cider"
+      ],
+      "observedPrices": [
+        "10.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "153",
+      "descriptions": [
+        "SHIRAZ  Take to Grave  Glass"
+      ],
+      "observedPrices": [
+        "10.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "170",
+      "descriptions": [
+        "Apple Tea"
+      ],
+      "observedPrices": [
+        "5.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "189",
+      "descriptions": [
+        "Red Bull with Monin syrup"
+      ],
+      "observedPrices": [
+        "7.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "195",
+      "descriptions": [
+        "extra - chicken"
+      ],
+      "observedPrices": [
+        "8.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "199",
+      "descriptions": [
+        "Sprite with Monin Syrup"
+      ],
+      "observedPrices": [
+        "7.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "205",
+      "descriptions": [
+        "Rice Pudding"
+      ],
+      "observedPrices": [
+        "7.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "208",
+      "descriptions": [
+        "MUSHROOM SOUP"
+      ],
+      "observedPrices": [
+        "14.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "212",
+      "descriptions": [
+        "Shish - Kebab"
+      ],
+      "observedPrices": [
+        "35.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "219",
+      "descriptions": [
+        "CHICKEN SHAWARMA"
+      ],
+      "observedPrices": [
+        "18.00"
+      ],
+      "priceStable": true,
+      "lines": 7
+    },
+    {
+      "nativeCode": "221",
+      "descriptions": [
+        "RED BULL"
+      ],
+      "observedPrices": [
+        "4.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "225",
+      "descriptions": [
+        "KARAK TEA - 500ml"
+      ],
+      "observedPrices": [
+        "14.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "227",
+      "descriptions": [
+        "Fries"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "228",
+      "descriptions": [
+        "White Rice"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "229",
+      "descriptions": [
+        "Flavoured Rice"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 5
+    },
+    {
+      "nativeCode": "240",
+      "descriptions": [
+        "Halloumi Cheese"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "249",
+      "descriptions": [
+        "Coke  - - can 330ml"
+      ],
+      "observedPrices": [
+        "3.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "251",
+      "descriptions": [
+        "Coke No Sugar  -- can 330ml"
+      ],
+      "observedPrices": [
+        "3.00"
+      ],
+      "priceStable": true,
+      "lines": 14
+    },
+    {
+      "nativeCode": "252",
+      "descriptions": [
+        "Sprite - can 330ml"
+      ],
+      "observedPrices": [
+        "3.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "253",
+      "descriptions": [
+        "Fanta  - can 330ml"
+      ],
+      "observedPrices": [
+        "3.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "255",
+      "descriptions": [
+        "SALAD"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "268",
+      "descriptions": [
+        "extra mushroom"
+      ],
+      "observedPrices": [
+        "2.00"
+      ],
+      "priceStable": true,
+      "lines": 5
+    },
+    {
+      "nativeCode": "269",
+      "descriptions": [
+        "Lamb  biryani"
+      ],
+      "observedPrices": [
+        "32.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "374",
+      "descriptions": [
+        "pita bread X 2"
+      ],
+      "observedPrices": [
+        "6.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "388",
+      "descriptions": [
+        "Mountain Dew"
+      ],
+      "observedPrices": [
+        "4.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "394",
+      "descriptions": [
+        "BAMIA MEAT"
+      ],
+      "observedPrices": [
+        "32.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "407",
+      "descriptions": [
+        "Hummus bil Lahme"
+      ],
+      "observedPrices": [
+        "14.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "408",
+      "descriptions": [
+        "Mountain Dew  - can 330ml"
+      ],
+      "observedPrices": [
+        "3.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "417",
+      "descriptions": [
+        "Butter chicken"
+      ],
+      "observedPrices": [
+        "25.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "470",
+      "descriptions": [
+        "Special sauce"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "471",
+      "descriptions": [
+        "Hot Chilli"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "474",
+      "descriptions": [
+        "Large Fries"
+      ],
+      "observedPrices": [
+        "10.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "509",
+      "descriptions": [
+        "Saffron Rice"
+      ],
+      "observedPrices": [
+        "2.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "510",
+      "descriptions": [
+        "HUMMUS WITH BREAD"
+      ],
+      "observedPrices": [
+        "13.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "512",
+      "descriptions": [
+        "DAQOOS"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "515",
+      "descriptions": [
+        "KUNAFA WITH NUTELLA- SMALL"
+      ],
+      "observedPrices": [
+        "17.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "516",
+      "descriptions": [
+        "Lamb shank - MOZZA"
+      ],
+      "observedPrices": [
+        "45.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "531",
+      "descriptions": [
+        "BYO"
+      ],
+      "observedPrices": [
+        "7.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "532",
+      "descriptions": [
+        "SIDES"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 14
+    },
+    {
+      "nativeCode": "534",
+      "descriptions": [
+        "Chicken biryani"
+      ],
+      "observedPrices": [
+        "26.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "536",
+      "descriptions": [
+        "MURABYAN SHRIMP"
+      ],
+      "observedPrices": [
+        "35.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "540",
+      "descriptions": [
+        "WITH HASHEW"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "541",
+      "descriptions": [
+        "YOGHURT"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "553",
+      "descriptions": [
+        "Sila Mix wrap"
+      ],
+      "observedPrices": [
+        "18.50"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "561",
+      "descriptions": [
+        "sila Pita - lamb"
+      ],
+      "observedPrices": [
+        "18.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "562",
+      "descriptions": [
+        "sila Pita - mix"
+      ],
+      "observedPrices": [
+        "18.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "568",
+      "descriptions": [
+        "Tonic Water"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "572",
+      "descriptions": [
+        "MARAG POTATO"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "593",
+      "descriptions": [
+        "SAMBUSA CHEESE"
+      ],
+      "observedPrices": [
+        "13.50"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "594",
+      "descriptions": [
+        "SOUP LENTIL"
+      ],
+      "observedPrices": [
+        "12.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "602",
+      "descriptions": [
+        "white RICE"
+      ],
+      "observedPrices": [
+        "6.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "611",
+      "descriptions": [
+        "Fried Kibbe"
+      ],
+      "observedPrices": [
+        "16.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "624",
+      "descriptions": [
+        "Chicken"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "625",
+      "descriptions": [
+        "Lamb"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "626",
+      "descriptions": [
+        "Falafel"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "628",
+      "descriptions": [
+        "COMMANDO FRIES"
+      ],
+      "observedPrices": [
+        "15.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "629",
+      "descriptions": [
+        "Roasted Vegetables"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "636",
+      "descriptions": [
+        "Laban"
+      ],
+      "observedPrices": [
+        "5.50"
+      ],
+      "priceStable": true,
+      "lines": 6
+    },
+    {
+      "nativeCode": "637",
+      "descriptions": [
+        "Extra - yought"
+      ],
+      "observedPrices": [
+        "2.50"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "638",
+      "descriptions": [
+        "Laban with mint"
+      ],
+      "observedPrices": [
+        "6.00"
+      ],
+      "priceStable": true,
+      "lines": 5
+    },
+    {
+      "nativeCode": "644",
+      "descriptions": [
+        "Emerson&apos;s Hazed &amp; Confused"
+      ],
+      "observedPrices": [
+        "11.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "645",
+      "descriptions": [
+        "Misc"
+      ],
+      "observedPrices": [
+        "4.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "648",
+      "descriptions": [
+        "Hummus Beiruty"
+      ],
+      "observedPrices": [
+        "10.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "649",
+      "descriptions": [
+        "GUACAMOLE WITH CORN CHIPS"
+      ],
+      "observedPrices": [
+        "15.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "651",
+      "descriptions": [
+        "VINE LEAVES [ Dolma]"
+      ],
+      "observedPrices": [
+        "10.00"
+      ],
+      "priceStable": true,
+      "lines": 4
+    },
+    {
+      "nativeCode": "653",
+      "descriptions": [
+        "BATTATA HARRA"
+      ],
+      "observedPrices": [
+        "12.00"
+      ],
+      "priceStable": true,
+      "lines": 5
+    },
+    {
+      "nativeCode": "656",
+      "descriptions": [
+        "CRISPY DYNAMITE SHRIMPS"
+      ],
+      "observedPrices": [
+        "18.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "657",
+      "descriptions": [
+        "ARAYES &amp; CHEESE"
+      ],
+      "observedPrices": [
+        "20.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "658",
+      "descriptions": [
+        "CAULIFLOWER FRITTERS"
+      ],
+      "observedPrices": [
+        "20.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "668",
+      "descriptions": [
+        "SHISH TAOUK TAVUK SIS)"
+      ],
+      "observedPrices": [
+        "27.00"
+      ],
+      "priceStable": true,
+      "lines": 5
+    },
+    {
+      "nativeCode": "669",
+      "descriptions": [
+        "PERSIAN KOOBIDEH"
+      ],
+      "observedPrices": [
+        "28.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "670",
+      "descriptions": [
+        "LAHAM MESHWI"
+      ],
+      "observedPrices": [
+        "31.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "671",
+      "descriptions": [
+        "MIXED GRILL"
+      ],
+      "observedPrices": [
+        "37.00"
+      ],
+      "priceStable": true,
+      "lines": 5
+    },
+    {
+      "nativeCode": "672",
+      "descriptions": [
+        "ALI NAZIK"
+      ],
+      "observedPrices": [
+        "32.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "673",
+      "descriptions": [
+        "GREEK EGGPLANT LAMB MOUSSAKA"
+      ],
+      "observedPrices": [
+        "24.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "674",
+      "descriptions": [
+        "PENNE PASTA"
+      ],
+      "observedPrices": [
+        "27.50"
+      ],
+      "priceStable": true,
+      "lines": 5
+    },
+    {
+      "nativeCode": "677",
+      "descriptions": [
+        "HAMSA KUWAITI"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "683",
+      "descriptions": [
+        "SHISH TAOUK SANDWICH"
+      ],
+      "observedPrices": [
+        "20.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "687",
+      "descriptions": [
+        "Laham Meshwi"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "692",
+      "descriptions": [
+        "Grill Prawns"
+      ],
+      "observedPrices": [
+        "28.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "695",
+      "descriptions": [
+        "VERDURA COUPLE PLATER"
+      ],
+      "observedPrices": [
+        "72.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "702",
+      "descriptions": [
+        "CHEESE PIDE"
+      ],
+      "observedPrices": [
+        "15.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "705",
+      "descriptions": [
+        "HALLOUMI LOAF"
+      ],
+      "observedPrices": [
+        "15.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "706",
+      "descriptions": [
+        "LEBANESE LAHM BIL AJIN"
+      ],
+      "observedPrices": [
+        "22.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "710",
+      "descriptions": [
+        "PESTO CHICKEN PIZZA"
+      ],
+      "observedPrices": [
+        "23.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "718",
+      "descriptions": [
+        "GO FAJITA Wrap"
+      ],
+      "observedPrices": [
+        "0.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "726",
+      "descriptions": [
+        "Steak"
+      ],
+      "observedPrices": [
+        "19.00"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "728",
+      "descriptions": [
+        "Verdura Hummus"
+      ],
+      "observedPrices": [
+        "8.00"
+      ],
+      "priceStable": true,
+      "lines": 3
+    },
+    {
+      "nativeCode": "731",
+      "descriptions": [
+        "Flavoured rice"
+      ],
+      "observedPrices": [
+        "8.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "758",
+      "descriptions": [
+        "FATTOUSH SALAD"
+      ],
+      "observedPrices": [
+        "18.00"
+      ],
+      "priceStable": true,
+      "lines": 7
+    },
+    {
+      "nativeCode": "761",
+      "descriptions": [
+        "FALAFEL SALAD/ PLATE"
+      ],
+      "observedPrices": [
+        "15.00"
+      ],
+      "priceStable": true,
+      "lines": 2
+    },
+    {
+      "nativeCode": "822",
+      "descriptions": [
+        "Turkish Pide Basket  half"
+      ],
+      "observedPrices": [
+        "3.50"
+      ],
+      "priceStable": true,
+      "lines": 1
+    },
+    {
+      "nativeCode": "823",
+      "descriptions": [
+        "Chicken Maschboos"
+      ],
+      "observedPrices": [
+        "25.00"
+      ],
+      "priceStable": true,
+      "lines": 8
+    }
+  ]
+}
