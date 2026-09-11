@@ -190,8 +190,14 @@ export function resolveDineInRoute(inputs: DineInRouteInputs): DineInRouteDecisi
     };
   }
 
+  // Compared as STRINGS against the enum's own values rather than against the
+  // enum members. It is the same comparison at runtime, and it states the
+  // dependency it actually has: this parser upper-cases operator input, so it
+  // only matches while the enum's values are themselves upper-case. Written
+  // against the members, a future rename to a lower-case value would compile,
+  // pass a type check, and silently route every venue to the refusal branch.
   const normalized = configuredValue.trim().toUpperCase();
-  if (normalized === DineInPosRoute.WEBIT) {
+  if (normalized === String(DineInPosRoute.WEBIT)) {
     return {
       decision: 'route',
       route: DineInPosRoute.WEBIT,
@@ -199,7 +205,7 @@ export function resolveDineInRoute(inputs: DineInRouteInputs): DineInRouteDecisi
       reason: `${DINE_IN_ROUTE_CONFIG_KEY} selected WEBIT`,
     };
   }
-  if (normalized === DineInPosRoute.NATIVE_IDEALPOS_TABLE) {
+  if (normalized === String(DineInPosRoute.NATIVE_IDEALPOS_TABLE)) {
     return {
       decision: 'route',
       route: DineInPosRoute.NATIVE_IDEALPOS_TABLE,

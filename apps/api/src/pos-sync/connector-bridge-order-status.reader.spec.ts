@@ -41,7 +41,7 @@ class FakeConnector {
   createCalls = 0;
 
   readonly service = {
-    createCommand: jest.fn(async (params: Record<string, unknown>) => {
+    createCommand: jest.fn((params: Record<string, unknown>) => {
       this.createCalls++;
       const existing = this.commands.find(
         (c) =>
@@ -52,7 +52,7 @@ class FakeConnector {
       // The real service catches P2002 and returns the existing row. That
       // is precisely what makes concurrent sweeps safe, so the fake must
       // behave the same way rather than throwing.
-      if (existing) return { id: existing.id, status: existing.status };
+      if (existing) return Promise.resolve({ id: existing.id, status: existing.status });
 
       const now = new Date();
       const row: CommandRow = {
@@ -120,7 +120,7 @@ const assignedBody = (over: Record<string, unknown> = {}) =>
 function makePrisma(connector: FakeConnector, orderCreatedAt = new Date()) {
   return {
     connectorCommand: {
-      findMany: jest.fn(async (args: { where: Record<string, unknown> }) => {
+      findMany: jest.fn((args: { where: Record<string, unknown> }) => {
         const rows = connector.commands.filter(
           (c) =>
             c.commandType === args.where.commandType &&
@@ -128,16 +128,20 @@ function makePrisma(connector: FakeConnector, orderCreatedAt = new Date()) {
             c.sourceRecordId === args.where.sourceRecordId,
         );
         // orderBy createdAt desc
-        return [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        return Promise.resolve(
+          [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+        );
       }),
     },
     order: {
-      findUnique: jest.fn(async () => ({
-        id: ORDER_ID,
-        createdAt: orderCreatedAt,
-        venueId: VENUE_ID,
-        venue: { organizationId: ORG_ID },
-      })),
+      findUnique: jest.fn(() =>
+        Promise.resolve({
+          id: ORDER_ID,
+          createdAt: orderCreatedAt,
+          venueId: VENUE_ID,
+          venue: { organizationId: ORG_ID },
+        }),
+      ),
     },
   };
 }
@@ -393,46 +397,51 @@ describe('sweepConfirm through the Connector-mediated transport', () => {
         // through -- it drives the rotating offset (see sweepConfirm). With a
         // single awaiting row the sweep stays on the skip:0 path, so these
         // end-to-end assertions are unaffected by rotation.
-        count: jest.fn(
-          async () =>
+        count: jest.fn(() =>
+          Promise.resolve(
             syncRows.filter((r) => r.status === POSSyncStatus.submitted_awaiting_confirmation)
               .length,
+          ),
         ),
-        findMany: jest.fn(async () =>
-          syncRows
-            .filter((r) => r.status === POSSyncStatus.submitted_awaiting_confirmation)
-            .map((r) => ({
-              id: r.id,
-              orderId: r.orderId,
-              venueId: r.venueId,
-              posTableId: r.posTableId,
-            })),
+        findMany: jest.fn(() =>
+          Promise.resolve(
+            syncRows
+              .filter((r) => r.status === POSSyncStatus.submitted_awaiting_confirmation)
+              .map((r) => ({
+                id: r.id,
+                orderId: r.orderId,
+                venueId: r.venueId,
+                posTableId: r.posTableId,
+              })),
+          ),
         ),
         // Faithful guarded updateMany: only applies while the row is still
         // awaiting, which is what makes terminal states irreversible.
         updateMany: jest.fn(
-          async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
             const row = syncRows.find(
               (r) => r.id === args.where.id && r.status === args.where.status,
             );
-            if (!row) return { count: 0 };
+            if (!row) return Promise.resolve({ count: 0 });
             Object.assign(row, args.data);
-            return { count: 1 };
+            return Promise.resolve({ count: 1 });
           },
         ),
       },
     };
     // The confirmation service resolves the requested table via order.findUnique.
-    prisma.order.findUnique = jest.fn(async (args: { select?: Record<string, unknown> }) => {
+    prisma.order.findUnique = jest.fn((args: { select?: Record<string, unknown> }) => {
       if (args?.select && 'table' in args.select) {
-        return posTableCode === null ? { table: null } : { table: { posTableCode } };
+        return Promise.resolve(
+          posTableCode === null ? { table: null } : { table: { posTableCode } },
+        );
       }
-      return {
+      return Promise.resolve({
         id: ORDER_ID,
         createdAt: new Date(),
         venueId: VENUE_ID,
         venue: { organizationId: ORG_ID },
-      };
+      });
     }) as never;
 
     const reader = makeReader(connector, prisma);

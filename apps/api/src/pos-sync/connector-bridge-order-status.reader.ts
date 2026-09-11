@@ -232,7 +232,7 @@ export class ConnectorBridgeOrderStatusReader implements BridgeOrderStatusReader
       return null;
     const body = (resultPayload as Record<string, unknown>).body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-    return body as BridgeOrderStatusBody;
+    return body;
   }
 
   private async enqueueProbe(

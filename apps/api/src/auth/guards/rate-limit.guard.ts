@@ -195,7 +195,12 @@ export class RateLimitGuard implements CanActivate {
       }
 
       if (!result) {
-        throw lastTransient ?? new Error('Redis returned no rate-limit response');
+        // The retained fault is `unknown` - a driver may reject with a string
+        // or an object as easily as with an Error. Rethrowing it raw means an
+        // upstream handler reading `err.message` gets `undefined` and logs a
+        // rate-limit outage as an empty line, so a non-Error is wrapped with
+        // its original value kept as the cause.
+        throw asError(lastTransient) ?? new Error('Redis returned no rate-limit response');
       }
 
       if (result.length < 2) {
@@ -244,5 +249,46 @@ export class RateLimitGuard implements CanActivate {
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
+  }
+}
+
+/**
+ * A caught value as something throwable.
+ *
+ * Returns `undefined` for `undefined`/`null` so a caller can fall back to its
+ * own message, and preserves the original value as `cause` rather than
+ * flattening it into a string - the raw value is what a support engineer wants
+ * when a driver rejects with something odd.
+ */
+function asError(value: unknown): Error | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (value instanceof Error) return value;
+  // The original value is kept as `cause` by assignment rather than through
+  // the two-argument Error constructor, which this build's lib target does not
+  // declare. The raw value is what a support engineer wants when a driver
+  // rejects with something odd, so it is preserved rather than flattened away.
+  const wrapped = new Error(`Rate-limit backend failed: ${describe(value)}`);
+  (wrapped as Error & { cause?: unknown }).cause = value;
+  return wrapped;
+}
+
+/**
+ * A caught value as readable text.
+ *
+ * Objects go through JSON rather than `String()`, which would render them
+ * "[object Object]" and tell a support engineer nothing. JSON can itself throw
+ * - a circular structure, a BigInt - so the tag is the last resort.
+ */
+function describe(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return value.toString();
+  }
+  if (typeof value === 'symbol') return value.toString();
+  if (typeof value === 'function') return 'a function';
+  try {
+    return JSON.stringify(value) ?? Object.prototype.toString.call(value);
+  } catch {
+    return Object.prototype.toString.call(value);
   }
 }
