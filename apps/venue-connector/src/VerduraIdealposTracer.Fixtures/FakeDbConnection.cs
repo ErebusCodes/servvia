@@ -41,6 +41,22 @@ public sealed class FakeDbConnection : DbConnection
     /// <summary>How many times a reader was executed — proves the read is one round trip.</summary>
     public int ExecuteCount { get; private set; }
 
+    /// <summary>
+    /// Result sets to hand out IN ORDER, one per executed command.
+    ///
+    /// WHY THIS EXISTS. <see cref="Rows"/>/<see cref="Columns"/> describe ONE
+    /// result and are returned for every statement, which is right for a reader
+    /// that issues a single SELECT. A reader that issues two different ones —
+    /// discovering a schema, then selecting the columns it found — would
+    /// otherwise be handed the schema rows a second time and read them off the
+    /// wrong shape. Queue a result set per statement and each gets its own.
+    ///
+    /// Empty by default, so every existing test keeps the single-result
+    /// behaviour unchanged. When the queue runs out, the fallback is
+    /// <see cref="Rows"/>/<see cref="Columns"/> as before.
+    /// </summary>
+    public Queue<(List<string> Columns, List<object?[]> Rows)> ResultSets { get; } = new();
+
     public override string ConnectionString { get; set; } = "fake";
     public override string Database => "POSServer";
     public override string DataSource => "fake";
@@ -65,6 +81,11 @@ public sealed class FakeDbConnection : DbConnection
         ExecutedCommands.Add(command.CommandText);
         LastParameters.Clear();
         foreach (DbParameter p in command.Parameters) LastParameters[p.ParameterName] = p.Value;
+        if (ResultSets.Count > 0)
+        {
+            var next = ResultSets.Dequeue();
+            return new FakeDbDataReader(next.Columns, next.Rows);
+        }
         return new FakeDbDataReader(Columns, Rows);
     }
 }
