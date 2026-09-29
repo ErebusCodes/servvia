@@ -145,7 +145,7 @@ project-name/
 ├── .env.local
 ├── .env.example
 ├── .gitignore
-├── .github/
+
 │   └── workflows/
 │       └── ci.yml
 ├── src/

@@ -56,7 +56,7 @@ export function KdsPinGate({ children }: { children: ReactNode }) {
     <Screen>
       <form onSubmit={(e) => void onSubmit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 16, width: 280 }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ color: '#16A34A', fontWeight: 900, fontSize: 22, letterSpacing: '0.06em' }}>VERDURA KDS</div>
+          <div style={{ color: '#16A34A', fontWeight: 900, fontSize: 22, letterSpacing: '0.06em' }}>SERVVIA KDS</div>
           <p style={{ color: '#8890A8', fontSize: 13, marginTop: 6 }}>Enter the terminal PIN to continue</p>
         </div>
         <input

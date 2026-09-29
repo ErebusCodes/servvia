@@ -1,8 +1,32 @@
 # Verdura Decisions Log
 
+> **Current operating authority, 2026-09-28:** [ADR 0001: Servvia is the operational POS](./adr/0001-servvia-is-the-operational-pos.md) (DL-115). It supersedes the Target Operating Model's IdealPOS authority and the entries it names below. The 2026-08-15 notice that follows is kept as the historical record.
+
 > **Current operating authority — 2026-08-15:** [Target Operating Model](./target-operating-model.md) is normative for all Verdura-originated orders and supersedes contrary sequencing in earlier entries.
 
 > **Authority notice — 2026-08-15:** Early entries below document a different repository state. Their observations and file paths are historical unless a later entry revalidates them. Current product authority is PRD v5.2; implementation/readiness authority is [mvp.md](./mvp.md). A `NullAdapter`, mock UI, queued database row or simulated external ID never constitutes completed integration.
+
+## 2026-09-28 — DL-115: Servvia is the operational POS
+
+**Decision:** Recorded in full as [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).
+- Servvia Core owns canonical restaurant transaction state: Order, TableSession, Check, Payment, Settlement, KitchenTicket, Shift, Terminal, Device, idempotency, audit and outbox.
+- PostgreSQL is authoritative.
+- IdealPOS is legacy integration only during migration and is then retired.
+- External POS delivery is not part of the canonical transaction model.
+
+**Supersedes:**
+- Target Operating Model §1–3
+- DL-060, DL-061 and DL-064 (the vendor gate becomes legacy-only)
+- DL-072 for tax and payable-total authority (its NZ GST-inclusive facts stand)
+
+**Partially supersedes or amends:** DL-062, DL-063 and DL-105. Each superseded entry below carries a pointer back here. None of them has been rewritten.
+
+**First implementation:** the IdealPOS handoff was moved out of `OrdersService` into the temporary `apps/api/src/legacy-external-pos/` boundary. Behaviour is unchanged for IdealPOS venues. See [`docs/migration/`](./migration/README.md).
+
+**Not decided here:**
+- the replacement in-person payment terminal
+- NZ receipt and tax-invoice obligations
+- the 11 October 2026 go-live
 
 ## 2026-09-01 — DL-105: Verdura Technology Ownership Standard — Current MVP separated from Approved Target Architecture
 
@@ -17,6 +41,12 @@
 **Exceptions and prohibitions:** Next.js is a **permitted exception, not a general standard** — public customer website only, where SSR/SEO/metadata/public-web performance materially justify it; no blanket migration of Admin, KDS, Order Tablet or Window Display. Kubernetes is a **later-scale deployment option** — not required for MVP, not required for Go adoption, not an application architecture standard; preferred progression is Docker → managed container runtime → Kubernetes/GKE. Docker is standard for packaging, but the native IdealPOS Windows stack (`IPS.exe`, `POSServer`, `IdealposService`, Windows/IdealPOS C# adapters, the interactive UI-automation agent) is explicitly exempt. **Bun** is not part of the approved architecture (no unique ownership domain; specifically not to be introduced to optimize Node tooling during a migration away from Node-owned core services). **Rust** requires a specific architecture exception. **Rails** and **Laravel** must not be introduced (duplicate Core Platform responsibilities). **Django** is not automatically approved by Python's approval — permitted only inside the Python AI/Data/Analytics domain with specific justification, never as a second general transactional backend.
 
 **Governance rule added:** *No new implementation may create a second long-term owner for an existing capability.* Temporary migration overlap requires all five of: a defined source owner, a defined target owner, explicit cutover criteria, explicit retirement criteria, and a bounded migration period.
+
+**Amended 2026-09-28 by DL-115 / [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md):**
+- C#/.NET is also the Windows POS terminal technology, as a client of Go Core.
+- Kotlin/Android is the target for every dedicated venue device app, and the existing React device runtimes are migration sources.
+- The IdealPOS-adapter role of C#/.NET is legacy.
+- The rest of this entry stands.
 
 **Scope of this entry:** documentation only. No code, service, dependency, or deployment was changed, and no Go, Kotlin, Python or Next.js implementation exists in this repository today — this entry records the approved destination and the rules for reaching it, not work performed. Secondary alignment: `README.md` §2 relabelled as current implementation with a pointer to §10 (it previously read as the standing technology standard). No other document was found to contradict this standard.
 
@@ -488,6 +518,8 @@ Both were found only by actually running the full HTTP flow against a live local
 
 ### DL-072: Idealpos owns statutory tax, fiscal rounding, receipt facts and the final payable total; Verdura owns provisional commercial pricing and reconciliation
 
+> **Superseded for authority 2026-09-28 by DL-115 / [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).** Servvia now owns statutory tax, rounding and the final payable total. The New Zealand facts recorded below still stand: prices are GST-inclusive, GST is shown as `gross × 3 / 23`, and no surface may add GST on top.
+
 **Decision:** For all Verdura-originated orders that reach Idealpos, the authority split is: Verdura owns menu presentation, configured commercial prices, discounts, and the provisional Order Tablet (and kiosk) cart total shown before submission. Idealpos owns statutory GST treatment, fiscal rounding, receipt facts, and the final payable total once an order is submitted. Existing in-person EFTPOS must always charge the Idealpos-authoritative payable amount, never Verdura's provisional figure. Verdura reconciles its provisional commercial calculation against the amounts Idealpos actually returns; a material discrepancy between the two becomes a visible, blocking conflict presented to staff — it must never be silently absorbed, rounded away, or auto-corrected.
 
 **New Zealand venue tax facts, established as authoritative venue metadata (not implementation):**
@@ -625,21 +657,31 @@ Both were found only by actually running the full HTTP flow against a live local
 
 ### DL-060: Verdura engagement layer; Idealpos POS authority
 
+> **Superseded 2026-09-28 by DL-115 / [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).** Servvia is the operational POS. IdealPOS is legacy integration only.
+
 **Decision:** Verdura owns ordering, reservations, operational workflow, KDS/KOT routing, inventory, CRM and analytics. Idealpos remains authoritative for the POS transaction and in-person payment.
 
 ### DL-061: Idealpos-first standard order flow
+
+> **Superseded 2026-09-28 by DL-115 / [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).** Kitchen release no longer waits on external-POS acceptance.
 
 **Decision:** Standard Verdura orders are durably accepted by the venue connector for Idealpos submission before Verdura releases KDS/KOT. Payment then follows the existing Idealpos-integrated EFTPOS/cash workflow.
 
 ### DL-062: Optional online payment remains provider-neutral
 
+> **Partially superseded 2026-09-28 by DL-115 / [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).** Provider neutrality stands. Online payments are now recorded as Servvia Payments, not mapped to an Idealpos `PREPAID / ONLINE` transaction.
+
 **Decision:** Verdura verifies online payment before production release and maps the Idealpos transaction to `PREPAID / ONLINE`. Stripe is the MVP default unless an approved Verifone/Oolio ecommerce service meets the documented API, webhook, idempotency, refund and reconciliation gates.
 
 ### DL-063: Verdura owns kitchen delivery for Verdura-originated orders
 
+> **Retained under DL-115 / [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).** The clause about Idealpos not duplicating tickets applies only while the legacy integration runs.
+
 **Decision:** Verdura routes KDS and station KOTs; Idealpos must not duplicate these tickets. POS, KDS, each printer and payment retain separate state and acknowledgements.
 
 ### DL-064: Idealpos vendor-discovery decision record (formal)
+
+> **Superseded as a product gate 2026-09-28 by DL-115 / [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).** It now governs only the legacy IdealPOS integration, for as long as that integration exists.
 
 **Status:** `BLOCKED` — no code beyond `NullAdapter`/`none` may be built against this decision until it is resolved.
 

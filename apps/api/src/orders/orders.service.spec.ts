@@ -4,6 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
@@ -13,6 +14,7 @@ import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
 import { ConnectorCommandService } from '../connector/connector-command.service';
 import { PosStrategyResolver } from '../pos-sync/pos-strategy-resolver';
+import { LegacyExternalPosHandoff } from '../legacy-external-pos/legacy-external-pos-handoff';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
 import { OrderSource, OrderStatus, POSSyncStatus, ServiceMode, StaffRole } from '@prisma/client';
@@ -36,6 +38,9 @@ const mockPrisma: any = {
   printerJob: { create: jest.fn() },
   kdsDeliveryRecord: { create: jest.fn() },
   table19ValidationRun: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+  // Phase D3 occupancy bridge: no open Servvia Core table session unless a
+  // test says otherwise.
+  tableSession: { findFirst: jest.fn().mockResolvedValue(null) },
   // Used for: (1) persistOrder's own-table row lock (tx.$queryRaw, return
   // value unused); (2) minting the ORD-6XXXXX order id from Order_ORD6_seq
   // (matches this file's pre-existing 'ORD-600001' expectations, which
@@ -72,6 +77,7 @@ const venueId = 'venue-uuid';
 
 describe('OrdersService', () => {
   let service: OrdersService;
+  let moduleRef: TestingModule;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -89,10 +95,12 @@ describe('OrdersService', () => {
         // does. Route-specific behaviour is proven in
         // pos-sync/route-exclusivity.spec.ts, against a configured resolver.
         PosStrategyResolver,
+        LegacyExternalPosHandoff,
         { provide: ConfigService, useValue: { get: () => undefined } },
       ],
     }).compile();
 
+    moduleRef = module;
     service = module.get<OrdersService>(OrdersService);
     jest.clearAllMocks();
     // order.findUnique backs three different lookups (idempotency-key
@@ -270,6 +278,82 @@ describe('OrdersService', () => {
       expect(mockPrisma.printerJob.create).not.toHaveBeenCalled();
     });
 
+    describe('Servvia-native order creation (no external POS)', () => {
+      const createdOrder = {
+        id: 'order-uuid',
+        venueId,
+        status: OrderStatus.confirmed,
+        subtotalCents: 2100,
+        taxCents: 274,
+        totalCents: 2100,
+        submittedAt: new Date(),
+      };
+
+      function arrangeNativeVenueOrder(venue: object) {
+        mockPrisma.venue.findUnique.mockResolvedValue(venue);
+        mockPrisma.menuItem.findFirst.mockResolvedValue(mockMenuItem);
+        mockPrisma.menuItemVenueOverride.findUnique.mockResolvedValue(null);
+        mockPrisma.printer.findMany.mockResolvedValue([
+          { id: 'printer-1', venueId, isActive: true, protocol: 'escpos' },
+        ]);
+        mockNewOrderPreChecks();
+        mockPrisma.order.create.mockResolvedValue(createdOrder);
+        mockPrisma.order.findUnique.mockResolvedValueOnce({ ...createdOrder, items: [] });
+      }
+
+      it('writes the durable kitchen rows (PrinterJob, KdsDeliveryRecord) and no external-POS row', async () => {
+        arrangeNativeVenueOrder(mockVenue);
+
+        await service.create(createDto);
+
+        expect(mockPrisma.order.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ posSyncStatus: POSSyncStatus.not_applicable }),
+          }),
+        );
+        expect(mockPrisma.pOSSyncRecord.create).not.toHaveBeenCalled();
+        expect(mockPrisma.printerJob.create).toHaveBeenCalledTimes(1);
+        expect(mockPrisma.printerJob.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            printerId: 'printer-1',
+            orderId: 'order-uuid',
+            venueId,
+            status: 'queued',
+          }),
+        });
+        expect(mockPrisma.kdsDeliveryRecord.create).toHaveBeenCalledWith({
+          data: { orderId: 'order-uuid', venueId, status: 'queued' },
+        });
+      });
+
+      it('is not refused by an IdealPOS native-route misconfiguration', async () => {
+        const resolver = moduleRef.get(PosStrategyResolver);
+        const decide = jest.spyOn(resolver, 'decide').mockReturnValue({
+          decision: 'refuse',
+          reason: 'native writer is disabled',
+        });
+        arrangeNativeVenueOrder(mockVenue);
+
+        await expect(service.create(createDto)).resolves.toEqual({ ...createdOrder, items: [] });
+        expect(decide).not.toHaveBeenCalled();
+        decide.mockRestore();
+      });
+
+      it('an external-POS venue is still refused before any sequence or row, exactly as before', async () => {
+        const resolver = moduleRef.get(PosStrategyResolver);
+        const decide = jest.spyOn(resolver, 'decide').mockReturnValue({
+          decision: 'refuse',
+          reason: 'native writer is disabled',
+        });
+        arrangeNativeVenueOrder({ ...mockVenue, posAdapterType: 'api' });
+
+        await expect(service.create(createDto)).rejects.toThrow(ServiceUnavailableException);
+        expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
+        expect(mockPrisma.order.create).not.toHaveBeenCalled();
+        decide.mockRestore();
+      });
+    });
+
     it('applies venue overrides for price and availability', async () => {
       mockPrisma.venue.findUnique.mockResolvedValue(mockVenue);
       mockPrisma.menuItem.findFirst.mockResolvedValue(mockMenuItem);
@@ -339,6 +423,83 @@ describe('OrdersService', () => {
 
       await expect(service.create(createDtoWithTable)).rejects.toThrow(ConflictException);
       expect(mockPrisma.order.create).not.toHaveBeenCalled();
+    });
+
+    describe('TEMPORARY occupancy bridge with Servvia Core table sessions (Phase D3)', () => {
+      beforeEach(() => {
+        mockPrisma.venue.findUnique.mockResolvedValue(mockVenue);
+        mockPrisma.menuItem.findFirst.mockResolvedValue(mockMenuItem);
+        mockPrisma.menuItemVenueOverride.findUnique.mockResolvedValue(null);
+        mockPrisma.table.findFirst.mockResolvedValue({
+          id: 'table-uuid',
+          tableNumber: '12',
+          isActive: true,
+        });
+        mockPrisma.order.findFirst.mockResolvedValue(null); // no legacy active order
+        mockPrisma.order.findUnique.mockResolvedValueOnce(null); // findExistingByIdempotencyKey
+      });
+
+      afterEach(() => {
+        mockPrisma.tableSession.findFirst.mockReset();
+        mockPrisma.tableSession.findFirst.mockResolvedValue(null);
+      });
+
+      it('refuses a table order while the table has an open table session, before creating anything', async () => {
+        mockPrisma.tableSession.findFirst.mockResolvedValue({ id: 'session-1' });
+
+        await expect(service.create({ ...createDto, tableId: 'table-uuid' })).rejects.toThrow(
+          'Table 12 has an open table session in Servvia Core',
+        );
+        expect(mockPrisma.tableSession.findFirst).toHaveBeenCalledWith({
+          where: { tableId: 'table-uuid', status: 'open' },
+          select: { id: true },
+        });
+        expect(mockPrisma.order.create).not.toHaveBeenCalled();
+      });
+
+      it('re-checks under the table lock: a session opened after the pre-check still refuses the order', async () => {
+        // Free at the pre-check, occupied by the time the transaction holds the row.
+        mockPrisma.tableSession.findFirst
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 'session-opened-meanwhile' });
+        mockPrisma.printer.findMany.mockResolvedValue([]);
+
+        await expect(
+          service.createStaffOrder(
+            {
+              venueId: mockVenue.id,
+              serviceMode: 'dine_in',
+              tableId: 'table-uuid',
+              items: [{ menuItemId: mockMenuItem.id, quantity: 1 }],
+              idempotencyKey: 'occupancy-bridge-key-0001',
+            } as never,
+            mockVenue.organizationId,
+            { id: 'staff-1', email: 'staff@example.test', role: 'manager' as never },
+          ),
+        ).rejects.toThrow(ConflictException);
+        expect(mockPrisma.tableSession.findFirst).toHaveBeenCalledTimes(2);
+        expect(mockPrisma.order.create).not.toHaveBeenCalled();
+      });
+
+      it('a takeaway order never consults table sessions', async () => {
+        mockPrisma.printer.findMany.mockResolvedValue([]);
+        // The persistence mocks are not set up for a full create; reaching
+        // order.create is what proves the bridge let it through.
+        await service
+          .createStaffOrder(
+            {
+              venueId: mockVenue.id,
+              serviceMode: 'takeaway',
+              items: [{ menuItemId: mockMenuItem.id, quantity: 1 }],
+              idempotencyKey: 'occupancy-bridge-key-0002',
+            } as never,
+            mockVenue.organizationId,
+            { id: 'staff-1', email: 'staff@example.test', role: 'manager' as never },
+          )
+          .catch(() => undefined);
+        expect(mockPrisma.order.create).toHaveBeenCalled();
+        expect(mockPrisma.tableSession.findFirst).not.toHaveBeenCalled();
+      });
     });
 
     describe('idempotency and payment-reference uniqueness (Story 6-1)', () => {

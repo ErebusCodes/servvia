@@ -4,7 +4,7 @@
 // Tests/TestRunner.cs holds three types in one file: TestRunner (which calls
 // all five suites, two of which need the proprietary IdealPos.Webit vendor
 // DLL) plus the TestResult/Assert helpers that every suite depends on. A
-// GitHub runner has no vendor DLL, so the CI project cannot compile
+// CI runner has no vendor DLL, so the CI project cannot compile
 // TestRunner.cs at all — and C# gives no way to include part of a file.
 //
 // The block below is therefore a byte-for-byte copy of the TestResult+Assert

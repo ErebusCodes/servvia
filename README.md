@@ -1,4 +1,4 @@
-# Verdura Restaurant Operations Platform
+# Servvia Restaurant Operations Platform
 
 ![Node.js](https://img.shields.io/badge/Node.js-20.x_LTS-339933?logo=node.js&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
@@ -25,7 +25,7 @@
 
 ## 1. Project Overview
 
-Verdura is an enterprise-grade restaurant operations and management platform built to orchestrate and scale hospitality workflows. Originally designed as a localized customer website for a Middle Eastern restaurant in Dunedin, New Zealand, the platform has been re-engineered into a highly scalable, multi-tenant Software-as-a-Service (SaaS) architecture.
+Servvia is an enterprise-grade restaurant operations and management platform built to orchestrate and scale hospitality workflows. Originally designed as a localized customer website for a Middle Eastern restaurant in Dunedin, New Zealand, the platform has been re-engineered into a highly scalable, multi-tenant Software-as-a-Service (SaaS) architecture.
 
 ### 1.1 The Business Challenge
 
@@ -36,9 +36,9 @@ Modern hospitality businesses suffer from fragmentation across customer-facing o
 - High commission overheads from third-party delivery apps
 - Zero real-time operational visibility for management
 
-### 1.2 The Verdura Solution
+### 1.2 The Servvia Solution
 
-Verdura solves these operational inefficiencies by unifying all key operational surfaces into a single, cohesive ecosystem managed by a performant cloud API:
+Servvia solves these operational inefficiencies by unifying all key operational surfaces into a single, cohesive ecosystem managed by a performant cloud API:
 
 | Surface | Description |
 |---|---|
@@ -52,7 +52,7 @@ Verdura solves these operational inefficiencies by unifying all key operational 
 
 ## 2. Architecture & Tech Stack
 
-Verdura **currently** runs a modern web architecture divided into two main layers: a **NestJS (Node.js)** backend API and a **React 18** frontend client ecosystem, unified in a monorepo setup via NPM Workspaces.
+Servvia **currently** runs a modern web architecture divided into two main layers: a **NestJS (Node.js)** backend API and a **React 18** frontend client ecosystem, unified in a monorepo setup via NPM Workspaces.
 
 > **Current implementation vs approved target.** Everything in this section describes what is **built today**, not the permanent technology ownership standard. The canonical standard is [`docs/architecture.md` §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture), which assigns the Core Platform and Venue/Edge domains to **Go**, AI/Data/Analytics to **Python**, native device apps to **Kotlin/Android**, and narrows **C#/.NET** to the Windows/IdealPOS adapter boundary. React + TypeScript, PostgreSQL, Google Cloud Storage and Docker are already target-aligned. Next.js is a permitted exception for the public website only; Kubernetes is a later-scale option, not an MVP requirement.
 
@@ -75,7 +75,7 @@ The following diagram illustrates the network boundaries and integration points 
   |  Customer Site   |                    |     KDS      |
   |  (React SPA)     |                    |  (React SPA) |
   +────────┬─────────+                    +──────┬───────+
-           │ REST via Verdura API proxy           │ WebSocket
+           │ REST via Servvia API proxy           │ WebSocket
            │                                     │
   [Diner at Kiosk]                               │
       │ orders via touchscreen                   │
@@ -107,10 +107,10 @@ The following diagram illustrates the network boundaries and integration points 
   ────────────────────────────────────────────────────────────────────────────
   +--------------------------------------------------------------------------+
   |  Local Gateway (outbound-only, mutually authenticated connector session  |
-  |  to Verdura -- never a direct shared cloud Redis credential)             |
+  |  to Servvia -- never a direct shared cloud Redis credential)             |
   |                                                                          |
   |  +--------------------------+          +------------------------------+  |
-  |  |     Printer Service      |          |     Verdura Connector        |  |
+  |  |     Printer Service      |          |     Servvia Connector        |  |
   |  |  (Node.js / PM2)         |          |  Windows Service, proposed   |  |
   |  |  - TCP ESC/POS Output    |          |  as .NET 8 for the Idealpos  |  |
   |  |                          |          |  API-less path -- see        |  |
@@ -148,7 +148,7 @@ The following diagram illustrates the network boundaries and integration points 
 
 ## 3. Project Structure
 
-Verdura is structured as a monorepo utilizing NPM Workspaces to coordinate development across the core API layer and all client interfaces.
+Servvia is structured as a monorepo utilizing NPM Workspaces to coordinate development across the core API layer and all client interfaces.
 
 ```
 .
@@ -235,7 +235,7 @@ Never put secrets in `VITE_` variables: they are bundled into browser code.
 
 ### 4.3 Media Storage
 
-**Google Cloud Storage is Verdura's canonical media provider — not Google Drive.** Menu-item photographs, promotional imagery, and video are designed to live in GCS; Google Drive is never used for production application media. Full design and current status: `_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md`.
+**Google Cloud Storage is Servvia's canonical media provider — not Google Drive.** Menu-item photographs, promotional imagery, and video are designed to live in GCS; Google Drive is never used for production application media. Full design and current status: `_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md`.
 
 **Provisioned and live as of 2026-08-17** — two buckets in `australia-southeast1`, project `project-10bd9c5c-d379-4338-8b2`:
 
@@ -298,8 +298,7 @@ Ensure the following tools are installed on your host system:
 **1. Clone the repository and install all workspace dependencies:**
 
 ```bash
-git clone https://github.com/ErebusCodes/verdura_MVP.git
-cd verdura_MVP
+cd servvia
 npm install
 ```
 
@@ -405,7 +404,7 @@ production (`NODE_ENV=production`) regardless of configuration.
 
 ## 6.3 Source of Truth and Production Deployment
 
-GitHub `main` is the authoritative tracked source of truth for all Verdura application code. The Mac environment is the synchronized development/review environment, and the Windows host (`DESKTOP-SOKKOQ7`) acts as the primary production-facing work/integration surface, which must never diverge from `main`.
+The authoritative tracked source of truth for all Servvia application code is `main` in the canonical repository. The Mac environment is the synchronized development/review environment, and the Windows host (`DESKTOP-SOKKOQ7`) acts as the primary production-facing work/integration surface, which must never diverge from `main`.
 
 A standing session protocol (SOP) governs all implementation, secure SSH access, synchronization, safety constraints, and session-close verification invariants. See the canonical environment governance document [`docs/source-of-truth-and-environments.md`](docs/source-of-truth-and-environments.md) for the full operating policy and session protocol, and [`docs/windows-production-deployment.md`](docs/windows-production-deployment.md) for the current physical layout and service settings on the Windows host.
 
@@ -470,7 +469,6 @@ A file-writing tool once embedded literal `0x00` (NUL) bytes into a committed `.
 
 ## 8. License
 
-This repository is **UNLICENSED** and proprietary. All source code, assets, database schemas, and documentation are the sole property of Verdura. Unauthorized copying, distribution, modification, or runtime hosting of this code is strictly prohibited.
+This repository is **UNLICENSED** and proprietary. All source code, assets, database schemas, and documentation are the sole property of Servvia. Unauthorized copying, distribution, modification, or runtime hosting of this code is strictly prohibited.
 
-**Copyright © 2026 Verdura. All rights reserved.**
-# verdura_MVP
+**Copyright © 2026 Servvia. All rights reserved.**

@@ -17,8 +17,6 @@ import {
   OrderItem,
   OrderStatus,
   OrderSource,
-  POSAdapterType,
-  POSSyncStatus,
   PrintJobStatus,
   Prisma,
   ServiceMode,
@@ -33,9 +31,11 @@ import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
-import { ConnectorCommandService } from '../connector/connector-command.service';
-import { PosStrategyResolver } from '../pos-sync/pos-strategy-resolver';
-import { PosSubmissionStrategy } from '../pos-sync/pos-submission-strategy';
+import {
+  LEGACY_EXTERNAL_POS_ORDER_INCLUDE,
+  LegacyExternalPosHandoff,
+} from '../legacy-external-pos/legacy-external-pos-handoff';
+import { assertTableHasNoOpenSession } from './table-session-occupancy';
 
 /**
  * Snapshot shape matches `docs/domain-model.md`'s `SelectedModifier` — for
@@ -95,12 +95,9 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly ordersGateway: OrdersGateway,
     private readonly auditLogService: AuditLogService,
-    private readonly connectorCommandService: ConnectorCommandService,
-    // Which POS pipeline owns an order created here. Injected rather than
-    // read from ConfigService inline so the decision has one testable owner -
-    // see pos-submission-strategy.ts for why the decision must happen HERE,
-    // inside the creating transaction, and nowhere later.
-    private readonly posStrategy: PosStrategyResolver,
+    // TEMPORARY: the only door from canonical order creation to IdealPOS.
+    // Everything external-POS lives behind it; see legacy-external-pos/README.md.
+    private readonly legacyExternalPos: LegacyExternalPosHandoff,
   ) {}
 
   async create(dto: CreateOrderDto): Promise<Order> {
@@ -853,7 +850,7 @@ export class OrdersService {
       // carry attemptCount/nextRetryAt/errorMessage detail, not just the
       // coarse Order.posSyncStatus scalar -- needed to distinguish "never
       // attempted" from "retrying" from "permanently failed" in the UI.
-      include: { items: true, table: true, posSyncRecord: true },
+      include: { items: true, table: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -861,7 +858,7 @@ export class OrdersService {
   async findOne(id: string, organizationId: string, venueId?: string): Promise<Order> {
     const order = await this.prisma.order.findFirst({
       where: { id, venue: { organizationId }, ...(venueId ? { venueId } : {}) },
-      include: { items: true, table: true, posSyncRecord: true },
+      include: { items: true, table: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
     });
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -878,7 +875,7 @@ export class OrdersService {
   ): Promise<Order> {
     const order = await this.prisma.order.findFirst({
       where: { id, venue: { organizationId }, ...(venueId ? { venueId } : {}) },
-      include: { venue: true, posSyncRecord: true },
+      include: { venue: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
     });
     if (!order) {
       throw new NotFoundException('Order not found');
@@ -896,17 +893,18 @@ export class OrdersService {
       }
     }
 
-    // Real gap this closes: cancelling an Order used to only ever touch
-    // Order.status. The POSSyncRecord/ConnectorCommand created alongside it
-    // (in the same transaction as order creation — see persistOrder) had no
-    // idea the order was cancelled and kept being dispatched/delivered on its
-    // own schedule, so a "cancelled" order could still reach IdealposBridge
-    // and print a real native KOT. Must run BEFORE the Order.status write so
-    // a crash between the two steps never leaves Order=cancelled with the
+    // A cancelled order must also stop any legacy external-POS dispatch
+    // created alongside it, or it could still reach IdealposBridge and print
+    // a real native KOT. Must run BEFORE the Order.status write so a crash
+    // between the two steps never leaves Order=cancelled with the
     // dispatch-stop attempt silently skipped.
     let posDispatchStopped: boolean | null = null;
     if (newStatus === OrderStatus.cancelled && oldStatus !== OrderStatus.cancelled) {
-      posDispatchStopped = await this.attemptCancelPosDispatch(order, organizationId, actor);
+      posDispatchStopped = await this.legacyExternalPos.stopHandoffForCancelledOrder(
+        order,
+        organizationId,
+        actor,
+      );
     }
 
     const updateData: Prisma.OrderUpdateInput = { status: newStatus };
@@ -925,7 +923,7 @@ export class OrdersService {
     const updatedOrder = await this.prisma.order.update({
       where: { id },
       data: updateData,
-      include: { items: true, table: true, posSyncRecord: true },
+      include: { items: true, table: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
     });
 
     // Audit log state transition
@@ -949,101 +947,6 @@ export class OrdersService {
     this.ordersGateway.sendOrderUpdate(order.venueId, updatedOrder);
 
     return updatedOrder;
-  }
-
-  /**
-   * Best-effort attempt to stop an order's IdealPOS dispatch when it's
-   * cancelled. Returns true only if dispatch was genuinely stopped (nothing
-   * will ever reach IdealposBridge for this order); false means dispatch had
-   * already progressed past the point this side can safely halt it (the
-   * connector already committed to delivering it, or it already reached the
-   * Bridge) — never silently reports true in that case. Never throws: a
-   * failure here must not block staff from recording the cancellation
-   * itself, but is logged loudly and written into the record staff already
-   * sees on the Order Tablet's status panel.
-   */
-  private async attemptCancelPosDispatch(
-    order: Order & {
-      posSyncRecord: {
-        id: string;
-        status: POSSyncStatus;
-        connectorSubmitCommandId: string | null;
-      } | null;
-    },
-    organizationId: string,
-    actor: { id: string; email: string; role: StaffRole },
-  ): Promise<boolean> {
-    const record = order.posSyncRecord;
-    if (!record) return true; // nothing was ever created to dispatch
-
-    try {
-      if (record.status === POSSyncStatus.not_synced) {
-        const result = await this.prisma.pOSSyncRecord.updateMany({
-          where: { id: record.id, status: POSSyncStatus.not_synced },
-          data: { status: POSSyncStatus.cancelled },
-        });
-        // count === 0 means sweepDispatch's own CAS won the race in the
-        // instant between our read and this write — it is already in
-        // flight and must be treated exactly like the queued_for_connector
-        // "already accepted" case below (log + return false), not retried.
-        if (result.count === 1) return true;
-      }
-
-      if (record.status === POSSyncStatus.queued_for_connector && record.connectorSubmitCommandId) {
-        try {
-          await this.connectorCommandService.cancel(
-            record.connectorSubmitCommandId,
-            organizationId,
-            order.venueId,
-            actor.id,
-            actor.email,
-            actor.role,
-          );
-          // Cancel succeeded: the ConnectorCommand was still pending/claimed
-          // (never accepted by the connector) and is now terminally
-          // cancelled — safe to mark the POSSyncRecord the same way. Ignore
-          // a 0-row race against sweepReconcile picking up a terminal report
-          // in the same instant; that report is more authoritative than us.
-          await this.prisma.pOSSyncRecord.updateMany({
-            where: { id: record.id, status: POSSyncStatus.queued_for_connector },
-            data: { status: POSSyncStatus.cancelled },
-          });
-          return true;
-        } catch {
-          // ConnectorCommandService.cancel throws NotFoundException once the
-          // command reached `accepted` (or any later terminal state) — the
-          // connector already durably committed to delivering it, so this
-          // side can no longer stop it in software.
-        }
-      }
-
-      // Unstoppable: already queued_for_connector-but-accepted (handled
-      // above), submitted_awaiting_confirmation, synced, failed,
-      // not_applicable, unsupported, or already cancelled. Make this
-      // visible on the same panel staff already watch instead of silently
-      // leaving a "cancelled" order that may still print a real KOT.
-      this.logger.error(
-        `Order ${order.id} (venue ${order.venueId}) was cancelled but its POS dispatch (status=${record.status}) could not be stopped — it may already reach or have reached IdealPOS. Verify directly with the kitchen/till.`,
-      );
-      await this.prisma.pOSSyncRecord
-        .update({
-          where: { id: record.id },
-          data: {
-            errorMessage: `Order was cancelled in Verdura, but POS dispatch (status was "${record.status}") could not be stopped in time — verify directly with IdealPOS/kitchen.`,
-          },
-        })
-        .catch((err: unknown) => {
-          this.logger.error(
-            `Failed to write cancellation warning onto POSSyncRecord ${record.id} for order ${order.id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
-      return false;
-    } catch (err) {
-      this.logger.error(
-        `attemptCancelPosDispatch threw unexpectedly for order ${order.id} (venue ${order.venueId}): ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return false;
-    }
   }
 
   async createConnectionToken(): Promise<{ secret: string }> {
@@ -1171,6 +1074,9 @@ export class OrdersService {
     if (!table) {
       throw new BadRequestException('Invalid or inactive table');
     }
+
+    // TEMPORARY (Phase D3 occupancy bridge): see table-session-occupancy.ts.
+    await assertTableHasNoOpenSession(this.prisma, table);
 
     const activeOrder = await this.prisma.order.findFirst({
       where: {
@@ -1730,28 +1636,12 @@ export class OrdersService {
       createTable19ValidationRun,
     } = params;
 
-    // ── ROUTE EXCLUSIVITY, DECIDED ONCE, BEFORE ANY ROW EXISTS. ──
-    //
-    // Resolved here rather than at each call site so that EVERY order-creating
-    // path - kiosk, staff tablet, restricted tablet - gets the same decision
-    // from the same code. A call site that forgot to pass one could otherwise
-    // create an order with no owner.
-    //
-    // Deliberately OUTSIDE the transaction below and BEFORE the takeaway
-    // sequence is drawn: a refusal must cost nothing and leave nothing behind,
-    // not roll back a partly-built order and burn a reference number.
-    //
-    // A refusal here means an operator configured the native route while the
-    // native writer cannot send. The order is rejected outright. It is NOT
-    // quietly routed through Webit - see pos-submission-strategy.ts for why a
-    // silent transport switch is the worse of the two failures.
-    const strategyDecision = this.posStrategy.decide(serviceMode);
-    if (strategyDecision.decision === 'refuse') {
-      throw new ServiceUnavailableException(
-        `This order was not created and nothing was sent to the POS. ${strategyDecision.reason}`,
-      );
-    }
-    const posStrategy = strategyDecision.strategy;
+    // Legacy external-POS plan, decided once for every order-creating path
+    // (kiosk, staff tablet, restricted tablet). Deliberately OUTSIDE the
+    // transaction below and BEFORE any sequence is drawn: a refusal must cost
+    // nothing and leave nothing behind. A venue with no external POS gets
+    // `none` and never consults IdealPOS configuration.
+    const legacyPosPlan = this.legacyExternalPos.planForNewOrder(venue, serviceMode);
 
     // Story 15-13: a stable, human-readable takeaway reference, minted from
     // a dedicated Postgres sequence (never a "latest row + 1" read — see
@@ -1812,6 +1702,10 @@ export class OrdersService {
       // already ruled out an active order for the fast-fail path above.
       if (tableId) {
         await tx.$queryRaw`SELECT id FROM "Table" WHERE id = ${tableId} FOR UPDATE`;
+        // TEMPORARY (Phase D3 occupancy bridge): the authoritative check,
+        // under the same Table row lock Servvia Core's session open takes
+        // FOR SHARE. See table-session-occupancy.ts.
+        await assertTableHasNoOpenSession(tx, { id: tableId, tableNumber });
         const stillActiveOrder = await tx.order.findFirst({
           where: {
             venueId: venue.id,
@@ -1847,10 +1741,7 @@ export class OrdersService {
           guests,
           takeawayReference,
           status: initialStatus,
-          posSyncStatus:
-            venue.posAdapterType === 'none'
-              ? POSSyncStatus.not_applicable
-              : POSSyncStatus.not_synced,
+          posSyncStatus: this.legacyExternalPos.initialOrderPosSyncStatus(legacyPosPlan),
           subtotalCents,
           taxCents,
           totalCents,
@@ -1891,84 +1782,22 @@ export class OrdersService {
         });
       }
 
-      if (venue.posAdapterType !== 'none') {
-        // Story 9-1: this row starts at `not_synced`. This method never
-        // enqueues it directly (no `.add()` call here, and none should
-        // ever be added here — see PosSyncDispatcherService below).
-        // Story 9-3 added a separate, independent outbox dispatcher
-        // (apps/api/src/pos-sync/pos-sync-dispatcher.service.ts) that
-        // periodically claims and enqueues rows like this one to the
-        // `pos-sync` queue for the already-truthful PosSyncProcessor (story
-        // 9-1) to classify as `unsupported`/`not_applicable` — never
-        // `synced`, since no real Idealpos adapter exists yet (DL-064).
-        // That dispatcher is intentionally decoupled from order creation
-        // (no dependency from this module on QueueModule) — do not add a
-        // direct enqueue call here. Story 15-5 (this integration branch's
-        // chosen IdealposOrderDispatcherService lineage): venues configured
-        // for the real Idealpos Bridge integration (posAdapterType 'api')
-        // pick this row up via that dispatcher's own sweepDispatch(),
-        // which claims eligible `not_synced` rows directly — no additional
-        // signal is written here.
-        //
-        // ROUTE EXCLUSIVITY (see pos-sync/pos-submission-strategy.ts).
-        //
-        // This is the ONLY place a POS strategy is ever chosen, and it happens
-        // inside the transaction that creates the order. Two consequences,
-        // both load-bearing:
-        //
-        //   * there is no later decision point, so there is no race - two
-        //     dispatch workers cannot claim different routes for one order
-        //     because neither of them decides anything;
-        //   * the decision commits atomically with the order, so an order that
-        //     exists always has an owner, and a crash mid-creation leaves
-        //     neither.
-        //
-        // `strategy` is the authoritative, askable record. `status` is the
-        // structural guard: `owned_by_native` is not `not_synced`, and BOTH
-        // dispatcher sweeps require `not_synced`, so a native order is outside
-        // their candidate sets even for a query that has never heard of the
-        // strategy column.
-        //
-        // The refusal above (`assertPosStrategy`, called before this
-        // transaction opens) means we can only reach here with a real
-        // strategy - never with a config that asked for native while the
-        // native writer could not send.
-        const nativeOwned = posStrategy === PosSubmissionStrategy.native_table_round;
-        await tx.pOSSyncRecord.create({
-          data: {
-            orderId: newOrder.id,
-            venueId: venue.id,
-            adapterType: venue.posAdapterType,
-            strategy: posStrategy,
-            status: nativeOwned ? POSSyncStatus.owned_by_native : POSSyncStatus.not_synced,
-            attemptCount: 0,
-            errorMessage: nativeOwned
-              ? 'Owned by the native IdealPOS handheld workflow (NativeTableRound). This ' +
-                'order is deliberately outside the Webit connector pipeline; its real ' +
-                'delivery state lives in NativeTableRound/NativeSendAttempt.'
-              : null,
-          },
-        });
-      }
+      // Legacy external-POS outbox row (IdealPOS), written in this same
+      // transaction so the handoff commits atomically with the order. A
+      // Servvia-native venue (`none`) writes nothing here.
+      await this.legacyExternalPos.recordHandoffInTransaction(tx, legacyPosPlan, {
+        orderId: newOrder.id,
+        venueId: venue.id,
+      });
 
-      // A venue on the real IdealPOS Bridge integration (posAdapterType
-      // 'api') already gets its kitchen ticket from IdealPOS's own,
-      // pre-existing KOT workflow once the order lands there via
-      // POSSyncRecord/IdealposOrderDispatcherService above — that is the
-      // authoritative kitchen ticket for this order. Verdura's own
-      // printer.print_kot.v1 pipeline (PrinterJob -> PrinterDispatcherService)
-      // predates that integration and remains the sole KOT source for
-      // venues with no POS owning ticket printing (posAdapterType 'none'),
-      // but creating both here would print two physical tickets for one
-      // order. Skip it specifically for 'api' venues; other adapter types
-      // have no working native KOT path today, so Verdura's own printers
-      // remain authoritative for them.
-      const printers =
-        venue.posAdapterType === POSAdapterType.api
-          ? []
-          : await tx.printer.findMany({
-              where: { venueId: venue.id, isActive: true },
-            });
+      // Servvia's own KOT pipeline (PrinterJob -> PrinterDispatcherService)
+      // prints for every venue, except while a legacy external POS prints the
+      // ticket itself - creating both would print two tickets for one order.
+      const printers = this.legacyExternalPos.externalPosPrintsKitchenTicket(venue)
+        ? []
+        : await tx.printer.findMany({
+            where: { venueId: venue.id, isActive: true },
+          });
 
       for (const printer of printers) {
         await tx.printerJob.create({
@@ -2035,7 +1864,7 @@ export class OrdersService {
         // takes the native handheld path - which it must know BEFORE it can
         // send round one, and which it would otherwise have to guess from
         // configuration the client has no business holding.
-        include: { items: true, posSyncRecord: true },
+        include: { items: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
       });
       // Unreachable in practice -- this row was created earlier in this
       // same transaction -- but never silently fall back to the
@@ -2051,7 +1880,7 @@ export class OrdersService {
   private async broadcastOrder(orderId: string, venueId: string): Promise<void> {
     const orderWithItems = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true, posSyncRecord: true },
+      include: { items: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
     });
     this.ordersGateway.sendOrderUpdate(venueId, orderWithItems);
   }

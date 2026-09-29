@@ -1,0 +1,667 @@
+openapi: 3.1.0
+info:
+  title: Servvia public menu read API
+  version: 0.1.0-as-built
+  description: |
+    Contract of the EXISTING NestJS implementation (apps/api) for the public,
+    unauthenticated menu and table read paths. Documented so a replacement
+    service can reproduce the wire behaviour exactly, warts included.
+
+    Every statement is derived from source and cited with `x-source`
+    (path:line, relative to the repository root). Anything that could not be
+    established from code is marked `x-unverified: true`.
+
+    Global behaviour that applies to every path in this file:
+
+    * Global prefix `/api` (apps/api/src/main.ts:151).
+    * No authentication. No guard other than `RateLimitGuard` is applied.
+    * All responses carry the headers set by `SecurityHeadersMiddleware`
+      (apps/api/src/common/middleware/security-headers.middleware.ts:7-20),
+      applied to every route (apps/api/src/app.module.ts:194-197).
+    * `CsrfMiddleware` runs on every route. On GET it only issues a
+      `csrf_token` cookie when the request has none
+      (apps/api/src/common/middleware/csrf.middleware.ts:12-22); it never
+      rejects a GET.
+    * No `Cache-Control`, `ETag`, `Last-Modified` or `Vary` header is set by
+      application code on these routes. See `x-caching`.
+    * Error bodies use the NestJS default shape
+      `{ statusCode, message, error }` (no global exception filter is
+      registered anywhere in apps/api/src).
+    * DateTime columns never appear in the channel endpoint. On the
+      deprecated kiosk endpoint they are serialised by `JSON.stringify` of a
+      JS `Date`, i.e. ISO-8601 UTC with milliseconds (`2026-09-01T02:03:04.567Z`).
+  x-source: apps/api/src/main.ts:150-151
+  x-caching:
+    description: |
+      No application-level caching headers. Express's default weak ETag
+      generation (`etag` app setting defaults to `weak`) is not disabled by
+      apps/api/src/main.ts, so every response body, errors included, carries
+      `ETag: W/"<length hex>-<sha1 base64, 27 chars>"`. A GET or HEAD with a
+      2xx response is answered 304 (no body, no Content-Type or
+      Content-Length) when `If-None-Match` is `*` or lists the tag (weak
+      comparison), unless the request has `Cache-Control: no-cache`.
+      `If-Modified-Since` alone never yields 304 (no Last-Modified is set).
+    x-verified: Observed against the running API on Express 5.2.1 and asserted by services/core-platform/tests/parity (2026-09-28).
+  x-cors:
+    description: |
+      Per-request CORS delegate. Requests with no `Origin`, or with an Origin
+      in the fixed allow-list, get `origin: true, credentials: true`; every
+      other Origin gets `origin: false` (no ACAO header).
+      Allow-list, exactly as written in source:
+      `https://verdura.co.nz`, `https://admin.verdura.co.nz`,
+      `https://kiosk.verdura.co.nz`, `http://localhost:5173` ..
+      `http://localhost:5177`.
+    x-source: apps/api/src/main.ts:108-149
+servers:
+  - url: /api
+tags:
+  - name: menu
+  - name: kiosk
+paths:
+  /menu/venues/{venueId}/channel/{channel}:
+    get:
+      tags: [menu]
+      operationId: getChannelMenu
+      summary: Channel-filtered menu for one venue (canonical read path)
+      description: |
+        The canonical menu read path. Resolves the venue's organization and
+        returns that organization's categories and menu items, filtered and
+        merged for one channel. Implemented by `resolveChannelMenu`.
+
+        **Processing order (must be reproduced exactly):**
+
+        1. `channel` must be one of `order_tablet`, `customer_website`,
+           `window_display`; otherwise 404 `Unknown channel "<channel>"`.
+           Note: the channel check happens AFTER `ParseUUIDPipe` on
+           `venueId`, so a bad UUID yields 400 even with a bad channel.
+        2. Venue lookup `id = venueId AND isActive = true`; missing or
+           inactive -> 404 `Venue not found`.
+        3. Three queries (run concurrently):
+           * Categories: `organizationId = venue.organizationId AND
+             isActive = true AND visibleChannels @> [channel]`, ordered by
+             `sortOrder ASC`.
+           * Menu items: `organizationId = venue.organizationId AND
+             deletedAt IS NULL AND visibleChannels @> [channel]`, ordered by
+             `sortOrder ASC`. Availability is deliberately NOT filtered at
+             query time.
+           * All `MenuItemVenueOverride` rows with `venueId = venueId`.
+        4. **Category gate**: drop every item whose `categoryId` is not in
+           the visible category set from step 3 (both the item's and its
+           category's `visibleChannels` must contain the channel).
+        5. **Venue override merge** per item (by `menuItemId`):
+           `priceCents = override.priceCents ?? item.priceCents`,
+           `isAvailable = override.isAvailable ?? item.isAvailable`
+           (JS `??`: an override column that is NULL falls back to the
+           organization value; a non-null override wins, including
+           `false`/`0`).
+        6. **Availability filter** by channel policy:
+           `order_tablet` does NOT filter (86'd items are returned with
+           `isAvailable: false` so staff can see them dimmed);
+           `customer_website` and `window_display` drop every item whose
+           merged `isAvailable` is `false`.
+        7. **Empty-category pruning**: categories with no remaining item
+           after steps 4-6 are removed.
+        8. Response `{ categories, menuItems }`. Items keep the step-3 order
+           (`sortOrder ASC`, ties in database order, no secondary key).
+
+        Visibility is deny-by-default: `visibleChannels` defaults to `[]` on
+        both Category and MenuItem, so newly created or imported rows are
+        invisible on every channel until explicitly published.
+
+        Soft delete: items with non-null `deletedAt` are never returned.
+        Categories have no soft-delete column; `isActive = false` hides them
+        (and, via step 4, all their items).
+      x-source: apps/api/src/menu/channel-menu.controller.ts:33-51
+      x-implementation: apps/api/src/menu/channel-menu-resolver.ts:84-146
+      x-channel-policy:
+        order_tablet: { filterByAvailability: false }
+        customer_website: { filterByAvailability: true }
+        window_display: { filterByAvailability: true }
+        x-source: apps/api/src/menu/channel-menu-resolver.ts:20-24
+      x-rate-limit:
+        limit: 120
+        windowSeconds: 60
+        x-source: apps/api/src/menu/channel-menu.controller.ts:34
+        $comment: See components.x-rate-limit-semantics for key and algorithm.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - name: channel
+          in: path
+          required: true
+          description: |
+            Channel name. Validated against a string list in the controller,
+            not by a pipe. Values mirror the Prisma `MenuChannel` enum.
+          schema:
+            $ref: '#/components/schemas/MenuChannel'
+          x-source: apps/api/src/menu/channel-menu.controller.ts:15
+      responses:
+        '200':
+          description: Channel menu.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/CsrfCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelMenuResponse'
+        '400':
+          $ref: '#/components/responses/InvalidUuid'
+        '404':
+          description: Unknown channel, or venue missing or inactive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NestError'
+              examples:
+                unknownChannel:
+                  value: { statusCode: 404, message: 'Unknown channel "kiosk"', error: Not Found }
+                venue:
+                  value: { statusCode: 404, message: Venue not found, error: Not Found }
+          x-source: apps/api/src/menu/channel-menu.controller.ts:39-44
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RateLimitBackendDown'
+      x-known-issues:
+        - Items are ordered only by sortOrder; ties have no deterministic secondary order (channel-menu-resolver.ts:110).
+        - The channel is validated after the venueId UUID pipe, so error precedence is 400 (bad uuid) > 404 (bad channel) > 404 (venue).
+        - Rate-limit key includes the full request path, so the 120/min budget is per IP per venue per channel, not per IP.
+
+  /kiosk/venues/{venueId}/menu:
+    get:
+      tags: [kiosk]
+      operationId: getKioskVenueMenu
+      deprecated: true
+      summary: DEPRECATED unfiltered venue menu (kept for the deployed pre-migration frontends)
+      description: |
+        Deprecated; superseded by `GET /api/menu/venues/{venueId}/channel/{channel}`.
+        Source comment states no code in this repository calls it any more but
+        the currently deployed production frontend build still does, so it
+        is kept unchanged until every channel is cut over.
+
+        **Processing:**
+
+        1. Venue lookup `id = venueId AND isActive = true`, else 404
+           `Venue not found`.
+        2. Categories: `organizationId = venue.organizationId AND
+           isActive = true`, `sortOrder ASC`. **No channel filter.**
+           **Full row returned** (no `select`).
+        3. Menu items: `organizationId = venue.organizationId AND
+           deletedAt IS NULL`, `sortOrder ASC`. **No channel filter, no
+           category-active gate, no availability filter.** **Full row
+           returned**, including `posProductCode`.
+        4. Override merge identical to the channel endpoint
+           (`priceCents`, `isAvailable` via `??`).
+        5. No empty-category pruning.
+      x-source: apps/api/src/kiosk/kiosk.controller.ts:54-88
+      x-rate-limit:
+        limit: 120
+        windowSeconds: 60
+        x-source: apps/api/src/kiosk/kiosk.controller.ts:55
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      responses:
+        '200':
+          description: Unfiltered menu with full database rows.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/CsrfCookie'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KioskMenuResponse'
+        '400':
+          $ref: '#/components/responses/InvalidUuid'
+        '404':
+          $ref: '#/components/responses/VenueNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RateLimitBackendDown'
+      x-known-issues:
+        - Returns every non-deleted item regardless of visibleChannels, so unpublished and unreviewed (staging/import) items are publicly readable.
+        - Returns the deprecated MenuItem.posProductCode (legacy POS PLU code), organizationId, createdById, createdAt, updatedAt and deletedAt on the wire; the channel endpoint deliberately excludes these.
+        - Items whose category is inactive are still returned (their categoryId simply does not match any returned category).
+        - Unavailable items are returned (isAvailable false) and must be hidden client-side.
+        - Categories are returned even when empty.
+
+  /kiosk/venues/{venueId}/tables:
+    get:
+      tags: [kiosk]
+      operationId: getKioskActiveTables
+      summary: Selectable (free) tables for a venue
+      description: |
+        Returns the venue's tables that are active AND have no order in an
+        "occupying" status. Despite the handler name `getActiveTables`,
+        tables that currently have an order in `pending`, `confirmed`,
+        `preparing` or `ready` are EXCLUDED (they are occupied). A table
+        whose orders are all `completed`/`cancelled` (or that has none) is
+        returned.
+
+        Filter: `venueId = venueId AND isActive = true AND NOT EXISTS
+        (order on this table with status IN (pending, confirmed, preparing,
+        ready))`. The relation used is `Table.orders`, i.e. orders linked by
+        `Order.tableId`; an order that only carries a matching
+        `tableNumber` with a NULL `tableId` does not make the table occupied
+        here (order creation's own occupancy check does consider
+        tableNumber, see orders.yaml).
+
+        Order: `sortOrder ASC`.
+      x-source: apps/api/src/kiosk/kiosk.controller.ts:18-37
+      x-rate-limit:
+        limit: 120
+        windowSeconds: 60
+        x-source: apps/api/src/kiosk/kiosk.controller.ts:19
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      responses:
+        '200':
+          description: Free, active tables.
+          headers:
+            Set-Cookie:
+              $ref: '#/components/headers/CsrfCookie'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/KioskTable'
+        '400':
+          $ref: '#/components/responses/InvalidUuid'
+        '404':
+          $ref: '#/components/responses/VenueNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/RateLimitBackendDown'
+      x-known-issues:
+        - Occupancy here is by Order.tableId only, while order creation treats a table as occupied if an active order matches EITHER tableId OR tableNumber (orders.service.ts:1077-1093). A table listed as free here can still be rejected with 409 at order time.
+
+components:
+  x-rate-limit-semantics:
+    description: |
+      `RateLimitGuard`: Redis sorted-set sliding window, executed atomically
+      by a Lua script.
+      * Key: `rate-limit:<ip>:<METHOD>:<path>` where `<ip>` is
+        `request.ip ?? socket.remoteAddress ?? '127.0.0.1'` and `<path>` is
+        the concrete request path (path parameters included). `trust proxy`
+        is `Number(TRUST_PROXY_HOPS ?? 0)`, so behind an unconfigured proxy
+        every client shares the proxy's IP.
+      * A request is admitted if fewer than `limit` entries exist in the
+        last `windowSeconds`; admitted requests are recorded.
+      * Rejection: HTTP 429, header `Retry-After: <seconds>` where seconds =
+        `max(1, ceil((oldest + windowMs - now)/1000))`, body
+        `{ statusCode: 429, message: "Too many requests, please try again later.", error: "Too Many Requests" }`.
+      * Redis failure: one retry after 50 ms for timeout/connection faults
+        only; if still failing, fails CLOSED with 503 body
+        `{ statusCode: 503, message: "Authentication is temporarily unavailable.", error: "Service Unavailable" }`.
+      * Defaults if no `@RateLimit` metadata: 10 per 900 s (not used by the
+        routes in this file).
+    x-source: apps/api/src/auth/guards/rate-limit.guard.ts:129-252
+    x-source-trust-proxy: apps/api/src/main.ts:100-105
+
+  parameters:
+    VenueId:
+      name: venueId
+      in: path
+      required: true
+      description: Venue id. Validated by NestJS `ParseUUIDPipe` (any UUID version).
+      schema:
+        type: string
+        format: uuid
+
+  headers:
+    CsrfCookie:
+      description: |
+        `csrf_token=<64 hex chars>; Path=/; SameSite=Strict` (+ `Secure` when
+        NODE_ENV=production; NOT HttpOnly). Only sent when the request did
+        not already carry a `csrf_token` cookie.
+      schema:
+        type: string
+      x-source: apps/api/src/common/middleware/csrf.middleware.ts:14-22
+
+  responses:
+    InvalidUuid:
+      description: venueId is not a UUID (ParseUUIDPipe).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NestError'
+          example:
+            statusCode: 400
+            message: Validation failed (uuid is expected)
+            error: Bad Request
+    VenueNotFound:
+      description: Venue missing or `isActive = false`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NestError'
+          example:
+            statusCode: 404
+            message: Venue not found
+            error: Not Found
+      x-source: apps/api/src/kiosk/kiosk.controller.ts:90-96
+    RateLimited:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NestError'
+          example:
+            statusCode: 429
+            message: Too many requests, please try again later.
+            error: Too Many Requests
+      x-source: apps/api/src/auth/guards/rate-limit.guard.ts:213-232
+    RateLimitBackendDown:
+      description: Redis unavailable; rate limiter fails closed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NestError'
+          example:
+            statusCode: 503
+            message: Authentication is temporarily unavailable.
+            error: Service Unavailable
+      x-source: apps/api/src/auth/guards/rate-limit.guard.ts:236-251
+
+  schemas:
+    NestError:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
+
+    MenuChannel:
+      type: string
+      enum: [order_tablet, customer_website, window_display]
+      x-source: apps/api/prisma/schema.prisma:511-515
+
+    ChannelMenuResponse:
+      type: object
+      additionalProperties: false
+      required: [categories, menuItems]
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelCategory'
+        menuItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelMenuItem'
+      x-source: apps/api/src/menu/channel-menu-resolver.ts:142-145
+
+    ChannelCategory:
+      type: object
+      additionalProperties: false
+      description: |
+        Explicit projection (`CATEGORY_SELECT`). Deliberately EXCLUDED:
+        `organizationId`, `createdById`, `createdAt`, `updatedAt`.
+      x-source: apps/api/src/menu/channel-menu-resolver.ts:44-52
+      required: [id, name, description, imageUrl, sortOrder, isActive, visibleChannels]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: ['string', 'null'] }
+        imageUrl: { type: ['string', 'null'] }
+        sortOrder: { type: integer, description: Always ascending in the array. }
+        isActive: { type: boolean, const: true, description: Always true (filtered). }
+        visibleChannels:
+          type: array
+          description: Always contains the requested channel.
+          items: { $ref: '#/components/schemas/MenuChannel' }
+
+    ChannelMenuItem:
+      type: object
+      additionalProperties: false
+      description: |
+        Explicit projection (`MENU_ITEM_SELECT`) with venue overrides merged.
+        Deliberately EXCLUDED from the wire: `posProductCode` (deprecated
+        legacy POS PLU code), the `posIdentity` relation (never included),
+        `organizationId`, `createdById`, `createdAt`, `updatedAt`,
+        `deletedAt`. A replacement service must not add them.
+      x-source: apps/api/src/menu/channel-menu-resolver.ts:32-70
+      required:
+        - id
+        - categoryId
+        - subCategory
+        - title
+        - description
+        - imageUrl
+        - imageThumbnailUrl
+        - priceCents
+        - nutritionalDetails
+        - modifierGroups
+        - isSpicy
+        - isAvailable
+        - isFeatured
+        - sortOrder
+        - visibleChannels
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        subCategory: { type: ['string', 'null'] }
+        title: { type: string }
+        description: { type: string }
+        imageUrl: { type: ['string', 'null'] }
+        imageThumbnailUrl: { type: ['string', 'null'] }
+        priceCents:
+          type: integer
+          description: |
+            Integer cents (NZD, GST-inclusive by the only supported venue tax
+            profile). Effective price: `MenuItemVenueOverride.priceCents ??
+            MenuItem.priceCents`.
+          x-source: apps/api/src/menu/channel-menu-resolver.ts:133
+        nutritionalDetails:
+          $ref: '#/components/schemas/NutritionalDetails'
+        modifierGroups:
+          $ref: '#/components/schemas/ModifierGroupsJson'
+        isSpicy: { type: boolean }
+        isAvailable:
+          type: boolean
+          description: |
+            Effective availability `override.isAvailable ?? item.isAvailable`.
+            Always `true` for customer_website and window_display; may be
+            `false` for order_tablet.
+          x-source: apps/api/src/menu/channel-menu-resolver.ts:134-137
+        isFeatured: { type: boolean }
+        sortOrder: { type: integer }
+        visibleChannels:
+          type: array
+          items: { $ref: '#/components/schemas/MenuChannel' }
+
+    KioskMenuResponse:
+      type: object
+      additionalProperties: false
+      required: [categories, menuItems]
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryRow'
+        menuItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItemRow'
+      x-source: apps/api/src/kiosk/kiosk.controller.ts:84-87
+
+    CategoryRow:
+      type: object
+      description: Full Prisma Category row (no projection).
+      x-source: apps/api/prisma/schema.prisma:517-538
+      required: [id, organizationId, name, description, imageUrl, sortOrder, isActive, visibleChannels, createdAt, updatedAt, createdById]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string }
+        name: { type: string }
+        description: { type: ['string', 'null'] }
+        imageUrl: { type: ['string', 'null'] }
+        sortOrder: { type: integer }
+        isActive: { type: boolean, const: true }
+        visibleChannels:
+          type: array
+          items: { $ref: '#/components/schemas/MenuChannel' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        createdById: { type: string }
+
+    MenuItemRow:
+      type: object
+      description: |
+        Full Prisma MenuItem row (no projection) with `priceCents` and
+        `isAvailable` replaced by the venue-override-merged values.
+      x-source: apps/api/prisma/schema.prisma:540-607
+      x-source-merge: apps/api/src/kiosk/kiosk.controller.ts:75-82
+      required:
+        - id
+        - organizationId
+        - categoryId
+        - subCategory
+        - title
+        - description
+        - imageUrl
+        - imageThumbnailUrl
+        - priceCents
+        - nutritionalDetails
+        - isSpicy
+        - isAvailable
+        - isFeatured
+        - sortOrder
+        - modifierGroups
+        - visibleChannels
+        - posProductCode
+        - createdAt
+        - updatedAt
+        - createdById
+        - deletedAt
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string }
+        categoryId: { type: string, format: uuid }
+        subCategory: { type: ['string', 'null'] }
+        title: { type: string }
+        description: { type: string }
+        imageUrl: { type: ['string', 'null'] }
+        imageThumbnailUrl: { type: ['string', 'null'] }
+        priceCents: { type: integer, description: 'Integer cents; override ?? base.' }
+        nutritionalDetails: { $ref: '#/components/schemas/NutritionalDetails' }
+        isSpicy: { type: boolean }
+        isAvailable: { type: boolean, description: 'override ?? base; NOT filtered.' }
+        isFeatured: { type: boolean }
+        sortOrder: { type: integer }
+        modifierGroups: { $ref: '#/components/schemas/ModifierGroupsJson' }
+        visibleChannels:
+          type: array
+          items: { $ref: '#/components/schemas/MenuChannel' }
+        posProductCode:
+          type: ['string', 'null']
+          deprecated: true
+          description: Legacy external-POS PLU code. Leaked by this deprecated endpoint only; see x-known-issues.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        createdById: { type: string }
+        deletedAt: { type: 'null', description: Always null (filtered). }
+
+    NutritionalDetails:
+      description: |
+        Raw Prisma `Json` column (non-null). Written by the admin API as
+        whatever object passes `@IsObject()`
+        (apps/api/src/menu/dto/create-menu-item.dto.ts:54-56); no inner
+        schema is enforced by the server.
+      x-source: apps/api/prisma/schema.prisma:550
+      x-unverified: true
+      x-unverified-note: Inner keys are not defined anywhere in API code; historical rows may hold any JSON value (a schema comment mentions a former nutritionalDetails.isFeatured convention, schema.prisma:553-554).
+
+    ModifierGroupsJson:
+      type: array
+      description: |
+        Raw `MenuItem.modifierGroups` JSON column (default `[]`), returned
+        verbatim — NOT normalised on read. The shape below is what the admin
+        write path persists (`MenuItemsService.normalizeModifierGroups`,
+        validated by `ModifierGroupDto`/`ModifierOptionDto`), which is the
+        only code path that writes this column.
+
+        Legacy or hand-edited rows may deviate. Consumers that PRICE orders
+        must parse it the way `OrdersService.parseModifierGroups` does:
+        * input not an array -> treated as `[]`;
+        * a group lacking string `id` or string `name` is skipped;
+        * `options` not an array -> `[]`;
+        * an option lacking string `id`, string `name` or numeric
+          `priceDeltaCents` is skipped;
+        * `isAvailable` -> `o.isAvailable !== false` (missing = true);
+        * `required` -> `g.required === true` (missing = false);
+        * `minSelections` -> number or 0;
+        * `maxSelections` -> number or `options.length` (after skipping);
+        * option `sortOrder` is ignored by the parser.
+      x-source-write: apps/api/src/menu/menu-items.service.ts:27-62
+      x-source-dto: apps/api/src/menu/dto/modifier-group.dto.ts:22-70
+      x-source-parse: apps/api/src/orders/orders.service.ts:1218-1257
+      items:
+        $ref: '#/components/schemas/ModifierGroup'
+
+    ModifierGroup:
+      type: object
+      required: [id, name, required, minSelections, maxSelections, options]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Author-supplied UUID preserved, else `crypto.randomUUID()` assigned at write time.
+        name: { type: string, minLength: 1 }
+        required: { type: boolean }
+        minSelections:
+          type: integer
+          minimum: 0
+          description: Write path enforces `required => minSelections >= 1`.
+        maxSelections:
+          type: integer
+          minimum: 1
+          description: Write path enforces `maxSelections >= minSelections`.
+        options:
+          type: array
+          minItems: 1
+          description: Option ids are unique within a group (write path rejects duplicates).
+          items:
+            $ref: '#/components/schemas/ModifierOption'
+      x-source: apps/api/src/menu/dto/modifier-group.dto.ts:46-70
+
+    ModifierOption:
+      type: object
+      required: [id, name, priceDeltaCents, isAvailable, sortOrder]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1 }
+        priceDeltaCents:
+          type: integer
+          minimum: 0
+          description: Integer cents added to the unit price per selection. Non-negative on the write path.
+        isAvailable: { type: boolean }
+        sortOrder: { type: integer, minimum: 0 }
+      x-source: apps/api/src/menu/dto/modifier-group.dto.ts:22-44
+
+    KioskTable:
+      type: object
+      additionalProperties: false
+      required: [id, tableNumber, name, capacity, sortOrder]
+      properties:
+        id: { type: string, format: uuid }
+        tableNumber: { type: string, description: 'Unique per venue (@@unique([venueId, tableNumber])).' }
+        name: { type: ['string', 'null'] }
+        capacity: { type: integer }
+        sortOrder: { type: integer }
+      x-source: apps/api/src/kiosk/kiosk.controller.ts:35

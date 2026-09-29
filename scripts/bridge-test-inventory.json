@@ -7,7 +7,7 @@
     "The split is not a preference. Two suites are typed against IdealPos.Webit,",
     "a proprietary vendor assembly that is the client's own licensed Idealpos",
     "install file and is deliberately not source-controlled (see",
-    "apps/idealpos-bridge/lib/PUT_DLLS_HERE.txt). A GitHub runner has no Idealpos",
+    "apps/idealpos-bridge/lib/PUT_DLLS_HERE.txt). A CI runner has no Idealpos",
     "installation, so those two suites cannot run there at all. The remaining",
     "three depend on nothing but in-box .NET Framework assemblies and do run.",
     "",
@@ -28,7 +28,7 @@
   },
   "ciNotCovered": {
     "tests": 7,
-    "reason": "typed against the proprietary IdealPos.Webit vendor DLL, which is not source-controlled and is absent from any GitHub runner",
+    "reason": "typed against the proprietary IdealPos.Webit vendor DLL, which is not source-controlled and is absent from any CI runner",
     "suites": [
       "TableAssignmentStrategyTests"
     ]

@@ -1856,7 +1856,7 @@ function Sidebar({
   onNavigate,
   collapsed = false,
   onToggleCollapse,
-  brand = 'Verdura',
+  brand = 'Servvia',
   footer = null,
   style = {}
 }) {
@@ -2299,7 +2299,7 @@ function AppShell() {
     dashboard: {
       title: 'Dashboard',
       crumb: 'Operations',
-      sub: "Thursday, June 19 · Verdura — Downtown"
+      sub: "Thursday, June 19 · Servvia — Downtown"
     },
     reservations: {
       title: 'Reservations',
@@ -2483,7 +2483,7 @@ function AppShell() {
       size: 22
     }),
     title: `${m.title} module`,
-    description: "This surface is part of the Verdura platform. Dashboard, Reservations, Orders, Kitchen Operations, and Payments are wired as interactive demos in this kit.",
+    description: "This surface is part of the Servvia platform. Dashboard, Reservations, Orders, Kitchen Operations, and Payments are wired as interactive demos in this kit.",
     action: /*#__PURE__*/React.createElement(Button, {
       variant: "secondary",
       onClick: () => setActive('dashboard'),

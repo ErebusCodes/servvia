@@ -1,0 +1,150 @@
+openapi: 3.1.0
+info:
+  title: Servvia venue configuration read API
+  version: 0.1.0-as-built
+  description: |
+    Contract of the EXISTING NestJS implementation (apps/api) for the venue
+    configuration that pricing depends on. Go Core
+    (services/core-platform/internal/venues) implements it at parity; see
+    tests/parity in that service.
+
+    Only `GET /venues/{id}/tax-config` is contracted here. The admin venue
+    CRUD routes (`GET/POST /venues`, `GET/PATCH/DELETE /venues/{id}`) return
+    the whole Prisma `Venue` row, including the legacy external-POS columns
+    `posAdapterType` and `posConfig` (ADR 0001). They are not part of the
+    Servvia Core venue model and are not ported yet.
+
+    Global behaviour (same as menu-read.yaml): prefix `/api`, Express routing
+    with case-insensitive literal segments and one optional trailing slash,
+    SecurityHeadersMiddleware and CsrfMiddleware on every route, NestJS
+    default error bodies, Express weak ETag with If-None-Match / 304, and the
+    CORS delegate in apps/api/src/main.ts.
+  x-source: apps/api/src/venues/venues.controller.ts:14-16
+servers:
+  - url: /api
+tags:
+  - name: venues
+paths:
+  /venues/{id}/tax-config:
+    get:
+      tags: [venues]
+      operationId: getVenueTaxConfig
+      summary: The tax and currency configuration of one venue.
+      description: |
+        A narrow read for billing surfaces (the Order Tablet's provisional
+        total) that must not receive the full Venue row.
+
+        Checks, in order (first failure wins):
+        1. `JwtAuthGuard`: a valid HS256 access token (401).
+        2. `RolesGuard`: role admin, manager, kitchen or viewer; owner always
+           passes (403 `Insufficient permissions`).
+        3. `TabletTokenActiveGuard`: a `tablet_device`, `tablet_staff` or
+           `tablet_manager` token whose device is revoked or unknown gets 401
+           `This device has been revoked or is unknown`.
+        4. `resolveVenueScope`: a device-scoped token (kds_device, tablet_*)
+           naming a venue other than its own gets 403.
+        5. The venue must exist in the caller's organization, else 404
+           `Venue not found`. `isActive` is not checked. `id` is not
+           validated as a UUID; an unknown id is 404.
+
+        No rate limit.
+      x-source: apps/api/src/venues/venues.controller.ts:34-60
+      x-implementation: apps/api/src/venues/venues.service.ts:62-83
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Venue id. Any string; not validated.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The venue's tax configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VenueTaxConfig'
+              example:
+                { currency: NZD, locale: en-NZ, taxJurisdiction: NZ_GST, pricesIncludeTax: true }
+        '401':
+          description: Missing, invalid or expired token; malformed token payload; revoked or unknown tablet device.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/PassportUnauthorized'
+                  - $ref: '#/components/schemas/NestError'
+              examples:
+                noToken:
+                  value: { message: Unauthorized, statusCode: 401 }
+                revokedDevice:
+                  value: { message: This device has been revoked or is unknown, error: Unauthorized, statusCode: 401 }
+        '403':
+          description: Role not allowed, or a device token naming another venue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NestError'
+              examples:
+                role:
+                  value: { message: Insufficient permissions, error: Forbidden, statusCode: 403 }
+                venueScope:
+                  value: { message: This device is not authorized for the requested venue, error: Forbidden, statusCode: 403 }
+        '404':
+          description: No venue with this id in the caller's organization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NestError'
+              example: { message: Venue not found, error: Not Found, statusCode: 404 }
+      x-known-issues:
+        - The response carries no venue id or name, so a client cannot tell which venue it describes without remembering the request.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: See schemas/auth-token-claims.schema.json.
+  schemas:
+    VenueTaxConfig:
+      type: object
+      additionalProperties: false
+      required: [currency, locale, taxJurisdiction, pricesIncludeTax]
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code. Default `NZD`.
+        locale:
+          type: string
+          description: BCP 47 tag. Default `en-NZ`.
+        taxJurisdiction:
+          type: string
+          description: Tax regime. Default `NZ_GST`. Only `NZ_GST` with `NZD` and `pricesIncludeTax = true` has a pricing rule (orders.yaml x-pricing).
+        pricesIncludeTax:
+          type: boolean
+          description: True when menu prices already contain the tax. Default true.
+      x-source: apps/api/prisma/schema.prisma (model Venue)
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode]
+      properties:
+        message:
+          type: string
+        error:
+          type: string
+        statusCode:
+          type: integer
+    PassportUnauthorized:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message:
+          const: Unauthorized
+        statusCode:
+          const: 401

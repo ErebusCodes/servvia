@@ -47,7 +47,7 @@ export function KioskOrderPage({ onBackToTables }: { onBackToTables: () => void 
       <KioskFullscreenShell safeArea className="bg-gray-950 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-emerald-400 text-lg font-medium animate-pulse">Loading Verdura Kiosk menu…</p>
+          <p className="text-emerald-400 text-lg font-medium animate-pulse">Loading Servvia Kiosk menu…</p>
         </div>
       </KioskFullscreenShell>
     );
@@ -264,7 +264,7 @@ export function KioskOrderPage({ onBackToTables }: { onBackToTables: () => void 
       {/* Header bar */}
       <header className="px-6 py-4 bg-gray-900/60 backdrop-blur-md border-b border-gray-800 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <span className="text-2xl font-black tracking-wider text-emerald-500">VERDURA</span>
+          <span className="text-2xl font-black tracking-wider text-emerald-500">SERVVIA</span>
           <span className="text-xs bg-emerald-500/20 text-emerald-400 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/30">KIOSK</span>
         </div>
         

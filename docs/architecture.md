@@ -1,12 +1,18 @@
-# Verdura — Solution Architecture
+# Servvia — Solution Architecture
 
-> **Normative operating-model decision — 2026-08-15:** Architecture must implement the [Target Operating Model](./target-operating-model.md). Verdura durably records and fans out each order version; the outbound-only venue connector must accept the Idealpos command before KDS/KOT release. Idealpos is authoritative for POS/in-person EFTPOS; Verdura owns routing for Verdura-originated KDS/KOT; verified online payments map to an Idealpos `PREPAID / ONLINE` tender. Independent acknowledgements must never be collapsed into one “synced” flag.
+> **Current authority, 2026-09-28:** [ADR 0001: Servvia is the operational POS](./adr/0001-servvia-is-the-operational-pos.md) (DL-115).
+> - The 2026-08-15 IdealPOS-authority banner below is superseded.
+> - Servvia Core owns orders, table sessions, checks, payments, settlement and kitchen tickets, and PostgreSQL is authoritative.
+> - IdealPOS is legacy integration only.
+> - Migration plan and status: [`docs/migration/`](./migration/README.md).
+
+> **Normative operating-model decision — 2026-08-15:** Architecture must implement the [Target Operating Model](./target-operating-model.md). Servvia durably records and fans out each order version; the outbound-only venue connector must accept the Idealpos command before KDS/KOT release. Idealpos is authoritative for POS/in-person EFTPOS; Servvia owns routing for Servvia-originated KDS/KOT; verified online payments map to an Idealpos `PREPAID / ONLINE` tender. Independent acknowledgements must never be collapsed into one “synced” flag.
 
 > **Assessment alignment — 2026-08-15:** This document describes the target architecture, not the fully deployed system. The current repository has a working NestJS/PostgreSQL/Redis foundation and real menu, reservation, order and KDS paths, but the separate edge connector, printer service, real Idealpos adapter, durable offline queue, provider acknowledgement chain, reconciliation queue, database-enforced tenancy and enterprise audit service are not implemented. Direct cloud-to-LAN printer access and direct restaurant-agent access to shared cloud Redis must not be treated as the production trust boundary. The authoritative current-state and release gates are in [mvp.md](./mvp.md).
 
 **Recommended architecture correction:** use an outbound-only, mutually authenticated edge connector; expose a scoped command/event API rather than Redis to venue agents; model `Queued`, `Delivered`, `Acknowledged` and `Confirmed` separately; store idempotency results durably; and fail unsupported provider capabilities explicitly.
 
-> **Technology standard — 2026-09-01:** [§10](#10--technology-standard-current-mvp-and-approved-target-architecture) is the canonical Verdura technology ownership standard. It separates the **current MVP implementation** (NestJS/Node, Prisma, React+Vite, .NET connector) from the **approved target architecture** (React+TypeScript web, Kotlin/Android native devices, **Go** Core Platform and Venue/Edge, **Python** AI/Data/Analytics, narrow C#/.NET Windows-IdealPOS adapter, PostgreSQL, Google Cloud Storage, Docker). Sections 1–9 of this document describe the current-MVP shape of the system; where they name a technology, read §10 for whether that technology is the long-term owner. No new implementation may create a second long-term owner for an existing capability (§10.11).
+> **Technology standard — 2026-09-01:** [§10](#10--technology-standard-current-mvp-and-approved-target-architecture) is the canonical Servvia technology ownership standard. It separates the **current MVP implementation** (NestJS/Node, Prisma, React+Vite, .NET connector) from the **approved target architecture** (React+TypeScript web, Kotlin/Android native devices, **Go** Core Platform and Venue/Edge, **Python** AI/Data/Analytics, narrow C#/.NET Windows-IdealPOS adapter, PostgreSQL, Google Cloud Storage, Docker). Sections 1–9 of this document describe the current-MVP shape of the system; where they name a technology, read §10 for whether that technology is the long-term owner. No new implementation may create a second long-term owner for an existing capability (§10.11).
 
 **Phase 4 Output**
 **Date:** 2026-06-18
@@ -537,7 +543,7 @@ document; do not restate them as permanent target ownership.
 | Database | PostgreSQL | 16.x | **Target-aligned** |
 | Cache / queue broker | Redis | 7.x | **Target-aligned** |
 | Containerisation | Docker + Docker Compose | 24.x | **Target-aligned** (§10.9) |
-| CI/CD | GitHub Actions | — | Target-aligned |
+| CI/CD | Automated CI | — | Target-aligned |
 | Email | Resend (primary) / SendGrid (fallback) | — | Target-aligned |
 | Media storage | Google Cloud Storage (see §6) | — | **Target-aligned** |
 | Payments | Stripe | — | Target-aligned |

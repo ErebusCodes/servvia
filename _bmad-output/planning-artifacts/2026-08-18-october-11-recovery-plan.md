@@ -53,7 +53,7 @@ The audit's 13 sections were independently cross-checked against current source 
 - Window Display (`apps/window-display`) still contains a live, reachable Stripe Terminal checkout flow (`KioskOrderPage.tsx`).
 - Two independent KDS implementations (`admin-console/.../KitchenDisplayPage.tsx`, `window-display/.../KdsPage.tsx`) confirmed.
 - Two independently-sized, separately-routed table-management implementations confirmed (not an alias) — `apps/admin-console/src/pages/settings/TableManagementPage.tsx` (`/settings/tables`, 495 lines) and `apps/admin-console/src/pages/table-management/TableManagementPage.tsx` (`/table-management`, 832 lines).
-- No `.github/workflows/` directory anywhere in the repo.
+- No CI workflow directory anywhere in the repo.
 - `apps/api/.git/` (nested repo, contains only an `sdd/` subdirectory) and both `.worktrees/*` directories (gitdir pointers to a different machine/user, `/home/cyrus/Documents/verdura/...`) confirmed, with sizes matching the audit's figures (`.git` 622M, `.worktrees` 725M, root `node_modules` 749M, repo total 2.2G).
 - EFTPOS: only fixture/mock data and static UI badges found anywhere in application source; no real integration logic.
 
@@ -76,7 +76,7 @@ No P0/P1 audit finding was found to be stale, exaggerated, or contradicted by cu
 | `3-6-consolidate-table-management-duplicate` | Reconcile the two live, unmerged table-management implementations | E3 |
 | `16-1-connector-print-observability-alerting` | Connector/print-pipeline observability and alerting | E16 (new) |
 | `16-2-backup-restore-outage-replay-testing` | Backup/restore + outage/replay testing for connector/pos-sync/print queues | E16 |
-| `16-3-ci-regression-gates` | CI (promotes `1-5-github-actions-ci`) — lint/typecheck/unit/integration on every PR | E16 |
+| `16-3-ci-regression-gates` | CI (promotes `1-5-ci-pipeline`) — lint/typecheck/unit/integration on every PR | E16 |
 | `16-4-rls-policy-enforcement` | RLS enabled with zero policies (18 tables) | E16 |
 | `16-5-kiosk-order-creation-venue-binding` | Unauthenticated, venue-unbound kiosk order creation (promotes `E6-S10`) | E16 |
 | `16-6-docker-default-secrets-hardening` | Docker Compose insecure default secrets | E16 |

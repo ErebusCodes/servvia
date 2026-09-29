@@ -12,7 +12,7 @@ export function ModulePlaceholderPage({ name }: { name: string }) {
         </div>
         <h3 className="text-lg font-bold text-gray-900 mb-2">{name} Module</h3>
         <p className="text-gray-500 text-sm mb-6 max-w-md mx-auto">
-          This surface is part of the Verdura platform. The Dashboard, Reservations, and Menu Category Management are wired to live backend database services.
+          This surface is part of the Servvia platform. The Dashboard, Reservations, and Menu Category Management are wired to live backend database services.
         </p>
         <button
           onClick={() => navigate('/dashboard')}

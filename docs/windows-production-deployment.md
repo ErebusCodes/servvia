@@ -5,7 +5,7 @@
 **Effective:** 2026-08-27
 
 See [`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md)
-for the roles/rules this layout exists to satisfy (GitHub as authoritative
+for the roles/rules this layout exists to satisfy (Git remote as authoritative
 source, the deployment verification gate, what environment-specific state
 must never be committed).
 

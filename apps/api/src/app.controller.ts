@@ -6,7 +6,7 @@ export class AppController {
   getRoot(): { status: string; message: string } {
     return {
       status: 'ok',
-      message: 'Verdura API is running. See GET /health for service status.',
+      message: 'Servvia API is running. See GET /health for service status.',
     };
   }
 }

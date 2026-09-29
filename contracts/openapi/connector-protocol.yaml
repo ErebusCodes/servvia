@@ -1,0 +1,858 @@
+openapi: 3.1.0
+info:
+  title: Servvia Venue Connector Protocol
+  version: 0.1.0-as-built
+  summary: As-built contract of the venue-agent (connector) HTTP protocol served by the NestJS API.
+  description: |
+    Describes the EXISTING protocol implemented in apps/api/src/connector/* and consumed by the
+    C# venue connector (apps/venue-connector). It is a reverse-engineered contract so that a Go
+    Servvia Core service and a Go Venue Edge agent can reproduce it byte-for-byte. It is not a
+    proposal: every field, status code and message below is taken from source and cited with
+    `x-source`. Anything that could not be determined from code is marked `x-unverified: true`.
+
+    Companion documents:
+      - contracts/schemas/connector-command-state-machine.md (state machine, CAS predicates, DB constraints)
+      - contracts/events/README.md (outbox inventory)
+
+    General wire conventions (apply to every operation):
+      - Global route prefix `/api` (x-source apps/api/src/main.ts:151).
+      - JSON bodies, camelCase property names. The C# client pins camelCase + case-insensitive
+        deserialisation explicitly (apps/venue-connector/src/VerduraIdealposTracer.Core/Protocol/ConnectorCommandProtocolClient.cs:57-61).
+      - Request bodies pass through a global `ValidationPipe({ whitelist: true, transform: true })`
+        (apps/api/src/main.ts:150): unknown properties are silently STRIPPED (not rejected);
+        type/constraint violations return 400.
+      - Timestamps are serialised by JSON.stringify(Date) => ISO-8601 UTC strings with millisecond precision.
+      - Error bodies are the NestJS default HttpException shape (no global exception filter is
+        registered - searched apps/api/src for useGlobalFilters/APP_FILTER/@Catch, none found):
+        `{ "statusCode": <int>, "message": <string | string[]>, "error": <reason phrase> }`.
+        ValidationPipe 400s carry `message` as an array of strings.
+      - Guard order on every connector-facing route is RateLimitGuard THEN ConnectorAuthGuard
+        (apps/api/src/connector/connector-command.controller.ts:19-30), so a 429/503 can be returned
+        before credentials are checked. Guards run before pipes, so 401/403/429 precede a 400 from ParseUUIDPipe.
+      - POST handlers without `@HttpCode(200)` return NestJS's default 201 (all admin POSTs below).
+  x-source: apps/api/src/connector/connector.module.ts:14-30
+servers:
+  - url: /api
+    description: Same origin as the NestJS API; global prefix 'api' (apps/api/src/main.ts:151).
+tags:
+  - name: agent
+    description: Called by the venue connector itself (connector credential or bootstrap token).
+  - name: admin
+    description: Called by authenticated Servvia staff (JWT access token).
+
+paths:
+  /connector/enroll:
+    post:
+      tags: [agent]
+      operationId: connectorEnroll
+      summary: Exchange a single-use bootstrap token for a durable connector credential.
+      description: |
+        The bootstrap token (from POST /venues/{venueId}/connector/enrollments) is sent as
+        `Authorization: Bearer <enrollmentId>.<code>`; there is no request body.
+        Semantics (apps/api/src/connector/connector.service.ts:171-290):
+          1. Token is split on the FIRST '.'; separator at index 0 or at the last char => 401 "Invalid bootstrap token".
+          2. Enrollment row must exist, have usedAt = null and expiresAt > now; the code is Argon2id-verified
+             (a fixed dummy hash is verified instead for invalid candidates to equalise timing).
+          3. In one transaction: CAS `updateMany where {id, usedAt: null, expiresAt > now} set usedAt=now`;
+             count != 1 => 409. Any prior `active` installation for the venue is CAS-flipped to `replaced`,
+             the new `active` installation is inserted, and the prior row's replacedByInstallationId is set.
+          4. A unique violation on the partial index "one active installation per venue" (P2002) => 409.
+        Enrollment TTL is 15 minutes (ENROLLMENT_TTL_MS, connector.service.ts:26).
+        The plaintext secret is returned exactly once and is never recoverable (only an Argon2id hash is stored).
+      x-source: apps/api/src/connector/connector.controller.ts:34-44
+      x-rate-limit:
+        limit: 10
+        windowSeconds: 900
+        key: "rate-limit:<request.ip>:<METHOD>:<request.path>"
+        x-source: apps/api/src/connector/connector.controller.ts:35-36
+      security:
+        - bootstrapToken: []
+      responses:
+        '200':
+          description: Enrolment redeemed; a new `active` installation now exists for the venue.
+          x-source: apps/api/src/connector/connector.service.ts:281
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollResponse'
+        '401':
+          description: |
+            One of (exact `message` strings):
+              - "Missing or invalid bootstrap token" (no/malformed Authorization header; connector.controller.ts:41)
+              - "Invalid bootstrap token" (token not splittable; connector.service.ts:176)
+              - "Bootstrap token is invalid, expired, or already used" (unknown id, used, expired, or wrong code; connector.service.ts:194)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '409':
+          description: |
+            One of:
+              - "Bootstrap token is invalid, expired, or already used" (lost the single-use CAS race; connector.service.ts:216)
+              - "A concurrent enrolment or rotation for this venue is already in progress — retry shortly" (P2002 on one-active-per-venue; connector.service.ts:283-287)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /connector/heartbeat:
+    post:
+      tags: [agent]
+      operationId: connectorHeartbeat
+      summary: Self-report version and capabilities; bumps lastSeenAt.
+      description: |
+        Updates the caller's installation with `updateMany where {id, status: 'active'}`:
+        lastSeenAt=now, and reportedVersion / reportedCapabilities ONLY when the corresponding
+        property is present in the body (a present property fully REPLACES the stored value; there is
+        no merge). count != 1 => 401 "Connector installation is no longer active".
+        Capabilities drive command claim gating: the server reads only the KEYS of the stored object
+        (`Object.keys`), never the values (connector-command.service.ts:344-352). The real client sends
+        `{ "<commandType>": true, ... }` once per process start
+        (apps/venue-connector/src/VerduraIdealposTracer.Core/Hosting/ConnectorPollingLoop.cs:57-62,111-126).
+        NOTE: `parseCapabilities` also accepts a JSON array of strings, but that branch is unreachable via
+        this endpoint because `@IsObject()` rejects arrays (class-validator semantics).
+        Every authenticated connector call (not just heartbeat) also CAS-bumps lastSeenAt inside
+        ConnectorService.authenticate (connector.service.ts:322-326).
+      x-source: apps/api/src/connector/connector.controller.ts:46-63
+      x-rate-limit:
+        limit: 120
+        windowSeconds: 60
+        x-source: apps/api/src/connector/connector.controller.ts:54-55
+      security:
+        - connectorCredential: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeartbeatRequest'
+      responses:
+        '200':
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { const: true }
+                x-source: apps/api/src/connector/connector.controller.ts:60-62
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: |
+            One of:
+              - "Missing or invalid connector credential" (ConnectorAuthGuard; auth/guards/connector-auth.guard.ts:24,29)
+              - "Connector installation is no longer active" (revoked between auth and update; connector.service.ts:347)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /connector/commands/poll:
+    post:
+      tags: [agent]
+      operationId: connectorPollCommands
+      summary: Claim up to 5 eligible commands for the caller's own venue.
+      description: |
+        No request body. Venue/organization come ONLY from the authenticated credential.
+        Algorithm (connector-command.service.ts:249-335), constants in connector-command.service.ts:21-27:
+          1. outstanding = count(claimedByInstallationId = me AND status IN (claimed, accepted));
+             if outstanding >= 20 (MAX_OUTSTANDING_PER_INSTALLATION) return `{ "commands": [] }`.
+          2. candidates = rows for (organizationId, venueId) with expiresAt > now AND
+             (status = pending OR (status = claimed AND leaseExpiresAt < now)), ORDER BY createdAt ASC, LIMIT 15 (MAX_POLL_BATCH*3).
+          3. For each candidate until min(5, 20 - outstanding) are claimed:
+             - skip if requiredCapability is non-null and not a key of the installation's reportedCapabilities;
+             - if it is a stale claimed row with claimAttemptCount >= maxClaimAttempts: CAS it to `expired`, skip;
+             - CAS claim (see state-machine doc, transition T1/T2): status=claimed, claimedByInstallationId=me,
+               claimedAt=now, leaseExpiresAt=now+2min, claimAttemptCount+=1. Lost race => silently skip.
+        Commands the client does not recognise must NOT be accepted; the real client leaves them claimed so
+        the lease expires and they become reclaimable (ConnectorPollingLoop.cs:197-201).
+      x-source: apps/api/src/connector/connector-command.controller.ts:35-43
+      x-rate-limit:
+        limit: 120
+        windowSeconds: 60
+        x-source: apps/api/src/connector/connector-command.controller.ts:36-37
+      security:
+        - connectorCredential: []
+      responses:
+        '200':
+          description: Zero or more newly claimed commands (the caller now holds a 2-minute lease on each).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PollResponse'
+        '401': { $ref: '#/components/responses/ConnectorUnauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /connector/commands/{commandId}/accept:
+    post:
+      tags: [agent]
+      operationId: connectorAcceptCommand
+      summary: CONNECTOR_ACCEPTED - declare that the connector has durably taken responsibility.
+      description: |
+        No request body. CAS `updateMany where {id, organizationId, venueId, status: claimed,
+        claimedByInstallationId: me}` set status=accepted, acceptedAt=now, terminalReportDeadline=now+5min
+        (connector-command.service.ts:359-396).
+        Idempotent: if the CAS misses but the row is already `accepted` by this same installation => 200.
+        NOT checked by the predicate: leaseExpiresAt and expiresAt. A claim whose lease has expired can
+        still be accepted by its holder as long as no other poll has re-claimed it first.
+        `accepted` is NOT evidence that any downstream device/system was contacted.
+        Client contract (as implemented by the C# connector): persist the command locally BEFORE calling accept
+        (DiscoveryTracerService.cs:57-64).
+      x-source: apps/api/src/connector/connector-command.controller.ts:45-55
+      x-rate-limit:
+        limit: 120
+        windowSeconds: 60
+        x-source: apps/api/src/connector/connector-command.controller.ts:46-47
+      security:
+        - connectorCredential: []
+      parameters:
+        - $ref: '#/components/parameters/CommandId'
+      responses:
+        '200':
+          description: Accepted (or already accepted by this installation).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted: { const: true }
+        '400': { $ref: '#/components/responses/UuidValidationError' }
+        '401': { $ref: '#/components/responses/ConnectorUnauthorized' }
+        '404':
+          description: '"Command not found for this venue" (id not in the caller''s org/venue; connector-command.service.ts:386)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '409':
+          description: |
+            "Command is not currently claimed by this connector installation, or is no longer claimable"
+            (row is pending, claimed by someone else, cancelled, expired, terminal, unknown, or accepted by another installation;
+            connector-command.service.ts:393-395)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /connector/commands/{commandId}/report:
+    post:
+      tags: [agent]
+      operationId: connectorReportCommand
+      summary: Truthful terminal report (succeeded / failed) for a command this installation accepted.
+      description: |
+        CAS `updateMany where {id, organizationId, venueId, status: accepted, claimedByInstallationId: me}`
+        set status=(succeeded|failed), resultType, resultPayload, failureReason (only kept when outcome=failed,
+        forced to null when succeeded), reportedAt=now, reportIdempotencyKey=idempotencyKey
+        (connector-command.service.ts:404-431).
+
+        Idempotency / conflict semantics when the CAS misses (connector-command.service.ts:443-512), evaluated in order:
+          1. Row not found in caller's org/venue => 404.
+          2. Row is succeeded/failed AND claimedByInstallationId == me:
+             - identical repeat iff stored reportIdempotencyKey == body.idempotencyKey AND stored status == target
+               status AND stored resultType == body.resultType => 200 no-op (resultPayload and failureReason are NOT compared);
+             - otherwise => audit CONNECTOR_COMMAND_CONFLICTING_REPORT and 409. The original outcome is never overwritten.
+               (A different idempotencyKey with the same outcome is therefore a conflict.)
+          3. Row status == unknown (swept after the 5-minute report window) => audit
+             CONNECTOR_COMMAND_LATE_REPORT_AFTER_UNKNOWN (records attempted outcome/resultType/failureReason and
+             whether the reporter is the accepting installation) and 409. The row is NOT mutated; `unknown` is terminal.
+          4. Anything else (pending, claimed, cancelled, expired, terminal-by-other-installation) => 409.
+        Real client idempotency keys are deterministic per command, e.g. `discovery-report-{commandId}`,
+        `idealpos-submit-order-report:{commandId}`, `idealpos-order-status-report:{commandId}`
+        (apps/venue-connector/src/VerduraIdealposTracer.Core/Discovery/DiscoveryTracerService.cs:77,
+        OrderSubmission/IdealposOrderSubmissionService.cs:110, OrderSubmission/IdealposOrderStatusService.cs:100).
+      x-source: apps/api/src/connector/connector-command.controller.ts:57-68
+      x-rate-limit:
+        limit: 120
+        windowSeconds: 60
+        x-source: apps/api/src/connector/connector-command.controller.ts:58-59
+      security:
+        - connectorCredential: []
+      parameters:
+        - $ref: '#/components/parameters/CommandId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequest'
+      responses:
+        '200':
+          description: Recorded, or identical repeat of an already-recorded report.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reported]
+                properties:
+                  reported: { const: true }
+        '400':
+          description: ParseUUIDPipe failure on commandId, or ReportRequest validation failure (message is string[]).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '401': { $ref: '#/components/responses/ConnectorUnauthorized' }
+        '404':
+          description: '"Command not found for this venue" (connector-command.service.ts:446)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '409':
+          description: |
+            One of (exact strings):
+              - "A different terminal outcome was already recorded for this command" (connector-command.service.ts:472-474)
+              - "Command already transitioned to unknown (reconciliation-required) before this report arrived — the report was recorded in the audit log but the command was not mutated" (connector-command.service.ts:505-507)
+              - "Command is not currently accepted by this connector installation, or is no longer reportable" (connector-command.service.ts:510-512)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /venues/{venueId}/connector/enrollments:
+    post:
+      tags: [admin]
+      operationId: adminCreateConnectorEnrollment
+      summary: Create a 15-minute single-use bootstrap token for a venue (prerequisite of /connector/enroll).
+      description: |
+        Role `admin` (or `owner`, which bypasses RolesGuard). Venue must belong to the caller's organization.
+        bootstrapToken = `<enrollmentId>.<code>` where code = 32 random bytes base64url; only an Argon2id hash is stored.
+      x-source: apps/api/src/connector/connector-admin.controller.ts:22-36
+      x-roles: [admin]
+      x-rate-limit:
+        limit: 10
+        windowSeconds: 900
+        x-source: apps/api/src/connector/connector-admin.controller.ts:24
+      security:
+        - staffJwt: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentCreatedResponse'
+        '400': { $ref: '#/components/responses/UuidValidationError' }
+        '401': { $ref: '#/components/responses/StaffUnauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '"Venue not found in your organization" (connector.service.ts:130)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /venues/{venueId}/connector/installations:
+    get:
+      tags: [admin]
+      operationId: adminListConnectorInstallations
+      summary: List every installation (any status) for the venue, newest first.
+      x-source: apps/api/src/connector/connector-admin.controller.ts:38-45
+      x-roles: [admin, manager]
+      x-rate-limit:
+        limit: 10
+        windowSeconds: 900
+        description: |
+          No @RateLimit on this handler; RateLimitGuard is applied at class level
+          (connector-admin.controller.ts:18) and falls back to its defaults limit=10, windowSeconds=900
+          (apps/api/src/auth/guards/rate-limit.guard.ts, "metadata?.limit ... : 10" / "... : 900").
+      security:
+        - staffJwt: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      responses:
+        '200':
+          description: Installations ordered by createdAt DESC (no limit). Unknown venue / other-org venue yields [] (no 404).
+          x-source: apps/api/src/connector/connector.service.ts:394-420
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConnectorStatusView'
+        '400': { $ref: '#/components/responses/UuidValidationError' }
+        '401': { $ref: '#/components/responses/StaffUnauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /venues/{venueId}/connector/installations/{installationId}/revoke:
+    post:
+      tags: [admin]
+      operationId: adminRevokeConnectorInstallation
+      summary: Revoke the venue's active installation; takes effect on the connector's next request.
+      description: |
+        CAS `updateMany where {id, organizationId, venueId, status: 'active'}` set status='revoked',
+        revokedAt=now, revokedByStaffId. Revocation is real-time because every connector request re-authenticates
+        against the DB (connector.service.ts:298-333). Commands the revoked installation had claimed/accepted are
+        NOT touched by revoke; they age out through lease expiry / the sweeper.
+      x-source: apps/api/src/connector/connector-admin.controller.ts:47-61
+      x-roles: [admin]
+      x-rate-limit:
+        limit: 10
+        windowSeconds: 900
+        description: Class-level RateLimitGuard defaults (no handler @RateLimit).
+      security:
+        - staffJwt: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - name: installationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          x-source: apps/api/src/connector/connector-admin.controller.ts:51
+      responses:
+        '201':
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { const: true }
+        '400': { $ref: '#/components/responses/UuidValidationError' }
+        '401': { $ref: '#/components/responses/StaffUnauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '"No active connector installation found for this venue in your organization" (connector.service.ts:362-364). Also returned for an already revoked/replaced installation.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /venues/{venueId}/connector/commands/tracer:
+    post:
+      tags: [admin]
+      operationId: adminCreateTracerCommand
+      summary: Create a synthetic `connector.self_test.v1` command for the venue.
+      description: |
+        Creates commandType 'connector.self_test.v1', schemaVersion 1, requiredCapability 'connector.self_test.v1',
+        payload `{ "echoNonce": <16 random bytes base64url>, "createdForTracer": true }`, expiresAt = now + 1h
+        (connector-command.service.ts:124-166, 186-241).
+        Idempotent on (organizationId, venueId, idempotencyKey): on unique violation (P2002) the ORIGINAL command's
+        status view is returned (same 201). If idempotencyKey is omitted a random UUID is used (always a new command).
+      x-source: apps/api/src/connector/connector-command-admin.controller.ts:23-39
+      x-roles: [admin]
+      x-rate-limit:
+        limit: 30
+        windowSeconds: 900
+        x-source: apps/api/src/connector/connector-command-admin.controller.ts:25
+      security:
+        - staffJwt: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConnectorCommandRequest'
+      responses:
+        '201':
+          description: Created, or the pre-existing command for the same idempotencyKey.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorCommandStatusView'
+        '400':
+          description: |
+            ParseUUIDPipe/validation failure, or "Command payload exceeds the maximum allowed size"
+            (payload JSON > 4096 UTF-8 bytes; connector-command.service.ts:200-203 - not reachable for the fixed tracer payload,
+            but part of the generic createCommand contract).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '401': { $ref: '#/components/responses/StaffUnauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '"Venue not found in your organization" (connector-command.service.ts:134)'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /venues/{venueId}/connector/commands:
+    get:
+      tags: [admin]
+      operationId: adminListConnectorCommands
+      summary: The venue's 100 most recent commands (all types, all statuses), newest first.
+      x-source: apps/api/src/connector/connector-command-admin.controller.ts:41-48
+      x-roles: [admin, manager]
+      x-rate-limit:
+        limit: 10
+        windowSeconds: 900
+        description: Class-level RateLimitGuard defaults (no handler @RateLimit).
+      security:
+        - staffJwt: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+      responses:
+        '200':
+          description: ORDER BY createdAt DESC LIMIT 100 (connector-command.service.ts:558-565). Other-org venue yields [].
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: '#/components/schemas/ConnectorCommandStatusView'
+        '400': { $ref: '#/components/responses/UuidValidationError' }
+        '401': { $ref: '#/components/responses/StaffUnauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+  /venues/{venueId}/connector/commands/{commandId}/cancel:
+    post:
+      tags: [admin]
+      operationId: adminCancelConnectorCommand
+      summary: Cancel a command that is still pending or claimed (never once accepted).
+      description: |
+        CAS `updateMany where {id, organizationId, venueId, status IN (pending, claimed)}` set status=cancelled,
+        cancelledAt=now, cancelledByStaffId (connector-command.service.ts:515-556). A claimed command with a live
+        lease CAN be cancelled; the holder's later accept then gets 409.
+      x-source: apps/api/src/connector/connector-command-admin.controller.ts:50-66
+      x-roles: [admin]
+      x-rate-limit:
+        limit: 10
+        windowSeconds: 900
+        description: Class-level RateLimitGuard defaults (no handler @RateLimit).
+      security:
+        - staffJwt: []
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - $ref: '#/components/parameters/CommandId'
+      responses:
+        '201':
+          description: Cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cancelled]
+                properties:
+                  cancelled: { const: true }
+        '400': { $ref: '#/components/responses/UuidValidationError' }
+        '401': { $ref: '#/components/responses/StaffUnauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: '"No pending or claimed command with this id was found for this venue — it may already be accepted or terminal" (connector-command.service.ts:537-539). Note: 404, not 409, for a wrong-state command.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HttpError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendUnavailable' }
+
+components:
+  securitySchemes:
+    connectorCredential:
+      type: http
+      scheme: bearer
+      bearerFormat: '<installationId>.<secret>'
+      description: |
+        Durable connector credential returned by /connector/enroll: `<installationId>.<secret>` where installationId
+        is the ConnectorInstallation UUID and secret is 32 random bytes base64url (43 chars). Parsed with
+        `extractBearerToken` (header must start with the exact, case-sensitive prefix "Bearer "; empty token rejected)
+        then split on the FIRST '.' (apps/api/src/common/utils/extract-bearer-token.ts:7-13,
+        apps/api/src/connector/connector.service.ts:83-88). Verified with Argon2id against secretHash on EVERY request;
+        installation must be `active` (revoked/replaced => 401). Not a JWT.
+        Because the credential travels as a Bearer header, CsrfMiddleware's Bearer bypass applies
+        (apps/api/src/common/middleware/csrf.middleware.ts:56-58).
+      x-source: apps/api/src/auth/guards/connector-auth.guard.ts:6-35
+    bootstrapToken:
+      type: http
+      scheme: bearer
+      bearerFormat: '<enrollmentId>.<code>'
+      description: Single-use, 15-minute enrolment token from POST /venues/{venueId}/connector/enrollments.
+      x-source: apps/api/src/connector/connector.service.ts:159
+    staffJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Staff access JWT (HS, JWT_ACCESS_SECRET) read from `Authorization: Bearer` by the passport `jwt` strategy
+        (apps/api/src/auth/strategies/jwt.strategy.ts:11), then RolesGuard; role `owner` bypasses all @Roles checks
+        (apps/api/src/auth/guards/roles.guard.ts:41-44).
+      x-source: apps/api/src/connector/connector-admin.controller.ts:18
+
+  parameters:
+    VenueId:
+      name: venueId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: Validated by ParseUUIDPipe. Tenant ownership is enforced by filtering on the caller's organizationId.
+    CommandId:
+      name: commandId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: ConnectorCommand.id (Prisma @default(uuid())). Validated by ParseUUIDPipe.
+      x-source: apps/api/src/connector/connector-command.controller.ts:50
+
+  responses:
+    ConnectorUnauthorized:
+      description: '"Missing or invalid connector credential" (no/garbled header, unknown installation, wrong secret, revoked, replaced, or revoked mid-request).'
+      x-source: apps/api/src/auth/guards/connector-auth.guard.ts:22-30
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HttpError' }
+    StaffUnauthorized:
+      description: Missing/invalid/expired staff JWT (passport default body), or RolesGuard "Session expired or account deactivated".
+      x-source: apps/api/src/auth/guards/roles.guard.ts:30-39
+      x-unverified: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HttpError' }
+    Forbidden:
+      description: '"Insufficient permissions" (role not in @Roles; roles.guard.ts:50)'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HttpError' }
+    ValidationError:
+      description: class-validator failure via global ValidationPipe; `message` is an array of strings.
+      x-source: apps/api/src/main.ts:150
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HttpError' }
+    UuidValidationError:
+      description: ParseUUIDPipe failure on a path parameter. Exact message text is NestJS-version dependent.
+      x-unverified: true
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HttpError' }
+    RateLimited:
+      description: |
+        Redis sliding-window limiter, key `rate-limit:<ip>:<METHOD>:<path>` (per client IP and per concrete path).
+        Body `{ "statusCode": 429, "message": "Too many requests, please try again later.", "error": "Too Many Requests" }`.
+      x-source: apps/api/src/auth/guards/rate-limit.guard.ts
+      headers:
+        Retry-After:
+          description: Seconds until the oldest entry leaves the window (min 1).
+          schema: { type: string }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HttpError' }
+    RateLimitBackendUnavailable:
+      description: |
+        Limiter fails CLOSED when Redis cannot answer (one 50 ms retry on transient faults first).
+        Body `{ "statusCode": 503, "message": "Authentication is temporarily unavailable.", "error": "Service Unavailable" }`.
+        Clients must treat as retryable.
+      x-source: apps/api/src/auth/guards/rate-limit.guard.ts
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HttpError' }
+
+  schemas:
+    HttpError:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
+
+    EnrollResponse:
+      type: object
+      required: [installationId, credential]
+      properties:
+        installationId:
+          type: string
+          format: uuid
+        credential:
+          type: string
+          description: '`<installationId>.<secret>`; shown once, store securely.'
+          pattern: '^[0-9a-fA-F-]{36}\..+$'
+      x-source: apps/api/src/connector/connector.service.ts:281
+
+    EnrollmentCreatedResponse:
+      type: object
+      required: [enrollmentId, bootstrapToken, expiresAt]
+      properties:
+        enrollmentId: { type: string, format: uuid }
+        bootstrapToken:
+          type: string
+          description: '`<enrollmentId>.<code>`'
+        expiresAt: { type: string, format: date-time }
+      x-source: apps/api/src/connector/connector.service.ts:159
+
+    HeartbeatRequest:
+      type: object
+      additionalProperties: false
+      description: Unknown properties are stripped, not rejected (whitelist:true without forbidNonWhitelisted).
+      properties:
+        version:
+          type: string
+          maxLength: 64
+        capabilities:
+          type: object
+          description: |
+            Capability names as KEYS (values ignored). Must be a JSON object (arrays rejected by @IsObject).
+            Replaces the stored ConnectorInstallation.reportedCapabilities wholesale when present.
+            Real client sends e.g. {"connector.self_test.v1": true, "idealpos.submit_order.v1": true, "idealpos.order_status.v1": true}.
+          additionalProperties: true
+          x-source: apps/venue-connector/src/VerduraIdealposTracer.Core/Hosting/ConnectorPollingLoop.cs:57-62
+      x-source: apps/api/src/connector/dto/connector-heartbeat.dto.ts:8-17
+
+    PollResponse:
+      type: object
+      required: [commands]
+      properties:
+        commands:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/ConnectorCommandEnvelope'
+      x-source: apps/api/src/connector/connector-command.controller.ts:41-42
+
+    ConnectorCommandEnvelope:
+      type: object
+      description: |
+        What the agent receives per claimed command (ConnectorCommandView). The C# client binds only
+        id, commandType, schemaVersion, payload, requiredCapability
+        (ConnectorCommandProtocolClient.cs:6-11) and ignores the rest.
+      required: [id, commandType, schemaVersion, payload, requiredCapability, correlationId, causationId, leaseExpiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        commandType:
+          type: string
+          description: Dotted, versioned type, e.g. 'connector.self_test.v1', 'printer.print_kot.v1'. See state-machine doc for the full list.
+        schemaVersion: { type: integer }
+        payload:
+          description: Arbitrary JSON; at creation its JSON.stringify form is <= 4096 UTF-8 bytes (MAX_PAYLOAD_BYTES).
+        requiredCapability:
+          type: [string, 'null']
+        correlationId:
+          type: [string, 'null']
+        causationId:
+          type: [string, 'null']
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          description: |
+            Computed separately from the DB write (`new Date(Date.now() + CLAIM_LEASE_MS)` at response-build time,
+            connector-command.service.ts:330), so it is a few ms LATER than the stored leaseExpiresAt. Agents should
+            treat it as approximate and accept well before it.
+      x-source: apps/api/src/connector/connector-command.service.ts:29-38
+
+    ReportRequest:
+      type: object
+      additionalProperties: false
+      required: [outcome, resultType, idempotencyKey]
+      properties:
+        outcome:
+          type: string
+          enum: [succeeded, failed]
+        resultType:
+          type: string
+          maxLength: 128
+          description: Operation-specific result code (e.g. printer.print_kot.v1 uses 'executed_acknowledged', 'retryable_local_failure', ...; apps/api/src/printer/printer-connector-command.constants.ts:18-35).
+        resultPayload:
+          type: object
+          additionalProperties: true
+          description: Optional JSON object (@IsObject). Omitted => stored resultPayload left unchanged (Prisma undefined).
+        failureReason:
+          type: string
+          maxLength: 256
+          description: Stored only when outcome = failed; forced to null on succeeded.
+        idempotencyKey:
+          type: string
+          maxLength: 128
+          description: Stored as reportIdempotencyKey. Must be stable across retries of the same report.
+      x-source: apps/api/src/connector/dto/connector-command-report.dto.ts:11-31
+
+    CreateConnectorCommandRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        idempotencyKey:
+          type: string
+          maxLength: 128
+      x-source: apps/api/src/connector/dto/create-connector-command.dto.ts:9-14
+
+    ConnectorCommandStatus:
+      type: string
+      enum: [pending, claimed, accepted, succeeded, failed, expired, unknown, cancelled]
+      x-source: apps/api/prisma/schema.prisma:245-254
+
+    ConnectorCommandStatusView:
+      type: object
+      required: [id, commandType, status, claimedByInstallationId, createdAt, acceptedAt, reportedAt, resultType, failureReason]
+      properties:
+        id: { type: string, format: uuid }
+        commandType: { type: string }
+        status: { $ref: '#/components/schemas/ConnectorCommandStatus' }
+        claimedByInstallationId: { type: [string, 'null'], format: uuid }
+        createdAt: { type: string, format: date-time }
+        acceptedAt: { type: [string, 'null'], format: date-time }
+        reportedAt: { type: [string, 'null'], format: date-time }
+        resultType: { type: [string, 'null'] }
+        failureReason: { type: [string, 'null'] }
+      x-source: apps/api/src/connector/connector-command.service.ts:40-50
+
+    ConnectorInstallationStatus:
+      type: string
+      enum: [active, revoked, replaced]
+      x-source: apps/api/prisma/schema.prisma:239-243
+
+    ConnectorStatusView:
+      type: object
+      required: [installationId, status, reportedVersion, reportedCapabilities, lastSeenAt, createdAt, revokedAt, replacedByInstallationId]
+      properties:
+        installationId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/ConnectorInstallationStatus' }
+        reportedVersion: { type: [string, 'null'] }
+        reportedCapabilities:
+          description: Verbatim JSON last sent in heartbeat.capabilities, or null.
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        replacedByInstallationId: { type: [string, 'null'], format: uuid }
+      x-source: apps/api/src/connector/connector.service.ts:34-43
+
+x-protocol-constants:
+  x-source: apps/api/src/connector/connector-command.service.ts:21-27
+  MAX_PAYLOAD_BYTES: 4096
+  COMMAND_TTL_MS: 3600000
+  CLAIM_LEASE_MS: 120000
+  TERMINAL_REPORT_WINDOW_MS: 300000
+  MAX_POLL_BATCH: 5
+  MAX_OUTSTANDING_PER_INSTALLATION: 20
+  SWEEP_BATCH_LIMIT: 200
+  maxClaimAttempts_default: 5
+  ENROLLMENT_TTL_MS: 900000
+  CONNECTOR_COMMAND_SWEEP_INTERVAL_MS_default: 15000
+  client_defaults:
+    x-source: apps/venue-connector/src/VerduraIdealposTracer.Cli/Program.cs:182-187
+    TRACER_POLL_INTERVAL_MS: 5000
+    TRACER_POLL_ERROR_BACKOFF_MS: 15000
+    heartbeat: once per process start only (ConnectorPollingLoop.cs:84); no periodic heartbeat loop in the C# client.
+
+x-audit-actions:
+  x-source: apps/api/src/connector/connector-command.service.ts, apps/api/src/connector/connector.service.ts
+  values:
+    - CONNECTOR_ENROLLMENT_CREATED
+    - CONNECTOR_ENROLLED
+    - CONNECTOR_REVOKED
+    - CONNECTOR_COMMAND_CREATED
+    - CONNECTOR_COMMAND_ACCEPTED
+    - CONNECTOR_COMMAND_SUCCEEDED
+    - CONNECTOR_COMMAND_FAILED
+    - CONNECTOR_COMMAND_CONFLICTING_REPORT
+    - CONNECTOR_COMMAND_LATE_REPORT_AFTER_UNKNOWN
+    - CONNECTOR_COMMAND_CANCELLED
+    - CONNECTOR_COMMAND_MARKED_UNKNOWN
+  note: Audit writes are best-effort (failure logged, never surfaced as an HTTP error) - logAuditEventSafely.

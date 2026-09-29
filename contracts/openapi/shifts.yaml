@@ -1,0 +1,236 @@
+openapi: 3.1.0
+info:
+  title: Servvia shifts API
+  version: 0.1.0
+  description: |
+    NEW SERVVIA-NATIVE API (ADR 0001, Phase D7), served by Servvia Core (Go,
+    services/core-platform/internal/shifts). No client is switched to it yet.
+
+    A shift is a bounded period in which one staff member is accountable for
+    the physical cash taken at one venue. It is not a table session, a check,
+    a payment, a terminal or a cash drawer; there is no hardware in this API.
+    A staff member has at most one open shift per venue; several staff may
+    have open shifts at the same venue.
+
+    Cash: `openingFloatCents` is the cash the shift starts with. Every cash
+    payment (payments.yaml, `tenderType: cash`) taken by the shift's staff
+    member is a cash sale on it. Card payments never change a shift's cash,
+    whatever their status. `expectedCashCents` = opening float + cash sales,
+    computed by the server. Closing records the counted cash; the server
+    computes and stores `expectedCashCents` and `varianceCents` (counted -
+    expected), which never change afterwards. After close no cash can be
+    accounted to the shift. Closing a shift closes nothing else: no table
+    session, order, check or payment.
+
+    Authorization: a staff identity (never a KDS device or customer tablet)
+    with role owner, admin, manager or cashier. A staff member opens their
+    own shift. Owners, admins and managers may read and close any shift at
+    the venue; a cashier only their own (another's is 404). The venue must
+    belong to the caller's organization (404).
+servers:
+  - url: /api
+tags:
+  - name: shifts
+paths:
+  /venues/{venueId}/shifts:
+    post:
+      tags: [shifts]
+      operationId: openShift
+      summary: Open the caller's shift with an opening float.
+      description: |
+        The same `idempotencyKey` with the same float returns the original
+        shift (200); with a different float, 409 IDEMPOTENCY_CONFLICT. A
+        second open shift for the caller is 409 SHIFT_ALREADY_OPEN.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [openingFloatCents, idempotencyKey]
+              properties:
+                openingFloatCents: { type: integer, minimum: 0, maximum: 2147483647 }
+                terminalId:
+                  type: string
+                  description: Optional (Phase D8). An active terminal of this venue (devices.yaml) the shift is worked from. A disabled one is 409 TERMINAL_DISABLED; accountability stays with the staff member.
+                idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      responses:
+        '201':
+          description: The shift this request opened.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shift' }
+        '200':
+          description: A replay.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shift' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+    get:
+      tags: [shifts]
+      operationId: listShifts
+      summary: Shifts at the venue, newest first (at most 200); a cashier sees only their own.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - { name: status, in: query, required: false, schema: { type: string, enum: [open, closed] } }
+        - { name: staffId, in: query, required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: The shifts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Shift' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/shifts/{shiftId}:
+    get:
+      tags: [shifts]
+      operationId: getShift
+      summary: One shift.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/ShiftId' }]
+      responses:
+        '200':
+          description: The shift.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shift' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/shifts/{shiftId}/close:
+    post:
+      tags: [shifts]
+      operationId: closeShift
+      summary: Close a shift with the counted cash.
+      description: |
+        Needs the version read. The server computes expected cash under the
+        shift's lock (so no cash tender can land during the close) and stores
+        the count, expected cash and variance. Repeating the close with the
+        same count returns the shift (200); a different count for a closed
+        shift is 409 SHIFT_NOT_OPEN; a stale version is 409 VERSION_CONFLICT.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/ShiftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, countedCashCents]
+              properties:
+                version: { type: integer, minimum: 1 }
+                countedCashCents: { type: integer, minimum: 0, maximum: 2147483647 }
+      responses:
+        '200':
+          description: The closed shift.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shift' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    VenueId: { name: venueId, in: path, required: true, schema: { type: string } }
+    ShiftId: { name: shiftId, in: path, required: true, schema: { type: string } }
+  schemas:
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+    NullableInteger:
+      type: [integer, 'null']
+    Shift:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, staffId, status, currency, openingFloatCents, terminalId, cashSalesCents, cashRefundsCents, movementCount, expectedCashCents,
+        countedCashCents, varianceCents, version, idempotencyKey, openedAt, closedAt, closedByStaffId, updatedAt]
+      properties:
+        id: { type: string }
+        venueId: { type: string }
+        staffId: { type: string, description: The staff member accountable for the shift's cash. }
+        status: { type: string, enum: [open, closed] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        openingFloatCents: { type: integer, minimum: 0 }
+        terminalId: { type: [string, 'null'], description: The terminal the shift is worked from, if any. }
+        cashSalesCents: { type: integer, minimum: 0, description: Cash payments accounted to the shift. }
+        cashRefundsCents: { type: integer, minimum: 0, description: Cash paid back out of the shift for refunds (Phase D9, refunds.yaml). }
+        movementCount: { type: integer, minimum: 0 }
+        expectedCashCents: { type: integer, description: Opening float plus cash sales less cash refunds; stored at close. }
+        countedCashCents: { $ref: '#/components/schemas/NullableInteger' }
+        varianceCents: { $ref: '#/components/schemas/NullableInteger' }
+        version: { type: integer, minimum: 1 }
+        idempotencyKey: { type: string }
+        openedAt: { $ref: '#/components/schemas/Timestamp' }
+        closedAt:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+        closedByStaffId: { type: [string, 'null'] }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+    CodedError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode, code]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+        code: { type: string, enum: [SHIFT_ALREADY_OPEN, IDEMPOTENCY_CONFLICT, SHIFT_NOT_OPEN, VERSION_CONFLICT, SHIFT_WRITES_DISABLED, TERMINAL_DISABLED] }
+        shiftId: { type: string }
+        currentVersion: { type: integer, minimum: 1 }
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Unauthorized:
+      description: Missing, invalid or expired token; a revoked tablet.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Forbidden:
+      description: A device identity, a role without financial permission, or a tablet naming another venue.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    NotFound:
+      description: Venue or shift not found for the caller (including another staff member's shift, for a cashier).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Conflict:
+      description: Already open, key reused, not open, or a stale version.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }
+    WritesDisabled:
+      description: This instance runs with a read-only database.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }

@@ -30,6 +30,7 @@ import { AuditLogService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ConnectorCommandService } from '../../connector/connector-command.service';
 import { PosStrategyResolver } from '../pos-strategy-resolver';
+import { LegacyExternalPosHandoff } from '../../legacy-external-pos/legacy-external-pos-handoff';
 import { IdealposOrderDispatcherService } from '../idealpos-order-dispatcher.service';
 import { PosSyncDispatcherService } from '../pos-sync-dispatcher.service';
 import { NativeTableRoundService } from '../waiterpad/native-table-round.service';
@@ -352,6 +353,7 @@ export async function build(
     providers: [
       OrdersService,
       PosStrategyResolver,
+      LegacyExternalPosHandoff,
       IdealposOrderDispatcherService,
       PosSyncDispatcherService,
       { provide: PrismaService, useValue: prisma },
@@ -519,6 +521,8 @@ export function buildPrisma(ledger: Ledger): PrismaService {
     printerJob: { create: () => Promise.resolve({}) },
     kdsDeliveryRecord: { create: () => Promise.resolve({}) },
     table19ValidationRun: { findFirst: () => Promise.resolve(null) },
+    // Phase D3 occupancy bridge: no Servvia Core table session in this harness.
+    tableSession: { findFirst: () => Promise.resolve(null) },
 
     order: {
       create: ({ data }: { data: Row }) => {

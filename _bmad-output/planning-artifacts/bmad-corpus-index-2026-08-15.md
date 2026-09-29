@@ -78,7 +78,7 @@ Every row: requirement → architecture mechanism → story → acceptance crite
 | Kiosk order creation venue-bound (not open `venueId`) | `orders.gateway.ts`'s existing KDS device-token pattern, extended | E6-S10 (not yet story-filed) | To be defined | Cross-venue rejection test | `backlog` — tracked in `deferred-work.md` |
 | RLS real or explicitly removed | `docker-compose.yml`, `backend/prisma/migrations/20260618000001_enable_rls_all_tables` | Not yet filed | To be defined | Cross-tenant query test as non-owner role | `backlog` — tracked in `deferred-work.md` |
 | Historic credential rotation confirmed | N/A (external action) | N/A | Confirmation from Supabase project holder | Manual verification | `blocked` — external, P0, independent of code |
-| CI/CD pipeline (lint/typecheck/test/migration-diff gate) | — | `1-5-github-actions-ci` | Existing epics.md E1 AC | CI run on a trial PR | `backlog` |
+| CI/CD pipeline (lint/typecheck/test/migration-diff gate) | — | `1-5-ci-pipeline` | Existing epics.md E1 AC | CI run on a trial PR | `backlog` |
 
 Full enterprise-control and reconciliation-workflow traceability (audit, backup/DR, observability, separation of duties) is carried in `mvp.md` §9.6–9.7 and the `enterprise-security-observability-and-dr` gate in `sprint-status.yaml`; not restated here to avoid duplication.
 

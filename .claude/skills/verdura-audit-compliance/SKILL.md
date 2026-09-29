@@ -86,7 +86,7 @@ Privacy) using evidence gathered across all three layers:
 
 - Access control evidence (draws on Layer 1 RBAC/tenancy findings)
 - Change management: is there CI, code review enforcement, protected
-  branches (inspect repo config, e.g. `.github/`)?
+  branches (inspect repo and CI configs)?
 - Logging & monitoring evidence (this layer's Section A)
 - Encryption at rest / in transit (inspect DB config, TLS enforcement)
 - Vendor/subprocessor management (this layer's Section B)

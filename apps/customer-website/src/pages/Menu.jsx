@@ -137,12 +137,12 @@ export default function Menu() {
   const scrollRef = useRef(0);
 
   useEffect(() => {
-    document.title = 'Menu — Verdura';
-    const desc = "Explore Verdura's seasonal menu — thoughtfully crafted dishes made from the finest local ingredients. Filter by course and dietary preference.";
+    document.title = 'Menu — Servvia';
+    const desc = "Explore Servvia's seasonal menu — thoughtfully crafted dishes made from the finest local ingredients. Filter by course and dietary preference.";
     document.querySelector('meta[name="description"]')?.setAttribute('content', desc);
     document.querySelector('meta[property="og:description"]')?.setAttribute('content', desc);
     document.querySelector('meta[name="twitter:description"]')?.setAttribute('content', desc);
-    document.querySelector('meta[property="og:title"]')?.setAttribute('content', 'Menu — Verdura');
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', 'Menu — Servvia');
   }, []);
 
   useEffect(() => {

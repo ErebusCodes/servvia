@@ -33,8 +33,7 @@ export default function Navbar() {
           <button onClick={() => setOpen(!open)} className="text-foreground" aria-label={open ? 'Close navigation' : 'Open navigation'} aria-expanded={open}>
             {open ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <Link to="/" className="font-display text-lg tracking-[0.2em] text-foreground font-semibold">VERDURA
-
+          <Link to="/" className="font-display text-lg tracking-[0.2em] text-foreground font-semibold">SERVVIA
           </Link>
           {links.map((l) =>
           <Link

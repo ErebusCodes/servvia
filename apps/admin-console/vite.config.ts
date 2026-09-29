@@ -12,7 +12,7 @@ import react from '@vitejs/plugin-react';
 // exact directory is what NSSM's VerduraOrderTablet serves on 5176, so a
 // plain `npm run build:admin-console` would have replaced the live Order
 // Tablet with the Admin Console build. CI compounded it by running all three
-// builds back-to-back (.github/workflows/ci.yml), each clobbering the last,
+// builds back-to-back, each clobbering the last,
 // so only the third was ever really exercised. The Windows deployment
 // scripts worked around it with an ad-hoc `npx vite build --outDir
 // dist-admin` -- caller-side knowledge that drifts the moment someone runs

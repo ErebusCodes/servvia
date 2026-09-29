@@ -282,7 +282,7 @@ function MenuItemThumbnail({ src, alt }: { src: string | null; alt: string }) {
         />
       ) : (
         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-          <svg width="18" height="18" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verdura" style={{ opacity: 0.35 }}>
+          <svg width="18" height="18" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Servvia" style={{ opacity: 0.35 }}>
             <rect width="40" height="40" rx="9" fill="#16A34A"></rect>
             <path d="M20 28.5c-5.1-1.7-9.5-6.8-9.5-14.4a.9.9 0 0 1 .9-.9c3.1 0 6.1.8 8.6 3.1 2.5-2.3 5.5-3.1 8.6-3.1a.9.9 0 0 1 .9.9c0 7.6-4.4 12.7-9.5 14.4Z" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round"></path>
             <path d="M20 17.4V29" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"></path>
@@ -2256,11 +2256,11 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
       {/* ══ App header (Standalone Only) ══ */}
       {standalone && (
         <div style={{ height: '56px', flex: 'none', display: 'flex', alignItems: 'center', gap: '16px', padding: '0 16px', background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
-          <svg width="103.2" height="24" viewBox="0 0 172 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verdura" style={{ height: '24px' }}>
+          <svg width="103.2" height="24" viewBox="0 0 172 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Servvia" style={{ height: '24px' }}>
             <rect width="40" height="40" rx="9" fill="#16A34A"></rect>
             <path d="M20 28.5c-5.1-1.7-9.5-6.8-9.5-14.4a.9.9 0 0 1 .9-.9c3.1 0 6.1.8 8.6 3.1 2.5-2.3 5.5-3.1 8.6-3.1a.9.9 0 0 1 .9.9c0 7.6-4.4 12.7-9.5 14.4Z" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round"></path>
             <path d="M20 17.4V29" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"></path>
-            <text x="52" y="27" fontFamily="Inter, sans-serif" fontSize="22" fontWeight="600" letterSpacing="-0.02em" fill="#111827">Verdura</text>
+            <text x="52" y="27" fontFamily="Inter, sans-serif" fontSize="22" fontWeight="600" letterSpacing="-0.02em" fill="#111827">Servvia</text>
           </svg>
           <div style={{ width: '1px', height: '24px', background: 'var(--color-border)' }}></div>
           <div style={{ fontSize: '14px', fontWeight: '600', letterSpacing: '-0.01em' }}>Order Tablet</div>
@@ -2473,7 +2473,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
             {!table && (
               <div style={{ flex: '1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
                 <div style={{ width: '44px', height: '44px', borderRadius: '8px', background: 'var(--color-surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="22" height="22" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verdura" style={{ opacity: 0.5 }}>
+                  <svg width="22" height="22" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Servvia" style={{ opacity: 0.5 }}>
                     <rect width="40" height="40" rx="9" fill="#16A34A"></rect>
                     <path d="M11 13.5c0 7.2 4.2 12 9 13.6 4.8-1.6 9-6.4 9-13.6-3.2 0-6.2.9-9 3.5-2.8-2.6-5.8-3.5-9-3.5Z" fill="#fff" fillOpacity="0.16"></path>
                     <path d="M20 28.5c-5.1-1.7-9.5-6.8-9.5-14.4a.9.9 0 0 1 .9-.9c3.1 0 6.1.8 8.6 3.1 2.5-2.3 5.5-3.1 8.6-3.1a.9.9 0 0 1 .9.9c0 7.6-4.4 12.7-9.5 14.4Z" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round"></path>
@@ -2653,7 +2653,7 @@ export function OrderTabletPage({ standalone = false }: { standalone?: boolean }
               {cartEmpty && (
                 <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>
                   <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'var(--color-surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <svg width="20" height="20" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verdura" style={{ opacity: 0.5 }}>
+                    <svg width="20" height="20" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Servvia" style={{ opacity: 0.5 }}>
                       <rect width="40" height="40" rx="9" fill="#16A34A"></rect>
                       <path d="M11 13.5c0 7.2 4.2 12 9 13.6 4.8-1.6 9-6.4 9-13.6-3.2 0-6.2.9-9 3.5-2.8-2.6-5.8-3.5-9-3.5Z" fill="#fff" fillOpacity="0.16"></path>
                       <path d="M20 28.5c-5.1-1.7-9.5-6.8-9.5-14.4a.9.9 0 0 1 .9-.9c3.1 0 6.1.8 8.6 3.1 2.5-2.3 5.5-3.1 8.6-3.1a.9.9 0 0 1 .9.9c0 7.6-4.4 12.7-9.5 14.4Z" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round"></path>

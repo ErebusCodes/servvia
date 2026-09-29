@@ -1,0 +1,959 @@
+openapi: 3.1.0
+info:
+  title: Servvia identity and devices API
+  version: "nest-baseline-2026-09-28"
+  description: |
+    The current NestJS contract for staff authentication, KDS device auth,
+    Order Tablet device identity and elevation, and Venue Connector enrollment.
+    It describes behaviour as it is today, including warts (see `x-known-issues`),
+    so that a Go service can match it exactly. Token claims are in
+    ../schemas/auth-token-claims.schema.json and venue scoping is in
+    ../schemas/venue-scope.md.
+
+    Cross-cutting behaviour (applies to every operation below):
+    - Global prefix `/api`. Source: apps/api/src/main.ts:151
+    - Global ValidationPipe `{ whitelist: true, transform: true }`: unknown body
+      properties are silently stripped, not rejected. Validation failures return
+      400 `{ statusCode: 400, message: string[], error: "Bad Request" }`. Pipes
+      run after guards, so guard errors (401/403/429) take precedence over 400.
+      Source: apps/api/src/main.ts:150
+    - No global guards or exception filters (no APP_GUARD/APP_FILTER), so errors use
+      Nest's default HttpException body `{ statusCode, message, error? }`.
+    - Middleware order is SecurityHeadersMiddleware, then CsrfMiddleware, applied to
+      all routes. Middleware runs BEFORE guards. Source: apps/api/src/app.module.ts:194-197
+    - CsrfMiddleware: on any request lacking a `csrf_token` cookie it sets
+      `csrf_token=<64 hex>; Path=/; SameSite=Strict; Secure (production only)`, and it is
+      not httpOnly. For methods other than GET, HEAD and OPTIONS it requires the header
+      `x-csrf-token` to equal that cookie. The check is skipped when (a) the path contains
+      `/auth/` or ends with `/auth`, (b) the path is exactly `/api/tablet/enroll` or
+      `/api/connector/enroll`, (c) the `Authorization` header starts with `Bearer `, or
+      (d) the path contains `/media-assets/local-dev-upload/`. Failure is
+      403 `Invalid or missing CSRF token`. Source: apps/api/src/common/middleware/csrf.middleware.ts:7-83
+    - RateLimitGuard (Redis sliding window) keys on `rate-limit:${req.ip}:${METHOD}:${req.path}`,
+      so the bucket is per client IP and per concrete path (path params included). `req.ip`
+      honours `trust proxy = TRUST_PROXY_HOPS` (default 0). When the guard is applied
+      without `@RateLimit` metadata it defaults to 10 requests per 900 s. Over the limit it
+      returns 429 with a `Retry-After` header (seconds). If Redis faults twice it returns
+      503 `Authentication is temporarily unavailable.` (fail closed).
+      Source: apps/api/src/auth/guards/rate-limit.guard.ts:137-251, apps/api/src/main.ts:104
+    - CORS: an allowlist of origins with credentials enabled. Requests without an Origin are allowed.
+      Source: apps/api/src/main.ts:108-149
+  x-source: apps/api/src/main.ts:150
+  x-unverified:
+    - note: |
+        CsrfMiddleware compares `req.path` against absolute paths such as `/api/tablet/enroll`.
+        Whether Nest 11's middleware mounting (`forRoutes({ path: '*path' })`) exposes the full
+        `/api/...` path in `req.path`, rather than a mount-relative one, is not determinable from
+        this repository's code. The unit spec passes absolute paths, and code comments state it
+        was reproduced against a running API. Source: apps/api/src/common/middleware/csrf.middleware.ts:46
+  x-known-issues:
+    - "A mutating request to a staff-only endpoint sent WITHOUT an Authorization header fails with 403 `Invalid or missing CSRF token` (middleware) rather than 401, unless the browser also sends a matching x-csrf-token. Source: apps/api/src/common/middleware/csrf.middleware.ts:76"
+    - "The CSRF bypass matches any path containing `/auth/` anywhere, not only /api/auth/*. Source: apps/api/src/common/middleware/csrf.middleware.ts:48"
+    - "Audit ipAddress for login/admin-pin/logout is taken from the raw x-real-ip / x-forwarded-for headers (client-spoofable), independent of TRUST_PROXY_HOPS. The rate-limit key uses req.ip instead. Source: apps/api/src/auth/auth.controller.ts:27"
+
+servers:
+  - url: /api
+
+tags:
+  - name: staff-auth
+  - name: kds
+  - name: tablet-device
+  - name: tablet-admin
+  - name: connector
+
+paths:
+  /auth/login:
+    post:
+      tags: [staff-auth]
+      operationId: staffLogin
+      summary: Email and password login for staff (Admin Console)
+      x-source: apps/api/src/auth/auth.controller.ts:16
+      security: []
+      x-guards: [RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/auth/auth.controller.ts:17" }
+      x-csrf: "bypassed (path contains /auth/)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Authenticated. The refresh cookie is set and a `login` audit event is written.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SetRefreshCookie"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StaffLoginResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: |
+            `Invalid credentials`. Returned for an unknown email, a wrong password, or an
+            inactive staff row, and the three cases are indistinguishable. A dummy argon2 verify
+            normalises timing. A `login_failed` audit event is written only when the email exists.
+            Source: apps/api/src/auth/auth.service.ts:47-71
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+              example: { statusCode: 401, message: "Invalid credentials", error: "Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+
+  /auth/admin-pin:
+    post:
+      tags: [staff-auth]
+      operationId: adminPinLogin
+      summary: Single shared PIN login that signs in as the configured ADMIN_CONSOLE_EMAIL staff account
+      description: |
+        Compares `pin` (constant-time) against the env var ADMIN_CONSOLE_PIN, then loads the Staff
+        row whose email is the env var ADMIN_CONSOLE_EMAIL. That row must be active and have role
+        `owner` or `admin`. On success it issues the same tokens and cookie as /auth/login.
+      x-source: apps/api/src/auth/auth.controller.ts:50
+      security: []
+      x-guards: [RateLimitGuard]
+      x-rate-limit: { limit: 5, windowSeconds: 900, x-source: "apps/api/src/auth/auth.controller.ts:51" }
+      x-csrf: "bypassed (path contains /auth/)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminPinLoginRequest" }
+      responses:
+        "200":
+          description: Authenticated as the configured admin account. The refresh cookie is set.
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SetRefreshCookie"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StaffLoginResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: |
+            `Invalid PIN`. Returned when ADMIN_CONSOLE_PIN or ADMIN_CONSOLE_EMAIL is unset, the PIN
+            is wrong, or the account is missing, inactive, or not owner/admin.
+            Source: apps/api/src/auth/auth.service.ts:79-99
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+              example: { statusCode: 401, message: "Invalid PIN", error: "Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InsecureDefaultPin" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "A failed admin PIN attempt writes no audit event (only a logger warning), unlike /auth/login. Source: apps/api/src/auth/auth.service.ts:86-88"
+        - "The DTO allows 3-digit PINs even in production. Only the literal checked-in default '108' is refused in production (500). Source: apps/api/src/auth/dto/admin-pin-login.dto.ts:5, apps/api/src/auth/utils/insecure-default-pin.util.ts:17"
+
+  /auth/refresh:
+    post:
+      tags: [staff-auth]
+      operationId: refreshAccessToken
+      summary: Exchange the refresh_token cookie for a new staff access token
+      description: |
+        Guard order: RateLimitGuard (class level) runs first, then JwtRefreshGuard (route level).
+        The refresh token is read ONLY from the `refresh_token` cookie and verified with HS256 and
+        JWT_REFRESH_SECRET. Its `sub` must be a UUID of an existing, active Staff row. The refresh
+        token is NOT rotated and no Set-Cookie is emitted.
+      x-source: apps/api/src/auth/auth.controller.ts:76
+      security:
+        - refreshCookie: []
+      x-guards: [RateLimitGuard, JwtRefreshGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/auth/auth.controller.ts:78" }
+      x-csrf: "bypassed (path contains /auth/)"
+      responses:
+        "200":
+          description: A new staff access token (claims as in the staffAccessToken branch).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken]
+                additionalProperties: false
+                properties:
+                  accessToken: { type: string, description: "HS256 JWT, JWT_ACCESS_SECRET, JWT_ACCESS_EXPIRY (default 15m)" }
+        "401":
+          description: |
+            `Unauthorized` (Passport default) when the cookie is missing, the signature is invalid,
+            or the token has expired. `Session expired or account deactivated` when sub is missing,
+            not a UUID, or the staff row is missing or inactive.
+            Source: apps/api/src/auth/strategies/jwt-refresh.strategy.ts:27-39
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+
+  /auth/logout:
+    post:
+      tags: [staff-auth]
+      operationId: staffLogout
+      summary: Clear the refresh cookie and audit the logout
+      description: |
+        Needs no authentication. Always clears the `refresh_token` cookie (same Path, SameSite and
+        HttpOnly attributes as when it was set). If a refresh cookie is present and valid, a `logout`
+        audit event is written for that staff member; any error in that step is swallowed. There is
+        no server-side revocation, so a previously issued access token or refresh token stays valid
+        until it expires.
+      x-source: apps/api/src/auth/auth.controller.ts:85
+      security: []
+      x-guards: [RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/auth/auth.controller.ts:86" }
+      x-csrf: "bypassed (path contains /auth/)"
+      responses:
+        "204":
+          description: Always, unless rate limited. Empty body.
+          headers:
+            Set-Cookie:
+              description: "`refresh_token=; Path=/api/auth/refresh; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict` (+ `Secure` in production). Source: apps/api/src/auth/auth.service.ts:184"
+              schema: { type: string }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "The refresh cookie is scoped to Path=/api/auth/refresh, so browsers never send it to /api/auth/logout. The logout audit branch is effectively unreachable from a browser: it always logs 'Anonymous logout'. Source: apps/api/src/auth/auth.service.ts:37, apps/api/src/auth/auth.service.ts:202"
+
+  /kiosk/kds/auth:
+    post:
+      tags: [kds]
+      operationId: kdsDeviceAuth
+      summary: Exchange a venue PIN for a venue-pinned KDS device token
+      description: |
+        The PIN is looked up in the env var KDS_VENUE_PINS, a JSON object mapping `{ "<venueId>": "<pin>" }`,
+        and compared in constant time. The venue must exist and be active. Issues a `kds_device`
+        token (role `kitchen`). No cookie is set.
+      x-source: apps/api/src/auth/kds-auth.controller.ts:17
+      security: []
+      x-guards: [RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/auth/kds-auth.controller.ts:18" }
+      x-csrf: "bypassed (path ends with /auth)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KdsAuthRequest" }
+      responses:
+        "200":
+          description: Device token issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken, expiresIn]
+                additionalProperties: false
+                properties:
+                  accessToken: { type: string, description: "kds_device JWT" }
+                  expiresIn: { type: string, description: "The raw KDS_TOKEN_EXPIRY config string (default '12h'), not seconds.", x-source: "apps/api/src/auth/kds-auth.service.ts:69" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: |
+            `Invalid venue or PIN`. Returned when there is no PIN configured for the venue, when
+            KDS_VENUE_PINS is invalid JSON, when the PIN is wrong, or when the venue is missing or inactive.
+            Source: apps/api/src/auth/kds-auth.service.ts:50-66
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+              example: { statusCode: 401, message: "Invalid venue or PIN", error: "Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InsecureDefaultPin" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+
+  /tablet/enroll:
+    post:
+      tags: [tablet-device]
+      operationId: tabletEnroll
+      summary: Redeem a single-use tablet bootstrap token for a device identity and device token
+      description: |
+        `bootstrapToken` has the form `<enrollmentId>.<code>`, split at the FIRST '.'. The enrollment
+        must exist, be unused, and be unexpired (15 min TTL), and the code must match its argon2id hash.
+        Consumption is a guarded CAS update in a transaction that also creates a TabletDevice
+        (status `active`, label = enrollment label or `Tablet YYYY-MM-DD`).
+      x-source: apps/api/src/tablet/tablet-auth.controller.ts:28
+      security: []
+      x-guards: [RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/tablet/tablet-auth.controller.ts:30" }
+      x-csrf: "bypassed (exact path /api/tablet/enroll)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TabletEnrollRequest" }
+      responses:
+        "200":
+          description: Enrolled. The device starts in restricted mode with a tablet_device token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TabletEnrollResponse" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: |
+            `Invalid enrollment code` when the token has no usable '.' separator.
+            `Enrollment code is invalid, expired, or already used` for an unknown, used or expired
+            enrollment, or a code mismatch.
+            Source: apps/api/src/tablet/tablet-auth.service.ts:275, apps/api/src/tablet/tablet-auth.service.ts:293
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "409":
+          description: |
+            `Enrollment code is invalid, expired, or already used` when a concurrent redeemer won the
+            CAS race, or `A concurrent enrollment for this code is already in progress — retry shortly`
+            on a Prisma P2002 unique violation.
+            Source: apps/api/src/tablet/tablet-auth.service.ts:303, apps/api/src/tablet/tablet-auth.service.ts:333
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "A durable device secret is generated and its argon2id hash stored, but the plaintext is never returned or used. The Prisma schema comment claims it is returned once. There is no device-token renewal endpoint, so a device must re-enroll when its 30d token expires. Source: apps/api/src/tablet/tablet-auth.service.ts:306-315, apps/api/prisma/schema.prisma:1503"
+
+  /tablet/unlock:
+    post:
+      tags: [tablet-device]
+      operationId: tabletUnlock
+      summary: Validate the venue unlock PIN for an enrolled tablet (no token issued)
+      description: |
+        Checks `pin` against KDS_VENUE_PINS[token.venueId], the same env var the KDS uses. Mints no
+        token and changes no server state apart from audit events
+        (TABLET_UNLOCK_SUCCESS / TABLET_UNLOCK_FAILED). The "unlocked" state is enforced only by the client UI.
+      x-source: apps/api/src/tablet/tablet-auth.controller.ts:38
+      security:
+        - deviceBearer: []
+      x-accepted-token-kinds: [tablet_device, tablet_staff, tablet_manager]
+      x-guards: [JwtAuthGuard, TabletDeviceGuard, RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/tablet/tablet-auth.controller.ts:40" }
+      x-csrf: "bypassed (Bearer Authorization header)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TabletUnlockRequest" }
+      responses:
+        "200":
+          description: PIN correct.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unlocked]
+                additionalProperties: false
+                properties:
+                  unlocked: { const: true }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: |
+            `Unauthorized` (missing, invalid or expired JWT); `This device has been revoked or is unknown`
+            (TabletDeviceGuard); `Invalid venue PIN` (no PIN configured or wrong PIN).
+            Source: apps/api/src/tablet/tablet-auth.service.ts:386, apps/api/src/tablet/tablet-auth.service.ts:415-422
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "403": { $ref: "#/components/responses/NotTabletDevice" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InsecureDefaultPin" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "RateLimitGuard runs after JwtAuthGuard and TabletDeviceGuard, so unauthenticated or revoked callers are rejected without consuming, or being limited by, the rate-limit bucket. Source: apps/api/src/tablet/tablet-auth.controller.ts:39"
+
+  /tablet/elevate:
+    post:
+      tags: [tablet-device]
+      operationId: tabletElevateStaff
+      summary: Elevate the tablet session to a named staff identity by staff PIN
+      description: |
+        Linear argon2id verify of `staffPin` against every Staff row in the TOKEN's organization with
+        isActive=true, deletedAt=null and pinHash set. The first match wins. Returns a tablet_staff token
+        pinned to the device and venue.
+      x-source: apps/api/src/tablet/tablet-auth.controller.ts:58
+      security:
+        - deviceBearer: []
+      x-accepted-token-kinds: [tablet_device, tablet_staff, tablet_manager]
+      x-guards: [JwtAuthGuard, TabletDeviceGuard, RateLimitGuard]
+      x-rate-limit: { limit: 8, windowSeconds: 900, x-source: "apps/api/src/tablet/tablet-auth.controller.ts:60" }
+      x-csrf: "bypassed (Bearer Authorization header)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TabletStaffElevateRequest" }
+      responses:
+        "200":
+          description: Elevated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, staff]
+                additionalProperties: false
+                properties:
+                  token: { type: string, description: "tablet_staff JWT (TABLET_STAFF_ELEVATION_EXPIRY, default 20m)" }
+                  staff: { $ref: "#/components/schemas/StaffIdentity" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: "`Unauthorized`; `This device has been revoked or is unknown`; `Incorrect staff PIN`. Source: apps/api/src/tablet/tablet-auth.service.ts:492"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "403": { $ref: "#/components/responses/NotTabletDevice" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "Candidates are NOT filtered by venue access (the doc comment claims otherwise), so staff from any venue in the organization can elevate. Source: apps/api/src/tablet/tablet-auth.service.ts:463-470"
+        - "If two staff share a PIN, the first row returned by findMany (no orderBy) wins. The result is nondeterministic. Source: apps/api/src/tablet/tablet-auth.service.ts:473"
+
+  /tablet/manager-step-up:
+    post:
+      tags: [tablet-device]
+      operationId: tabletManagerStepUp
+      summary: Step the tablet session up to manager authority by manager PIN
+      description: |
+        Same verify loop as /tablet/elevate but restricted to roles manager, admin and owner. If the
+        caller's token kind is `tablet_staff`, its `sub` is recorded as `actingStaffId` on the
+        resulting tablet_manager token.
+      x-source: apps/api/src/tablet/tablet-auth.controller.ts:77
+      security:
+        - deviceBearer: []
+      x-accepted-token-kinds: [tablet_device, tablet_staff, tablet_manager]
+      x-guards: [JwtAuthGuard, TabletDeviceGuard, RateLimitGuard]
+      x-rate-limit: { limit: 8, windowSeconds: 900, x-source: "apps/api/src/tablet/tablet-auth.controller.ts:79" }
+      x-csrf: "bypassed (Bearer Authorization header)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TabletManagerStepUpRequest" }
+      responses:
+        "200":
+          description: Stepped up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, manager]
+                additionalProperties: false
+                properties:
+                  token: { type: string, description: "tablet_manager JWT (TABLET_MANAGER_STEPUP_EXPIRY, default 5m)" }
+                  manager: { $ref: "#/components/schemas/StaffIdentity" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401":
+          description: "`Unauthorized`; `This device has been revoked or is unknown`; `Incorrect manager PIN`. Source: apps/api/src/tablet/tablet-auth.service.ts:545"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "403": { $ref: "#/components/responses/NotTabletDevice" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "If the caller is already tablet_manager, no actingStaffId is carried forward. Candidates are not venue-filtered. Source: apps/api/src/tablet/tablet-auth.controller.ts:88, apps/api/src/tablet/tablet-auth.service.ts:521-529"
+
+  /tablet/lock:
+    post:
+      tags: [tablet-device]
+      operationId: tabletLock
+      summary: Record a lock or logout audit event for the tablet
+      description: |
+        Writes TABLET_LOCK, attributed to the elevated staff member (token kind tablet_staff or
+        tablet_manager) when that Staff row exists, and otherwise to the device's synthetic system actor.
+        Does not revoke or invalidate any token.
+      x-source: apps/api/src/tablet/tablet-auth.controller.ts:101
+      security:
+        - deviceBearer: []
+      x-accepted-token-kinds: [tablet_device, tablet_staff, tablet_manager]
+      x-guards: [JwtAuthGuard, TabletDeviceGuard]
+      x-rate-limit: none
+      x-csrf: "bypassed (Bearer Authorization header)"
+      responses:
+        "204":
+          description: Audit recorded (audit write failures are swallowed). Empty body.
+        "401":
+          description: "`Unauthorized`; `This device has been revoked or is unknown`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "403": { $ref: "#/components/responses/NotTabletDevice" }
+      x-known-issues:
+        - "Lock is audit-only. An elevated tablet_staff or tablet_manager token remains valid until its exp even after lock. The client must discard it. Source: apps/api/src/tablet/tablet-auth.service.ts:572"
+        - "No rate limit on this endpoint. Source: apps/api/src/tablet/tablet-auth.controller.ts:102"
+
+  /venues/{venueId}/tablet-devices/enrollments:
+    post:
+      tags: [tablet-admin]
+      operationId: createTabletEnrollment
+      summary: Create a single-use tablet bootstrap token (15 minute TTL)
+      x-source: apps/api/src/tablet/tablet-devices-admin.controller.ts:25
+      security:
+        - staffBearer: []
+      x-roles: [admin, manager]
+      x-roles-note: "RolesGuard lets `owner` bypass all role checks. Source: apps/api/src/auth/guards/roles.guard.ts:42"
+      x-accepted-token-kinds: [staff]
+      x-guards: [JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/tablet/tablet-devices-admin.controller.ts:27" }
+      x-csrf: "bypassed when the Bearer header is present"
+      parameters:
+        - $ref: "#/components/parameters/VenueIdPath"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTabletEnrollmentRequest" }
+      responses:
+        "201":
+          description: Created (Nest default status for POST). Writes a TABLET_ENROLLMENT_CODE_CREATED audit event.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollmentCreatedResponse" }
+        "400": { $ref: "#/components/responses/ValidationErrorOrBadUuid" }
+        "401": { $ref: "#/components/responses/JwtUnauthorized" }
+        "403": { $ref: "#/components/responses/StaffAdminForbidden" }
+        "404":
+          description: "`Venue not found in your organization`. Source: apps/api/src/tablet/tablet-auth.service.ts:190"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+
+  /venues/{venueId}/tablet-devices/devices:
+    get:
+      tags: [tablet-admin]
+      operationId: listTabletDevices
+      summary: List tablet devices for a venue (newest first)
+      description: Filters on (token organizationId, path venueId). A venue from another organization returns 200 with [] rather than 404.
+      x-source: apps/api/src/tablet/tablet-devices-admin.controller.ts:40
+      security:
+        - staffBearer: []
+      x-roles: [admin, manager]
+      x-accepted-token-kinds: [staff]
+      x-guards: [JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, note: "No @RateLimit on this handler; the class-level RateLimitGuard applies its default 10/900s.", x-source: "apps/api/src/auth/guards/rate-limit.guard.ts:143" }
+      parameters:
+        - $ref: "#/components/parameters/VenueIdPath"
+      responses:
+        "200":
+          description: Devices, ordered by createdAt desc.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TabletDeviceView" }
+        "400": { $ref: "#/components/responses/ValidationErrorOrBadUuid" }
+        "401": { $ref: "#/components/responses/JwtUnauthorized" }
+        "403": { $ref: "#/components/responses/StaffAdminForbidden" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "A read-only list endpoint is rate limited at the default 10 requests per 15 min per IP, because the guard is class-level and its default applies. Polling an admin screen can trip a 429. Source: apps/api/src/tablet/tablet-devices-admin.controller.ts:21"
+
+  /venues/{venueId}/tablet-devices/devices/{deviceId}/revoke:
+    post:
+      tags: [tablet-admin]
+      operationId: revokeTabletDevice
+      summary: Revoke an active tablet device (CAS on status=active)
+      description: |
+        Sets status=revoked, revokedAt and revokedByStaffId, and writes a TABLET_DEVICE_REVOKED audit
+        event. After this, TabletDeviceGuard and TabletTokenActiveGuard reject every tablet_* token
+        carrying this deviceId with 401.
+      x-source: apps/api/src/tablet/tablet-devices-admin.controller.ts:49
+      security:
+        - staffBearer: []
+      x-roles: [admin, manager]
+      x-accepted-token-kinds: [staff]
+      x-guards: [JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, note: "Class-level default; no @RateLimit on this handler.", x-source: "apps/api/src/auth/guards/rate-limit.guard.ts:143" }
+      x-csrf: "bypassed when the Bearer header is present"
+      parameters:
+        - $ref: "#/components/parameters/VenueIdPath"
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          x-source: apps/api/src/tablet/tablet-devices-admin.controller.ts:53
+      responses:
+        "201":
+          description: Revoked (Nest default POST status).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                additionalProperties: false
+                properties:
+                  revoked: { const: true }
+        "400": { $ref: "#/components/responses/ValidationErrorOrBadUuid" }
+        "401": { $ref: "#/components/responses/JwtUnauthorized" }
+        "403": { $ref: "#/components/responses/StaffAdminForbidden" }
+        "404":
+          description: "`Active tablet device not found in your venue`. Returned for an unknown device, a device of another venue or organization, or one already revoked. Source: apps/api/src/tablet/tablet-auth.service.ts:242"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+
+  /connector/enroll:
+    post:
+      tags: [connector]
+      operationId: connectorEnroll
+      summary: Redeem a connector bootstrap token (sent as a Bearer header) for a durable connector credential
+      description: |
+        The bootstrap token `<enrollmentId>.<code>` is read from `Authorization: Bearer ...`, NOT from
+        the body. Any request body is ignored. On success it atomically consumes the enrollment, marks any
+        prior active installation for the venue as `replaced`, and creates a new active
+        ConnectorInstallation. The credential plaintext is returned exactly once.
+      x-source: apps/api/src/connector/connector.controller.ts:34
+      security:
+        - connectorBootstrapToken: []
+      x-guards: [RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/connector/connector.controller.ts:36" }
+      x-csrf: "bypassed (exact path /api/connector/enroll, and also the Bearer header)"
+      responses:
+        "200":
+          description: Enrolled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [installationId, credential]
+                additionalProperties: false
+                properties:
+                  installationId: { type: string, format: uuid }
+                  credential:
+                    type: string
+                    description: "`<installationId>.<secret>`, where secret is 32 random bytes in base64url (43 chars). Use it as `Authorization: Bearer <credential>` on connector endpoints."
+                    x-source: apps/api/src/connector/connector.service.ts:281
+        "401":
+          description: |
+            `Missing or invalid bootstrap token` (no `Bearer ` header or an empty token);
+            `Invalid bootstrap token` (no usable '.'); `Bootstrap token is invalid, expired, or already used`.
+            Source: apps/api/src/connector/connector.controller.ts:41, apps/api/src/connector/connector.service.ts:176, apps/api/src/connector/connector.service.ts:194
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "409":
+          description: |
+            `Bootstrap token is invalid, expired, or already used` (lost the CAS race) or
+            `A concurrent enrolment or rotation for this venue is already in progress — retry shortly` (P2002).
+            Source: apps/api/src/connector/connector.service.ts:216, apps/api/src/connector/connector.service.ts:284
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+
+  /venues/{venueId}/connector/enrollments:
+    post:
+      tags: [connector]
+      operationId: createConnectorEnrollment
+      summary: Create a single-use connector bootstrap token (15 minute TTL)
+      x-source: apps/api/src/connector/connector-admin.controller.ts:22
+      security:
+        - staffBearer: []
+      x-roles: [admin]
+      x-roles-note: "`owner` bypasses. Source: apps/api/src/auth/guards/roles.guard.ts:42"
+      x-accepted-token-kinds: "any kind whose role claim passes RolesGuard. There is no StaffSessionOnlyGuard here."
+      x-guards: [JwtAuthGuard, RolesGuard, RateLimitGuard]
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/connector/connector-admin.controller.ts:24" }
+      x-csrf: "bypassed when the Bearer header is present"
+      parameters:
+        - $ref: "#/components/parameters/VenueIdPath"
+      responses:
+        "201":
+          description: Created (Nest default POST status). Writes a CONNECTOR_ENROLLMENT_CREATED audit event. There is no request body.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollmentCreatedResponse" }
+        "400": { $ref: "#/components/responses/ValidationErrorOrBadUuid" }
+        "401": { $ref: "#/components/responses/JwtUnauthorized" }
+        "403":
+          description: "`Insufficient permissions` (RolesGuard)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "404":
+          description: "`Venue not found in your organization`. Source: apps/api/src/connector/connector.service.ts:130"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NestError" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
+      x-known-issues:
+        - "There is no StaffSessionOnlyGuard, unlike the tablet admin surface. A tablet_manager token for a staff member with role admin or owner (issued on any tablet) can create connector enrollments for any venue in the organization. Source: apps/api/src/connector/connector-admin.controller.ts:18"
+
+components:
+  securitySchemes:
+    staffBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        A staff access token, meaning `kind` is absent (see auth-token-claims.schema.json#/$defs/staffAccessToken).
+        Verified by Passport `jwt` with HS256 and JWT_ACCESS_SECRET. Every access-token kind is signed with
+        the same secret, so JwtAuthGuard alone accepts device kinds too. Restricting a route to staff needs
+        StaffSessionOnlyGuard. Source: apps/api/src/auth/strategies/jwt.strategy.ts:10
+    deviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        A device-kind access token (kds_device, tablet_device, tablet_staff, tablet_manager), with the same
+        HS256 and JWT_ACCESS_SECRET verification as staffBearer. Tablet endpoints further require a tablet_* kind
+        with a deviceId whose TabletDevice.status is 'active' (TabletDeviceGuard).
+        Source: apps/api/src/tablet/guards/tablet-device.guard.ts:20
+    connectorCredential:
+      type: http
+      scheme: bearer
+      bearerFormat: "<installationId>.<secret>"
+      description: |
+        An opaque connector credential, not a JWT. It is split at the first '.', the secret is verified
+        against ConnectorInstallation.secretHash (argon2id), and the installation must have status 'active'.
+        lastSeenAt is CAS-updated on every request. Failure returns 401 `Missing or invalid connector credential`.
+        Used by connector endpoints outside this document, such as /api/connector/heartbeat.
+        Source: apps/api/src/auth/guards/connector-auth.guard.ts:18, apps/api/src/connector/connector.service.ts:298
+    connectorBootstrapToken:
+      type: http
+      scheme: bearer
+      bearerFormat: "<enrollmentId>.<code>"
+      description: "A single-use connector enrollment bootstrap token, accepted only by POST /api/connector/enroll. Source: apps/api/src/connector/connector.controller.ts:39"
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+      description: |
+        A staff refresh JWT (HS256, JWT_REFRESH_SECRET, claims `{ sub, iat, exp }`). Cookie attributes:
+        HttpOnly; SameSite=Strict; Path=/api/auth/refresh; Secure only when NODE_ENV=production;
+        Max-Age = ms(JWT_REFRESH_EXPIRY), default 7d. Source: apps/api/src/auth/auth.service.ts:32-39, apps/api/src/auth/auth.service.ts:175-182
+    csrf:
+      type: apiKey
+      in: header
+      name: x-csrf-token
+      description: |
+        A double-submit token that must equal the `csrf_token` cookie (non-HttpOnly, Path=/, SameSite=Strict,
+        64 hex chars, issued by CsrfMiddleware on any response to a request lacking it). Required on
+        POST/PUT/PATCH/DELETE unless the request carries `Authorization: Bearer ...` or the path is exempt.
+        Every operation in this document is exempt in practice, by path or by Bearer header.
+        Source: apps/api/src/common/middleware/csrf.middleware.ts:14-79
+
+  parameters:
+    VenueIdPath:
+      name: venueId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+      description: "Validated by ParseUUIDPipe. A non-UUID value returns 400 `Validation failed (uuid is expected)`."
+      x-source: apps/api/src/tablet/tablet-devices-admin.controller.ts:29
+
+  headers:
+    SetRefreshCookie:
+      description: "`refresh_token=<jwt>; Max-Age=<seconds>; Path=/api/auth/refresh; Expires=<date>; HttpOnly; SameSite=Strict` (+ `Secure` when NODE_ENV=production). Source: apps/api/src/auth/auth.service.ts:175"
+      schema: { type: string }
+
+  responses:
+    ValidationError:
+      description: class-validator failure (the global ValidationPipe).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+          example: { statusCode: 400, message: ["email must be an email"], error: "Bad Request" }
+    ValidationErrorOrBadUuid:
+      description: "A path parameter is not a UUID (`Validation failed (uuid is expected)`), or the body failed validation."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+    JwtUnauthorized:
+      description: |
+        `Unauthorized` (a missing, invalid or expired Bearer JWT, the Passport default), `Malformed token payload`,
+        or `Session expired or account deactivated` (RolesGuard when req.user has no role).
+        Source: apps/api/src/auth/strategies/jwt.strategy.ts:23, apps/api/src/auth/guards/roles.guard.ts:38
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+          example: { statusCode: 401, message: "Unauthorized" }
+    StaffAdminForbidden:
+      description: |
+        `Insufficient permissions` (RolesGuard) or `This action requires a genuine staff login session`
+        (StaffSessionOnlyGuard, for any token whose kind is present and not 'staff').
+        Source: apps/api/src/auth/guards/roles.guard.ts:50, apps/api/src/auth/guards/staff-session-only.guard.ts:22
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+    NotTabletDevice:
+      description: "`A valid tablet device identity is required`. Returned when the token kind is not tablet_* or deviceId is missing (including staff and kds_device tokens). Source: apps/api/src/tablet/guards/tablet-device.guard.ts:24"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+    RateLimited:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          description: Seconds until the oldest request in the window expires (minimum 1).
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+          example: { statusCode: 429, message: "Too many requests, please try again later.", error: "Too Many Requests" }
+      x-source: apps/api/src/auth/guards/rate-limit.guard.ts:213-232
+    RateLimiterUnavailable:
+      description: Redis rate-limit backend failed after one transient retry (fail closed).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+          example: { statusCode: 503, message: "Authentication is temporarily unavailable.", error: "Service Unavailable" }
+      x-source: apps/api/src/auth/guards/rate-limit.guard.ts:243-250
+    InsecureDefaultPin:
+      description: |
+        NODE_ENV=production and the configured PIN equals the checked-in default '108'. The message is
+        `<SURFACE> is still configured with the checked-in default PIN — refusing to serve production auth requests until this is changed.`
+        Source: apps/api/src/auth/utils/insecure-default-pin.util.ts:17-22
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NestError" }
+
+  schemas:
+    NestError:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string, description: "Omitted when the exception was thrown with no message (for example the Passport 401)." }
+
+    StaffRole:
+      type: string
+      enum: [owner, admin, manager, cashier, kitchen, viewer]
+      x-source: apps/api/prisma/schema.prisma:10
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, description: "@IsEmail()" }
+        password: { type: string, minLength: 1, description: "@IsString() @IsNotEmpty()" }
+      x-source: apps/api/src/auth/dto/login.dto.ts:3
+      x-extra-properties: stripped (whitelist)
+
+    AdminPinLoginRequest:
+      type: object
+      required: [pin]
+      properties:
+        pin: { type: string, minLength: 3, maxLength: 12, pattern: "^\\d+$" }
+      x-source: apps/api/src/auth/dto/admin-pin-login.dto.ts:3
+
+    StaffLoginResponse:
+      type: object
+      required: [accessToken, user]
+      additionalProperties: false
+      properties:
+        accessToken: { type: string, description: "Staff access JWT (no kind claim)" }
+        user:
+          type: object
+          required: [id, email, name, role]
+          additionalProperties: false
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string }
+            name: { type: string }
+            role: { $ref: "#/components/schemas/StaffRole" }
+      x-source: apps/api/src/auth/auth.controller.ts:44
+
+    KdsAuthRequest:
+      type: object
+      required: [venueId, pin]
+      properties:
+        venueId: { type: string, format: uuid, description: "@IsUUID() (class-validator default: any UUID version)" }
+        pin:
+          type: string
+          minLength: 3
+          maxLength: 16
+          description: "@IsPinLength(): 4-16 chars when NODE_ENV=production, 3-16 otherwise. Any characters are allowed. Error message 'pin must be between 4 and 16 characters'."
+          x-source: apps/api/src/auth/validators/pin-length.validator.ts:25
+      x-source: apps/api/src/auth/dto/kds-auth.dto.ts:4
+
+    TabletEnrollRequest:
+      type: object
+      required: [bootstrapToken]
+      properties:
+        bootstrapToken: { type: string, minLength: 1, description: "`<enrollmentId>.<code>`" }
+      x-source: apps/api/src/tablet/dto/enroll-tablet-device.dto.ts:3
+
+    TabletEnrollResponse:
+      type: object
+      required: [deviceId, deviceToken, venueId, label]
+      additionalProperties: false
+      properties:
+        deviceId: { type: string, format: uuid }
+        deviceToken: { type: string, description: "tablet_device JWT (TABLET_DEVICE_TOKEN_EXPIRY, default 30d)" }
+        venueId: { type: string, format: uuid }
+        label: { type: string, description: "The enrollment label, or `Tablet YYYY-MM-DD` (UTC date) when that label is empty or null." }
+      x-source: apps/api/src/tablet/tablet-auth.service.ts:330
+
+    TabletUnlockRequest:
+      type: object
+      required: [pin]
+      properties:
+        pin:
+          type: string
+          minLength: 3
+          maxLength: 16
+          description: "@IsPinLength(): 4-16 in production, 3-16 otherwise."
+      x-source: apps/api/src/tablet/dto/tablet-unlock.dto.ts:4
+
+    TabletStaffElevateRequest:
+      type: object
+      required: [staffPin]
+      properties:
+        staffPin: { type: string, minLength: 4, maxLength: 8, description: "@Length(4, 8). No digit-only constraint." }
+      x-source: apps/api/src/tablet/dto/tablet-staff-elevate.dto.ts:3
+
+    TabletManagerStepUpRequest:
+      type: object
+      required: [managerPin]
+      properties:
+        managerPin: { type: string, minLength: 4, maxLength: 8, description: "@Length(4, 8)" }
+      x-source: apps/api/src/tablet/dto/tablet-manager-step-up.dto.ts:3
+
+    StaffIdentity:
+      type: object
+      required: [id, name, role]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { $ref: "#/components/schemas/StaffRole" }
+      x-source: apps/api/src/tablet/tablet-auth.service.ts:508
+
+    CreateTabletEnrollmentRequest:
+      type: object
+      properties:
+        label: { type: string, minLength: 1, maxLength: 80, description: "Optional. Carried onto the TabletDevice." }
+      x-source: apps/api/src/tablet/dto/create-tablet-enrollment.dto.ts:3
+
+    EnrollmentCreatedResponse:
+      type: object
+      required: [enrollmentId, bootstrapToken, expiresAt]
+      additionalProperties: false
+      properties:
+        enrollmentId: { type: string, format: uuid }
+        bootstrapToken:
+          type: string
+          description: "`<enrollmentId>.<code>`, where code is 32 random bytes in base64url (43 chars). Only the argon2id hash is stored, so this is the only time the plaintext is available."
+        expiresAt: { type: string, format: date-time, description: "now + 15 minutes, serialised as an ISO-8601 string" }
+      x-source:
+        - apps/api/src/tablet/tablet-auth.service.ts:193-213
+        - apps/api/src/connector/connector.service.ts:133-159
+
+    TabletDeviceView:
+      type: object
+      required: [id, label, status, lastSeenAt, createdAt, revokedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        status: { type: string, enum: [active, revoked] }
+        lastSeenAt: { type: [string, "null"], format: date-time, description: "Best-effort update by every TabletDeviceGuard pass" }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: [string, "null"], format: date-time }
+      x-source: apps/api/src/tablet/tablet-auth.service.ts:51

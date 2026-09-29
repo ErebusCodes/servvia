@@ -402,7 +402,7 @@ process/service/scheduled task referencing the path, and a same-object
 in-place rename succeeded cleanly — a subsequent retry of the identical,
 non-forceful `Move-Item` then succeeded outright, with recursive item
 count, byte size, `.git`, `HEAD`, branch, `git status --short`, the
-nested untracked `verdura_MVP\verdura_MVP\` subtree, and the GitHub
+nested untracked `verdura_MVP\verdura_MVP\` subtree, and the Git
 remote all confirmed unchanged.
 
 **Superseded later the same day (2026-08-27) — see §1h below.** At the
@@ -450,7 +450,7 @@ deleted, preserving a full rollback path. Full current status:
 
 Two-phase, strictly read-only session (no PLU/StockItem/table/product write,
 no order, no KOT, no harness run against live DUNEDIN). Confirmed Mac/
-GitHub/Windows all at `91cf1ec764bea0a40b76bc6c5d94591773cf550c`, CI green.
+Remote/Windows all at `91cf1ec764bea0a40b76bc6c5d94591773cf550c`, CI green.
 
 **Phase 1 — Bridge restore.** `VerduraIdealposBridgeSvc` was `Stopped`/
 `Manual`; executable path confirmed correct (not stale); started, health
@@ -620,7 +620,7 @@ product, or table was modified; no order submitted; no KOT triggered; no
 harness run; `posAdapterType` left at `local_agent`, `Printer` rows still
 0, `POS_SYNC_DISPATCH_ENABLED` still unset.
 
-Source-of-truth re-verified before any write: Mac/GitHub/Windows all at
+Source-of-truth re-verified before any write: Mac/Remote/Windows all at
 `a911c97fffec161b31d75faa50696e308b1c5799`, CI green, Windows tracked tree
 clean. Services re-verified healthy without restarting anything:
 `VerduraAPI`/`VerduraConnector`/`VerduraPostgreSQL` Running/Automatic,
@@ -701,7 +701,7 @@ Lint and `tsc --noEmit` clean.
 ## 1k. Second-batch approval review (2026-08-28, read-only) — dine-in/takeaway rule proven, 9 candidates evaluated, 5 recommended
 
 Strictly read-only session: no DB write, no IdealPOS mutation, no order, no
-KOT, no harness run. Re-verified before starting: Mac/GitHub/Windows all
+KOT, no harness run. Re-verified before starting: Mac/Remote/Windows all
 matched (one unrelated concurrent docs commit landed mid-review from a
 separate session sharing this checkout — merged in cleanly, no file
 overlap with anything here), CI green, all services and Bridge health
@@ -806,7 +806,7 @@ submitted; no KOT triggered; no harness run; `posAdapterType` left at
 `local_agent`; `TableAssignmentStrategy`/`TableAssignmentConfirmed`
 untouched.
 
-Source-of-truth re-verified before any write: Mac/GitHub/Windows all at
+Source-of-truth re-verified before any write: Mac/Remote/Windows all at
 `59cbe228b7564e86e60524434fe3e701696a2415`, CI green, Windows tracked tree
 clean (same pre-existing untracked build/legacy artifacts as prior
 sessions — `_preserved-from-VerduraServer/`, `apps/admin-console/

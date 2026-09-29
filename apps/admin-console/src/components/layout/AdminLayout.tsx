@@ -400,7 +400,7 @@ export function AdminLayout() {
           <VerduraLeaf />
           {!collapsed && (
             <span className="text-base font-semibold text-gray-900 tracking-tight select-none">
-              Verdura
+              Servvia
             </span>
           )}
         </div>

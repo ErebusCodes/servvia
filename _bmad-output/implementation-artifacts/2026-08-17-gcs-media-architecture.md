@@ -94,7 +94,7 @@ Across every page checked: **zero requests to the private originals bucket** (co
 
 ## Story
 
-As the platform operator responsible for the Verdura MVP's media footprint,
+As the platform operator responsible for Servvia's media footprint,
 I want Google Cloud Storage established as the canonical, deduplicated media store for menu/promotional/venue imagery and video, with the repository-side upload/validation/delivery machinery ready to activate the moment real GCP access exists,
 so that the ~67 MB of triplicated menu-item photos across `apps/customer-website`, `apps/admin-console`, and `apps/window-display` stop being copied on every clone/build, and future media additions have one governed upload path instead of three independent `public/menu-images/` directories.
 

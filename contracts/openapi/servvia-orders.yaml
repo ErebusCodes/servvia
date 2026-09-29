@@ -1,0 +1,442 @@
+openapi: 3.1.0
+info:
+  title: Servvia canonical orders API
+  version: 0.3.0
+  description: |
+    NEW Servvia-native API (ADR 0001, Phase D3), served by Servvia Core (Go,
+    services/core-platform/internal/orders). It is the specification of the
+    canonical order core, not a record of the NestJS order routes
+    (orders.yaml), which stay in service for existing clients. No client is
+    switched to it yet.
+
+    An order is what was requested: priced lines, submitted in rounds.
+    Round 1 is the creation; a table-service order takes further rounds at
+    the same table session. It carries no kitchen, check or payment state
+    and no external-POS field.
+
+    Pricing is server-authoritative (D1 pricing): clients send product,
+    modifier-group and option ids, quantities, notes and seats, and at most
+    the unit price they displayed (`expectedUnitPriceCents`), which is only
+    compared. Pricing failures answer exactly as the NestJS order path does
+    (400, 409, 409 STALE_PRICE, 422).
+
+    Authorization, as table-sessions.yaml: a staff identity (staff login or
+    a tablet elevated by a staff/manager PIN) with role owner, admin,
+    manager or cashier; KDS devices, customer-mode tablets, the kiosk and the
+    kitchen role are refused (403). Tablet tokens are pinned to their venue
+    and must still be enrolled; the venue must belong to the caller's
+    organization (404). The declared `source` must fit the caller: a staff
+    login submits `pos_terminal`, a staff tablet `waiter_tablet` or
+    `order_tablet` (403 otherwise). `kiosk` and `customer_web` are canonical
+    sources with no endpoint yet.
+
+    Idempotency (the NestJS order semantics, enforced by the database): the
+    same `idempotencyKey` at a venue with the same request returns the
+    original order (200); with a different request it is 409
+    `IDEMPOTENCY_CONFLICT` and nothing is created. "Same request" is venue,
+    source, service mode, table session, order notes and, per line,
+    product, quantity, modifier options, notes and seat; never prices, so a
+    replay after a menu change still returns the accepted order. Rounds
+    work the same way with their own key, per order.
+
+    PROMOTIONS (NEW SERVVIA-NATIVE, Phase D11). An order create or a round
+    may name ONE promotion of this venue (`promotionId`,
+    contracts/openapi/promotions.yaml). The client identifies the offer and
+    nothing else: the server decides whether it applies (active, inside its
+    UTC window, at least one covered line), which lines it covers, the
+    discount, and the GST. A `discountCents` field, on the request or on a
+    line, is refused (400), never used. The discount is the promotion's
+    basis points of the submission's eligible subtotal, rounded half up to
+    the cent once, then allocated to the eligible lines by largest remainder
+    (ties to the earlier line). `subtotalCents` stays the gross;
+    `discountCents` is the sum of the lines' discounts; `totalCents` =
+    subtotal - discount; `taxCents` is the GST contained in that total
+    (NZ, 3/23 of the discounted total). A promotion that would leave a
+    submission nothing to pay is refused (422 `total_would_be_zero`).
+
+    The effect is frozen with the round (`promotions[]`): editing, disabling
+    or re-rating a promotion later changes no accepted order, check or
+    refund. `promotionId` is part of the request identity, so a replay
+    returns the accepted discount (never a second one) and the same key with
+    another promotion is 409 `IDEMPOTENCY_CONFLICT`. The promotion is locked
+    at the version that was evaluated when the order commits: if it changed
+    or was disabled meanwhile, the order is refused with 409
+    `PROMOTION_CHANGED` and nothing is written (retry to use the current
+    terms). No stacking: one promotion per submission.
+servers:
+  - url: /api
+tags:
+  - name: orders
+paths:
+  /venues/{venueId}/orders:
+    post:
+      tags: [orders]
+      operationId: createOrder
+      summary: Place an order (its round 1).
+      description: |
+        `dine_in` requires `tableSessionId` of an open session at this venue;
+        the table is taken from the session, never from the client. A session
+        may hold several orders (a visit can have more than one ordering flow);
+        occupancy is the session's. Duplicates are prevented by
+        `idempotencyKey`, not by limiting orders per visit.
+        `takeaway` has no session and gets a `takeawayReference`.
+        A closed or cancelled session takes no new order (409
+        `TABLE_SESSION_NOT_OPEN`); the check is made under the session's lock,
+        so an order and a close of its visit never interleave (Phase D10).
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, serviceMode, idempotencyKey, items]
+              properties:
+                source: { type: string, enum: [pos_terminal, waiter_tablet, order_tablet, kiosk, customer_web] }
+                serviceMode: { type: string, enum: [dine_in, takeaway] }
+                tableSessionId: { type: string }
+                notes: { type: string }
+                idempotencyKey: { $ref: '#/components/schemas/IdempotencyKey' }
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/LineRequest' }
+                promotionId: { $ref: '#/components/schemas/PromotionId' }
+      responses:
+        '201':
+          description: This request placed the order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '200':
+          description: A replay of the request that placed this order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+  /venues/{venueId}/orders/{orderId}:
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: An order of this venue, with its rounds and lines.
+      description: |
+        Also returns orders the NestJS path created; their `source` is then a
+        legacy value (`staff`, `online`) and they have no rounds.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/OrderId' }
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /venues/{venueId}/orders/{orderId}/rounds:
+    post:
+      tags: [orders]
+      operationId: submitOrderRound
+      summary: Add items to a table-service order as its next round.
+      description: |
+        The order must be active and table service, and its session open
+        (409 `ORDER_NOT_ACTIVE`, `ORDER_NOT_TABLE_SERVICE`,
+        `TABLE_SESSION_NOT_OPEN`). Rounds are numbered in submission order;
+        the order's totals are recomputed over every line of every round.
+        The session is locked and checked before the order (Phase D10 lock
+        order: session, then order), so a round and a close of its visit
+        never interleave: either the round is counted by the close, or it is
+        refused because the visit has closed.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/OrderId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey, items]
+              properties:
+                idempotencyKey: { $ref: '#/components/schemas/IdempotencyKey' }
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/LineRequest' }
+                promotionId: { $ref: '#/components/schemas/PromotionId' }
+      responses:
+        '201':
+          description: This request submitted the round; the updated order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '200':
+          description: A replay of the request that submitted this round.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    VenueId: { name: venueId, in: path, required: true, schema: { type: string } }
+    OrderId: { name: orderId, in: path, required: true, schema: { type: string } }
+  schemas:
+    IdempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+    PromotionId:
+      type: string
+      minLength: 1
+      description: |
+        NEW (D11). One promotion of this venue for this submission. Identity
+        only: the server decides whether and how it applies. Another venue's
+        or organization's promotion is 404 PROMOTION_NOT_FOUND.
+    LineRequest:
+      type: object
+      required: [menuItemId, quantity]
+      properties:
+        menuItemId: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        selectedModifiers:
+          type: array
+          items:
+            type: object
+            required: [modifierGroupId, optionId]
+            properties:
+              modifierGroupId: { type: string }
+              optionId: { type: string }
+        notes: { type: string }
+        seat: { type: integer, description: A positive integer; anything else means no seat. }
+        expectedUnitPriceCents:
+          type: integer
+          minimum: 0
+          description: The unit price the client displayed, before any discount. Compared, never used (409 STALE_PRICE on mismatch).
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+    NullableString:
+      type: [string, 'null']
+    Order:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, tableSessionId, tableId, tableNumber, serviceMode, source, status, notes, takeawayReference,
+        idempotencyKey, subtotalCents, discountCents, taxCents, totalCents, rounds, items, promotions, createdAt, updatedAt]
+      properties:
+        id: { type: string, description: 'ORD-<n>, from the same sequence as NestJS orders.' }
+        venueId: { type: string }
+        tableSessionId: { $ref: '#/components/schemas/NullableString' }
+        tableId:
+          $ref: '#/components/schemas/NullableString'
+          description: For table service, the session's table (derived, never client-supplied).
+        tableNumber:
+          $ref: '#/components/schemas/NullableString'
+          description: The table's display number, derived like tableId.
+        serviceMode: { type: string, enum: [dine_in, takeaway] }
+        source:
+          type: string
+          enum: [pos_terminal, waiter_tablet, order_tablet, kiosk, customer_web, staff, online]
+          description: Canonical surfaces; `staff` and `online` are LEGACY values on orders the NestJS path created.
+        status:
+          type: string
+          enum: [pending, confirmed, preparing, ready, completed, cancelled]
+          description: |
+            Servvia Core creates orders `confirmed` (accepted). `preparing` and
+            `ready` are fulfilment progress, owned by KitchenTicket from Phase D4.
+        notes: { $ref: '#/components/schemas/NullableString' }
+        takeawayReference: { $ref: '#/components/schemas/NullableString' }
+        idempotencyKey: { type: string }
+        subtotalCents: { type: integer, description: Sum of every line of every round (GST-inclusive), before discounts. }
+        discountCents:
+          type: integer
+          minimum: 0
+          description: NEW (D11). Sum of the lines' accepted promotion discounts; 0 without a promotion (every NestJS order).
+        taxCents: { type: integer, description: GST contained in the total (total x 3/23), never added. }
+        totalCents: { type: integer, description: What is owed, subtotalCents - discountCents. }
+        rounds:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, sequence, submittedByStaffId, submittedAt]
+            properties:
+              id: { type: string }
+              sequence: { type: integer, minimum: 1 }
+              submittedByStaffId: { $ref: '#/components/schemas/NullableString' }
+              submittedAt: { $ref: '#/components/schemas/Timestamp' }
+        items:
+          type: array
+          description: Lines in submission order (by round, then request order).
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, roundId, menuItemId, menuItemTitle, menuItemCategory, unitPriceCents, quantity,
+              lineTotalCents, discountCents, appliedPromotionId, selectedModifiers, notes, seat]
+            properties:
+              id: { type: string }
+              roundId: { $ref: '#/components/schemas/NullableString' }
+              menuItemId: { type: string }
+              menuItemTitle: { type: string, description: Snapshot at ordering time. }
+              menuItemCategory: { type: string, description: Snapshot at ordering time. }
+              unitPriceCents: { type: integer }
+              quantity: { type: integer }
+              lineTotalCents: { type: integer, description: unitPriceCents x quantity, before any discount. }
+              discountCents:
+                type: integer
+                minimum: 0
+                description: NEW (D11). This line's share of its round's promotion discount, as accepted.
+              appliedPromotionId:
+                $ref: '#/components/schemas/NullableString'
+                description: NEW (D11). The `promotions[].id` whose target covered this line, if any.
+              selectedModifiers:
+                type: array
+                description: Snapshot of the resolved options, as persisted since Story 15-3.
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [modifierGroupId, modifierGroupName, optionId, optionName, priceDeltaCents]
+                  properties:
+                    modifierGroupId: { type: string }
+                    modifierGroupName: { type: string }
+                    optionId: { type: string }
+                    optionName: { type: string }
+                    priceDeltaCents: { type: integer }
+              notes: { $ref: '#/components/schemas/NullableString' }
+              seat: { type: [integer, 'null'] }
+        promotions:
+          type: array
+          description: |
+            NEW (D11). The frozen effect of each applied promotion, at most one
+            per round, in round order. Never re-read from the live promotion.
+          items: { $ref: '#/components/schemas/AppliedPromotion' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    AppliedPromotion:
+      type: object
+      additionalProperties: false
+      required: [id, roundId, promotionId, promotionVersion, name, kind, basisPoints, target, currency,
+        eligibleSubtotalCents, discountCents, appliedAt]
+      properties:
+        id: { type: string }
+        roundId: { type: string }
+        promotionId: { type: string }
+        promotionVersion: { type: integer, minimum: 1, description: The promotion version that was evaluated and locked. }
+        name: { type: string, description: Snapshot of the promotion's name. }
+        kind: { type: string, enum: [percentage] }
+        basisPoints: { type: integer, minimum: 1, maximum: 10000 }
+        target: { type: string, enum: [all_items, categories, menu_items] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        eligibleSubtotalCents: { type: integer, minimum: 1 }
+        discountCents: { type: integer, minimum: 0 }
+        appliedAt: { $ref: '#/components/schemas/Timestamp' }
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+    StalePriceError:
+      type: object
+      additionalProperties: false
+      required: [message, code, conflicts]
+      properties:
+        message: { type: string }
+        code: { const: STALE_PRICE }
+        conflicts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [menuItemId, menuItemTitle, expectedUnitPriceCents, authoritativeUnitPriceCents]
+            properties:
+              menuItemId: { type: string }
+              menuItemTitle: { type: string }
+              expectedUnitPriceCents: { type: integer }
+              authoritativeUnitPriceCents: { type: integer }
+    CodedError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode, code]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+        code:
+          type: string
+          enum: [IDEMPOTENCY_CONFLICT, TABLE_SESSION_NOT_OPEN, ORDER_NOT_ACTIVE,
+            ORDER_NOT_TABLE_SERVICE, ORDER_WRITES_DISABLED, AMOUNT_OUT_OF_RANGE, CATALOG_INVALID,
+            PROMOTION_NOT_FOUND, PROMOTION_NOT_APPLICABLE, PROMOTION_CHANGED]
+        orderId: { type: string, description: With IDEMPOTENCY_CONFLICT on create, the order holding the key. }
+        sessionStatus: { type: string, enum: [closed, cancelled] }
+        orderStatus: { type: string, enum: [completed, cancelled] }
+        reason:
+          type: string
+          enum: [inactive, not_started, ended, no_eligible_items, total_would_be_zero]
+          description: With PROMOTION_NOT_APPLICABLE (422), why the promotion cannot apply now.
+  responses:
+    BadRequest:
+      description: Malformed request, unknown item or modifier, or a modifier rule broken (pricing messages are the NestJS ones).
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/NestError'
+              - $ref: '#/components/schemas/CodedError'
+    Unauthorized:
+      description: Missing, invalid or expired token; a revoked tablet.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Forbidden:
+      description: A device identity or kitchen/viewer role, a source that does not fit the caller, or a tablet naming another venue.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    NotFound:
+      description: Venue, table session, order or promotion (PROMOTION_NOT_FOUND) not found for the caller.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/NestError'
+              - $ref: '#/components/schemas/CodedError'
+    Conflict:
+      description: Unavailable item or option, stale price, idempotency conflict, a session/order state conflict, or PROMOTION_CHANGED.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/NestError'
+              - $ref: '#/components/schemas/StalePriceError'
+              - $ref: '#/components/schemas/CodedError'
+    Unprocessable:
+      description: The venue's tax configuration has no verified rule (NestJS message), invalid catalog data (CATALOG_INVALID), or PROMOTION_NOT_APPLICABLE.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/NestError'
+              - $ref: '#/components/schemas/CodedError'
+    WritesDisabled:
+      description: This instance runs with a read-only database.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }

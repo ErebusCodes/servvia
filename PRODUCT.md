@@ -5,10 +5,10 @@
 brand
 
 ## Users
-Restaurant guests discovering Verdura, exploring the menu and story, contacting the venue, and completing reservations or menu pre-orders on mobile and desktop.
+Restaurant guests discovering Servvia, exploring the menu and story, contacting the venue, and completing reservations or menu pre-orders on mobile and desktop.
 
 ## Product Purpose
-Present Verdura's Middleterrean dining identity through rich imagery and make menu discovery and booking feel calm, trustworthy, and effortless.
+Present Servvia's Middleterrean dining identity through rich imagery and make menu discovery and booking feel calm, trustworthy, and effortless.
 
 ## Brand Personality
 Calm, cultivated, welcoming.

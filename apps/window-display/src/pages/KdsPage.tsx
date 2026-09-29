@@ -321,7 +321,7 @@ export function KdsPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ color: C.brand, fontWeight: 900, fontSize: 20, letterSpacing: '0.06em', lineHeight: 1 }}>
-              VERDURA KDS
+              SERVVIA KDS
             </span>
             <span style={{ color: C.brand, background: C.brandBg, border: `1px solid ${C.brandBorder}`, borderRadius: 20, padding: '2px 10px', fontSize: 10, fontWeight: 800, letterSpacing: '0.07em' }}>
               KITCHEN QUEUE

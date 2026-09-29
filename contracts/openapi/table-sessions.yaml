@@ -1,0 +1,440 @@
+openapi: 3.1.0
+info:
+  title: Servvia table sessions API
+  version: 0.2.0
+  description: |
+    NEW Servvia-native API (ADR 0001, Phase D2). There is no NestJS
+    equivalent: this contract is the specification, not a record of existing
+    behaviour, and there is no Nest parity for it. Servvia Core (Go) serves it
+    (services/core-platform/internal/tables).
+
+    A table session is one dining visit occupying a table: covers, who opened
+    it, when it ended. It is not an order, a check, a payment or kitchen
+    state. Open means only "this table is occupied by this visit".
+
+    Conventions shared with the existing API: prefix `/api`, venue-scoped
+    paths, Bearer access tokens (schemas/auth-token-claims.schema.json),
+    Nest-shaped error bodies `{ message, error, statusCode }` with a `code`
+    added on errors a client must tell apart, and the Express routing, CORS,
+    CSRF and ETag behaviour described in menu-read.yaml.
+
+    Authorization, applied to every operation in this order:
+    1. A valid access token (401).
+    2. A staff identity: a staff login session, or a tablet elevated with a
+       staff or manager PIN (`tablet_staff`, `tablet_manager`). A KDS device
+       token or an unelevated tablet (customer mode) gets 403
+       `Insufficient permissions`. The kiosk has no token.
+    3. Role owner, admin, manager or cashier (403 `Insufficient permissions`).
+    4. A tablet token's device must still be enrolled and active (401).
+    5. A tablet token may only name its own venue (403).
+    6. The venue must belong to the caller's organization (404 `Venue not found`).
+    Tables and sessions of another venue or organization do not exist for the
+    caller (404).
+
+    Concurrency: every change names the `version` the client read. A stale
+    version is refused with 409 `VERSION_CONFLICT`, never overwritten.
+
+    During the migration only, occupancy is bridged in both directions:
+    a table that has an active order from the NestJS order path (one without
+    a table session, status pending, confirmed, preparing or ready) cannot be
+    opened (409 `TABLE_HAS_ACTIVE_ORDER`), and the NestJS order path refuses
+    a table order while the table has an open session (Phase D3). Both
+    guards are removed when table order creation has switched to Servvia
+    Core. No current client uses this API.
+servers:
+  - url: /api
+tags:
+  - name: table-sessions
+paths:
+  /venues/{venueId}/table-sessions:
+    get:
+      tags: [table-sessions]
+      operationId: listOpenTableSessions
+      summary: The venue's open sessions (its occupied tables), ordered by table.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }]
+      responses:
+        '200':
+          description: Open sessions, in the tables' sort order.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: '#/components/schemas/TableSession' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /venues/{venueId}/tables/{tableId}/sessions:
+    post:
+      tags: [table-sessions]
+      operationId: openTableSession
+      summary: Open a session on a table (seat a party).
+      description: |
+        Idempotent by `idempotencyKey`, scoped to the table: a retry with the
+        same key returns the session the first request opened (200), in its
+        current state, instead of failing or opening another. Keys must be
+        unique per attempt, e.g. a UUID generated when staff tap "open".
+
+        Checks, in order: request body (400); table exists at the venue
+        (404); table in service (409 `TABLE_INACTIVE`); no active legacy order
+        on it (409 `TABLE_HAS_ACTIVE_ORDER`); no other open session (409
+        `TABLE_SESSION_ALREADY_OPEN`, with its id). The last is enforced by a
+        database unique index, so concurrent opens cannot both succeed.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/TableId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [covers, idempotencyKey]
+              properties:
+                covers: { $ref: '#/components/schemas/Covers' }
+                idempotencyKey:
+                  type: string
+                  minLength: 16
+                  maxLength: 255
+      responses:
+        '201':
+          description: This request opened the session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableSession' }
+        '200':
+          description: A retry of a request that already opened this session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+  /venues/{venueId}/tables/{tableId}/active-session:
+    get:
+      tags: [table-sessions]
+      operationId: getActiveTableSession
+      summary: The table's open session.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/TableId' }
+      responses:
+        '200':
+          description: The open session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableSession' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: |
+            `Table not found`, or the table exists and is free: then the body
+            has `code: NO_OPEN_SESSION`.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/NestError'
+                  - $ref: '#/components/schemas/CodedError'
+
+  /venues/{venueId}/table-sessions/{sessionId}:
+    get:
+      tags: [table-sessions]
+      operationId: getTableSession
+      summary: A session, open or ended.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/SessionId' }
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableSession' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [table-sessions]
+      operationId: updateTableSession
+      summary: Change the covers of an open session.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/SessionId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [covers, version]
+              properties:
+                covers: { $ref: '#/components/schemas/Covers' }
+                version: { $ref: '#/components/schemas/Version' }
+      responses:
+        '200':
+          description: The session after the change (version incremented).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+  /venues/{venueId}/table-sessions/{sessionId}/close:
+    post:
+      tags: [table-sessions]
+      operationId: closeTableSession
+      summary: End the visit. The table becomes free.
+      description: |
+        The one close operation (Phase D10). The server decides whether the
+        visit may close; the client never asserts it. A visit closes only when
+        it is financially complete, evaluated under lock in the close's own
+        transaction:
+        - every standing check of the visit is settled (voided checks do not
+          count; a check reopened by a refund does);
+        - every accepted round line of the visit's non-cancelled orders is on
+          a standing check;
+        - no payment of the visit's checks is pending or uncertain;
+        - no refund or reversal of them is pending or uncertain.
+        Failed payments and failed refunds do not block. Kitchen state and
+        order status are not consulted. Otherwise 409
+        `VISIT_NOT_FINANCIALLY_COMPLETE`, with `readiness` counting what is
+        outstanding; nothing changes.
+
+        Idempotent by state: closing a session that is already closed returns
+        200 with the session unchanged, whatever `version` is sent (a retry
+        after a lost response). Closing a cancelled session is 409
+        `TABLE_SESSION_NOT_OPEN`. A stale `version` on an open session is 409
+        `VERSION_CONFLICT`.
+
+        After close, the visit takes no new order, round or check (409
+        `TABLE_SESSION_NOT_OPEN` on those contracts). Its existing checks stay
+        correctable: payment results, refunds, reversals, re-settlement and
+        voids still apply, and never reopen or otherwise change the session.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/SessionId' }
+      requestBody: { $ref: '#/components/requestBodies/VersionOnly' }
+      responses:
+        '200':
+          description: The closed session (status closed, closedAt set), also on a retry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+  /venues/{venueId}/table-sessions/{sessionId}/cancel:
+    post:
+      tags: [table-sessions]
+      operationId: cancelTableSession
+      summary: End a session that was opened in error. The table becomes free.
+      description: |
+        Refused with 409 `TABLE_SESSION_HAS_ORDERS` once any order belongs to
+        the session (Phase D3): a visit with orders was not opened in error;
+        close it instead, so cancel never bypasses the close rules (Phase
+        D10). Cancelling a cancelled session returns 200 unchanged; cancelling
+        a closed one is 409 `TABLE_SESSION_NOT_OPEN`.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/SessionId' }
+      requestBody: { $ref: '#/components/requestBodies/VersionOnly' }
+      responses:
+        '200':
+          description: The cancelled session (status cancelled, closedAt set), also on a retry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TableSession' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    VenueId:
+      name: venueId
+      in: path
+      required: true
+      schema: { type: string }
+    TableId:
+      name: tableId
+      in: path
+      required: true
+      schema: { type: string }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string }
+  requestBodies:
+    VersionOnly:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [version]
+            properties:
+              version: { $ref: '#/components/schemas/Version' }
+  schemas:
+    Covers:
+      type: integer
+      minimum: 1
+      maximum: 99
+      description: Guests in the visit. The same bounds as the legacy Order.guests.
+    Version:
+      type: integer
+      minimum: 1
+      description: The session version the client read.
+    TableSession:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, tableId, tableNumber, status, covers, openedByStaffId, version, openedAt, closedAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        venueId: { type: string }
+        tableId: { type: string }
+        tableNumber:
+          type: string
+          description: The table's display number, from the table.
+        status:
+          type: string
+          enum: [open, closed, cancelled]
+          description: open, then closed (visit ended) or cancelled (opened in error). Both are terminal.
+        covers: { $ref: '#/components/schemas/Covers' }
+        openedByStaffId:
+          type: [string, 'null']
+          description: The staff member who opened it; null only if that staff row was deleted since.
+        version: { $ref: '#/components/schemas/Version' }
+        openedAt: { $ref: '#/components/schemas/Timestamp' }
+        closedAt:
+          description: Set exactly when status is not open.
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - { type: 'null' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+      description: UTC with milliseconds, as the NestJS API serialises dates.
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+    CodedError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode, code]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+        code:
+          type: string
+          enum:
+            - TABLE_INACTIVE
+            - TABLE_HAS_ACTIVE_ORDER
+            - TABLE_SESSION_ALREADY_OPEN
+            - TABLE_SESSION_NOT_OPEN
+            - VERSION_CONFLICT
+            - NO_OPEN_SESSION
+            - TABLE_SESSION_WRITES_DISABLED
+            - TABLE_SESSION_HAS_ORDERS
+            - VISIT_NOT_FINANCIALLY_COMPLETE
+        activeSessionId:
+          type: string
+          description: With TABLE_SESSION_ALREADY_OPEN, the session occupying the table.
+        currentVersion:
+          type: integer
+          description: With VERSION_CONFLICT, the version to re-read.
+        status:
+          type: string
+          enum: [closed, cancelled]
+          description: With TABLE_SESSION_NOT_OPEN, how the session ended.
+        readiness:
+          type: object
+          additionalProperties: false
+          description: With VISIT_NOT_FINANCIALLY_COMPLETE, what is outstanding. The visit may close when all four are 0.
+          required: [openChecks, unbilledLines, unresolvedPayments, unresolvedAdjustments]
+          properties:
+            openChecks: { type: integer, minimum: 0, description: Standing checks not settled. }
+            unbilledLines: { type: integer, minimum: 0, description: Round lines of non-cancelled orders on no standing check. }
+            unresolvedPayments: { type: integer, minimum: 0, description: Payments pending or uncertain. }
+            unresolvedAdjustments: { type: integer, minimum: 0, description: Refunds and reversals pending or uncertain. }
+  responses:
+    BadRequest:
+      description: A malformed body, e.g. covers outside 1..99 or a missing version.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example: { message: covers must be an integer between 1 and 99, error: Bad Request, statusCode: 400 }
+    Unauthorized:
+      description: Missing, invalid or expired token; a revoked tablet.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Forbidden:
+      description: A device identity, a role without floor access, or a tablet naming another venue.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example: { message: Insufficient permissions, error: Forbidden, statusCode: 403 }
+    NotFound:
+      description: The venue, table or session does not exist for the caller.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Conflict:
+      description: The request conflicts with the table's or session's current state.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }
+          examples:
+            alreadyOpen:
+              value: { message: Table already has an open session, error: Conflict, statusCode: 409, code: TABLE_SESSION_ALREADY_OPEN, activeSessionId: 3f0c2d1e-8a4b-4c5d-9e6f-7a8b9c0d1e2f }
+            stale:
+              value: { message: Table session was changed by someone else (now version 3), error: Conflict, statusCode: 409, code: VERSION_CONFLICT, currentVersion: 3 }
+            notComplete:
+              value: { message: 'The visit is not financially complete: settle every check, bill every round and resolve every payment and refund first', error: Conflict, statusCode: 409, code: VISIT_NOT_FINANCIALLY_COMPLETE, readiness: { openChecks: 1, unbilledLines: 0, unresolvedPayments: 1, unresolvedAdjustments: 0 } }
+    WritesDisabled:
+      description: This instance runs with a read-only database; changes are refused, reads still work.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }

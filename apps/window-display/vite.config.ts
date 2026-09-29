@@ -18,9 +18,9 @@ export default defineConfig(({ mode }) => {
         },
         includeAssets: ['qrcode.min.js', 'branding/verdura-fallback.svg'],
         manifest: {
-          name: 'Verdura Kiosk',
-          short_name: 'Verdura Kiosk',
-          description: 'Verdura self-service ordering kiosk',
+          name: 'Servvia Kiosk',
+          short_name: 'Servvia Kiosk',
+          description: 'Servvia self-service ordering kiosk',
           start_url: '/',
           scope: '/',
           id: '/',

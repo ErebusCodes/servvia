@@ -1,0 +1,412 @@
+openapi: 3.1.0
+info:
+  title: Servvia devices and terminals API
+  version: 0.1.0
+  description: |
+    NEW SERVVIA-NATIVE API (ADR 0001, Phase D8), served by Servvia Core (Go,
+    services/core-platform/internal/devices). No client is switched to it yet.
+
+    A device is an enrolled installation that authenticates to Servvia (a POS
+    installation, an Order Tablet, a KDS screen, a payment adapter), bound to
+    one venue. This is the permanent device registry; the NestJS
+    TabletDevice enrollment and the KDS PIN are transitional. A device's
+    `kind` says what it is and grants no staff role.
+
+    A terminal is a logical POS station at a venue ("Front Counter"), not
+    hardware. A venue has any number; `code` is unique per venue. A terminal
+    may be bound to one active `pos_terminal` device of the same venue, and a
+    device to at most one terminal.
+
+    DEVICE CREDENTIALS. Opaque: `sdv1.<deviceId>.<secret>`. Returned exactly
+    twice in a device's life: never, except by enrollment (201) and by
+    rotation. Servvia stores only a verifier. A device authenticates with
+    `Authorization: Bearer <credential>` on the routes that accept its kind
+    (today: the payment adapter's result route, payments.yaml). It is active,
+    of the route's kind, and registered at the path's venue, or it is
+    refused; revocation and rotation take effect on the next request. A
+    lost credential is replaced by rotation; an enrollment replay (same
+    idempotencyKey) returns the device with `credential: null`.
+
+    Authorization: device administration and terminal changes need role
+    owner, admin or manager from a staff LOGIN session (not a tablet, even
+    elevated, and not a device). Terminals may also be read by a cashier.
+    The venue must belong to the caller's organization (404).
+servers:
+  - url: /api
+tags:
+  - name: devices
+  - name: terminals
+paths:
+  /venues/{venueId}/devices:
+    post:
+      tags: [devices]
+      operationId: enrollDevice
+      summary: Enroll a device; the credential is in this response only.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, displayName, idempotencyKey]
+              properties:
+                kind: { $ref: '#/components/schemas/DeviceKind' }
+                displayName: { type: string, minLength: 1, maxLength: 80 }
+                idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      responses:
+        '201':
+          description: Enrolled. `credential` is shown now and never again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceWithCredential' }
+        '200':
+          description: A replay of the same enrollment; `credential` is null (rotate to get a new one).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceWithCredential' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+    get:
+      tags: [devices]
+      operationId: listDevices
+      summary: The venue's devices (never their credentials).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - { name: kind, in: query, required: false, schema: { $ref: '#/components/schemas/DeviceKind' } }
+        - { name: status, in: query, required: false, schema: { type: string, enum: [active, revoked] } }
+      responses:
+        '200':
+          description: The devices.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Device' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/devices/{deviceId}:
+    get:
+      tags: [devices]
+      operationId: getDevice
+      summary: One device (never its credential).
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/DeviceId' }]
+      responses:
+        '200':
+          description: The device.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/devices/{deviceId}/rotate-credential:
+    post:
+      tags: [devices]
+      operationId: rotateDeviceCredential
+      summary: Issue a new credential; the previous one stops working at once.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/DeviceId' }]
+      requestBody: { $ref: '#/components/requestBodies/Version' }
+      responses:
+        '200':
+          description: The device and its new credential, shown now only.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceWithCredential' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+  /venues/{venueId}/devices/{deviceId}/revoke:
+    post:
+      tags: [devices]
+      operationId: revokeDevice
+      summary: Revoke a device for good (idempotent).
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/DeviceId' }]
+      requestBody: { $ref: '#/components/requestBodies/Version' }
+      responses:
+        '200':
+          description: The revoked device.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Device' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+  /venues/{venueId}/terminals:
+    post:
+      tags: [terminals]
+      operationId: createTerminal
+      summary: Create a terminal, optionally bound to a POS device.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, code, idempotencyKey]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                code: { $ref: '#/components/schemas/TerminalCode' }
+                deviceId: { type: string, description: An active pos_terminal device of this venue. }
+                idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Terminal' }
+        '200':
+          description: A replay.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Terminal' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+    get:
+      tags: [terminals]
+      operationId: listTerminals
+      summary: The venue's terminals, by code.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - { name: status, in: query, required: false, schema: { type: string, enum: [active, disabled] } }
+      responses:
+        '200':
+          description: The terminals.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Terminal' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/terminals/{terminalId}:
+    get:
+      tags: [terminals]
+      operationId: getTerminal
+      summary: One terminal.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/TerminalId' }]
+      responses:
+        '200':
+          description: The terminal.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Terminal' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/terminals/{terminalId}/disable:
+    post:
+      tags: [terminals]
+      operationId: disableTerminal
+      summary: Disable a terminal for good (idempotent); past shifts keep it.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/TerminalId' }]
+      requestBody: { $ref: '#/components/requestBodies/Version' }
+      responses:
+        '200': { $ref: '#/components/responses/TerminalResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+  /venues/{venueId}/terminals/{terminalId}/bind-device:
+    post:
+      tags: [terminals]
+      operationId: bindTerminalDevice
+      summary: Bind an active pos_terminal device of this venue to an active terminal.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/TerminalId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceId, version]
+              properties:
+                deviceId: { type: string }
+                version: { type: integer, minimum: 1 }
+      responses:
+        '200': { $ref: '#/components/responses/TerminalResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+  /venues/{venueId}/terminals/{terminalId}/unbind-device:
+    post:
+      tags: [terminals]
+      operationId: unbindTerminalDevice
+      summary: Remove the terminal's device binding.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/TerminalId' }]
+      requestBody: { $ref: '#/components/requestBodies/Version' }
+      responses:
+        '200': { $ref: '#/components/responses/TerminalResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    VenueId: { name: venueId, in: path, required: true, schema: { type: string } }
+    DeviceId: { name: deviceId, in: path, required: true, schema: { type: string } }
+    TerminalId: { name: terminalId, in: path, required: true, schema: { type: string } }
+  requestBodies:
+    Version:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [version]
+            properties:
+              version: { type: integer, minimum: 1, description: The version the caller read. }
+  schemas:
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+    NullableTimestamp:
+      oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+    DeviceKind: { type: string, enum: [pos_terminal, order_tablet, kds, payment_adapter] }
+    TerminalCode: { type: string, pattern: '^[A-Z0-9][A-Z0-9-]{0,19}$' }
+    Credential:
+      type: string
+      pattern: '^sdv1\.[^.]+\.[A-Za-z0-9_-]{43}$'
+      description: Opaque device credential; shown once.
+    Device:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, kind, displayName, status, version, idempotencyKey, terminalId, credentialRotatedAt,
+        createdByStaffId, revokedAt, revokedByStaffId, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        venueId: { type: string }
+        kind: { $ref: '#/components/schemas/DeviceKind' }
+        displayName: { type: string }
+        status: { type: string, enum: [active, revoked] }
+        version: { type: integer, minimum: 1 }
+        idempotencyKey: { type: string }
+        terminalId: { type: [string, 'null'] }
+        credentialRotatedAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        createdByStaffId: { type: string }
+        revokedAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        revokedByStaffId: { type: [string, 'null'] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    DeviceWithCredential:
+      type: object
+      additionalProperties: false
+      required: [device, credential]
+      properties:
+        device: { $ref: '#/components/schemas/Device' }
+        credential:
+          oneOf: [{ $ref: '#/components/schemas/Credential' }, { type: 'null' }]
+    Terminal:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, name, code, status, deviceId, version, idempotencyKey, disabledAt, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        venueId: { type: string }
+        name: { type: string }
+        code: { $ref: '#/components/schemas/TerminalCode' }
+        status: { type: string, enum: [active, disabled] }
+        deviceId: { type: [string, 'null'] }
+        version: { type: integer, minimum: 1 }
+        idempotencyKey: { type: string }
+        disabledAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+    CodedError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode, code]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+        code:
+          type: string
+          enum: [IDEMPOTENCY_CONFLICT, NOT_ACTIVE, VERSION_CONFLICT, TERMINAL_CODE_TAKEN, DEVICE_ALREADY_BOUND,
+            DEVICE_NOT_BINDABLE, DEVICE_WRITES_DISABLED]
+        id: { type: string }
+        currentVersion: { type: integer, minimum: 1 }
+  responses:
+    TerminalResult:
+      description: The terminal.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Terminal' }
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Unauthorized:
+      description: Missing, invalid or expired staff token (a device credential is not one).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Forbidden:
+      description: Not a staff login session with an administrative role (or a cashier reading terminals).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    NotFound:
+      description: Venue, device or terminal not found for the caller.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Conflict:
+      description: Key reused, not active, stale version, terminal code taken, device already bound or not bindable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }
+    WritesDisabled:
+      description: This instance runs with a read-only database.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }

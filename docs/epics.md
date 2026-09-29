@@ -20,7 +20,7 @@
 - E1-S2: Prisma schema for all PostgreSQL entities; initial migration
 - E1-S3: Prisma schema fields for MenuItem, PrinterJob, AuditLog (JSONB)
 - E1-S4: BullMQ setup with named queues; health check endpoint
-- E1-S5: GitHub Actions CI pipeline (lint, typecheck, test on PR)
+- E1-S5: Automated CI pipeline (lint, typecheck, test on PR)
 - E1-S6: Scaffold `verdura-admin` (React 18, TypeScript, Vite, Tailwind, TanStack Query, Zustand)
 - E1-S7: Scaffold `verdura-kiosk` (React 18, TypeScript, Vite, Tailwind, Zustand)
 - E1-S8: Scaffold `verdura-printer-service` (Node.js, TypeScript, BullMQ worker)

@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://servvia.internal/contracts/schemas/auth-token-claims.schema.json",
+  "title": "Servvia access-token claims",
+  "description": "Decoded payload of every JWT access token the Servvia API issues and accepts as `Authorization: Bearer <token>` (Passport strategy `jwt`). All five kinds are signed with ONE shared HMAC secret (env var JWT_ACCESS_SECRET), algorithm HS256, JWS header {\"alg\":\"HS256\",\"typ\":\"JWT\"}. There is no `iss`, `aud`, `jti` or `nbf` claim; `iat` and `exp` (NumericDate seconds) are added by @nestjs/jwt / jsonwebtoken at signing time. COEXISTENCE RULE: while the Go service and the NestJS API run side by side, Go must verify exactly these tokens with the same JWT_ACCESS_SECRET value and HS256, accept every branch below with identical semantics (including the absent-`kind` staff token), and, if Go ever mints tokens, emit byte-compatible claims so NestJS accepts them. The refresh token is a separate JWT with a separate secret, documented in $defs.refreshToken; it is never accepted as an access token. Nest-side acceptance check (JwtStrategy.validate) only requires `sub`, `role` and `organizationId` to be truthy; `kind` is not validated against the enum at verification time.",
+  "x-source": [
+    "apps/api/src/auth/interfaces/jwt-payload.interface.ts:16",
+    "apps/api/src/auth/strategies/jwt.strategy.ts:10",
+    "apps/api/src/auth/auth.module.ts:24"
+  ],
+  "x-verification": {
+    "algorithm": "HS256",
+    "x-source-algorithm": "apps/api/src/auth/strategies/jwt.strategy.ts:14",
+    "secretEnvVar": "JWT_ACCESS_SECRET",
+    "x-source-secret": "apps/api/src/auth/strategies/jwt.strategy.ts:13",
+    "tokenLocation": "Authorization header, scheme `Bearer` (ExtractJwt.fromAuthHeaderAsBearerToken). WebSocket handshake additionally accepts socket.io `handshake.auth.token`.",
+    "x-source-location": [
+      "apps/api/src/auth/strategies/jwt.strategy.ts:11",
+      "apps/api/src/orders/orders.gateway.ts:31"
+    ],
+    "ignoreExpiration": false,
+    "clockTolerance": "none configured (jsonwebtoken default 0s)",
+    "failureResponse": "HTTP 401 {\"statusCode\":401,\"message\":\"Unauthorized\"} for missing/invalid/expired signature; HTTP 401 {\"message\":\"Malformed token payload\",\"error\":\"Unauthorized\",\"statusCode\":401} when sub/role/organizationId is missing.",
+    "x-source-failure": "apps/api/src/auth/strategies/jwt.strategy.ts:22",
+    "startupGuard": "Production boot refuses the checked-in example values of JWT_ACCESS_SECRET / JWT_REFRESH_SECRET.",
+    "x-source-startupGuard": "apps/api/src/main.ts:48"
+  },
+  "x-expiry-format": "Expiry env values are passed to jsonwebtoken `expiresIn`. A string is parsed with the `ms` library ('15m', '12h', '30d'); a number is seconds. Note: a bare numeric STRING such as '900' is parsed by `ms` as milliseconds.",
+  "x-known-issues": [
+    "The WebSocket gateway verifies tokens via AuthService.verifyAccessToken, which does NOT pin `algorithms` (jsonwebtoken then allows HS256/HS384/HS512 for a string secret), unlike JwtStrategy which pins HS256. Source: apps/api/src/auth/auth.service.ts:155",
+    "No revocation for any access-token kind at the JWT layer: a deactivated staff member's staff token is honoured until `exp` (JwtStrategy does no DB lookup). Tablet kinds are revoked only on routes that add TabletDeviceGuard/TabletTokenActiveGuard. Source: apps/api/src/auth/strategies/jwt.strategy.ts:19",
+    "`kind: 'staff'` is declared in the TypeScript union but no code path ever issues it; staff tokens omit `kind`. Both forms are treated as a staff session by StaffSessionOnlyGuard and resolveVenueScope. Source: apps/api/src/auth/interfaces/jwt-payload.interface.ts:22",
+    "Device token `email` claims use the literal domain `@verdura.internal` (a real value, not a mailbox). Source: apps/api/src/auth/auth.service.ts:137, apps/api/src/tablet/tablet-auth.service.ts:129",
+    "A kind value outside the enum (only mintable with the secret) would be treated as unrestricted staff by resolveVenueScope but rejected by StaffSessionOnlyGuard. Source: apps/api/src/auth/utils/resolve-venue-scope.ts:30, apps/api/src/auth/guards/staff-session-only.guard.ts:21"
+  ],
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/staffAccessToken" },
+    { "$ref": "#/$defs/kdsDeviceToken" },
+    { "$ref": "#/$defs/tabletDeviceToken" },
+    { "$ref": "#/$defs/tabletStaffToken" },
+    { "$ref": "#/$defs/tabletManagerToken" }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Prisma `@default(uuid())` identifier (Staff.id, Venue.id, Organization.id, TabletDevice.id). Source: apps/api/prisma/schema.prisma:282, apps/api/prisma/schema.prisma:380"
+    },
+    "staffRole": {
+      "type": "string",
+      "enum": ["owner", "admin", "manager", "cashier", "kitchen", "viewer"],
+      "description": "Prisma enum StaffRole. `owner` bypasses every @Roles check in RolesGuard. Source: apps/api/prisma/schema.prisma:10, apps/api/src/auth/guards/roles.guard.ts:42"
+    },
+    "numericDate": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Seconds since Unix epoch, added by jsonwebtoken."
+    },
+    "staffAccessToken": {
+      "title": "Staff access token (Admin Console login session)",
+      "description": "Issued by POST /api/auth/login, POST /api/auth/admin-pin and POST /api/auth/refresh. Organization-wide: no venueId, so resolveVenueScope does not restrict it. `kind` is absent in every issued token.",
+      "x-source": "apps/api/src/auth/auth.service.ts:114",
+      "x-issued-by": ["POST /api/auth/login", "POST /api/auth/admin-pin", "POST /api/auth/refresh"],
+      "x-signing": { "algorithm": "HS256", "secretEnvVar": "JWT_ACCESS_SECRET", "expiryEnvVar": "JWT_ACCESS_EXPIRY", "expiryDefault": "15m", "x-source": "apps/api/src/auth/auth.service.ts:122" },
+      "type": "object",
+      "required": ["sub", "email", "role", "organizationId", "iat", "exp"],
+      "properties": {
+        "sub": { "$ref": "#/$defs/uuid", "description": "Staff.id." },
+        "email": { "type": "string", "description": "Staff.email." },
+        "role": { "$ref": "#/$defs/staffRole" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "kind": { "const": "staff", "description": "Never issued; accepted and treated as a staff session if present." },
+        "iat": { "$ref": "#/$defs/numericDate" },
+        "exp": { "$ref": "#/$defs/numericDate" }
+      },
+      "not": { "anyOf": [ { "required": ["venueId"] }, { "required": ["deviceId"] }, { "required": ["actingStaffId"] } ] },
+      "additionalProperties": false
+    },
+    "kdsDeviceToken": {
+      "title": "KDS device token (kitchen display terminal)",
+      "description": "Issued by POST /api/kiosk/kds/auth after a venue PIN check. Pinned to one venue. `sub` is synthetic, not a Staff row. No deviceId.",
+      "x-source": "apps/api/src/auth/auth.service.ts:134",
+      "x-issued-by": ["POST /api/kiosk/kds/auth"],
+      "x-signing": { "algorithm": "HS256", "secretEnvVar": "JWT_ACCESS_SECRET", "expiryEnvVar": "KDS_TOKEN_EXPIRY", "expiryDefault": "12h", "x-source": "apps/api/src/auth/auth.service.ts:144" },
+      "type": "object",
+      "required": ["sub", "email", "role", "organizationId", "venueId", "kind", "iat", "exp"],
+      "properties": {
+        "sub": { "type": "string", "pattern": "^kds-device:[0-9a-fA-F-]{36}$", "description": "`kds-device:${venueId}`." },
+        "email": { "type": "string", "pattern": "^kds-device\\+[0-9a-fA-F-]{36}@verdura\\.internal$", "description": "`kds-device+${venueId}@verdura.internal`." },
+        "role": { "const": "kitchen" },
+        "organizationId": { "$ref": "#/$defs/uuid", "description": "Venue.organizationId of the venue." },
+        "venueId": { "$ref": "#/$defs/uuid" },
+        "kind": { "const": "kds_device" },
+        "iat": { "$ref": "#/$defs/numericDate" },
+        "exp": { "$ref": "#/$defs/numericDate" }
+      },
+      "additionalProperties": false
+    },
+    "tabletDeviceToken": {
+      "title": "Order Tablet device token (restricted/customer context)",
+      "description": "Issued by POST /api/tablet/enroll. Pinned to the device's venue. `sub` is synthetic. Carries deviceId so TabletDeviceGuard / TabletTokenActiveGuard can check live TabletDevice.status.",
+      "x-source": "apps/api/src/tablet/tablet-auth.service.ts:121",
+      "x-issued-by": ["POST /api/tablet/enroll"],
+      "x-signing": { "algorithm": "HS256", "secretEnvVar": "JWT_ACCESS_SECRET", "expiryEnvVar": "TABLET_DEVICE_TOKEN_EXPIRY", "expiryDefault": "30d", "x-source": "apps/api/src/tablet/tablet-auth.service.ts:137" },
+      "x-known-issues": [
+        "No endpoint renews a tablet_device token; once `exp` passes the device must be re-enrolled with a new bootstrap token. The durable device secret generated at enrollment is hashed and stored but never returned, so it cannot be used for renewal. Source: apps/api/src/tablet/tablet-auth.service.ts:306"
+      ],
+      "type": "object",
+      "required": ["sub", "email", "role", "organizationId", "venueId", "kind", "deviceId", "iat", "exp"],
+      "properties": {
+        "sub": { "type": "string", "pattern": "^tablet-device:[0-9a-fA-F-]{36}$", "description": "`tablet-device:${deviceId}`." },
+        "email": { "type": "string", "pattern": "^tablet-device\\+[0-9a-fA-F-]{36}@verdura\\.internal$", "description": "`tablet-device+${deviceId}@verdura.internal`." },
+        "role": { "const": "viewer" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "venueId": { "$ref": "#/$defs/uuid" },
+        "kind": { "const": "tablet_device" },
+        "deviceId": { "$ref": "#/$defs/uuid", "description": "TabletDevice.id." },
+        "iat": { "$ref": "#/$defs/numericDate" },
+        "exp": { "$ref": "#/$defs/numericDate" }
+      },
+      "additionalProperties": false
+    },
+    "tabletStaffToken": {
+      "title": "Order Tablet named-staff elevation token",
+      "description": "Issued by POST /api/tablet/elevate. Identity is the real Staff row (sub = Staff.id, role = Staff.role) but still pinned to the device's venue and device.",
+      "x-source": "apps/api/src/tablet/tablet-auth.service.ts:142",
+      "x-issued-by": ["POST /api/tablet/elevate"],
+      "x-signing": { "algorithm": "HS256", "secretEnvVar": "JWT_ACCESS_SECRET", "expiryEnvVar": "TABLET_STAFF_ELEVATION_EXPIRY", "expiryDefault": "20m", "x-source": "apps/api/src/tablet/tablet-auth.service.ts:153" },
+      "type": "object",
+      "required": ["sub", "email", "role", "organizationId", "venueId", "kind", "deviceId", "iat", "exp"],
+      "properties": {
+        "sub": { "$ref": "#/$defs/uuid", "description": "Staff.id of the elevated staff member." },
+        "email": { "type": "string", "description": "Staff.email." },
+        "role": { "$ref": "#/$defs/staffRole", "description": "Staff.role at elevation time (any role; not re-checked against the token later except by TabletStaffGuard, which only checks active/not deleted)." },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "venueId": { "$ref": "#/$defs/uuid", "description": "Copied from the calling device token, not from the staff record." },
+        "kind": { "const": "tablet_staff" },
+        "deviceId": { "$ref": "#/$defs/uuid" },
+        "iat": { "$ref": "#/$defs/numericDate" },
+        "exp": { "$ref": "#/$defs/numericDate" }
+      },
+      "additionalProperties": false
+    },
+    "tabletManagerToken": {
+      "title": "Order Tablet manager step-up token",
+      "description": "Issued by POST /api/tablet/manager-step-up. sub = manager Staff.id; role is one of manager/admin/owner at issue time. `actingStaffId` is present only when the caller's token was kind `tablet_staff` (it is that token's `sub`); otherwise the key is omitted (undefined is dropped by JSON serialisation).",
+      "x-source": "apps/api/src/tablet/tablet-auth.service.ts:158",
+      "x-issued-by": ["POST /api/tablet/manager-step-up"],
+      "x-signing": { "algorithm": "HS256", "secretEnvVar": "JWT_ACCESS_SECRET", "expiryEnvVar": "TABLET_MANAGER_STEPUP_EXPIRY", "expiryDefault": "5m", "x-source": "apps/api/src/tablet/tablet-auth.service.ts:175" },
+      "type": "object",
+      "required": ["sub", "email", "role", "organizationId", "venueId", "kind", "deviceId", "iat", "exp"],
+      "properties": {
+        "sub": { "$ref": "#/$defs/uuid", "description": "Staff.id of the manager." },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["manager", "admin", "owner"], "x-source": "apps/api/src/tablet/tablet-auth.service.ts:527" },
+        "organizationId": { "$ref": "#/$defs/uuid" },
+        "venueId": { "$ref": "#/$defs/uuid" },
+        "kind": { "const": "tablet_manager" },
+        "deviceId": { "$ref": "#/$defs/uuid" },
+        "actingStaffId": { "$ref": "#/$defs/uuid", "description": "Staff.id of the tablet_staff session that requested step-up.", "x-source": "apps/api/src/tablet/tablet-auth.controller.ts:88" },
+        "iat": { "$ref": "#/$defs/numericDate" },
+        "exp": { "$ref": "#/$defs/numericDate" }
+      },
+      "additionalProperties": false
+    },
+    "refreshToken": {
+      "title": "Staff refresh token (cookie)",
+      "description": "Separate JWT carried only in the `refresh_token` cookie and accepted only by Passport strategy `jwt-refresh` on POST /api/auth/refresh. Signed HS256 with JWT_REFRESH_SECRET (distinct from JWT_ACCESS_SECRET). The only custom claim is `sub`. Not rotated on refresh; not stored or revoked server-side (stateless). On use, sub must be a UUID of an existing Staff row with isActive=true, else 401 'Session expired or account deactivated'.",
+      "x-source": [
+        "apps/api/src/auth/auth.service.ts:165",
+        "apps/api/src/auth/auth.service.ts:175",
+        "apps/api/src/auth/auth.service.ts:32",
+        "apps/api/src/auth/strategies/jwt-refresh.strategy.ts:17"
+      ],
+      "x-signing": { "algorithm": "HS256", "secretEnvVar": "JWT_REFRESH_SECRET", "expiryEnvVar": "JWT_REFRESH_EXPIRY", "expiryDefault": "7d", "x-source": "apps/api/src/auth/auth.service.ts:169" },
+      "x-cookie": {
+        "name": "refresh_token",
+        "path": "/api/auth/refresh",
+        "httpOnly": true,
+        "secure": "true only when NODE_ENV === 'production'",
+        "sameSite": "Strict",
+        "maxAgeMs": "ms(JWT_REFRESH_EXPIRY), default ms('7d') = 604800000 (Express also emits the matching Expires attribute)",
+        "domain": "not set (host-only)",
+        "x-source": "apps/api/src/auth/auth.service.ts:32"
+      },
+      "x-known-issues": [
+        "Cookie path is /api/auth/refresh, so browsers never send it to POST /api/auth/logout; logout therefore always sees no token and only logs an anonymous logout (the clearing Set-Cookie still works because it carries the same path). Source: apps/api/src/auth/auth.service.ts:37, apps/api/src/auth/auth.controller.ts:90",
+        "Refresh does not rotate the refresh token and logout does not revoke it; a copied refresh token remains valid until exp while the staff row stays active. Source: apps/api/src/auth/auth.controller.ts:80"
+      ],
+      "type": "object",
+      "required": ["sub", "iat", "exp"],
+      "properties": {
+        "sub": { "$ref": "#/$defs/uuid", "description": "Staff.id; validated with class-validator isUUID." },
+        "iat": { "$ref": "#/$defs/numericDate" },
+        "exp": { "$ref": "#/$defs/numericDate" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

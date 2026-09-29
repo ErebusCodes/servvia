@@ -214,10 +214,19 @@ enum OrgPlan {
   enterprise
 }
 
+/// Where an order was placed. Servvia Core (Phase D3) writes only the
+/// canonical surfaces: pos_terminal, waiter_tablet, order_tablet, kiosk,
+/// customer_web. `staff` and `online` are legacy values written by the NestJS
+/// order path (`staff` = any staff surface, unspecified); they stay for
+/// existing rows and callers and are never written by Servvia Core.
 enum OrderSource {
   kiosk
   staff
   online
+  pos_terminal
+  waiter_tablet
+  order_tablet
+  customer_web
 }
 
 // Story 15-13: explicit, authoritative service mode for a staff/tablet
@@ -322,6 +331,16 @@ model Venue {
   table19ValidationRuns    Table19ValidationRun[]
   paymentObservations      PaymentObservation[]
   paymentObservationEvents PaymentObservationEvent[]
+  outboxEvents             OutboxEvent[]
+  kitchenTickets           KitchenTicket[]
+  checks                   Check[]
+  checkPayments            CheckPayment[]
+  shifts                   Shift[]
+  cashMovements            CashMovement[]
+  devices                  Device[]
+  terminals                Terminal[]
+  paymentAdjustments       PaymentAdjustment[]
+  promotions               Promotion[]
 
   @@unique([organizationId, slug])
 }
@@ -349,16 +368,80 @@ model Table {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  venue        Venue         @relation(fields: [venueId], references: [id])
-  floorPlan    FloorPlan?    @relation(fields: [floorPlanId], references: [id])
+  venue        Venue          @relation(fields: [venueId], references: [id])
+  floorPlan    FloorPlan?     @relation(fields: [floorPlanId], references: [id])
   reservations Reservation[]
   orders       Order[]
+  sessions     TableSession[]
 
   @@unique([venueId, tableNumber])
   // Prevents two tables in the same venue from being configured to the
   // same native destination by mistake. Postgres unique indexes permit
   // unlimited NULLs, so this never constrains unmapped tables.
   @@unique([venueId, posTableCode])
+}
+
+/// One dining visit occupying a table: the guests who sat down, how many
+/// they are, who opened the table, and when the visit ended (ADR 0001,
+/// Phase D2). Servvia Core (Go) owns it.
+///
+/// A TableSession is NOT an order, a check, a payment or kitchen state. Open
+/// means only "this table is occupied by this visit". Orders, rounds and
+/// checks attach to it in later phases; until then no Nest code reads or
+/// writes this table, and Order.tableId / Order.guests stay the legacy
+/// source for every existing client.
+///
+/// Covers are visit-level data here. Order.guests remains, unchanged, for
+/// legacy clients; nothing copies one into the other.
+///
+/// Constraints Prisma cannot express, created by hand in
+/// migrations/20260929000000_table_sessions and tested by
+/// services/core-platform/tests/integration:
+///   * "TableSession_one_open_per_table": partial unique index on (tableId)
+///     WHERE status = 'open'. At most one open session per table, enforced by
+///     the database, not by application code.
+///   * CHECK covers BETWEEN 1 AND 99 (the bounds Order.guests already uses).
+///   * CHECK version >= 1.
+///   * CHECK closedAt IS NULL exactly when status = 'open'.
+///   * CHECK openRequestKey length 16..255 (the Order.idempotencyKey bounds).
+model TableSession {
+  id              String             @id @default(uuid())
+  tableId         String
+  status          TableSessionStatus @default(open)
+  /// Number of guests in the visit, 1..99.
+  covers          Int
+  /// The staff member whose session or tablet elevation opened the table.
+  /// Nullable only so a staff row can never be blocked from deletion by
+  /// history; every session opened through Servvia Core records one.
+  openedByStaffId String?
+  /// Client-generated key of the open request. A retry with the same key on
+  /// the same table returns the session it created instead of failing or
+  /// opening another (the Order.idempotencyKey pattern, scoped per table).
+  openRequestKey  String
+  /// Optimistic concurrency: every change must name the version it read and
+  /// increments it; a stale version is refused, never overwritten.
+  version         Int                @default(1)
+  openedAt        DateTime           @default(now())
+  closedAt        DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  table    Table   @relation(fields: [tableId], references: [id])
+  openedBy Staff?  @relation("TableSessionOpenedBy", fields: [openedByStaffId], references: [id], onDelete: SetNull)
+  orders   Order[]
+  checks   Check[]
+
+  @@unique([tableId, openRequestKey])
+  /// Target of Order's composite foreign key (tableSessionId, tableId).
+  @@unique([id, tableId])
+}
+
+/// Lifecycle of a TableSession. open -> closed (the visit ended) or
+/// open -> cancelled (opened in error, no service). Both are terminal.
+enum TableSessionStatus {
+  open
+  closed
+  cancelled
 }
 
 model FloorPlan {
@@ -400,6 +483,17 @@ model Staff {
   deletedAt      DateTime?
 
   organization                  Organization            @relation(fields: [organizationId], references: [id])
+  tableSessionsOpened           TableSession[]          @relation("TableSessionOpenedBy")
+  checksCreated                 Check[]                 @relation("CheckCreatedBy")
+  checkPaymentsRequested        CheckPayment[]          @relation("CheckPaymentRequestedBy")
+  shifts                        Shift[]                 @relation("ShiftStaff")
+  shiftsClosed                  Shift[]                 @relation("ShiftClosedBy")
+  cashMovements                 CashMovement[]          @relation("CashMovementActor")
+  devicesCreated                Device[]                @relation("DeviceCreatedBy")
+  devicesRevoked                Device[]                @relation("DeviceRevokedBy")
+  paymentAdjustmentsRequested   PaymentAdjustment[]     @relation("PaymentAdjustmentRequestedBy")
+  checksVoided                  Check[]                 @relation("CheckVoidedBy")
+  orderRoundsSubmitted          OrderRound[]            @relation("OrderRoundSubmittedBy")
   venueAccess                   VenueAccess[]           @relation("StaffAccess")
   grantsGiven                   VenueAccess[]           @relation("GrantedBy")
   auditLogs                     AuditLog[]              @relation("ActorLogs")
@@ -414,6 +508,8 @@ model Staff {
   tabletEnrollmentsCreated      TabletEnrollment[]      @relation("TabletEnrollmentCreatedBy")
   tabletDevicesRevoked          TabletDevice[]          @relation("TabletDeviceRevokedBy")
   paymentObservationsReviewed   PaymentObservation[]
+  promotionsCreated             Promotion[]             @relation("PromotionCreatedBy")
+  promotionsUpdated             Promotion[]             @relation("PromotionUpdatedBy")
 }
 
 model VenueAccess {
@@ -477,6 +573,16 @@ model ReservationGuest {
   reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
 }
 
+/// TRANSITIONAL (Phase D8): Order Tablet identity of the NestJS path. The
+/// permanent device registry is Device (kind order_tablet); this model and
+/// TabletEnrollment serve existing tablets until the Android Order Tablet
+/// migrates, then retire. Not extended.
+///
+/// LEGACY: a reservation deposit, one per reservation, with Stripe charge
+/// fields. No runtime code reads or writes it (audited 2026-09-29, Phase D6).
+/// It is NOT the canonical payment: a payment against a check is
+/// CheckPayment. Retirement path: drop, or remap to ReservationPayment, in a
+/// separately approved migration once reservation deposits are designed.
 model Payment {
   id                    String        @id @default(uuid())
   reservationId         String        @unique
@@ -828,9 +934,24 @@ model Order {
   venueId                      String
   tableId                      String?
   tableNumber                  String?
+  /// Phase D3: the table session (visit) this order belongs to. Set by
+  /// Servvia Core for every table-service order, and then tableId and
+  /// tableNumber are derived from the session's table, never taken from the
+  /// client. Null for historical orders, for orders created by the NestJS
+  /// path, and for orders with no table (takeaway). A session may hold
+  /// several orders; table occupancy is the session's, not the orders'.
+  tableSessionId               String?
   status                       OrderStatus   @default(pending)
-  posSyncStatus                POSSyncStatus @default(not_synced)
+  /// Legacy external-POS mirror. The NestJS path always sets it explicitly.
+  /// The default is `not_applicable` (Phase D3) because the only writer that
+  /// relies on it is Servvia Core, whose orders have no external POS.
+  posSyncStatus                POSSyncStatus @default(not_applicable)
   subtotalCents                Int
+  /// Phase D11: the promotion discount on subtotalCents, the sum of the
+  /// lines' discountCents. totalCents = subtotalCents - discountCents, and
+  /// taxCents is the GST contained in that discounted total. 0 for every
+  /// order without a promotion, including all history and the NestJS path.
+  discountCents                Int           @default(0)
   taxCents                     Int           @default(0)
   totalCents                   Int
   notes                        String?
@@ -876,7 +997,13 @@ model Order {
 
   venue                    Venue                     @relation(fields: [venueId], references: [id])
   table                    Table?                    @relation(fields: [tableId], references: [id])
+  /// Composite key: an order's table is, by database constraint, the table
+  /// of its session. A session is never deleted from under its orders.
+  tableSession             TableSession?             @relation(fields: [tableSessionId, tableId], references: [id, tableId], onDelete: Restrict)
   items                    OrderItem[]
+  rounds                   OrderRound[]
+  kitchenTickets           KitchenTicket[]
+  checkLines               CheckLine[]
   printJobs                PrinterJob[]
   posSyncRecord            POSSyncRecord?
   kdsDeliveryRecord        KdsDeliveryRecord?
@@ -892,10 +1019,14 @@ model Order {
   /// Native IdealPOS delta rounds for this table session. Empty for every
   /// order that never used the native handheld path, including all history.
   nativeRounds             NativeTableRound[]
+  appliedPromotions        AppliedPromotion[]
 
   @@unique([venueId, idempotencyKey])
+  /// Target of AppliedPromotion's composite foreign key (orderId, venueId).
+  @@unique([id, venueId])
   @@unique([paymentProviderTransactionId])
   @@unique([takeawayReference])
+  @@index([tableSessionId])
 }
 
 /// Table 19 controlled live-validation guard (Order Tablet "Send to Kitchen"
@@ -946,11 +1077,198 @@ model OrderItem {
   /// Kitchen a delta rather than a replay of the whole tab.
   nativeRoundId String?
 
-  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItem    MenuItem          @relation(fields: [menuItemId], references: [id])
-  nativeRound NativeTableRound? @relation(fields: [nativeRoundId], references: [id], onDelete: SetNull)
+  /// Phase D3: the canonical round (submission) that added this line. Null
+  /// for lines created by the NestJS path.
+  roundId String?
 
+  /// Phase D11: this line's share of its round's promotion discount, as
+  /// accepted (0..lineTotalCents). lineTotalCents stays unitPriceCents x
+  /// quantity; the line pays lineTotalCents - discountCents.
+  discountCents      Int     @default(0)
+  /// The promotion applied to this line's round, when the line was eligible
+  /// for it. Null (and discountCents 0) otherwise.
+  appliedPromotionId String?
+
+  order            Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem         MenuItem           @relation(fields: [menuItemId], references: [id])
+  nativeRound      NativeTableRound?  @relation(fields: [nativeRoundId], references: [id], onDelete: SetNull)
+  round            OrderRound?        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  /// Composite key: the applied promotion is of this line's own order.
+  appliedPromotion AppliedPromotion?  @relation(fields: [appliedPromotionId, orderId], references: [id, orderId], onDelete: NoAction)
+  kitchenLine      KitchenTicketLine?
+  checkLines       CheckLine[]
+
+  /// Target of CheckLine's composite foreign key (orderItemId, orderId).
+  @@unique([id, orderId])
   @@index([nativeRoundId])
+  @@index([roundId])
+  @@index([appliedPromotionId])
+}
+
+/// One submission of requested items to an order (Phase D3): round 1 is the
+/// order's creation, later rounds add items at the same table session.
+/// Written only by Servvia Core. A round is immutable once submitted; what
+/// the kitchen does with it is KitchenTicket state (Phase D4), not a round
+/// state. Unrelated to NativeTableRound, the legacy IdealPOS delivery model.
+///
+/// Hand-written CHECKs in migration 20260930000000_canonical_orders:
+/// sequence >= 1, requestKey length 16..255.
+model OrderRound {
+  id                 String   @id @default(uuid())
+  orderId            String
+  /// 1, 2, 3... per order, in submission order.
+  sequence           Int
+  /// Client-generated idempotency key of the submission, unique per order.
+  /// Round 1 uses the order's own idempotencyKey.
+  requestKey         String
+  submittedByStaffId String?
+  submittedAt        DateTime @default(now())
+
+  order             Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  submittedBy       Staff?             @relation("OrderRoundSubmittedBy", fields: [submittedByStaffId], references: [id], onDelete: SetNull)
+  items             OrderItem[]
+  kitchenTickets    KitchenTicket[]
+  /// At most one: AppliedPromotion.roundId is unique.
+  appliedPromotions AppliedPromotion[]
+
+  @@unique([orderId, sequence])
+  @@unique([orderId, requestKey])
+  /// Target of KitchenTicket's composite foreign key (roundId, orderId).
+  @@unique([id, orderId])
+}
+
+/// Transactional outbox of canonical Servvia events (Phase D3). A row is
+/// written in the same transaction as the state change it announces; a
+/// consumer (the Phase D4 kitchen) processes it later and stamps
+/// processedAt. Deliberately generic: no IdealPOS, connector or KDS
+/// transport fields. Today's only event type is `order.round_submitted`.
+model OutboxEvent {
+  id            String    @id @default(uuid())
+  venueId       String
+  aggregateType String
+  aggregateId   String
+  eventType     String
+  payload       Json
+  createdAt     DateTime  @default(now())
+  processedAt   DateTime?
+  /// Phase D4 bounded retry: failed processing attempts so far, the last
+  /// error, and the earliest time the next attempt may run (exponential
+  /// backoff). After the consumer's attempt limit, failedAt parks the event:
+  /// it is never retried again automatically and never silently dropped.
+  attempts      Int       @default(0)
+  lastError     String?
+  availableAt   DateTime  @default(now())
+  failedAt      DateTime?
+
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@index([processedAt, createdAt])
+}
+
+/// What the kitchen is expected to prepare (Phase D4): one ticket per order
+/// round per station, projected by Servvia Core from the round's
+/// `order.round_submitted` outbox event. Kitchen progress lives here and
+/// never in Order.status, which D4 does not write. Lines are snapshots, so a
+/// ticket survives menu changes.
+///
+/// (roundId, station) is unique: a replayed or concurrently projected event
+/// cannot create a second ticket for the same work. The station is chosen by
+/// the server (kitchen.Router), never by a client.
+///
+/// Hand-written CHECKs in migration 20261001000000_kitchen_tickets: version
+/// >= 1, station format, and each stage timestamp set once reached.
+model KitchenTicket {
+  id                String              @id @default(uuid())
+  venueId           String
+  orderId           String
+  roundId           String
+  /// Server-routed station, e.g. "kitchen". [a-z0-9_-], 1..40 characters.
+  station           String
+  status            KitchenTicketStatus @default(new)
+  /// Optimistic concurrency: a change names the version it read.
+  version           Int                 @default(1)
+  /// The outbox event this ticket was projected from (no foreign key: the
+  /// outbox may be pruned, tickets are history).
+  sourceEventId     String
+  /// Display snapshots taken at projection: the round's sequence, the
+  /// table or takeaway reference, and the order's source.
+  roundSequence     Int
+  tableNumber       String?
+  takeawayReference String?
+  orderSource       OrderSource
+  acknowledgedAt    DateTime?
+  preparingAt       DateTime?
+  readyAt           DateTime?
+  completedAt       DateTime?
+  recalledAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  venue       Venue                     @relation(fields: [venueId], references: [id])
+  order       Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// Composite key: a ticket's order is, by database constraint, the order
+  /// of its round.
+  round       OrderRound                @relation(fields: [roundId, orderId], references: [id, orderId], onDelete: Cascade)
+  lines       KitchenTicketLine[]
+  transitions KitchenTicketTransition[]
+
+  @@unique([roundId, station])
+  @@index([venueId, station, status])
+  @@index([orderId])
+}
+
+/// One order line on a kitchen ticket (Phase D4). orderItemId is unique, so
+/// a line is prepared on exactly one ticket, whatever the retries.
+model KitchenTicketLine {
+  id          String  @id @default(uuid())
+  ticketId    String
+  orderItemId String  @unique
+  /// Position of the line within its round, from 1.
+  position    Int
+  title       String
+  quantity    Int
+  /// Resolved modifiers as ordered (the OrderItem.selectedModifiers snapshot).
+  modifiers   Json    @default("[]")
+  notes       String?
+  seat        Int?
+
+  ticket    KitchenTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  orderItem OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, position])
+}
+
+/// Kitchen ticket history (Phase D4): every status change with its actor.
+/// Not AuditLog, whose actor must be a Staff row: a KDS device token is not
+/// one. actorId is the token subject (a staff id, or `kds-device:<venueId>`).
+model KitchenTicketTransition {
+  id         String              @id @default(uuid())
+  ticketId   String
+  fromStatus KitchenTicketStatus
+  toStatus   KitchenTicketStatus
+  /// The ticket version this change produced.
+  version    Int
+  actorId    String
+  actorKind  String
+  actorRole  StaffRole
+  at         DateTime            @default(now())
+
+  ticket KitchenTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, version])
+}
+
+/// Kitchen progress of a ticket. new -> acknowledged -> preparing -> ready
+/// -> completed (a ticket may skip acknowledged); completed -> recalled
+/// brings a bumped ticket back, and recalled -> preparing | ready |
+/// completed. Transitions are enforced by Servvia Core (internal/kitchen).
+enum KitchenTicketStatus {
+  new
+  acknowledged
+  preparing
+  ready
+  completed
+  recalled
 }
 
 model Printer {
@@ -1857,4 +2175,627 @@ model NativeSendAttempt {
   @@index([roundId, sendInitiatedAt])
   @@index([deviceId, sendInitiatedAt])
   @@index([token])
+}
+
+/// A financial obligation (Phase D5): what is owed for accepted order lines.
+/// Not the order (requested goods), a kitchen ticket (production work), a
+/// payment (money tendered, D6) or settlement (obligation satisfied, D6).
+/// Created by Servvia Core from the orders' priced snapshots; clients name
+/// orders or a table session, never amounts. No external-POS, payment
+/// provider or reconciliation field belongs here.
+///
+/// A table session may have any number of checks (split bills later); an
+/// order line is on at most one check that is not voided (CheckLine partial
+/// unique index). Hand-written CHECKs in migration 20261002000000_checks:
+/// version >= 1, key length 16..255, currency format, total = subtotal and
+/// 0 <= tax, void fields set exactly when voided.
+model Check {
+  id                 String      @id @default(uuid())
+  venueId            String
+  /// The visit of the billed orders; null for orders without a table.
+  tableSessionId     String?
+  status             CheckStatus @default(open)
+  /// ISO 4217 code, from the venue's tax configuration at creation.
+  currency           String
+  /// Sum of the line totals (gross), before discounts.
+  subtotalCents      Int
+  /// Phase D11: sum of the lines' discountCents, copied from the orders.
+  discountCents      Int         @default(0)
+  /// The GST contained in totalCents (D1 pricing).
+  taxCents           Int
+  /// What is owed: subtotalCents - discountCents (CHECK).
+  totalCents         Int
+  /// Optimistic concurrency: a change names the version it read.
+  version            Int         @default(1)
+  /// Client-generated key of the create request, unique per venue. A retry
+  /// with the same request returns this check.
+  idempotencyKey     String
+  /// sha256 of the create request's canonical identity (venue plus session
+  /// or order set), to tell a replay from a key reused for another request.
+  requestFingerprint String
+  createdByStaffId   String?
+  voidedByStaffId    String?
+  voidReason         String?
+  voidedAt           DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  venue        Venue            @relation(fields: [venueId], references: [id])
+  tableSession TableSession?    @relation(fields: [tableSessionId], references: [id], onDelete: Restrict)
+  createdBy    Staff?           @relation("CheckCreatedBy", fields: [createdByStaffId], references: [id], onDelete: SetNull)
+  voidedBy     Staff?           @relation("CheckVoidedBy", fields: [voidedByStaffId], references: [id], onDelete: SetNull)
+  lines        CheckLine[]
+  payments     CheckPayment[]
+  settlement   CheckSettlement?
+
+  @@unique([venueId, idempotencyKey])
+  @@index([venueId, status])
+  @@index([tableSessionId])
+}
+
+/// One billed order line (Phase D5): a copy of the order line's accepted
+/// financial snapshot, never re-priced. voidedAt is set, in the same
+/// transaction, when the check is voided; only lines with voidedAt NULL hold
+/// the order line (partial unique index "CheckLine_orderItemId_standing_key").
+model CheckLine {
+  id             String    @id @default(uuid())
+  checkId        String
+  orderId        String
+  orderItemId    String
+  /// Position within the check, from 1.
+  position       Int
+  title          String
+  quantity       Int
+  /// Unit price including modifiers, as accepted on the order.
+  unitPriceCents Int
+  lineTotalCents Int
+  /// Phase D11: the order line's accepted promotion discount, copied.
+  discountCents  Int       @default(0)
+  /// The order line's resolved modifiers, with their prices, as accepted.
+  modifiers      Json      @default("[]")
+  voidedAt       DateTime?
+
+  check     Check     @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  /// Composite key: a line's order is, by database constraint, the order of
+  /// its order line.
+  orderItem OrderItem @relation(fields: [orderItemId, orderId], references: [id, orderId], onDelete: Restrict)
+
+  @@unique([checkId, position])
+  @@index([orderItemId])
+  @@index([orderId])
+}
+
+/// Lifecycle of a Check: open (the obligation stands), voided (created in
+/// error and withdrawn; its lines may be billed again; never once money may
+/// have moved), or settled (Phase D6: successful payments cover the total,
+/// recorded by exactly one CheckSettlement, written in the same transaction).
+enum CheckStatus {
+  open
+  voided
+  settled
+}
+
+/// A tender against a check (Phase D6): money offered to pay the obligation.
+/// Provider-neutral: no Stripe, EFTPOS, IdealPOS or observation state. A check
+/// may have any number of payments (split tender, partial payment).
+///
+/// Staff initiate a payment (pending); only the trusted payment adapter
+/// reports its result. pending -> succeeded | failed | uncertain, and
+/// uncertain -> succeeded | failed (reconciliation). succeeded and failed are
+/// final; a reversal will be its own record. Every change is a
+/// CheckPaymentTransition. Rows are never deleted.
+///
+/// Amounts: a new payment must fit the check's available amount (total less
+/// succeeded, pending and uncertain payments), checked under the check's row
+/// lock, so concurrent tenders cannot overpay. Hand-written CHECKs in
+/// migration 20261003000000_payments_settlement: amount > 0, version >= 1,
+/// key length, currency format, resolvedAt set exactly when final.
+model CheckPayment {
+  id                 String             @id @default(uuid())
+  venueId            String
+  checkId            String
+  amountCents        Int
+  /// ISO 4217; always the check's currency.
+  currency           String
+  tenderType         TenderType
+  status             CheckPaymentStatus @default(pending)
+  version            Int                @default(1)
+  /// Client-generated key of the initiate request, unique per venue: a retry
+  /// after a lost response returns this payment, never a second tender.
+  idempotencyKey     String
+  /// sha256 of the request's identity (check, amount, currency, tender).
+  requestFingerprint String
+  requestedByStaffId String?
+  /// Opaque reference reported by the adapter with a result (e.g. a terminal
+  /// transaction id). Metadata for reconciliation, never an identity.
+  resultReference    String?
+  /// When the payment reached succeeded or failed.
+  resolvedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  venue                 Venue                       @relation(fields: [venueId], references: [id])
+  check                 Check                       @relation(fields: [checkId], references: [id], onDelete: Restrict)
+  requestedBy           Staff?                      @relation("CheckPaymentRequestedBy", fields: [requestedByStaffId], references: [id], onDelete: SetNull)
+  transitions           CheckPaymentTransition[]
+  settlement            CheckSettlement?
+  cashMovement          CashMovement?
+  adjustments           PaymentAdjustment[]
+  settlementTransitions CheckSettlementTransition[]
+
+  @@unique([venueId, idempotencyKey])
+  @@index([checkId, status])
+}
+
+/// Payment history (Phase D6): creation and every status change, with the
+/// actor. Not AuditLog: a payment adapter is not a Staff row.
+model CheckPaymentTransition {
+  id              String              @id @default(uuid())
+  paymentId       String
+  /// Null for the creation.
+  fromStatus      CheckPaymentStatus?
+  toStatus        CheckPaymentStatus
+  /// 1, 2, ... per payment.
+  sequence        Int
+  /// A staff id, or the adapter identity (e.g. payment-adapter).
+  actorId         String
+  actorKind       String
+  resultReference String?
+  at              DateTime            @default(now())
+
+  payment CheckPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, sequence])
+}
+
+/// The durable fact that a check's obligation was satisfied (Phase D6):
+/// successful payments cover its total. Exactly one per check (unique
+/// checkId), written in the same transaction as the payment success that
+/// completed it, which also moves the check to settled. A future reversal
+/// records its own revocation; this row is never deleted.
+model CheckSettlement {
+  id                String                      @id @default(uuid())
+  checkId           String                      @unique
+  amountCents       Int
+  currency          String
+  /// The payment whose success completed the obligation in the current (or
+  /// last) cycle. Earlier cycles' settling payments are in the transitions.
+  settlingPaymentId String                      @unique
+  actorId           String
+  actorKind         String
+  settledAt         DateTime                    @default(now())
+  /// Phase D9: the current settlement state. settled: the obligation is
+  /// satisfied now. revoked: money was returned (refund or reversal) and the
+  /// check owes again; a later success settles it again (cycle + 1). Every
+  /// change is a CheckSettlementTransition; nothing is deleted.
+  status            CheckSettlementStatus       @default(settled)
+  cycle             Int                         @default(1)
+  revokedAt         DateTime?
+  version           Int                         @default(1)
+  transitions       CheckSettlementTransition[]
+
+  check           Check        @relation(fields: [checkId], references: [id], onDelete: Restrict)
+  settlingPayment CheckPayment @relation(fields: [settlingPaymentId], references: [id], onDelete: Restrict)
+}
+
+/// Settlement history (Phase D9): every settled and revoked event of a
+/// check's settlement, append-only. A settled event names the payment whose
+/// success completed the obligation; a revoked event names the adjustment
+/// (refund or reversal) whose success reopened it.
+model CheckSettlementTransition {
+  id           String                @id @default(uuid())
+  settlementId String
+  /// 1, 2, ... per settlement.
+  sequence     Int
+  toStatus     CheckSettlementStatus
+  /// The settlement cycle the event belongs to.
+  cycle        Int
+  /// The check total the event concerns.
+  amountCents  Int
+  paymentId    String?
+  adjustmentId String?
+  actorId      String
+  actorKind    String
+  at           DateTime              @default(now())
+
+  settlement CheckSettlement    @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+  payment    CheckPayment?      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  adjustment PaymentAdjustment? @relation(fields: [adjustmentId], references: [id], onDelete: Restrict)
+
+  @@unique([settlementId, sequence])
+}
+
+/// Current state of a check's settlement.
+enum CheckSettlementStatus {
+  settled
+  revoked
+}
+
+/// A return of money against one payment (Phase D9). Two kinds, one engine:
+/// refund: requested by staff (card: pending until the payment adapter
+/// reports; cash: handed back by staff under their open shift, succeeded at
+/// once with a cash_refund movement). reversal: reported by the payment
+/// adapter device when the provider reversed an earlier card tender;
+/// succeeded at once. Provider-neutral; the result reference is metadata.
+///
+/// Capacity: succeeded, pending and uncertain adjustments together never
+/// exceed their payment's amount (checked under the check, then payment,
+/// row locks). A succeeded adjustment lowers the check's effective paid
+/// amount and may revoke its settlement. Rows are never deleted. Hand-written
+/// CHECKs in migration 20261006000000_refunds_reversals.
+model PaymentAdjustment {
+  id                 String                @id @default(uuid())
+  venueId            String
+  paymentId          String
+  kind               PaymentAdjustmentKind
+  amountCents        Int
+  currency           String
+  status             CheckPaymentStatus    @default(pending)
+  version            Int                   @default(1)
+  /// Client-generated key (staff refunds) or adapter-generated key
+  /// (reversals), unique per venue: a retry returns this adjustment.
+  idempotencyKey     String
+  requestFingerprint String
+  /// Why the money is returned (refunds).
+  reason             String?
+  requestedByStaffId String?
+  /// The payment_adapter device that reported a reversal.
+  originDeviceId     String?
+  resultReference    String?
+  resolvedAt         DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  venue                 Venue                         @relation(fields: [venueId], references: [id])
+  payment               CheckPayment                  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  requestedBy           Staff?                        @relation("PaymentAdjustmentRequestedBy", fields: [requestedByStaffId], references: [id], onDelete: Restrict)
+  originDevice          Device?                       @relation(fields: [originDeviceId], references: [id], onDelete: Restrict)
+  transitions           PaymentAdjustmentTransition[]
+  cashMovement          CashMovement?
+  settlementTransitions CheckSettlementTransition[]
+
+  @@unique([venueId, idempotencyKey])
+  @@index([paymentId, status])
+}
+
+/// Adjustment history (Phase D9): creation and every status change.
+model PaymentAdjustmentTransition {
+  id              String              @id @default(uuid())
+  adjustmentId    String
+  fromStatus      CheckPaymentStatus?
+  toStatus        CheckPaymentStatus
+  sequence        Int
+  actorId         String
+  actorKind       String
+  resultReference String?
+  at              DateTime            @default(now())
+
+  adjustment PaymentAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Restrict)
+
+  @@unique([adjustmentId, sequence])
+}
+
+/// refund: requested by staff. reversal: reported by the payment adapter.
+enum PaymentAdjustmentKind {
+  refund
+  reversal
+}
+
+/// Lifecycle of a CheckPayment. pending: initiated, awaiting its result.
+/// succeeded / failed: definitive. uncertain: submitted but no reliable
+/// result; never retried, never failed automatically, never settles, left
+/// only by reconciliation.
+enum CheckPaymentStatus {
+  pending
+  succeeded
+  failed
+  uncertain
+}
+
+/// How a payment is tendered. card: the result comes from the payment
+/// adapter. cash (Phase D7): accepted by staff under their open Shift; it is
+/// succeeded at once and recorded by exactly one CashMovement in the same
+/// transaction.
+enum TenderType {
+  card
+  cash
+}
+
+/// A bounded period of cash accountability (Phase D7): one staff member
+/// responsible for the physical cash taken at one venue. Not a table session,
+/// a check, a payment, a terminal or a drawer: no hardware identity exists
+/// yet, and a terminal/drawer link is an additive column for the devices
+/// phase. At most one open shift per (venue, staff), by a partial unique
+/// index; several staff may have open shifts at a venue.
+///
+/// Expected cash = openingFloatCents + the shift's cash_sale movements,
+/// computed by the server. At close the count, expected cash and variance
+/// (count - expected) are stored and never change. Hand-written CHECKs in
+/// migration 20261004000000_shifts_cash: non-negative float and count, close
+/// fields set exactly when closed, variance = counted - expected, version >=
+/// 1, key length, currency format.
+model Shift {
+  id                String      @id @default(uuid())
+  venueId           String
+  /// The staff member accountable for the shift's cash.
+  staffId           String
+  status            ShiftStatus @default(open)
+  /// ISO 4217, from the venue at open.
+  currency          String
+  openingFloatCents Int
+  /// Client-generated key of the open request, unique per venue: a retry
+  /// returns this shift.
+  openRequestKey    String
+  version           Int         @default(1)
+  openedAt          DateTime    @default(now())
+  closedAt          DateTime?
+  closedByStaffId   String?
+  countedCashCents  Int?
+  expectedCashCents Int?
+  varianceCents     Int?
+  /// Phase D8: the POS terminal the shift is worked from, if any. Optional;
+  /// shifts opened before D8 or without a terminal keep NULL. Accountability
+  /// stays with the staff member (one open shift per venue and staff).
+  terminalId        String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  venue         Venue          @relation(fields: [venueId], references: [id])
+  staff         Staff          @relation("ShiftStaff", fields: [staffId], references: [id], onDelete: Restrict)
+  closedBy      Staff?         @relation("ShiftClosedBy", fields: [closedByStaffId], references: [id], onDelete: Restrict)
+  /// Composite key: a shift's terminal is, by database constraint, a
+  /// terminal of the shift's venue.
+  terminal      Terminal?      @relation(fields: [terminalId, venueId], references: [id, venueId], onDelete: Restrict)
+  cashMovements CashMovement[]
+
+  @@unique([venueId, openRequestKey])
+  @@index([venueId, status])
+}
+
+/// A durable change to a shift's accountable cash (Phase D7). Only
+/// cash_sale today: a successful cash CheckPayment, exactly one movement per
+/// payment (unique paymentId), written in the payment's transaction. Never
+/// deleted; no client posts arbitrary entries.
+model CashMovement {
+  id           String           @id @default(uuid())
+  venueId      String
+  shiftId      String
+  kind         CashMovementKind
+  /// Always positive; the kind gives the direction (cash_sale: in,
+  /// cash_refund: out).
+  amountCents  Int
+  /// The cash payment a cash_sale records (null for a cash_refund).
+  paymentId    String?          @unique
+  /// Phase D9: the cash refund a cash_refund records (null for a cash_sale).
+  adjustmentId String?          @unique
+  actorStaffId String
+  createdAt    DateTime         @default(now())
+
+  venue      Venue              @relation(fields: [venueId], references: [id])
+  shift      Shift              @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  payment    CheckPayment?      @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  adjustment PaymentAdjustment? @relation(fields: [adjustmentId], references: [id], onDelete: Restrict)
+  actor      Staff              @relation("CashMovementActor", fields: [actorStaffId], references: [id], onDelete: Restrict)
+
+  @@index([shiftId])
+}
+
+/// Lifecycle of a Shift: open, then closed (counted, with expected cash and
+/// variance stored). Closed is final.
+enum ShiftStatus {
+  open
+  closed
+}
+
+/// Kinds of cash movement. cash_sale: cash accepted as a check payment.
+/// Paid-in/paid-out are added only when a workflow requires them.
+enum CashMovementKind {
+  cash_sale
+  cash_refund
+}
+
+/// An enrolled installation that authenticates to Servvia (Phase D8): the
+/// permanent device registry. kind says what the installation is, never who
+/// may act: a device credential grants no staff role. Bound to one venue.
+///
+/// Credential: opaque `sdv1.<id>.<secret>` (32 random bytes). Only
+/// sha256(secret) is stored; the plaintext is returned once, at enrollment
+/// and rotation. Revocation is final and takes effect on the next request.
+/// TabletDevice (Order Tablet) and the KDS PIN are transitional identities
+/// this registry supersedes as those clients migrate.
+///
+/// Hand-written CHECKs in migration 20261005000000_devices_terminals:
+/// display name 1..80 characters, credential hash format, version >= 1, key
+/// length, revoked fields set exactly when revoked.
+model Device {
+  id                  String       @id @default(uuid())
+  venueId             String
+  kind                DeviceKind
+  displayName         String
+  status              DeviceStatus @default(active)
+  /// sha256 of the credential secret, hex. Never returned by any API.
+  credentialHash      String       @unique
+  credentialRotatedAt DateTime?
+  /// Client-generated key of the enrollment request, unique per venue.
+  enrollRequestKey    String
+  version             Int          @default(1)
+  createdByStaffId    String
+  revokedAt           DateTime?
+  revokedByStaffId    String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  venue              Venue               @relation(fields: [venueId], references: [id])
+  createdBy          Staff               @relation("DeviceCreatedBy", fields: [createdByStaffId], references: [id], onDelete: Restrict)
+  revokedBy          Staff?              @relation("DeviceRevokedBy", fields: [revokedByStaffId], references: [id], onDelete: Restrict)
+  /// At most one, by the unique Terminal.deviceId.
+  terminals          Terminal[]
+  /// Reversals this payment adapter reported.
+  paymentAdjustments PaymentAdjustment[]
+
+  @@unique([venueId, enrollRequestKey])
+  /// Target of Terminal's composite foreign key (deviceId, deviceKind, venueId).
+  @@unique([id, kind, venueId])
+  @@index([venueId, kind, status])
+}
+
+/// A logical POS station at a venue (Phase D8), e.g. "Front Counter". Not
+/// hardware. A venue has any number; the code is unique per venue. A terminal
+/// may be bound to one pos_terminal Device of the same venue, and a device to
+/// at most one terminal: composite foreign key (deviceId, deviceKind,
+/// venueId) plus a CHECK that deviceKind is pos_terminal. A disabled
+/// terminal cannot be chosen for a new shift; history is untouched.
+model Terminal {
+  id               String         @id @default(uuid())
+  venueId          String
+  name             String
+  /// Short code, unique per venue, e.g. FRONT-1.
+  code             String
+  status           TerminalStatus @default(active)
+  deviceId         String?        @unique
+  /// Always pos_terminal when a device is bound (CHECK); part of the
+  /// composite key that makes the database verify the device's kind.
+  deviceKind       DeviceKind?
+  createRequestKey String
+  version          Int            @default(1)
+  disabledAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  venue  Venue   @relation(fields: [venueId], references: [id])
+  device Device? @relation(fields: [deviceId, deviceKind, venueId], references: [id, kind, venueId], onDelete: Restrict)
+  shifts Shift[]
+
+  @@unique([venueId, code])
+  @@unique([venueId, createRequestKey])
+  /// Target of Shift's composite foreign key (terminalId, venueId).
+  @@unique([id, venueId])
+}
+
+/// What an installation is. Only kinds with a use today: kinds for waiter
+/// tablets, kiosks, window displays and Venue Edge are added additively when
+/// their phases need an identity.
+enum DeviceKind {
+  pos_terminal
+  order_tablet
+  kds
+  payment_adapter
+}
+
+/// active: authenticates. revoked: never again (final).
+enum DeviceStatus {
+  active
+  revoked
+}
+
+/// active: may be chosen for a new shift. disabled: not (final); past shifts
+/// keep it.
+enum TerminalStatus {
+  active
+  disabled
+}
+
+/// A promotion (Phase D11): a configured offer at ONE venue that staff may
+/// apply when an order is created or a round submitted. Servvia Core decides
+/// whether it is valid, which lines it covers and the discount; a client
+/// never supplies an amount. What an order actually received is its
+/// AppliedPromotion snapshot, never this row: editing or disabling a
+/// promotion changes no accepted order.
+///
+/// Percentage only (the one type with product evidence). Targets: every
+/// item, some categories, or some menu items, in typed columns (ids checked
+/// against the organization when saved). Optional UTC window
+/// [startsAt, endsAt). Never deleted: a promotion in use is restricted by
+/// AppliedPromotion. Hand-written CHECKs in migration 20261007000000_promotions.
+model Promotion {
+  id                 String          @id @default(uuid())
+  venueId            String
+  name               String
+  kind               PromotionKind
+  /// Percentage in basis points, 1..10000 (1000 = 10 %).
+  basisPoints        Int
+  target             PromotionTarget
+  /// Non-empty exactly when target = categories.
+  categoryIds        String[]        @default([])
+  /// Non-empty exactly when target = menu_items.
+  menuItemIds        String[]        @default([])
+  status             PromotionStatus @default(inactive)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  /// Optimistic concurrency: every change names the version it read, and an
+  /// order applies the promotion only at the version it evaluated.
+  version            Int             @default(1)
+  /// Client-generated key of the create request, unique per venue.
+  createRequestKey   String
+  /// sha256 of the create request, to tell a replay from a key reuse.
+  requestFingerprint String
+  createdByStaffId   String
+  updatedByStaffId   String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  venue        Venue              @relation(fields: [venueId], references: [id])
+  createdBy    Staff              @relation("PromotionCreatedBy", fields: [createdByStaffId], references: [id], onDelete: Restrict)
+  updatedBy    Staff?             @relation("PromotionUpdatedBy", fields: [updatedByStaffId], references: [id], onDelete: Restrict)
+  applications AppliedPromotion[]
+
+  @@unique([venueId, createRequestKey])
+  /// Target of AppliedPromotion's composite foreign key (promotionId, venueId).
+  @@unique([id, venueId])
+  @@index([venueId, status])
+}
+
+/// The financial effect of one promotion on one round (Phase D11), frozen
+/// when the round was accepted: the promotion's identity, version and terms,
+/// the eligible subtotal and the discount. At most one per round (no
+/// stacking). The discounted lines point here, and each carries its share.
+/// Composite keys make the database verify that the promotion is of the
+/// order's venue and the round of the order.
+model AppliedPromotion {
+  id                    String          @id @default(uuid())
+  venueId               String
+  orderId               String
+  roundId               String          @unique
+  promotionId           String
+  promotionVersion      Int
+  name                  String
+  kind                  PromotionKind
+  basisPoints           Int
+  target                PromotionTarget
+  /// ISO 4217, the venue's at acceptance.
+  currency              String
+  eligibleSubtotalCents Int
+  discountCents         Int
+  appliedAt             DateTime        @default(now())
+
+  order     Order       @relation(fields: [orderId, venueId], references: [id, venueId], onDelete: Cascade)
+  round     OrderRound  @relation(fields: [roundId, orderId], references: [id, orderId], onDelete: Cascade)
+  promotion Promotion   @relation(fields: [promotionId, venueId], references: [id, venueId], onDelete: Restrict)
+  lines     OrderItem[]
+
+  /// Target of OrderItem's composite foreign key (appliedPromotionId, orderId).
+  @@unique([id, orderId])
+  @@index([orderId])
+  @@index([promotionId])
+}
+
+/// percentage: basisPoints of the eligible lines. Fixed amounts, codes,
+/// bundles and the like are not supported (no requirement yet).
+enum PromotionKind {
+  percentage
+}
+
+/// inactive: configured but not applicable (the state at creation).
+/// active: applicable within its window. Nothing is ever deleted.
+enum PromotionStatus {
+  inactive
+  active
+}
+
+/// Which lines a promotion covers.
+enum PromotionTarget {
+  all_items
+  categories
+  menu_items
 }

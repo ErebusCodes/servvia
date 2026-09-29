@@ -1,0 +1,224 @@
+openapi: 3.1.0
+info:
+  title: Servvia kitchen tickets API
+  version: 0.1.0
+  description: |
+    NEW Servvia-native API (ADR 0001, Phase D4), served by Servvia Core (Go,
+    services/core-platform/internal/kitchen). No client is switched to it yet;
+    the current React KDS screens keep using the NestJS order routes.
+
+    A kitchen ticket is what one station must prepare for one order round.
+    Servvia Core creates tickets itself, from each round's
+    `order.round_submitted` outbox event (contracts/events/README.md); there
+    is no endpoint to create one. The station is chosen by the server, never
+    by a client. Kitchen progress is the ticket's `status`; it is separate
+    from, and never changes, the order's status.
+
+    Status: new -> acknowledged -> preparing -> ready -> completed (a ticket
+    may go straight from new to preparing); a completed ticket may be
+    recalled, and a recalled ticket goes to preparing, ready or completed.
+
+    Concurrency: a transition names the `version` the caller read. A stale
+    version is 409 `VERSION_CONFLICT` with the current version, never an
+    overwrite. Asking for the status the ticket already has returns it
+    unchanged (200), so a retried transition is safe.
+
+    Authorization: a KDS device token, or a staff identity (staff login or a
+    tablet elevated by a staff/manager PIN), with role owner, admin, manager,
+    cashier or kitchen. An unelevated customer tablet and the viewer role are
+    refused (403). Device tokens are pinned to their venue; tablet tokens must
+    still be enrolled; the venue must belong to the caller's organization
+    (404).
+servers:
+  - url: /api
+tags:
+  - name: kitchen
+paths:
+  /venues/{venueId}/kitchen-tickets:
+    get:
+      tags: [kitchen]
+      operationId: listKitchenTickets
+      summary: A venue's kitchen tickets, oldest first.
+      description: |
+        By default the active tickets (every status except completed). At most
+        the 500 newest matching tickets are returned, oldest first.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - { name: station, in: query, required: false, schema: { $ref: '#/components/schemas/Station' } }
+        - name: status
+          in: query
+          required: false
+          description: Comma-separated statuses to include.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The tickets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/KitchenTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/kitchen-tickets/{ticketId}:
+    get:
+      tags: [kitchen]
+      operationId: getKitchenTicket
+      summary: One kitchen ticket.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/TicketId' }]
+      responses:
+        '200':
+          description: The ticket.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KitchenTicket' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/kitchen-tickets/{ticketId}/transitions:
+    post:
+      tags: [kitchen]
+      operationId: transitionKitchenTicket
+      summary: Move a ticket to another status.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/TicketId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, version]
+              properties:
+                to: { type: string, enum: [acknowledged, preparing, ready, completed, recalled] }
+                version: { type: integer, minimum: 1, description: The ticket version the caller read. }
+      responses:
+        '200':
+          description: The ticket, moved by this request or already in the requested status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KitchenTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    VenueId: { name: venueId, in: path, required: true, schema: { type: string } }
+    TicketId: { name: ticketId, in: path, required: true, schema: { type: string } }
+  schemas:
+    Station: { type: string, pattern: '^[a-z0-9_-]{1,40}$' }
+    Status: { type: string, enum: [new, acknowledged, preparing, ready, completed, recalled] }
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+    NullableTimestamp:
+      oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+    NullableString:
+      type: [string, 'null']
+    KitchenTicket:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, orderId, roundId, roundSequence, station, status, version, tableNumber, takeawayReference,
+        orderSource, lines, acknowledgedAt, preparingAt, readyAt, completedAt, recalledAt, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        venueId: { type: string }
+        orderId: { type: string }
+        roundId: { type: string }
+        roundSequence: { type: integer, minimum: 1 }
+        station: { $ref: '#/components/schemas/Station' }
+        status: { $ref: '#/components/schemas/Status' }
+        version: { type: integer, minimum: 1 }
+        tableNumber: { $ref: '#/components/schemas/NullableString' }
+        takeawayReference: { $ref: '#/components/schemas/NullableString' }
+        orderSource: { type: string, enum: [pos_terminal, waiter_tablet, order_tablet, kiosk, customer_web] }
+        lines:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, orderItemId, position, title, quantity, modifiers, notes, seat]
+            properties:
+              id: { type: string }
+              orderItemId: { type: string }
+              position: { type: integer, minimum: 1 }
+              title: { type: string }
+              quantity: { type: integer, minimum: 1 }
+              modifiers:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [groupName, optionName]
+                  properties:
+                    groupName: { type: string }
+                    optionName: { type: string }
+              notes: { $ref: '#/components/schemas/NullableString' }
+              seat: { type: [integer, 'null'] }
+        acknowledgedAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        preparingAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        readyAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        completedAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        recalledAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+    CodedError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode, code]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+        code: { type: string, enum: [INVALID_TRANSITION, VERSION_CONFLICT, KITCHEN_WRITES_DISABLED] }
+        ticketStatus: { $ref: '#/components/schemas/Status' }
+        currentVersion: { type: integer, minimum: 1 }
+  responses:
+    BadRequest:
+      description: Malformed request, unknown status or station format.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Unauthorized:
+      description: Missing, invalid or expired token; a revoked tablet.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Forbidden:
+      description: An unelevated tablet, the viewer role, or a device token naming another venue.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    NotFound:
+      description: Venue or ticket not found for the caller.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Conflict:
+      description: The status does not allow the move (INVALID_TRANSITION, with ticketStatus) or the ticket changed since it was read (VERSION_CONFLICT, with currentVersion).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }
+    WritesDisabled:
+      description: This instance runs with a read-only database.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }

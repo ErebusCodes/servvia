@@ -1,0 +1,342 @@
+openapi: 3.1.0
+info:
+  title: Servvia promotions API
+  version: 0.1.0
+  description: |
+    NEW SERVVIA-NATIVE API (ADR 0001, Phase D11), served by Servvia Core (Go,
+    services/core-platform/internal/promotions). No client is switched to
+    it yet; the Admin Console has no promotion screen.
+
+    A promotion is a configured offer at ONE venue, for example "10 % off"
+    or "20 % off Drinks". It is a business rule, not a money record. What an
+    order received is frozen into that order (servvia-orders.yaml,
+    `promotions[]`), so changing, disabling or re-rating a promotion never
+    changes an accepted order, a check or a refund.
+
+    There is no "calculate discount" endpoint. A promotion is applied by
+    naming it (`promotionId`) when an order is placed or a round submitted.
+    The server then decides validity, eligible lines, the amount and the GST.
+
+    SUPPORTED: `kind: percentage` in basis points (1..10000; 1000 = 10 %).
+    Targets are `all_items`, `categories` (category ids) and `menu_items`
+    (menu item ids of the organization, checked when saved). Optional window
+    `[startsAt, endsAt)`: UTC instants, given in RFC 3339 with an explicit
+    offset and returned in UTC. One promotion per submission (no stacking).
+
+    DELIBERATELY NOT SUPPORTED (no product requirement yet): fixed amounts,
+    promotion codes, stacking, BOGO, bundles, tiers, loyalty, vouchers, gift
+    cards, organization-wide promotions, recurring local-time windows ("4-6pm
+    weekdays"), and any external POS or marketing-provider identifier. An
+    unknown property is refused (400).
+
+    Lifecycle: a new promotion is `inactive`. It is changed explicitly with
+    activate and deactivate. A window that has passed does not rewrite the
+    status. Nothing is ever deleted, and a promotion that an order used
+    cannot be deleted from the database either (restricted).
+
+    Concurrency: every change names the `version` it read. A stale version is
+    409 `VERSION_CONFLICT` (never last-write-wins). Activating an active
+    promotion, or deactivating an inactive one, is a no-op 200 whatever the
+    version (a retry). An order in flight holds the promotion at the version
+    it evaluated. A change either commits before that order locks it (the
+    order is then refused `PROMOTION_CHANGED`) or waits for the order.
+
+    Authorization: create, update, activate and deactivate need role owner,
+    admin or manager from a staff LOGIN session (not a tablet, a KDS or a
+    device). List and read need owner, admin, manager or cashier (a cashier
+    chooses a promotion for an order). The venue must belong to the caller's
+    organization (404); another venue's promotion is 404.
+
+    Audit: PROMOTION_CREATED, PROMOTION_UPDATED, PROMOTION_ACTIVATED,
+    PROMOTION_DISABLED, one per change and none for a replay or a no-op.
+    Candidate event facts for the realtime phase are promotion.created,
+    promotion.updated, promotion.activated and promotion.disabled. They are
+    not emitted yet.
+servers:
+  - url: /api
+tags:
+  - name: promotions
+paths:
+  /venues/{venueId}/promotions:
+    post:
+      tags: [promotions]
+      operationId: createPromotion
+      summary: Configure a promotion (inactive).
+      description: |
+        Idempotent by `idempotencyKey` per venue. The same key and terms return
+        the promotion (200). The same key with other terms is 409
+        `IDEMPOTENCY_CONFLICT` and creates nothing.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, kind, basisPoints, target, idempotencyKey]
+              properties:
+                name: { $ref: '#/components/schemas/Name' }
+                kind: { $ref: '#/components/schemas/Kind' }
+                basisPoints: { $ref: '#/components/schemas/BasisPoints' }
+                target: { $ref: '#/components/schemas/Target' }
+                categoryIds: { $ref: '#/components/schemas/Ids' }
+                menuItemIds: { $ref: '#/components/schemas/Ids' }
+                startsAt: { $ref: '#/components/schemas/Instant' }
+                endsAt: { $ref: '#/components/schemas/Instant' }
+                idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      responses:
+        '201':
+          description: Created, inactive.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Promotion' }
+        '200':
+          description: A replay of the request that created this promotion.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Promotion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+    get:
+      tags: [promotions]
+      operationId: listPromotions
+      summary: The venue's promotions, newest first (at most 200).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - name: status
+          in: query
+          description: Repeatable; all statuses when absent.
+          schema: { type: array, items: { $ref: '#/components/schemas/Status' } }
+          style: form
+          explode: true
+      responses:
+        '200':
+          description: The promotions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Promotion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /venues/{venueId}/promotions/{promotionId}:
+    get:
+      tags: [promotions]
+      operationId: getPromotion
+      summary: One promotion of this venue.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/PromotionId' }
+      responses:
+        '200': { $ref: '#/components/responses/PromotionResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [promotions]
+      operationId: updatePromotion
+      summary: Change a promotion's terms at the version read.
+      description: |
+        Absent properties are kept. `startsAt: null` / `endsAt: null` removes
+        that bound. Changing `target` starts its lists empty, so send the new
+        target's list with it. A change to identical terms is a no-op (200,
+        version unchanged). Accepted orders keep their snapshot.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/PromotionId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version]
+              properties:
+                version: { type: integer, minimum: 1 }
+                name: { $ref: '#/components/schemas/Name' }
+                basisPoints: { $ref: '#/components/schemas/BasisPoints' }
+                target: { $ref: '#/components/schemas/Target' }
+                categoryIds: { $ref: '#/components/schemas/Ids' }
+                menuItemIds: { $ref: '#/components/schemas/Ids' }
+                startsAt: { oneOf: [{ $ref: '#/components/schemas/Instant' }, { type: 'null' }] }
+                endsAt: { oneOf: [{ $ref: '#/components/schemas/Instant' }, { type: 'null' }] }
+      responses:
+        '200': { $ref: '#/components/responses/PromotionResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+  /venues/{venueId}/promotions/{promotionId}/activate:
+    post:
+      tags: [promotions]
+      operationId: activatePromotion
+      summary: Make the promotion applicable (within its window).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/PromotionId' }
+      requestBody: { $ref: '#/components/requestBodies/Version' }
+      responses:
+        '200': { $ref: '#/components/responses/PromotionResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+  /venues/{venueId}/promotions/{promotionId}/deactivate:
+    post:
+      tags: [promotions]
+      operationId: deactivatePromotion
+      summary: Stop the promotion applying to new orders and rounds.
+      description: Accepted orders, their checks and their refunds are unaffected.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/VenueId' }
+        - { $ref: '#/components/parameters/PromotionId' }
+      requestBody: { $ref: '#/components/requestBodies/Version' }
+      responses:
+        '200': { $ref: '#/components/responses/PromotionResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    VenueId: { name: venueId, in: path, required: true, schema: { type: string } }
+    PromotionId: { name: promotionId, in: path, required: true, schema: { type: string } }
+  requestBodies:
+    Version:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [version]
+            properties:
+              version: { type: integer, minimum: 1 }
+  schemas:
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+    NullableTimestamp:
+      oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+    Instant:
+      type: string
+      format: date-time
+      description: RFC 3339 with an explicit offset (Z or +hh:mm). Stored and returned in UTC, to the millisecond.
+    Name: { type: string, minLength: 1, maxLength: 80, description: Trimmed; 1 to 80 characters. }
+    Kind: { type: string, enum: [percentage] }
+    BasisPoints: { type: integer, minimum: 1, maximum: 10000, description: 'Percentage in basis points: 1000 = 10 %.' }
+    Target: { type: string, enum: [all_items, categories, menu_items] }
+    Status: { type: string, enum: [inactive, active] }
+    Ids:
+      type: array
+      maxItems: 200
+      items: { type: string, minLength: 1 }
+      description: |
+        Non-empty exactly for the matching target (categoryIds for
+        `categories`, menuItemIds for `menu_items`). Each id must be of the
+        venue's organization (a live menu item). Returned sorted and without
+        duplicates.
+    Promotion:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, name, kind, basisPoints, target, categoryIds, menuItemIds, status, startsAt, endsAt,
+        version, idempotencyKey, createdByStaffId, updatedByStaffId, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        venueId: { type: string }
+        name: { $ref: '#/components/schemas/Name' }
+        kind: { $ref: '#/components/schemas/Kind' }
+        basisPoints: { $ref: '#/components/schemas/BasisPoints' }
+        target: { $ref: '#/components/schemas/Target' }
+        categoryIds: { $ref: '#/components/schemas/Ids' }
+        menuItemIds: { $ref: '#/components/schemas/Ids' }
+        status: { $ref: '#/components/schemas/Status' }
+        startsAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        endsAt: { $ref: '#/components/schemas/NullableTimestamp' }
+        version: { type: integer, minimum: 1 }
+        idempotencyKey: { type: string }
+        createdByStaffId: { type: string }
+        updatedByStaffId: { type: [string, 'null'] }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+    CodedError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode, code]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+        code: { type: string, enum: [IDEMPOTENCY_CONFLICT, VERSION_CONFLICT, PROMOTION_WRITES_DISABLED] }
+        promotionId: { type: string, description: With IDEMPOTENCY_CONFLICT, the promotion holding the key. }
+        currentVersion: { type: integer, minimum: 1, description: With VERSION_CONFLICT. }
+  responses:
+    PromotionResult:
+      description: The promotion.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Promotion' }
+    BadRequest:
+      description: Malformed request, an unknown property, invalid terms, or an unknown target id.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Unauthorized:
+      description: Missing, invalid or expired token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Forbidden:
+      description: Not an administrative role from a staff login session (writes), or not a reading role; any KDS or device identity.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    NotFound:
+      description: Venue or promotion not found for the caller.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Conflict:
+      description: Idempotency key reused for other terms, or a stale version.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }
+    WritesDisabled:
+      description: This instance runs with a read-only database.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }

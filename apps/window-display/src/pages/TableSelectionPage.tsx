@@ -72,7 +72,7 @@ export function TableSelectionPage() {
     <KioskFullscreenShell safeArea className="bg-gray-50">
       <FullscreenGate variant="button" />
       <div className="h-full w-full overflow-y-auto flex flex-col items-center px-6 py-12">
-      <h1 className="text-4xl font-extrabold text-gray-800 mb-2">Welcome to Verdura</h1>
+      <h1 className="text-4xl font-extrabold text-gray-800 mb-2">Welcome to Servvia</h1>
       <p className="text-gray-400 mb-6">Choose your order type below</p>
 
       {/* Dine-in vs Takeaway Selection Tabs */}

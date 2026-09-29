@@ -8,7 +8,7 @@
     inside the main net48 executable, and two of them are typed against
     IdealPos.Webit — a proprietary vendor assembly that is the client's own
     licensed Idealpos install file and is deliberately not source-controlled
-    (lib/PUT_DLLS_HERE.txt). A GitHub runner therefore cannot build the main
+    (lib/PUT_DLLS_HERE.txt). A CI runner therefore cannot build the main
     project at all. Rather than leave the bridge with zero automated
     coverage, this project links the subset of production sources and suites
     that depend on nothing but in-box .NET Framework assemblies, so the

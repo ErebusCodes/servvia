@@ -94,7 +94,7 @@ that path cannot take an order here at all.
 ## 3. CORRECTION 2 — governance is half-tracked, not untracked
 
 DL-109 §10 reported "zero files matching `verduraIdealposBridge`" in `verdura_MVP`. That was a
-string-match artefact. Tracked at `9f17006` (`github.com/ErebusCodes/verdura_MVP`):
+string-match artefact. Tracked at `9f17006` (canonical repository):
 
 - `apps/venue-connector/src/VerduraIdealposTracer.Core/OrderSubmission/IdealposBridgeClient.cs`
 - `apps/venue-connector/tests/VerduraIdealposTracer.Tests/IdealposBridgeClientTests.cs`

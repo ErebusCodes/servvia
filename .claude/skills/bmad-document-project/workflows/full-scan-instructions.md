@@ -222,7 +222,7 @@ Does this look correct? [y/n/edit]
 - ARCHITECTURE.md, ARCHITECTURE.txt, docs/architecture/
 - DEPLOYMENT.md, DEPLOY.md, docs/deployment/
 - API.md, docs/api/
-- Any files in docs/, documentation/, .github/ folders
+- Any files in docs/, documentation/ folders
 </action>
 
 <action>Create inventory of existing_docs with:
@@ -480,7 +480,7 @@ project-root/
 
 - Dockerfile, docker-compose.yml
 - Kubernetes configs (k8s/, helm/)
-- CI/CD pipelines (.github/workflows/, .gitlab-ci.yml)
+- CI/CD pipelines (e.g., .gitlab-ci.yml, ci/)
 - Deployment scripts
 - Infrastructure as Code (terraform/, pulumi/)
   </action>

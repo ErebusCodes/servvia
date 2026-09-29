@@ -40,7 +40,7 @@ function AppShell() {
   ];
 
   const meta = {
-    dashboard: { title: 'Dashboard', crumb: 'Operations', sub: "Thursday, June 19 · Verdura — Downtown" },
+    dashboard: { title: 'Dashboard', crumb: 'Operations', sub: "Thursday, June 19 · Servvia — Downtown" },
     reservations: { title: 'Reservations', crumb: 'Operations / Reservations' },
     orders: { title: 'Orders', crumb: 'Operations / Orders' },
     kitchen: { title: 'Kitchen Operations', crumb: 'Operations / Kitchen' },
@@ -100,7 +100,7 @@ function AppShell() {
               <EmptyState
                 icon={(I[active] ? React.createElement(I[active], { size: 22 }) : <I.dashboard size={22} />)}
                 title={`${m.title} module`}
-                description="This surface is part of the Verdura platform. Dashboard, Reservations, Orders, Kitchen Operations, and Payments are wired as interactive demos in this kit."
+                description="This surface is part of the Servvia platform. Dashboard, Reservations, Orders, Kitchen Operations, and Payments are wired as interactive demos in this kit."
                 action={<Button variant="secondary" onClick={() => setActive('dashboard')} iconLeft={<I.arrowRight size={15} />}>Back to dashboard</Button>}
               />
             </div>

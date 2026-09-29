@@ -196,7 +196,7 @@ registration itself consumes a licence seat cannot be determined without a licen
 | Location | Tracked? |
 |---|---|
 | `C:\Users\Posmate\Documents\verduraBridge\verduraIdealposBridge` | **No** — no `.git` at any ancestor |
-| `verdura_MVP` (`github.com/ErebusCodes/verdura_MVP`, HEAD `9f17006`) | tracks `apps/venue-connector/**`; **zero** files matching `verduraIdealposBridge` |
+| `verdura_MVP` (canonical repository, HEAD `9f17006`) | tracks `apps/venue-connector/**`; **zero** files matching `verduraIdealposBridge` |
 | `VerduraServer.retired-20260827-155640` (same origin) | **zero** Bridge files |
 
 There is no authoritative tracked source for `VerduraIdealposBridge` anywhere on this machine.

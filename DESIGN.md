@@ -1,7 +1,7 @@
 # Design System
 
 ## Overview
-Dark, image-led Verdura identity refined with Apple-inspired precision. Existing layouts, navigation, responsive behavior, and customer workflows remain unchanged.
+Dark, image-led Servvia identity refined with Apple-inspired precision. Existing layouts, navigation, responsive behavior, and customer workflows remain unchanged.
 
 ## Typography
 Inter and system sans-serif for UI and body. Playfair Display is restricted to hero and major section headings. Use weights 400, 500, 600, and 700. Body copy is 16px minimum with 1.6 line height.

@@ -1,0 +1,312 @@
+openapi: 3.1.0
+info:
+  title: Servvia checks API
+  version: 0.3.0
+  description: |
+    NEW SERVVIA-NATIVE API (ADR 0001, Phase D5), served by Servvia Core (Go,
+    services/core-platform/internal/checks). No client is switched to it yet.
+
+    A check is a financial obligation: what is owed for order lines already
+    accepted. It is not the order (requested goods), a kitchen ticket
+    (production work), a payment (money tendered) or settlement (obligation
+    satisfied); payments and settlement are in payments.yaml. A check's
+    status is `open`, `voided` or `settled`. `settled` (Phase D6) is set only by
+    the payments domain, with its CheckSettlement, when successful payments
+    cover the total (contracts/openapi/payments.yaml); it returns to `open`
+    when money returned leaves the check owing (Phase D9), and can settle
+    again. `voided` is terminal.
+
+    Money is server-authoritative. A request names a table session or orders,
+    never an amount. Each line copies the order line's accepted snapshot
+    (unit and line totals, priced modifiers), so menu changes never alter a
+    check. Tax is the venue's pricing rule on the check subtotal (NZ GST
+    contained in the total, as for orders).
+
+    DISCOUNTS (NEW, Phase D11): each line also copies the order line's
+    accepted promotion discount (`discountCents`). A check never looks up a
+    promotion: a promotion changed or disabled after the order was accepted
+    changes nothing here. `discountCents` is the sum of the lines',
+    `totalCents` = `subtotalCents` - `discountCents` (a database CHECK), and
+    `taxCents` is the GST contained in that total.
+
+    Billing: every round line of the named orders (or of every non-cancelled
+    order of the table session) that no standing check already holds. An
+    order line is on at most one check that is not voided. A table session
+    may have several checks, and several orders may be on one check.
+    Rounds submitted after a check is created are not added to it; a further
+    create bills them. Only Servvia Core orders can be billed.
+
+    A check bills an open visit only (Phase D10): if the table session, or
+    the session of any named order, is closed or cancelled, the create is
+    409 `TABLE_SESSION_NOT_OPEN` and nothing is created. Orders without a
+    table are unaffected. Existing checks of a closed visit stay correctable
+    (payments, refunds, reversals, re-settlement, void), and that never
+    reopens the session.
+
+    Authorization: a staff identity (staff login or a tablet elevated by a
+    staff/manager PIN). Create and read: owner, admin, manager, cashier.
+    Void: owner, admin, manager. KDS devices, customer-mode tablets and the
+    kitchen and viewer roles are refused (403). Tablet tokens are pinned to
+    their venue and must still be enrolled; the venue must belong to the
+    caller's organization (404).
+
+    Idempotency: the same `idempotencyKey` at a venue with the same request
+    (the same session, or the same set of orders) returns the original check
+    (200); with a different request it is 409 `IDEMPOTENCY_CONFLICT` and
+    nothing is created.
+servers:
+  - url: /api
+tags:
+  - name: checks
+paths:
+  /venues/{venueId}/checks:
+    post:
+      tags: [checks]
+      operationId: createCheck
+      summary: Bill orders on a new check.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey]
+              description: Exactly one of tableSessionId and orderIds.
+              properties:
+                tableSessionId: { type: string }
+                orderIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items: { type: string }
+                  description: Orders of one table session, or orders without a table.
+                idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      responses:
+        '201':
+          description: The check this request created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Check' }
+        '200':
+          description: A replay; the check this key already created for the same request.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Check' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+    get:
+      tags: [checks]
+      operationId: listChecks
+      summary: A venue's checks, newest first (at most 200).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/VenueId'
+        - { name: tableSessionId, in: query, required: false, schema: { type: string } }
+        - name: status
+          in: query
+          required: false
+          description: Comma-separated statuses (open, voided, settled); default open.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The checks.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Check' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/checks/{checkId}:
+    get:
+      tags: [checks]
+      operationId: getCheck
+      summary: One check.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/CheckId' }]
+      responses:
+        '200':
+          description: The check.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Check' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /venues/{venueId}/checks/{checkId}/void:
+    post:
+      tags: [checks]
+      operationId: voidCheck
+      summary: Withdraw an open check created in error.
+      description: |
+        Releases the check's lines, so those order lines may be billed again.
+        Changes no order, kitchen ticket or table session. Voiding an already
+        voided check returns it unchanged (200). A stale version is 409
+        VERSION_CONFLICT. A settled check is 409 CHECK_NOT_OPEN. While any
+        payment is pending, uncertain or succeeded it is 409
+        CHECK_HAS_PAYMENTS: money is exposed. Phase D9: a check may be voided
+        once no payment or refund is pending or uncertain and every succeeded
+        payment has been fully refunded or reversed (effective paid 0); all
+        payment and refund history is kept. Failed payments alone never block
+        a void.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/VenueId' }, { $ref: '#/components/parameters/CheckId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, reason]
+              properties:
+                version: { type: integer, minimum: 1 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: The voided check.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Check' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/WritesDisabled' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    VenueId: { name: venueId, in: path, required: true, schema: { type: string } }
+    CheckId: { name: checkId, in: path, required: true, schema: { type: string } }
+  schemas:
+    Timestamp:
+      type: string
+      pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$'
+    NullableString:
+      type: [string, 'null']
+    Check:
+      type: object
+      additionalProperties: false
+      required: [id, venueId, tableSessionId, status, currency, subtotalCents, discountCents, taxCents, totalCents, version, idempotencyKey,
+        createdByStaffId, voidedByStaffId, voidReason, voidedAt, lines, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        venueId: { type: string }
+        tableSessionId: { $ref: '#/components/schemas/NullableString' }
+        status: { type: string, enum: [open, voided, settled] }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        subtotalCents: { type: integer, description: Sum of the line totals (gross). }
+        discountCents: { type: integer, minimum: 0, description: 'NEW (D11): sum of the lines'' accepted promotion discounts.' }
+        taxCents: { type: integer, description: Tax contained in the total. }
+        totalCents: { type: integer, description: 'What is owed: subtotalCents - discountCents.' }
+        version: { type: integer, minimum: 1 }
+        idempotencyKey: { type: string }
+        createdByStaffId: { $ref: '#/components/schemas/NullableString' }
+        voidedByStaffId: { $ref: '#/components/schemas/NullableString' }
+        voidReason: { $ref: '#/components/schemas/NullableString' }
+        voidedAt:
+          oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }]
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, orderId, orderItemId, position, title, quantity, unitPriceCents, lineTotalCents, discountCents, modifiers]
+            properties:
+              id: { type: string }
+              orderId: { type: string }
+              orderItemId: { type: string }
+              position: { type: integer, minimum: 1 }
+              title: { type: string }
+              quantity: { type: integer, minimum: 1 }
+              unitPriceCents: { type: integer }
+              lineTotalCents: { type: integer }
+              discountCents: { type: integer, minimum: 0, description: 'NEW (D11): the order line''s accepted discount, copied.' }
+              modifiers:
+                type: array
+                items:
+                  type: object
+                  required: [optionName, priceDeltaCents]
+                  properties:
+                    modifierGroupId: { type: string }
+                    modifierGroupName: { type: string }
+                    optionId: { type: string }
+                    optionName: { type: string }
+                    priceDeltaCents: { type: integer }
+        createdAt: { $ref: '#/components/schemas/Timestamp' }
+        updatedAt: { $ref: '#/components/schemas/Timestamp' }
+    NestError:
+      type: object
+      additionalProperties: false
+      required: [message, statusCode]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+    CodedError:
+      type: object
+      additionalProperties: false
+      required: [message, error, statusCode, code]
+      properties:
+        message: { type: string }
+        error: { type: string }
+        statusCode: { type: integer }
+        code:
+          type: string
+          enum: [IDEMPOTENCY_CONFLICT, ORDER_NOT_BILLABLE, VERSION_CONFLICT, NOTHING_TO_BILL, MIXED_VISITS,
+            ORDER_NOT_CANONICAL, AMOUNT_OUT_OF_RANGE, CHECK_WRITES_DISABLED, CHECK_NOT_OPEN, CHECK_HAS_PAYMENTS,
+            TABLE_SESSION_NOT_OPEN]
+        checkId: { type: string, description: With IDEMPOTENCY_CONFLICT, the check holding the key. }
+        orderId: { type: string }
+        currentVersion: { type: integer, minimum: 1 }
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/NestError'
+              - $ref: '#/components/schemas/CodedError'
+    Unauthorized:
+      description: Missing, invalid or expired token; a revoked tablet.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Forbidden:
+      description: A device identity, a role without financial permission, or a tablet naming another venue.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    NotFound:
+      description: Venue, table session, order or check not found for the caller.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    Conflict:
+      description: Idempotency conflict, nothing left to bill, a cancelled or non-Servvia order, mixed visits, or a stale version.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }
+    Unprocessable:
+      description: The venue's tax configuration has no verified rule.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    WritesDisabled:
+      description: This instance runs with a read-only database.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CodedError' }

@@ -89,7 +89,7 @@ Not materially exercised this pass — no `packages/` directory was created (see
 ## Compatibility decisions
 
 - **Ports unchanged**: 3000 (API), 5173 (customer-website), 5174 (window-display), 5175 (kitchen-display), 5176 (admin-console), 5177 (order-tablet).
-- **npm script names changed** (`dev:backend`→`dev:api`, etc.) — no CI exists in this repository (confirmed: no `.github/` directory) and no external consumer of the old script names was found, so this was a clean rename rather than requiring a compatibility alias.
+- **npm script names changed** (`dev:backend`→`dev:api`, etc.) — no CI exists in this repository and no external consumer of the old script names was found, so this was a clean rename rather than requiring a compatibility alias.
 - **Docker Compose service names changed** (`backend`→`api`, etc.) — same reasoning; `docker compose up backend` becomes `docker compose up api`.
 - **Database schema, migrations, and API contracts**: untouched by this migration.
 

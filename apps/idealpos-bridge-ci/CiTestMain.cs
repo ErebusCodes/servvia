@@ -1,7 +1,7 @@
 // CI-ONLY entry point — not part of the shipped bridge.
 //
 // Runs the three self-test suites that do not touch the proprietary
-// IdealPos.Webit vendor DLL, so they can execute unattended on a GitHub
+// IdealPos.Webit vendor DLL, so they can execute unattended on a CI
 // windows-latest runner that has no Idealpos installation. The other two
 // suites (TableAssignmentStrategyTests, IdealposOrderSubmitterTests) are
 // vendor-typed and stay local-only; see this project's README and the

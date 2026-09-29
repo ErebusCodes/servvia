@@ -1,6 +1,6 @@
-# Verdura — MVP Definition and Readiness Baseline
+# Servvia — MVP Definition and Readiness Baseline
 
-> **Normative MVP decision — 2026-08-15:** Build the MVP to the [Target Operating Model](./target-operating-model.md): Idealpos-first handoff for ordinary in-person orders, Verdura-owned KDS/KOT fan-out after durable connector acceptance, existing Idealpos-integrated EFTPOS for default payment, and optional verified online prepayment mapped to `PREPAID / ONLINE`. Verdura retains all cross-system identifiers and independent delivery/payment states.
+> **Normative MVP decision — 2026-08-15:** Build the MVP to the [Target Operating Model](./target-operating-model.md): Idealpos-first handoff for ordinary in-person orders, Servvia-owned KDS/KOT fan-out after durable connector acceptance, existing Idealpos-integrated EFTPOS for default payment, and optional verified online prepayment mapped to `PREPAID / ONLINE`. Servvia retains all cross-system identifiers and independent delivery/payment states.
 
 **Original Date:** 2026-06-18
 
@@ -14,16 +14,16 @@
 
 ## 1. Purpose
 
-This document defines the smallest credible Verdura MVP, records the verified state of the current repository, and establishes the gates for a supervised design-partner pilot.
+This document defines the smallest credible Servvia MVP, records the verified state of the current repository, and establishes the gates for a supervised design-partner pilot.
 
 It supersedes the previous checklist wherever that checklist marked simulated, disconnected, or non-existent capability as complete. A feature is not complete merely because its UI exists, a database row is created, or a mock adapter returns success.
 
-Verdura is a **provider-neutral operational control and reconciliation layer for multi-location restaurant groups operating heterogeneous provider ecosystems**. It is not a POS replacement, payment processor, restaurant website, or collection of dashboard mock-ups.
+Servvia is a **provider-neutral operational control and reconciliation layer for multi-location restaurant groups operating heterogeneous provider ecosystems**. It is not a POS replacement, payment processor, restaurant website, or collection of dashboard mock-ups.
 
 ## 2. Non-Negotiable MVP Principles
 
 1. **Never fake success.** A provider operation is `Unsupported`, `Manual`, `Queued`, `Delivered`, `Acknowledged`, `Confirmed`, or in an explicit failure state. A fabricated external ID is never synchronization.
-2. **The POS owns fiscal truth.** Verdura may quote a price and control operational workflow, but the configured POS or payment provider owns accepted totals, tax, rounding, payment, refund, receipt, and settlement facts after acknowledgement.
+2. **The POS owns fiscal truth.** Servvia may quote a price and control operational workflow, but the configured POS or payment provider owns accepted totals, tax, rounding, payment, refund, receipt, and settlement facts after acknowledgement.
 3. **The server owns validation.** Prices, payment state, tenancy, permissions, mappings, transitions, and idempotency are never trusted to a browser or device.
 4. **Tenant and venue scope are enforced at every boundary.** UI visibility is not authorization.
 5. **Externally acknowledged facts are corrected through explicit compensating actions, not silent edits.**
@@ -31,7 +31,7 @@ Verdura is a **provider-neutral operational control and reconciliation layer for
 
 ## 3. MVP Goal
 
-Prove with one committed design partner that Verdura can safely control and observe a high-value cross-system restaurant workflow:
+Prove with one committed design partner that Servvia can safely control and observe a high-value cross-system restaurant workflow:
 
 1. ingest or capture an order using a provider-neutral canonical model;
 2. validate item, modifier, order-type, venue, and provider mappings;
@@ -142,7 +142,7 @@ The current processor invents an `IDEAL-*` identifier and marks the record synch
 
 ### F-03 — The defining Phase 1A availability wedge is absent
 
-Verdura can update local availability, but cannot fan out an 86 action to real ordering channels, track acknowledgements independently, expose partial failure, or reconcile provider truth.
+Servvia can update local availability, but cannot fan out an 86 action to real ordering channels, track acknowledgements independently, expose partial failure, or reconcile provider truth.
 
 ### F-04 — Print delivery has a producer gap and an invalid deployment boundary
 
@@ -222,13 +222,13 @@ Prototype screens may remain for discovery, but are not production scope and can
 - [ ] Repeating the request returns the original result and creates no duplicate order or POS sale.
 - [ ] Missing mappings block handoff with a stable error and reconciliation task.
 - [ ] Delivery, acknowledgement and confirmation timestamps are independently recorded.
-- [ ] POS authoritative totals, tax, rounding, receipt and payment state are stored without overwriting Verdura's original quote.
+- [ ] POS authoritative totals, tax, rounding, receipt and payment state are stored without overwriting Servvia's original quote.
 - [ ] Price mismatch follows an explicitly approved conflict policy.
 - [ ] No production path can report a simulated provider operation as successful.
 
 ### 9.2 Payment
 
-- [ ] Existing Idealpos-integrated EFTPOS/cash is the default in-person path; Verdura never treats preparation or POS handoff as payment success.
+- [ ] Existing Idealpos-integrated EFTPOS/cash is the default in-person path; Servvia never treats preparation or POS handoff as payment success.
 - [ ] PaymentIntent amount and currency equal the server-computed total.
 - [ ] Payment status is verified server-side before confirming a prepaid order.
 - [ ] Verified online payments are mapped to the configured Idealpos `PREPAID / ONLINE` tender, and both provider transaction references are retained.
@@ -256,7 +256,7 @@ Prototype screens may remain for discovery, but are not production scope and can
 
 - [ ] Order creation produces a consumable print command.
 - [ ] Each order line is routed once to the preparation station configuration captured with that order version.
-- [ ] Idealpos does not duplicate Verdura-originated KOT printing.
+- [ ] Idealpos does not duplicate Servvia-originated KOT printing.
 - [ ] Venue edge service prints on the real kitchen printer.
 - [ ] Printed acknowledgement is distinct from command delivery.
 - [ ] Offline retries are durable and visible.
@@ -360,7 +360,7 @@ Passing unit tests do not establish pilot readiness. Section 9 requires integrat
 
 ## 13. MVP Definition of Done
 
-The Verdura MVP is complete only when:
+The Servvia MVP is complete only when:
 
 - [ ] every P0 item is closed;
 - [ ] every enabled provider and payment path fails closed and never fabricates success;
@@ -370,8 +370,8 @@ The Verdura MVP is complete only when:
 - [ ] operational runbooks, monitoring, backup restoration and rollback are verified;
 - [ ] prototype/deferred modules are visibly gated;
 - [ ] pilot metrics show reduced reconciliation effort, incident time or preventable leakage; and
-- [ ] the design partner and Verdura jointly sign the go-live readiness record.
+- [ ] the design partner and Servvia jointly sign the go-live readiness record.
 
 Until then, the correct external description is:
 
-> **Verdura is a controlled operational prototype with a functioning menu, reservation, order and KDS foundation. It is progressing toward a provider-neutral design-partner MVP and is not yet approved for production payment or POS-connected operation.**
+> **Servvia is a controlled operational prototype with a functioning menu, reservation, order and KDS foundation. It is progressing toward a provider-neutral design-partner MVP and is not yet approved for production payment or POS-connected operation.**

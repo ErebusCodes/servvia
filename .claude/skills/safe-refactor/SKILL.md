@@ -97,7 +97,7 @@ Never rename, move, or delete, regardless of how "unclear" the name looks:
 - File-router directories and their contents: `pages/`, `app/`, `api/`, `routes/`
 - Convention files: `layout.*`, `page.*`, `route.*`, `loading.*`, `error.*`, `not-found.*`, `middleware.*`, `index.*` where the framework resolves it, `_app.*`, `_document.*`
 - All configuration: `*.config.*`, `.env*`, `tsconfig*`, lockfiles, `.eslintrc*`, `.prettierrc*`
-- CI/CD: `.github/`, Dockerfiles, compose files, deploy configs
+- CI/CD: Dockerfiles, compose files, deploy configs
 - Database migrations, seeds, generated schema/client code
 - Anything referenced by string path in configs, scripts, CI, or `package.json`
 - Public assets referenced by URL

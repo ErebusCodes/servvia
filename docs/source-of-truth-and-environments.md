@@ -3,7 +3,7 @@
 **Status:** Normative — governs how code moves between environments
 **Effective:** 2026-08-28
 
-This document defines the roles of environments, secure access rules, the standing session protocol, and safety constraints that govern all work in the Verdura repository.
+This document defines the roles of environments, secure access rules, the standing session protocol, and safety constraints that govern all work in the Servvia repository.
 
 Future implementation sessions (including those by AI coding assistants like Claude) should begin by reading and following this operating procedure. Do not rely on conversational memory when repository documentation provides the current operating policy.
 
@@ -13,12 +13,12 @@ See [`windows-production-deployment.md`](./windows-production-deployment.md) for
 
 ## 1. Environment Roles and Source of Truth
 
-GitHub is the single authoritative source of truth for tracked code, while other environments serve specific operational roles.
+The authoritative Git remote repository (`origin/main`) is the single authoritative source of truth for tracked code, while other environments serve specific operational roles.
 
 | Environment / Role | Classification | Purpose & Constraints |
 | --- | --- | --- |
-| **GitHub `main`** | Authoritative Tracked Source | The single authoritative source of truth for all tracked Verdura application code. If any local checkout disagrees with it, `main` wins. |
-| **Windows (`DESKTOP-SOKKOQ7`)** | Primary Production-Facing Work/Integration Surface | The primary surface for production-facing implementation, deployment, IdealPOS/connector/bridge validation, service configuration, and live integration work. It is **not** the source of truth; all changes here must be committed, pushed, and verified against GitHub. |
+| **Git Remote `origin/main`** | Authoritative Tracked Source | The single authoritative source of truth for all tracked Servvia application code. If any local checkout disagrees with it, `main` wins. |
+| **Windows (`DESKTOP-SOKKOQ7`)** | Primary Production-Facing Work/Integration Surface | The primary surface for production-facing implementation, deployment, IdealPOS/connector/bridge validation, service configuration, and live integration work. It is **not** the source of truth; all changes here must be committed, pushed, and verified against the Git remote. |
 | **Mac** | Synchronized Development & Review Environment | A local development and review environment. All offline feature work, review, and sync validations occur here. |
 
 ---
@@ -68,11 +68,11 @@ Every implementation session must strictly adhere to the following sequence to p
 2.  **Secrets Audit:** Confirm that no machine-local configurations, private keys, `.env` files, or secrets are staged.
 3.  **Quality Gates:** Run required tests and build steps to ensure there are no compilation or runtime regressions.
 4.  **Commit:** Commit your changes with a clear, descriptive commit message.
-5.  **Push:** Push all committed work to GitHub `main`.
+5.  **Push:** Push all committed work to remote `main`.
 
 ### 3.4 After Push
 1.  **CI Validation:** Wait for the CI pipeline to run and verify that it passes. Do not treat a pushed commit as approved until required CI status is green.
-2.  **Windows Sync:** Update the active Windows runtime/deployment only from the approved GitHub commit.
+2.  **Windows Sync:** Update the active Windows runtime/deployment only from the approved Git commit.
 
 ### 3.5 Mac Synchronization
 1.  **Clean Tree Check:** Verify that the Mac working tree is clean.

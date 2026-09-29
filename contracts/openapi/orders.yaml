@@ -1,0 +1,1342 @@
+openapi: 3.1.0
+info:
+  title: Servvia orders API
+  version: 0.1.0-as-built
+  description: |
+    Contract of the EXISTING NestJS implementation (apps/api) for order
+    creation, listing, status transitions and the kiosk Stripe helpers.
+    Written so a replacement service can match the wire behaviour exactly,
+    including known defects (`x-known-issues`). Every statement cites source
+    via `x-source` (repo-relative path:line). Items not provable from code
+    carry `x-unverified: true`.
+
+    ## Global behaviour
+
+    * Prefix `/api` (apps/api/src/main.ts:151).
+    * Global `ValidationPipe({ whitelist: true, transform: true })`
+      (apps/api/src/main.ts:150): unknown body properties are silently
+      STRIPPED (not rejected; `forbidNonWhitelisted` is off), including
+      inside nested item/modifier objects. Validation failure -> 400
+      `{ statusCode: 400, message: string[], error: "Bad Request" }`.
+    * No global exception filter: errors use the NestJS default
+      `{ statusCode, message, error }`, EXCEPT exceptions constructed with an
+      object body (STALE_PRICE), whose body is that object verbatim with no
+      `statusCode` key (@nestjs/common 11 `HttpException.createBody`).
+      Unhandled errors -> 500 `{ statusCode: 500, message: "Internal server error" }`.
+    * Request pipeline order (NestJS): middleware (SecurityHeaders, CSRF) ->
+      guards -> pipes (validation) -> handler. So CSRF 403 precedes
+      auth/rate-limit, and auth/rate-limit precede body validation.
+    * **CSRF** (`CsrfMiddleware`, every route): any non-GET/HEAD/OPTIONS
+      request whose `Authorization` header does not start with `Bearer `
+      must send header `x-csrf-token` equal to its `csrf_token` cookie, else
+      403 `Invalid or missing CSRF token`. Bearer-authenticated staff/tablet
+      calls are exempt. This applies to the PUBLIC kiosk POST routes.
+      (apps/api/src/common/middleware/csrf.middleware.ts:24-80)
+    * All responses carry the security headers from
+      apps/api/src/common/middleware/security-headers.middleware.ts:7-20.
+    * No caching headers are set by application code.
+    * POST routes have no `@HttpCode`, so success is **201** (NestJS default
+      for POST), including idempotent replays. GET/PATCH success is 200.
+    * JSON serialisation: Prisma `DateTime` -> ISO-8601 UTC string with
+      milliseconds; Prisma `Json` columns -> embedded JSON.
+
+    ## Authentication (Bearer JWT, HS256, `JWT_ACCESS_SECRET`)
+
+    Claims: `sub, email, role, organizationId, venueId?, kind?, deviceId?,
+    actingStaffId?`. `kind` in `staff | kds_device | tablet_device |
+    tablet_staff | tablet_manager` (absent on plain staff tokens).
+    Missing/invalid token -> 401 `{ statusCode: 401, message: "Unauthorized" }`
+    (passport default). Payload lacking sub/role/organizationId -> 401
+    `Malformed token payload`. (apps/api/src/auth/strategies/jwt.strategy.ts:9-37)
+
+    * `kds_device` tokens: `role = kitchen`, `venueId` set,
+      `sub = "kds-device:<venueId>"` (apps/api/src/auth/auth.service.ts:134-147).
+    * `tablet_device` tokens: `role = viewer`; `tablet_staff` /
+      `tablet_manager`: the real staff member's role; all carry `deviceId`
+      and `venueId` (apps/api/src/tablet/tablet-auth.service.ts:121-175).
+
+    **Venue scoping** (`resolveVenueScope`): for kinds `kds_device`,
+    `tablet_device`, `tablet_staff`, `tablet_manager`, a requested venue
+    different from the token's `venueId` -> 403 `This device is not
+    authorized for the requested venue`, and queries are pinned to the
+    token venue. Plain staff tokens are org-wide.
+    (apps/api/src/auth/utils/resolve-venue-scope.ts:26-37)
+  x-source: apps/api/src/orders/orders.controller.ts:1-128
+servers:
+  - url: /api
+tags:
+  - name: kiosk
+  - name: admin-orders
+  - name: tablet-orders
+
+paths:
+  /kiosk/orders:
+    post:
+      tags: [kiosk]
+      operationId: createKioskOrder
+      summary: Public, prepaid kiosk order (Stripe Terminal)
+      description: |
+        Unauthenticated. The order is persisted `status = confirmed`,
+        `source = kiosk`, `serviceMode = dine_in`, `guests = null`,
+        `confirmedAt = now`, `paymentProviderTransactionId =
+        stripePaymentIntentId`. Modifiers use the LEGACY name-based
+        resolution (see `components.x-modifier-resolution.nonStrict`).
+
+        **Exact processing order** (orders.service.ts:102-238):
+        1. Venue by id (`findUnique`, isActive NOT checked) -> 404 `Venue not found`.
+        2. Look up existing order by `(venueId, idempotencyKey)`.
+        3. If none: table pre-check `validateTableForOrder(venueId, tableId, tableNumber)`
+           (see `components.x-table-resolution`).
+        4. Price every line (`resolveOrderItems`, non-strict) — runs for
+           replays too.
+        5. Upsert kiosk system actor (audit only).
+        6. If an existing order was found -> idempotent outcome (see
+           `components.x-idempotency`); returns or throws here.
+        7. `checkExpectedPrices` (STALE_PRICE 409).
+        8. Payment-reference pre-check (`rejectIfPaymentReferenceReused`) -> 409.
+        9. Table re-resolution (same rules as 3).
+        10. `computeTotals` (422 on unsupported venue tax profile).
+        11. `verifyKioskPayment`: retrieves the PaymentIntent from Stripe
+            (skipped only when `NODE_ENV === 'test'`):
+            missing/`sk_test_dummy` key -> 503 `Stripe payment is not configured`;
+            retrieve error -> 400 `Unable to verify the Stripe payment`;
+            `status !== 'succeeded'` -> 400 `Stripe payment has not succeeded`;
+            `amount !== server totalCents` OR currency not `nzd`
+            (case-insensitive) -> 409 `Stripe payment amount or currency does
+            not match the order`.
+        12. Persist (transaction: table `FOR UPDATE` recheck, order, items,
+            legacy POS outbox row, printer jobs, KDS delivery row). P2002
+            conflicts are recovered (see x-idempotency).
+        13. Audit `CREATE_ORDER`, WebSocket broadcast, return 201.
+      x-source: apps/api/src/orders/orders.controller.ts:32-37
+      x-implementation: apps/api/src/orders/orders.service.ts:102-238
+      x-rate-limit:
+        limit: 30
+        windowSeconds: 60
+        x-source: apps/api/src/orders/orders.controller.ts:33-34
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderDto'
+      responses:
+        '201':
+          description: |
+            New order, or the ORIGINAL order on a matching idempotent replay
+            (same 201 status; there is no header or field distinguishing a
+            replay). Shapes differ: new -> `OrderCreated` (items +
+            posSyncRecord, no table); replay -> `OrderReplay` (items only).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/OrderCreated'
+                  - $ref: '#/components/schemas/OrderReplay'
+        '400':
+          description: |
+            DTO validation, or business rule: `Invalid or inactive table`;
+            `MenuItem with ID <id> not found`; `An order must contain at
+            least one item`; `Each selected modifier must supply a name`;
+            `"<name>" is not a valid option for this item`; `Unable to verify
+            the Stripe payment`; `Stripe payment has not succeeded`;
+            `stripePaymentIntentId is required for payment verification`
+            (unreachable: DTO already enforces non-empty).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '404':
+          $ref: '#/components/responses/VenueNotFound'
+        '409':
+          $ref: '#/components/responses/OrderConflict'
+        '422':
+          $ref: '#/components/responses/UnsupportedTaxProfile'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: |
+            `Stripe payment is not configured` (no/dummy STRIPE_SECRET_KEY),
+            or rate-limit backend down (`Authentication is temporarily unavailable.`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+      x-known-issues:
+        - "The current window-display kiosk client (apps/window-display/src/pages/KioskOrderPage.tsx:112-130, 223-243, and apps/window-display/src/api/menu.ts:27-40) sends NO idempotencyKey, so every submission fails DTO validation with 400. It also computes additive GST (cartTax = round(subtotal*0.15), cartTotal = subtotal + tax, KioskOrderPage.tsx:79-80) and charges that via create-payment-intent, so even with a key the server's GST-inclusive total (== subtotal) would not equal the PaymentIntent amount and step 11 would return 409. It sends no x-csrf-token header and no Bearer token, so CSRF middleware returns 403 before either. Net: the kiosk client cannot currently succeed."
+        - "CSRF is bypassed by ANY `Authorization: Bearer <anything>` header; on this public route the token is never verified, so the CSRF check is trivially skippable by non-browser callers."
+        - "Idempotent replay does not compare stripePaymentIntentId: a replay with the same key and cart but a different (or unpaid) PaymentIntent returns the original order with 201."
+        - "Line pricing (step 4) runs before the replay decision, so a legitimate replay fails with 409/400 if an item was since deleted, made unavailable, or a named modifier removed."
+        - "Venue isActive is not checked on order creation (findUnique by id only, orders.service.ts:1038-1044), unlike the menu/table read paths."
+        - "Table resolution matches tableId OR tableNumber; if both are supplied and disagree, whichever row Postgres returns first wins (orders.service.ts:1066-1072)."
+        - "Kiosk orders are always persisted as serviceMode dine_in, even with no table."
+
+  /kiosk/stripe/connection-token:
+    post:
+      tags: [kiosk]
+      operationId: createStripeTerminalConnectionToken
+      summary: Stripe Terminal connection token
+      description: |
+        Creates a Stripe Terminal connection token with Stripe API version
+        `2024-06-20`. No request body is read.
+      x-source: apps/api/src/orders/orders.controller.ts:39-44
+      x-implementation: apps/api/src/orders/orders.service.ts:951-962
+      x-rate-limit:
+        limit: 20
+        windowSeconds: 60
+        x-source: apps/api/src/orders/orders.controller.ts:41
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      responses:
+        '201':
+          description: Connection token.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [secret]
+                properties:
+                  secret: { type: string }
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: |
+            `Stripe payment is not configured` (STRIPE_SECRET_KEY missing or
+            `sk_test_dummy`), `Stripe Terminal is unavailable` (Stripe call
+            failed), or rate-limit backend down.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+          x-source: apps/api/src/orders/orders.service.ts:959-986
+      x-known-issues:
+        - Unauthenticated; anyone who passes CSRF (or sends any Bearer header) can mint Terminal connection tokens for the venue's Stripe account, limited only by the per-IP rate limit.
+
+  /kiosk/stripe/create-payment-intent:
+    post:
+      tags: [kiosk]
+      operationId: createStripePaymentIntent
+      summary: Create a card_present NZD PaymentIntent for a client-chosen amount
+      description: |
+        Calls `stripe.paymentIntents.create({ amount: amountCents, currency:
+        'nzd', payment_method_types: ['card_present'] })` (API version
+        `2024-06-20`). No capture_method is passed (Stripe default applies).
+      x-source: apps/api/src/orders/orders.controller.ts:46-51
+      x-implementation: apps/api/src/orders/orders.service.ts:964-979
+      x-rate-limit:
+        limit: 20
+        windowSeconds: 60
+        x-source: apps/api/src/orders/orders.controller.ts:48
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentIntentDto'
+      responses:
+        '201':
+          description: PaymentIntent client secret.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [clientSecret]
+                properties:
+                  clientSecret: { type: ['string', 'null'] }
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '403':
+          $ref: '#/components/responses/CsrfRejected'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: |
+            `Stripe payment is not configured`, `Stripe payment setup is
+            unavailable` (Stripe call failed), or rate-limit backend down.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+      x-known-issues:
+        - "The amount is chosen by the client and not tied to any cart, venue or order; the server only bounds it to 50..1000000 cents. Correctness relies entirely on POST /kiosk/orders later comparing intent.amount to the server-computed total."
+        - "No venue, metadata or idempotency key is attached to the PaymentIntent."
+        - "Whether a card_present PaymentIntent created without capture_method reaches status 'succeeded' (required by POST /kiosk/orders) after Terminal processPayment is a Stripe-side behaviour not provable from this repository."
+      x-unverified-items:
+        - x-unverified: true
+          note: Stripe capture behaviour for card_present without explicit capture_method.
+
+  /admin/orders:
+    get:
+      tags: [admin-orders]
+      operationId: listOrders
+      summary: List orders (staff, KDS device, elevated tablet)
+      description: |
+        Returns ALL matching orders, unpaginated, `createdAt DESC`.
+        Filter: `venue.organizationId = token.organizationId`, plus
+        `venueId` = scoped venue if any, plus when `activeOnly === "true"`
+        (exact string) `status IN (confirmed, preparing, ready)`.
+      x-source: apps/api/src/orders/orders.controller.ts:54-65
+      x-implementation: apps/api/src/orders/orders.service.ts:838-855
+      x-roles: { $ref: '#/components/x-staff-order-roles' }
+      x-rate-limit: none (RateLimitGuard not applied)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venueId
+          in: query
+          required: false
+          description: |
+            Optional venue filter. NOT validated as a UUID. For device-scoped
+            token kinds it must equal the token venue (else 403) and is
+            defaulted to it when omitted.
+          schema: { type: string }
+        - $ref: '#/components/parameters/ActiveOnly'
+      responses:
+        '200':
+          description: Orders with items, table and posSyncRecord.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OrderFull' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+      x-known-issues:
+        - No pagination or date bound; returns the organization's entire order history when activeOnly is not "true".
+        - activeOnly excludes `pending`, while table occupancy checks treat `pending` as active.
+    post:
+      tags: [admin-orders]
+      operationId: createStaffOrder
+      summary: Staff-surface order creation (Order Tablet, elevated tablet, KDS token)
+      description: |
+        Authenticated, never prepaid. Persisted `status = confirmed`,
+        `source = staff`, `confirmedAt = now`,
+        `paymentProviderTransactionId = null`, `guests = dto.guests ?? null`.
+        Modifiers use the STRICT id-based resolution.
+
+        Controller first calls `resolveVenueScope(user, dto.venueId)`
+        (device tokens: 403 on venue mismatch). Then `createStaffOrder`
+        (shared with POST /tablet/orders), **exact order**
+        (orders.service.ts:256-395):
+        1. Venue by id -> 404 `Venue not found`; `venue.organizationId !==
+           token org` -> 403 `Venue does not belong to your organization`.
+        2. Existing order by `(venueId, idempotencyKey)`.
+        3. If none, by `serviceMode`:
+           * `dine_in`: `validateTableForOrder(venueId, tableId)`; no tableId
+             -> 400 `A valid tableId is required for a dine-in order`;
+             unknown/inactive -> 400 `Invalid or inactive table`; occupied ->
+             409 `Table <tableNumber> already has an active order`.
+           * `takeaway`: `tableId` present -> 400 `A takeaway order must not
+             specify a table`. No table is ever assigned.
+           * Table 19 validation guard (inert unless
+             `TABLE19_LIVE_TEST_ENABLED === 'true'` and NODE_ENV !==
+             'production'; then 403s, see x-table19).
+        4. Price lines (`resolveOrderItems`, strict) — runs for replays too.
+        5. Existing order -> idempotent outcome.
+        6. `checkExpectedPrices` -> 409 STALE_PRICE.
+        7. `computeTotals` -> 422 on unsupported tax profile.
+        8. Persist (same transaction as kiosk; for takeaway a
+           `takeawayReference` is minted). Notes prefixed
+           `TABLE19-VALIDATION-` only in Table 19 mode.
+        9. Audit `CREATE_ORDER` (after: orderId, totalCents, source,
+           serviceMode, tableId, takeawayReference), WebSocket broadcast,
+           201.
+      x-source: apps/api/src/orders/orders.controller.ts:83-90
+      x-implementation: apps/api/src/orders/orders.service.ts:256-395
+      x-roles: { $ref: '#/components/x-staff-order-roles' }
+      x-rate-limit: none (RateLimitGuard not applied)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStaffOrderDto'
+      responses:
+        '201':
+          description: New order, or ORIGINAL order on matching replay (same status code).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/OrderCreated'
+                  - $ref: '#/components/schemas/OrderReplay'
+        '400':
+          description: |
+            DTO validation, or: `A valid tableId is required for a dine-in
+            order`; `A takeaway order must not specify a table`; `Invalid or
+            inactive table`; `MenuItem with ID <id> not found`; `An order must
+            contain at least one item`; any strict modifier error (see
+            x-modifier-resolution.strict).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: |
+            `Insufficient permissions`; `This device is not authorized for
+            the requested venue`; `Venue does not belong to your
+            organization`; Table 19 guard messages.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+        '404': { $ref: '#/components/responses/VenueNotFound' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '422': { $ref: '#/components/responses/UnsupportedTaxProfile' }
+      x-known-issues:
+        - "`kitchen` is in STAFF_ORDER_ROLES (orders.controller.ts:20-25) and KDS device tokens carry role kitchen (auth.service.ts:138), so any KDS device token can create orders for its venue (and cancel them via PATCH status)."
+        - "`owner` role bypasses RolesGuard entirely (roles.guard.ts:41-44)."
+        - "Line pricing runs before the replay decision, so a replay can fail if the menu changed (item unavailable/deleted, modifier group/option removed or made unavailable, group constraints changed)."
+        - "Venue isActive is not checked on order creation."
+        - "Staff tokens (non-device) are not venue-scoped; any venue in the organization is accepted."
+
+  /admin/orders/{id}:
+    get:
+      tags: [admin-orders]
+      operationId: getOrder
+      summary: Get one order
+      description: |
+        `findFirst where id = :id AND venue.organizationId = token org AND
+        (venueId = token venue, for device-scoped kinds)`.
+        The id is a plain string (not UUID-validated).
+      x-source: apps/api/src/orders/orders.controller.ts:67-75
+      x-implementation: apps/api/src/orders/orders.service.ts:857-866
+      x-roles: { $ref: '#/components/x-staff-order-roles' }
+      x-rate-limit: none
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderFull' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          $ref: '#/components/responses/OrderNotFound'
+
+  /admin/orders/{id}/status:
+    patch:
+      tags: [admin-orders]
+      operationId: updateOrderStatus
+      summary: Transition order status
+      description: |
+        1. Load order scoped like GET (org + device venue) -> 404 `Order not found`.
+        2. If `newStatus !== oldStatus`, validate against the transition
+           table (`components.x-status-transitions`); disallowed -> 409
+           `Invalid order status transition from <old> to <new>`.
+           **Same-status requests skip validation** and proceed.
+        3. If `newStatus === cancelled` and `oldStatus !== cancelled`:
+           `LegacyExternalPosHandoff.stopHandoffForCancelledOrder` runs
+           BEFORE the status write (see `components.x-cancellation`).
+        4. Update `status` and set exactly one timestamp by NEW status:
+           confirmed->`confirmedAt`, preparing->`preparingAt`,
+           ready->`readyAt`, completed->`completedAt`,
+           cancelled->`cancelledAt` (= now). `pending` sets none.
+        5. Audit `UPDATE_ORDER_STATUS` with `before: { status }`,
+           `after: { status, posDispatchStopped? }` (`posDispatchStopped`
+           present only on a real cancellation).
+        6. WebSocket `sendOrderUpdate(venueId, updatedOrder)`; return 200.
+      x-source: apps/api/src/orders/orders.controller.ts:92-107
+      x-implementation: apps/api/src/orders/orders.service.ts:868-949
+      x-roles: { $ref: '#/components/x-staff-order-roles' }
+      x-rate-limit: none
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderStatusDto'
+      responses:
+        '200':
+          description: Updated order (items, table, posSyncRecord).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrderFull' }
+        '400': { $ref: '#/components/responses/ValidationFailed' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/OrderNotFound' }
+        '409':
+          description: Disallowed transition.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+              example:
+                statusCode: 409
+                message: Invalid order status transition from completed to preparing
+                error: Conflict
+          x-source: apps/api/src/orders/orders.service.ts:886-893
+      x-known-issues:
+        - "Same-status updates (e.g. confirmed -> confirmed, cancelled -> cancelled) are accepted: they rewrite the corresponding timestamp, write an audit row and re-broadcast, with no error."
+        - "A cancellation whose legacy POS dispatch could not be stopped still succeeds (200); the failure is only visible as posDispatchStopped:false in the audit log and an errorMessage on posSyncRecord."
+        - "`kitchen` role (hence every KDS device token) can cancel orders."
+
+  /tablet/orders:
+    get:
+      tags: [tablet-orders]
+      operationId: listTabletOrders
+      summary: Restricted-mode order list for a tablet device
+      description: |
+        Same query and response as GET /admin/orders, pinned to the
+        token's venue (`resolveVenueScope(user, undefined)`); no venueId
+        query parameter is read.
+      x-source: apps/api/src/tablet/tablet-orders.controller.ts:51-64
+      x-implementation: apps/api/src/orders/orders.service.ts:838-855
+      x-auth: { $ref: '#/components/x-tablet-auth' }
+      x-rate-limit:
+        limit: 60
+        windowSeconds: 60
+        x-source: apps/api/src/tablet/tablet-orders.controller.ts:53
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ActiveOnly'
+      responses:
+        '200':
+          description: Orders for the device's venue.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OrderFull' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          $ref: '#/components/responses/TabletIdentityRequired'
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendDown' }
+      x-known-issues:
+        - A bare tablet_device token (customer/restricted context) receives full order objects for the venue, including totals, notes and posSyncRecord internals.
+        - Unpaginated.
+    post:
+      tags: [tablet-orders]
+      operationId: createTabletOrder
+      summary: Restricted (device-only) tablet order creation
+      description: |
+        Same business logic as POST /admin/orders (`createStaffOrder`,
+        strict modifiers), except:
+        * `venueId` is taken from the token (`req.user.venueId`), never the
+          body (the DTO has no venueId; a body venueId is stripped by
+          whitelist).
+        * The actor is a per-device synthetic Staff row
+          (`tablet-device+<deviceId>@verdura.internal`, role `viewer`,
+          inactive) upserted on every call, NOT the token's staff identity,
+          even for tablet_staff/tablet_manager tokens.
+        * No role check.
+      x-source: apps/api/src/tablet/tablet-orders.controller.ts:66-91
+      x-implementation: apps/api/src/orders/orders.service.ts:256-395
+      x-source-actor: apps/api/src/tablet/tablet-auth.service.ts:103-119
+      x-auth: { $ref: '#/components/x-tablet-auth' }
+      x-rate-limit:
+        limit: 30
+        windowSeconds: 60
+        x-source: apps/api/src/tablet/tablet-orders.controller.ts:68
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTabletOrderDto'
+      responses:
+        '201':
+          description: New order, or ORIGINAL order on matching replay.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/OrderCreated'
+                  - $ref: '#/components/schemas/OrderReplay'
+        '400':
+          description: Same as POST /admin/orders.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: |
+            `A valid tablet device identity is required`; `Venue does not
+            belong to your organization`; Table 19 guard messages.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+        '404': { $ref: '#/components/responses/VenueNotFound' }
+        '409': { $ref: '#/components/responses/OrderConflict' }
+        '422': { $ref: '#/components/responses/UnsupportedTaxProfile' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/RateLimitBackendDown' }
+      x-known-issues:
+        - "Idempotency keys are shared with /admin/orders (same source `staff`, same (venueId, idempotencyKey) scope): the same key replayed across the two routes with the same cart returns the other route's order."
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT (HS256)
+
+  x-staff-order-roles:
+    guards: [JwtAuthGuard, RolesGuard, TabletTokenActiveGuard]
+    roles: [admin, manager, cashier, kitchen]
+    ownerBypass: true
+    description: |
+      `@Roles(...STAFF_ORDER_ROLES)`; RolesGuard lets `owner` through
+      unconditionally, rejects other roles with 403 `Insufficient
+      permissions`. `viewer` (bare tablet_device tokens, kiosk/device system
+      actors) is rejected. TabletTokenActiveGuard: for tablet_* kinds only,
+      device row must exist with status `active`, else 401 `This device has
+      been revoked or is unknown`.
+    x-source: apps/api/src/orders/orders.controller.ts:20-25
+    x-source-roles-guard: apps/api/src/auth/guards/roles.guard.ts:17-54
+    x-source-tablet-active: apps/api/src/auth/guards/tablet-token-active.guard.ts:30-41
+    x-known-issues:
+      - kitchen is included so KDS device tokens (role kitchen) can list, create and cancel orders.
+
+  x-tablet-auth:
+    guards: [JwtAuthGuard, RateLimitGuard, TabletDeviceGuard]
+    description: |
+      Class-level JwtAuthGuard then RateLimitGuard, then method-level
+      TabletDeviceGuard: token `kind` must be tablet_device, tablet_staff or
+      tablet_manager AND carry deviceId, else 403 `A valid tablet device
+      identity is required`; device must be `active`, else 401 `This device
+      has been revoked or is unknown`. No role check.
+    x-source: apps/api/src/tablet/tablet-orders.controller.ts:31-33
+    x-source-guard: apps/api/src/tablet/guards/tablet-device.guard.ts:16-30
+
+  x-idempotency:
+    description: |
+      **Scope**: unique `(venueId, idempotencyKey)` (constraint
+      `Order_venueId_idempotencyKey_key`). Key is REQUIRED on all three
+      create routes, 16..255 chars. Keys are not scoped by route or source.
+
+      **Lookup** happens before any other validation (so a replay is not
+      rejected by the table-occupied guard for its own order), but AFTER
+      venue resolution and — importantly — line pricing still runs before
+      the replay decision.
+
+      **Match rule** (`ordersMatchForReplay`), all must hold:
+      1. `existing.source === expectedSource` (`kiosk` for /kiosk/orders,
+         `staff` for /admin/orders and /tablet/orders).
+      2. Staff/tablet only: `dto.serviceMode === existing.serviceMode`.
+      3. Table reference (`tableReferenceMatches`): if the request carries
+         `tableId`, it must equal `existing.tableId`; if it carries
+         `tableNumber` (kiosk only), it must equal `existing.tableNumber`;
+         if it carries neither, the existing order must have both null.
+      4. Cart fingerprint equal: order-independent multiset of
+         `menuItemId:quantity:[sorted modifier keys]` where a modifier key is
+         `optionId` or, when null (kiosk), `name:<trimmed lowercased
+         optionName>`. **Prices are excluded** — a replay after a price
+         change still matches.
+      Notes, guests, seat, expectedUnitPriceCents and stripePaymentIntentId
+      are NOT compared.
+
+      **Match** -> audit `ORDER_IDEMPOTENT_REPLAY` (best-effort), return the
+      stored order (`include: { items: true }` only) with **201**. No
+      re-verification of payment, no re-broadcast, no new print/KDS/POS rows.
+
+      **Mismatch** -> audit `ORDER_IDEMPOTENCY_CONFLICT`, **409**
+      `{ statusCode: 409, message: 'idempotencyKey "<key>" was already used
+      to create a different order', error: "Conflict" }`. Original order is
+      not modified.
+
+      **Concurrency** (`recoverFromPersistConflict`, Prisma P2002 only):
+      * Violation on idempotencyKey constraint -> re-fetch winner, apply the
+        same match/mismatch rule (201 original or 409).
+      * Violation on `Order_paymentProviderTransactionId_key`: if the winning
+        row has the same venueId AND idempotencyKey it is treated as a replay
+        (match rule applies); otherwise audit
+        `ORDER_PAYMENT_REFERENCE_REUSE_REJECTED` and 409 `This payment
+        reference is already linked to another order`.
+      * Primary-key collision -> re-run persist up to 3 more times, then
+        rethrow (500).
+      * Any other error (incl. the in-transaction table-occupied 409) is
+        rethrown unchanged.
+
+      **Payment reference reuse** (kiosk only): unique
+      `paymentProviderTransactionId` globally (NULLs allowed for staff
+      orders). Pre-check before Stripe: if an order already holds this
+      PaymentIntent id and it is NOT (same venue AND same idempotencyKey),
+      audit `ORDER_PAYMENT_REFERENCE_REUSE_REJECTED` and 409 `This payment
+      reference is already linked to another order`.
+    x-source-constraint: apps/api/prisma/schema.prisma:896-898
+    x-source-lookup: apps/api/src/orders/orders.service.ts:399-407
+    x-source-fingerprint: apps/api/src/orders/orders.service.ts:430-454
+    x-source-match: apps/api/src/orders/orders.service.ts:456-552
+    x-source-outcome: apps/api/src/orders/orders.service.ts:562-619
+    x-source-payment-ref: apps/api/src/orders/orders.service.ts:637-662
+    x-source-recovery: apps/api/src/orders/orders.service.ts:673-836
+
+  x-pricing:
+    description: |
+      All money is integer cents; the client never supplies a trusted price.
+      Per line (`resolveOrderItems`, in request order):
+      * MenuItem must exist with `organizationId = venue.organizationId AND
+        deletedAt IS NULL`, else 400 `MenuItem with ID <id> not found`.
+        (visibleChannels is NOT checked.)
+      * Effective availability `override.isAvailable ?? item.isAvailable`;
+        false -> 409 `Menu item "<title>" is currently unavailable`.
+      * `basePriceCents = override.priceCents ?? item.priceCents`.
+      * `unitPriceCents = basePriceCents + sum(resolved modifier priceDeltaCents)`.
+      * `lineTotalCents = unitPriceCents * quantity`.
+      * `seat` normalised: positive integer kept, anything else -> null.
+      * Snapshot fields `menuItemTitle`, `menuItemCategory` (category name) persisted.
+      Zero lines -> 400 `An order must contain at least one item`.
+
+      Totals (`computeTotals`), new orders only: venue must have exactly
+      `currency = "NZD"`, `taxJurisdiction = "NZ_GST"`,
+      `pricesIncludeTax = true`, else 422 `Venue <id> has an unsupported tax
+      configuration for total calculation (currency=<c>,
+      taxJurisdiction=<t>, pricesIncludeTax=<b>) — refusing to guess a
+      payable total.` Then:
+      * `subtotalCents = sum(lineTotalCents)`
+      * `taxCents = Math.round(subtotalCents * 3 / 23)` (GST contained,
+        JS Math.round: halves round toward +infinity)
+      * `totalCents = subtotalCents` (GST-inclusive, never additive)
+
+      **STALE_PRICE** (`checkExpectedPrices`, new orders only, after the
+      replay decision): for each line that supplied
+      `expectedUnitPriceCents`, compare with the resolved `unitPriceCents`
+      (matched by array index). Any mismatch -> **409** with body exactly
+      (no statusCode/error keys):
+      ```
+      {
+        "message": "One or more menu prices changed since this order was built — review the updated price(s) before resubmitting",
+        "code": "STALE_PRICE",
+        "conflicts": [
+          { "menuItemId": "...", "menuItemTitle": "...",
+            "expectedUnitPriceCents": 1500, "authoritativeUnitPriceCents": 1650 }
+        ]
+      }
+      ```
+      Applies to all three create routes (the DTO field is shared).
+    x-source-lines: apps/api/src/orders/orders.service.ts:1146-1208
+    x-source-totals: apps/api/src/orders/orders.service.ts:1456-1469
+    x-source-compute: apps/api/src/orders/orders.service.ts:1580-1593
+    x-source-stale: apps/api/src/orders/orders.service.ts:1408-1438
+
+  x-modifier-resolution:
+    description: |
+      Parsed from `MenuItem.modifierGroups` via `parseModifierGroups` (see
+      menu-read.yaml `ModifierGroupsJson` for the tolerant parse rules).
+    nonStrict:
+      usedBy: [POST /kiosk/orders]
+      description: |
+        Catalog = map of every option's `trim().toLowerCase()` name to its
+        priceDeltaCents, across all groups (later duplicates overwrite
+        earlier). For each selection: `name` trimmed must be non-empty, else
+        400 `Each selected modifier must supply a name`. If found -> price
+        from catalog. If not found and the item has any options -> 400
+        `"<name>" is not a valid option for this item`. If the item has no
+        options at all -> kept with priceDeltaCents 0. Client
+        `priceDeltaCents`, `modifierGroupId`, `optionId` are ignored.
+        Option isAvailable, group required/min/max are NOT enforced.
+        Snapshot: `{ modifierGroupId: null, modifierGroupName: null,
+        optionId: null, optionName: <trimmed name as sent>, priceDeltaCents }`.
+      x-source: apps/api/src/orders/orders.service.ts:1285-1323
+    strict:
+      usedBy: [POST /admin/orders, POST /tablet/orders]
+      description: |
+        Checks in this order (first failure wins):
+        1. Every selection has modifierGroupId AND optionId, else 400
+           `Each selected modifier must specify modifierGroupId and optionId`.
+        2. Item has no groups but selections sent -> 400 `This item has no
+           configurable options`.
+        3. Per selection: unknown group -> 400 `Unknown modifier group for
+           this item`; unknown option in that group -> 400 `Unknown modifier
+           option for this item`; option unavailable -> 409 `"<option>" is
+           no longer available`; option id repeated -> 400 `Duplicate
+           modifier option selected`.
+        4. Per group (all groups of the item): required and 0 selections ->
+           400 `"<group>" requires a selection`; (required or count>0) and
+           count < minSelections -> 400 `"<group>" requires at least <n>
+           selection(s)`; count > maxSelections -> 400 `"<group>" allows at
+           most <n> selection(s)`.
+        Snapshot per selection `{ modifierGroupId, modifierGroupName,
+        optionId, optionName, priceDeltaCents }`, ordered grouped by group
+        in first-selection order. `name`/`priceDeltaCents` from the client
+        are ignored.
+      x-source: apps/api/src/orders/orders.service.ts:1325-1390
+
+  x-table-resolution:
+    description: |
+      `validateTableForOrder(venueId, tableId?, tableNumber?)`:
+      * neither supplied -> no table (null/null);
+      * table lookup `venueId AND isActive AND (id = tableId OR tableNumber = tableNumber)`;
+        none -> 400 `Invalid or inactive table`;
+      * any order in the venue with `(tableId = table.id OR tableNumber =
+        table.tableNumber) AND status IN (pending, confirmed, preparing,
+        ready)` -> 409 `Table <tableNumber> already has an active order`.
+      Enforced again inside the persist transaction under
+      `SELECT ... FROM "Table" WHERE id = $1 FOR UPDATE`, with message
+      `Table <tableNumber ?? tableId> already has an active order` (409).
+    x-source: apps/api/src/orders/orders.service.ts:1057-1096
+    x-source-tx: apps/api/src/orders/orders.service.ts:1699-1720
+
+  x-table19:
+    description: |
+      Non-production validation guard for staff/tablet creation. Inert
+      unless env `TABLE19_LIVE_TEST_ENABLED === 'true'` AND NODE_ENV !==
+      'production'. When active, 403s: venue != TABLE19_LIVE_TEST_VENUE_ID;
+      resolved table number != "19" (so takeaway is always rejected); an
+      open validation run exists. A replacement service may omit it only if
+      the flag is never set in its environments.
+    x-source: apps/api/src/orders/orders.service.ts:1484-1518
+
+  x-status-transitions:
+    description: validateOrderStatusTransition. Same-status requests bypass this table (accepted).
+    x-source: apps/api/src/orders/orders.service.ts:1880-1890
+    table:
+      pending: [confirmed, cancelled]
+      confirmed: [preparing, cancelled]
+      preparing: [ready, cancelled]
+      ready: [completed, cancelled]
+      completed: []
+      cancelled: []
+
+  x-cancellation:
+    x-legacy: true
+    description: |
+      On a real transition to `cancelled`, BEFORE writing the status, the
+      legacy external-POS (IdealPOS) handoff is stopped via
+      `stopHandoffForCancelledOrder(order, organizationId, actor)`, which
+      returns `posDispatchStopped` recorded in the UPDATE_ORDER_STATUS audit
+      `after` object:
+      * no posSyncRecord -> true;
+      * record `not_synced` -> CAS update to `cancelled`; 1 row -> true;
+      * record `queued_for_connector` with a connector command -> cancel the
+        ConnectorCommand; success -> mark record `cancelled`, true;
+        failure (already accepted) -> falls through;
+      * otherwise (unstoppable) -> logs error, writes posSyncRecord
+        `errorMessage` = `Order was cancelled in Verdura, but POS dispatch
+        (status was "<status>") could not be stopped in time — verify
+        directly with IdealPOS/kitchen.` and returns false;
+      * unexpected exception -> false.
+      The status update proceeds regardless. To be removed with IdealPOS
+      retirement; a replacement service without an external POS always
+      records `posDispatchStopped: true`.
+    x-source: apps/api/src/orders/orders.service.ts:895-907
+    x-source-handoff: apps/api/src/legacy-external-pos/legacy-external-pos-handoff.ts:165-243
+
+  x-identifiers:
+    orderId: |
+      `ORD-<n>` where n = `nextval('"Order_ORD6_seq"')` (bigint, no
+      padding), drawn outside the transaction (gaps on rollback are
+      normal). Sequence created `START WITH 600001`, advanced past any
+      existing `ORD-6<digits>` id at migration time. So current ids look
+      like `ORD-600001`, `ORD-600002`, ... The Prisma column default
+      `uuid()` is never used by this code path.
+    takeawayReference: |
+      Only for new `takeaway` orders: `TA-` + `nextval('"TakeawayReference_seq"')`
+      left-padded with zeros to 6 digits (`TA-000001`); longer once the
+      sequence exceeds 999999. Globally unique. Null for dine_in and kiosk.
+    x-source-order-id: apps/api/src/orders/orders.service.ts:1677-1680
+    x-source-takeaway: apps/api/src/orders/orders.service.ts:1661-1667
+    x-source-seq-order: apps/api/prisma/migrations/20260824000000_order_id_sequence/migration.sql:25-43
+    x-source-seq-ta: apps/api/prisma/migrations/20260821000000_order_service_mode/migration.sql:40
+    x-unverified: true
+    x-unverified-note: Whether historical rows created before migration 20260824000000 have UUID or other id formats cannot be determined from code; consumers should treat id as an opaque string.
+
+  x-rate-limit-semantics:
+    description: |
+      Redis sliding window keyed `rate-limit:<ip>:<METHOD>:<path>`; 429 with
+      `Retry-After`; fails closed with 503 when Redis is unavailable. Full
+      description in menu-read.yaml components.x-rate-limit-semantics.
+    x-source: apps/api/src/auth/guards/rate-limit.guard.ts:129-252
+
+  parameters:
+    CsrfHeader:
+      name: x-csrf-token
+      in: header
+      required: false
+      description: |
+        Required unless an `Authorization: Bearer ...` header is present;
+        must equal the `csrf_token` cookie (issued by any earlier response).
+      schema: { type: string }
+      x-source: apps/api/src/common/middleware/csrf.middleware.ts:56-79
+    OrderId:
+      name: id
+      in: path
+      required: true
+      description: Order id (`ORD-<n>`). Plain string, not validated.
+      schema: { type: string, examples: [ORD-600123] }
+    ActiveOnly:
+      name: activeOnly
+      in: query
+      required: false
+      description: Only the exact string `true` enables the filter (status in confirmed, preparing, ready); any other value is ignored.
+      schema: { type: string }
+
+  responses:
+    ValidationFailed:
+      description: ValidationPipe failure.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example:
+            statusCode: 400
+            message: [idempotencyKey must be longer than or equal to 16 characters]
+            error: Bad Request
+    CsrfRejected:
+      description: CSRF middleware rejection (no Bearer header and missing/mismatched x-csrf-token).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example: { statusCode: 403, message: Invalid or missing CSRF token, error: Forbidden }
+    Unauthorized:
+      description: Missing/invalid JWT, malformed payload, or revoked tablet device (`This device has been revoked or is unknown`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example: { statusCode: 401, message: Unauthorized }
+    Forbidden:
+      description: '`Insufficient permissions` (role) or `This device is not authorized for the requested venue`.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+    TabletIdentityRequired:
+      description: Token is not a tablet_* kind with a deviceId, or requested venue mismatch.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example: { statusCode: 403, message: A valid tablet device identity is required, error: Forbidden }
+    VenueNotFound:
+      description: Venue id unknown.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example: { statusCode: 404, message: Venue not found, error: Not Found }
+      x-source: apps/api/src/orders/orders.service.ts:1038-1044
+    OrderNotFound:
+      description: Not found within the caller's org (and device venue).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example: { statusCode: 404, message: Order not found, error: Not Found }
+    UnsupportedTaxProfile:
+      description: Venue tax profile is not NZD / NZ_GST / pricesIncludeTax=true (new orders only).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+      x-source: apps/api/src/orders/orders.service.ts:1584-1590
+    RateLimited:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example:
+            statusCode: 429
+            message: Too many requests, please try again later.
+            error: Too Many Requests
+    RateLimitBackendDown:
+      description: Redis unavailable; fails closed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/NestError' }
+          example:
+            statusCode: 503
+            message: Authentication is temporarily unavailable.
+            error: Service Unavailable
+    OrderConflict:
+      description: |
+        One of (all 409):
+        * STALE_PRICE — body `StalePriceError` (no statusCode key);
+        * `idempotencyKey "<key>" was already used to create a different order`;
+        * `This payment reference is already linked to another order` (kiosk);
+        * `Table <n> already has an active order`;
+        * `Menu item "<title>" is currently unavailable`;
+        * `"<option>" is no longer available` (strict modifiers);
+        * `Stripe payment amount or currency does not match the order` (kiosk).
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/StalePriceError'
+              - $ref: '#/components/schemas/NestError'
+
+  schemas:
+    NestError:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
+
+    StalePriceError:
+      type: object
+      additionalProperties: false
+      required: [message, code, conflicts]
+      properties:
+        message:
+          type: string
+          const: One or more menu prices changed since this order was built — review the updated price(s) before resubmitting
+        code: { type: string, const: STALE_PRICE }
+        conflicts:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [menuItemId, menuItemTitle, expectedUnitPriceCents, authoritativeUnitPriceCents]
+            properties:
+              menuItemId: { type: string, format: uuid }
+              menuItemTitle: { type: string }
+              expectedUnitPriceCents: { type: integer }
+              authoritativeUnitPriceCents: { type: integer }
+      x-source: apps/api/src/orders/orders.service.ts:1430-1437
+
+    OrderItemModifierDto:
+      type: object
+      description: |
+        Both shapes accepted by validation; which one is REQUIRED depends on
+        the route (kiosk: `name`; staff/tablet: `modifierGroupId` +
+        `optionId`). Enforcement is in the service, not here.
+      properties:
+        modifierGroupId: { type: string, format: uuid, description: '@IsOptional @IsUUID' }
+        optionId: { type: string, format: uuid, description: '@IsOptional @IsUUID' }
+        name: { type: string, minLength: 1, description: '@IsOptional @IsString @IsNotEmpty' }
+        priceDeltaCents: { type: integer, description: '@IsOptional @IsInt. Never trusted; ignored by both resolvers.' }
+      x-source: apps/api/src/orders/dto/create-order.dto.ts:35-54
+
+    CreateOrderItemDto:
+      type: object
+      required: [menuItemId, quantity]
+      properties:
+        menuItemId: { type: string, format: uuid }
+        quantity:
+          type: integer
+          minimum: 1
+          description: '@IsInt @Min(1). No maximum.'
+        selectedModifiers:
+          type: array
+          description: Optional; each element validated as OrderItemModifierDto.
+          items: { $ref: '#/components/schemas/OrderItemModifierDto' }
+        notes: { type: string, description: 'Optional, no length limit. Empty string stored as null.' }
+        seat:
+          type: integer
+          description: '@IsOptional @IsInt. Values <= 0 are normalised to null (no seat), never stored as 0.'
+        expectedUnitPriceCents:
+          type: integer
+          minimum: 0
+          description: Optional. Price per unit (base + modifiers) the client displayed; mismatch -> 409 STALE_PRICE on new orders.
+      x-source: apps/api/src/orders/dto/create-order.dto.ts:56-98
+
+    CreateOrderDto:
+      type: object
+      required: [venueId, items, stripePaymentIntentId, idempotencyKey]
+      properties:
+        venueId: { type: string, format: uuid }
+        tableId: { type: string, format: uuid, description: Optional. }
+        tableNumber: { type: string, description: 'Optional. Matched against Table.tableNumber (OR with tableId).' }
+        items:
+          type: array
+          description: '@IsArray, no min size at DTO level; empty -> 400 from service.'
+          items: { $ref: '#/components/schemas/CreateOrderItemDto' }
+        notes: { type: string }
+        stripePaymentIntentId: { type: string, minLength: 1 }
+        idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      x-source: apps/api/src/orders/dto/create-order.dto.ts:100-142
+
+    CreateStaffOrderDto:
+      type: object
+      required: [venueId, serviceMode, items, idempotencyKey]
+      properties:
+        venueId: { type: string, format: uuid }
+        tableId:
+          type: string
+          format: uuid
+          description: Required (by the service) for dine_in; must be absent for takeaway.
+        serviceMode: { $ref: '#/components/schemas/ServiceMode' }
+        guests: { type: integer, minimum: 1, maximum: 99, description: Optional; never defaulted. }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CreateOrderItemDto' }
+        notes: { type: string }
+        idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      x-source: apps/api/src/orders/dto/create-staff-order.dto.ts:35-77
+
+    CreateTabletOrderDto:
+      type: object
+      description: CreateStaffOrderDto without venueId (venue comes from the token).
+      required: [serviceMode, items, idempotencyKey]
+      properties:
+        tableId: { type: string, format: uuid }
+        serviceMode: { $ref: '#/components/schemas/ServiceMode' }
+        guests: { type: integer, minimum: 1, maximum: 99 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CreateOrderItemDto' }
+        notes: { type: string }
+        idempotencyKey: { type: string, minLength: 16, maxLength: 255 }
+      x-source: apps/api/src/tablet/dto/create-tablet-order.dto.ts:28-57
+
+    UpdateOrderStatusDto:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/OrderStatus' }
+      x-source: apps/api/src/orders/dto/update-order-status.dto.ts:4-8
+
+    CreatePaymentIntentDto:
+      type: object
+      required: [amountCents]
+      properties:
+        amountCents: { type: integer, minimum: 50, maximum: 1000000 }
+      x-source: apps/api/src/orders/dto/create-payment-intent.dto.ts:3-8
+
+    OrderStatus:
+      type: string
+      enum: [pending, confirmed, preparing, ready, completed, cancelled]
+      x-source: apps/api/prisma/schema.prisma:19-26
+    ServiceMode:
+      type: string
+      enum: [dine_in, takeaway]
+      x-source: apps/api/prisma/schema.prisma:229-232
+    OrderSource:
+      type: string
+      enum: [kiosk, staff, online]
+      description: '`online` is never written by these routes.'
+      x-source: apps/api/prisma/schema.prisma:217-221
+    POSSyncStatus:
+      type: string
+      enum: [not_synced, queued_for_connector, submitted_awaiting_confirmation, synced, failed, not_applicable, unsupported, owned_by_native, cancelled]
+      x-source: apps/api/prisma/schema.prisma:37-83
+
+    OrderBase:
+      type: object
+      description: All scalar columns of the Prisma Order model, as returned by every order route.
+      x-source: apps/api/prisma/schema.prisma:826-876
+      required:
+        - id
+        - venueId
+        - tableId
+        - tableNumber
+        - status
+        - posSyncStatus
+        - subtotalCents
+        - taxCents
+        - totalCents
+        - notes
+        - source
+        - serviceMode
+        - guests
+        - takeawayReference
+        - idempotencyKey
+        - paymentProviderTransactionId
+        - submittedAt
+        - confirmedAt
+        - preparingAt
+        - readyAt
+        - completedAt
+        - cancelledAt
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, description: 'ORD-<n>; see components.x-identifiers.' }
+        venueId: { type: string, format: uuid }
+        tableId: { type: ['string', 'null'], format: uuid }
+        tableNumber: { type: ['string', 'null'] }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        posSyncStatus:
+          allOf: [{ $ref: '#/components/schemas/POSSyncStatus' }]
+          x-legacy: true
+          description: Legacy external-POS status scalar, retained for response compatibility, to be removed with IdealPOS retirement.
+        subtotalCents: { type: integer }
+        taxCents: { type: integer, description: 'Contained GST: round(subtotal*3/23).' }
+        totalCents: { type: integer, description: Equals subtotalCents. }
+        notes: { type: ['string', 'null'] }
+        source: { $ref: '#/components/schemas/OrderSource' }
+        serviceMode: { $ref: '#/components/schemas/ServiceMode' }
+        guests: { type: ['integer', 'null'] }
+        takeawayReference: { type: ['string', 'null'], description: 'TA-000001 format; takeaway only.' }
+        idempotencyKey: { type: string, description: 'Echoed back; note it is exposed to every reader of the order.' }
+        paymentProviderTransactionId: { type: ['string', 'null'], description: Stripe PaymentIntent id for kiosk orders; null for staff/tablet. }
+        submittedAt: { type: string, format: date-time }
+        confirmedAt: { type: ['string', 'null'], format: date-time }
+        preparingAt: { type: ['string', 'null'], format: date-time }
+        readyAt: { type: ['string', 'null'], format: date-time }
+        completedAt: { type: ['string', 'null'], format: date-time }
+        cancelledAt: { type: ['string', 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    OrderItem:
+      type: object
+      x-source: apps/api/prisma/schema.prisma:921-954
+      required: [id, orderId, menuItemId, menuItemTitle, menuItemCategory, unitPriceCents, quantity, lineTotalCents, selectedModifiers, notes, seat, nativeRoundId]
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string }
+        menuItemId: { type: string, format: uuid }
+        menuItemTitle: { type: string, description: Snapshot at order time. }
+        menuItemCategory: { type: string, description: Category name snapshot. }
+        unitPriceCents: { type: integer }
+        quantity: { type: integer }
+        lineTotalCents: { type: integer }
+        selectedModifiers:
+          type: array
+          items: { $ref: '#/components/schemas/SelectedModifierSnapshot' }
+        notes: { type: ['string', 'null'] }
+        seat: { type: ['integer', 'null'], minimum: 1 }
+        nativeRoundId:
+          type: ['string', 'null']
+          x-legacy: true
+          description: Native IdealPOS handheld round link; null on creation.
+      x-unverified: true
+      x-unverified-note: Order of items in the array is Prisma's default relation order (no orderBy on the include); insertion order is likely but not guaranteed.
+
+    SelectedModifierSnapshot:
+      type: object
+      required: [modifierGroupId, modifierGroupName, optionId, optionName, priceDeltaCents]
+      properties:
+        modifierGroupId: { type: ['string', 'null'], description: null on kiosk orders. }
+        modifierGroupName: { type: ['string', 'null'], description: null on kiosk orders. }
+        optionId: { type: ['string', 'null'], description: null on kiosk orders. }
+        optionName: { type: string }
+        priceDeltaCents: { type: integer }
+      x-source: apps/api/src/orders/orders.service.ts:48-54
+
+    Table:
+      type: object
+      description: Full Prisma Table row.
+      x-source: apps/api/prisma/schema.prisma:329-362
+      required: [id, venueId, tableNumber, name, capacity, isActive, sortOrder, floorPlanId, xPosition, yPosition, posTableCode, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        venueId: { type: string }
+        tableNumber: { type: string }
+        name: { type: ['string', 'null'] }
+        capacity: { type: integer }
+        isActive: { type: boolean }
+        sortOrder: { type: integer }
+        floorPlanId: { type: ['string', 'null'] }
+        xPosition: { type: ['number', 'null'] }
+        yPosition: { type: ['number', 'null'] }
+        posTableCode:
+          type: ['string', 'null']
+          x-legacy: true
+          description: Legacy external-POS table code; returned only because the full row is included.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    POSSyncRecord:
+      type: object
+      x-legacy: true
+      description: |
+        Legacy external-POS relation, retained for response compatibility,
+        to be removed with IdealPOS retirement. Full Prisma row. `null` when
+        the venue has no external POS (no row created). A replacement service
+        with no external POS should return `posSyncRecord: null`.
+      x-source: apps/api/prisma/schema.prisma:1035-1136
+      x-source-include: apps/api/src/legacy-external-pos/legacy-external-pos-handoff.ts:55
+      properties:
+        id: { type: string, format: uuid }
+        orderId: { type: string }
+        venueId: { type: string }
+        adapterType: { type: string, enum: [api, sql, odbc, csv, local_agent, none] }
+        status: { $ref: '#/components/schemas/POSSyncStatus' }
+        strategy: { type: string, enum: [webit, native_table_round] }
+        requestPayload: { description: JSON or null }
+        responsePayload: { description: JSON or null }
+        posOrderId: { type: ['string', 'null'] }
+        posTableId: { type: ['string', 'null'] }
+        attemptCount: { type: integer }
+        lastAttemptAt: { type: ['string', 'null'], format: date-time }
+        syncedAt: { type: ['string', 'null'], format: date-time }
+        failedAt: { type: ['string', 'null'], format: date-time }
+        errorMessage: { type: ['string', 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        dispatchClaimId: { type: ['string', 'null'] }
+        dispatchClaimedAt: { type: ['string', 'null'], format: date-time }
+        dispatchClaimExpiresAt: { type: ['string', 'null'], format: date-time }
+        dispatchedAt: { type: ['string', 'null'], format: date-time }
+        dispatchAttemptCount: { type: integer }
+        lastDispatchError: { type: ['string', 'null'] }
+        dispatchExhaustedAt: { type: ['string', 'null'], format: date-time }
+        connectorSubmitCommandId: { type: ['string', 'null'] }
+        nextRetryAt: { type: ['string', 'null'], format: date-time }
+        retryExhaustedAt: { type: ['string', 'null'], format: date-time }
+
+    OrderCreated:
+      description: |
+        Response of a NEW order from any create route:
+        `include: { items: true, posSyncRecord: true }` — NO `table`.
+      x-source: apps/api/src/orders/orders.service.ts:1850-1866
+      allOf:
+        - $ref: '#/components/schemas/OrderBase'
+        - type: object
+          required: [items, posSyncRecord]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/OrderItem' }
+            posSyncRecord:
+              x-legacy: true
+              oneOf:
+                - $ref: '#/components/schemas/POSSyncRecord'
+                - type: 'null'
+
+    OrderReplay:
+      description: |
+        Response of a matching idempotent replay: the stored order with
+        `include: { items: true }` ONLY — no `posSyncRecord`, no `table`.
+      x-source: apps/api/src/orders/orders.service.ts:399-407
+      allOf:
+        - $ref: '#/components/schemas/OrderBase'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/OrderItem' }
+      x-known-issues:
+        - Replay shape differs from first-response shape (posSyncRecord missing), so clients reading posSyncRecord.strategy from the create response get undefined on a replay.
+
+    OrderFull:
+      description: |
+        GET list/one and PATCH status response:
+        `include: { items: true, table: true, posSyncRecord: true }`.
+      x-source: apps/api/src/orders/orders.service.ts:852
+      allOf:
+        - $ref: '#/components/schemas/OrderBase'
+        - type: object
+          required: [items, table, posSyncRecord]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/OrderItem' }
+            table:
+              oneOf:
+                - $ref: '#/components/schemas/Table'
+                - type: 'null'
+            posSyncRecord:
+              x-legacy: true
+              oneOf:
+                - $ref: '#/components/schemas/POSSyncRecord'
+                - type: 'null'
