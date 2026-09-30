@@ -89,3 +89,5 @@ scratchpad/toolchains/
 /scratchpad/d*-mut/
 /scratchpad/d*-upgrade/
 /scratchpad/d*-smoke.sh
+/scratchpad/d*-smoke/
+/scratchpad/bmad-*.txt

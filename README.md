@@ -1,474 +1,408 @@
-# Servvia Restaurant Operations Platform
+# Servvia
 
-![Node.js](https://img.shields.io/badge/Node.js-20.x_LTS-339933?logo=node.js&logoColor=white)
-![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
+Servvia is an enterprise-grade, multi-tenant restaurant operational POS and management platform built to orchestrate and scale hospitality workflows. It covers table service, ordering, kitchen production, bills, payments, cash accountability, devices, promotions, and live operational updates.
 
-**Document Version:** 1.1.0  
-**Effective Date:** June 19, 2026  
-**Classification:** Internal Technical Documentation
+This repository is in an active migration. A new canonical core, Servvia Core (Go), is taking ownership of restaurant state one domain at a time from the original NestJS API and its external POS (IdealPOS) integration. Both run side by side today. See [ADR 0001](docs/adr/0001-servvia-is-the-operational-pos.md) and the [migration plan and phase log](docs/migration/README.md).
 
----
+## Contents
 
-## Table of Contents
+1. [Current status](#current-status)
+2. [Architecture](#architecture)
+3. [Tenancy](#tenancy)
+4. [Canonical domain model](#canonical-domain-model)
+5. [Repository structure](#repository-structure)
+6. [Technology](#technology)
+7. [Prerequisites](#prerequisites)
+8. [Getting started](#getting-started)
+9. [Configuration](#configuration)
+10. [Database and migrations](#database-and-migrations)
+11. [Servvia Core (Go)](#servvia-core-go)
+12. [Realtime](#realtime)
+13. [Media](#media)
+14. [Testing and CI](#testing-and-ci)
+15. [Engineering rules](#engineering-rules)
+16. [Legacy and transitional components](#legacy-and-transitional-components)
+17. [Production and environments](#production-and-environments)
+18. [Security](#security)
+19. [Documentation map](#documentation-map)
+20. [Contributing](#contributing)
+21. [License](#license)
 
-1. [Project Overview](#1-project-overview)
-2. [Architecture & Tech Stack](#2-architecture--tech-stack)
-3. [Project Structure](#3-project-structure)
-4. [Configuration](#4-configuration)
-5. [Getting Started](#5-getting-started)
-6. [Usage & Workflow Execution](#6-usage--workflow-execution)
-7. [Contributing Guidelines](#7-contributing-guidelines)
-8. [License](#8-license)
+## Current status
 
----
+**Implemented in Servvia Core (Go).** Each phase has an additive Prisma migration and contracts in `contracts/`, and was tested against disposable databases. None of this serves production traffic yet, and no client has been switched to it.
 
-## 1. Project Overview
-
-Servvia is an enterprise-grade restaurant operations and management platform built to orchestrate and scale hospitality workflows. Originally designed as a localized customer website for a Middle Eastern restaurant in Dunedin, New Zealand, the platform has been re-engineered into a highly scalable, multi-tenant Software-as-a-Service (SaaS) architecture.
-
-### 1.1 The Business Challenge
-
-Modern hospitality businesses suffer from fragmentation across customer-facing ordering, internal reservation management, kitchen routing, and Point-of-Sale (POS) systems. This lack of integration leads to:
-
-- Reservation data leakage between systems
-- Printing latency causing kitchen delays
-- High commission overheads from third-party delivery apps
-- Zero real-time operational visibility for management
-
-### 1.2 The Servvia Solution
-
-Servvia solves these operational inefficiencies by unifying all key operational surfaces into a single, cohesive ecosystem managed by a performant cloud API:
-
-| Surface | Description |
+| Phase | Capability |
 |---|---|
-| **Customer Booking Engine** | A seamless 5-step reservation wizard featuring guest dietary preferences and Stripe-integrated down payments |
-| **Self-Ordering Kiosk** | A responsive touchscreen interface capturing order details and table numbers inside the restaurant, reducing staff overhead |
-| **Kitchen Display System (KDS)** | A real-time, low-latency kitchen queue pushing orders to cooks via WebSockets |
-| **Admin Dashboard** | A centralized control panel for managers to configure venues, manage menus, track payments, review audit logs, and coordinate staffing |
-| **On-Premise Agents** | Pluggable, locally-hosted background services/processes handling automated printer routing (ESC/POS) and Idealpos order handoff, via either a supported, vendor-approved interface, or, alternatively, a controlled, non-database UI-driven adapter — never a direct write to the Idealpos database (see `docs/integrations/idealpos.md`) |
+| D1 | Server-authoritative pricing: lines, modifiers, NZ GST, integer cents |
+| D2 | Table sessions (the visit) |
+| D3 | Orders and order rounds |
+| D4 | Kitchen tickets, projected from a transactional outbox |
+| D5 | Checks (the financial obligation) |
+| D6 | Payments and settlement |
+| D7 | Shifts and cash accountability |
+| D8 | Devices and terminals |
+| D9 | Refunds, reversals and settlement revocation |
+| D10 | Financially safe table-session close |
+| D11 | Promotions with immutable applied-discount snapshots |
+| D12 | Canonical realtime over WebSocket |
 
----
+**Still transitional or future:**
+- Generic outbox and workers (D13).
+- Client cutover: every existing web client still talks to the NestJS API.
+- Native (Android) clients and a Windows POS client.
+- Venue Edge.
+- Retiring the IdealPOS integration.
 
-## 2. Architecture & Tech Stack
+The remaining phases are tracked in [docs/migration/README.md](docs/migration/README.md). The migration is not complete.
 
-Servvia **currently** runs a modern web architecture divided into two main layers: a **NestJS (Node.js)** backend API and a **React 18** frontend client ecosystem, unified in a monorepo setup via NPM Workspaces.
+**In production today:** the NestJS API and the React applications. The IdealPOS integration serves the live venue.
 
-> **Current implementation vs approved target.** Everything in this section describes what is **built today**, not the permanent technology ownership standard. The canonical standard is [`docs/architecture.md` §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture), which assigns the Core Platform and Venue/Edge domains to **Go**, AI/Data/Analytics to **Python**, native device apps to **Kotlin/Android**, and narrows **C#/.NET** to the Windows/IdealPOS adapter boundary. React + TypeScript, PostgreSQL, Google Cloud Storage and Docker are already target-aligned. Next.js is a permitted exception for the public website only; Kubernetes is a later-scale option, not an MVP requirement.
-
-### 2.1 System Context Diagram
-
-The following diagram illustrates the network boundaries and integration points between the public internet, cloud services, and the restaurant's Local Area Network (LAN):
-
-```
-+----------------------------------------------------------------------------------+
-|                          VERDURA PLATFORM — SYSTEM CONTEXT                       |
-+----------------------------------------------------------------------------------+
-
-  PUBLIC INTERNET                          RESTAURANT LAN (On-Premise)
-  ───────────────                          ───────────────────────────
-
-  [Customer]                               [Kitchen Staff]
-      │ browses                                │ views orders
-      ▼                                        ▼
-  +──────────────────+                    +──────────────+
-  |  Customer Site   |                    |     KDS      |
-  |  (React SPA)     |                    |  (React SPA) |
-  +────────┬─────────+                    +──────┬───────+
-           │ REST via Servvia API proxy           │ WebSocket
-           │                                     │
-  [Diner at Kiosk]                               │
-      │ orders via touchscreen                   │
-      ▼                                          │
-  +──────────────────+   REST / WS   +───────────┴────────────────────────────+
-  | Self-Order Kiosk |──────────────►|                                        |
-  +──────────────────+               |          VERDURA API (NestJS)          |
-                                     |          (api.verdura.co.nz)           |
-  [Passerby outside]                 |                                        |
-      │ views menu display           +──┬──────────┬──────────┬──────────┬────+
-      ▼                                 │          │          │          │
-  +──────────────────+                  │          │          │          │
-  |   Menu Display   |──────────────────┘          │          │          │
-  |      Kiosk       |  REST (read-only)           │          │          │
-  +──────────────────+                             │          │          │
-                                                   ▼          ▼          ▼
-  [Admin / Manager]                       +────────────────+ +──────────+
-      │ manages platform                  | PostgreSQL     | |  Redis   |
-      ▼                                   | (Local Docker) | |  (Queue  |
-  +──────────────────+                    +────────────────+ | & PubSub)|
-  | Admin Dashboard  |─── REST / JWT ────────────────────────+ +────────+
-  | (admin.verdura)  |
-  +──────────────────+                    +──────────────+ +──────────+
-                                          | Local Media  | | Optional |
-                                          | Volume       | | Email    |
-                                          +──────────────+ +──────────+
-
-  ON-PREMISE (Restaurant LAN Gateway Host)
-  ────────────────────────────────────────────────────────────────────────────
-  +--------------------------------------------------------------------------+
-  |  Local Gateway (outbound-only, mutually authenticated connector session  |
-  |  to Servvia -- never a direct shared cloud Redis credential)             |
-  |                                                                          |
-  |  +--------------------------+          +------------------------------+  |
-  |  |     Printer Service      |          |     Servvia Connector        |  |
-  |  |  (Node.js / PM2)         |          |  Windows Service, proposed   |  |
-  |  |  - TCP ESC/POS Output    |          |  as .NET 8 for the Idealpos  |  |
-  |  |                          |          |  API-less path -- see        |  |
-  |  |                          |          |  docs/integrations/          |  |
-  |  |                          |          |  idealpos.md sections 13-21  |  |
-  |  +------------┬-------------+          +--------------┬---------------+  |
-  |               │                                       │ secured local IPC|
-  |               ▼                                       ▼                  |
-  |  +--------------------------+          +------------------------------+  |
-  |  | Physical LAN Printers    |          | Idealpos POS Bridge          |  |
-  |  |                          |          | (separate interactive        |  |
-  |  |                          |          |  process; drives the Idealpos|  |
-  |  |                          |          |  UI -- never a direct DB     |  |
-  |  |                          |          |  write; NOT implemented,     |  |
-  |  |                          |          |  proposed/unproven)          |  |
-  |  +--------------------------+          +------------------------------+  |
-  +--------------------------------------------------------------------------+
-  ```
-
-  This diagram shows the **proposed** target architecture for the on-premise Idealpos side, not a built or deployed system. A vendor-supported Idealpos interface (ecommerce/Online/Doshii/SDK) remains preferred over the Windows Connector + POS Bridge shown above whenever it is commercially and technically confirmed available -- see `docs/integrations/idealpos.md` section 13.
-
-### 2.2 Core Technical Specifications (current implementation)
-
-| Component | Technical Stack | Responsibility |
-|---|---|---|
-| **API Backend** | NestJS 11, TypeScript 5, Prisma ORM, BullMQ, Socket.io, `ioredis`, `sharp` | Business logic, authentication, RBAC, WebSockets, background job distribution, media optimization |
-| **Data Layer** | Local PostgreSQL 16, Prisma ORM | Relational domain models, flexible metadata via `JSONB`, transaction compliance |
-| **Task & Event Queue** | Redis, BullMQ | Asynchronous printing jobs, transactional emails, calendar synchronization, POS records |
-| **Admin Frontend** | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Zustand | Back-office management, configurations, live operations feeds, operational reports |
-| **Customer Frontends** | React 18, JavaScript, Vite, Tailwind CSS, Stripe SDK | Reservation booking engine, informational landing pages |
-| **Kiosk & KDS** | React 18, TypeScript, Vite, Tailwind CSS, Zustand, IndexedDB | Self-ordering interface, outer window menu looping, kitchen ticket monitoring |
-| **Local Services** | Node.js 20 LTS, PM2, `node-escpos` | LAN hardware printing integration, local POS software syncing |
-
----
-
-## 3. Project Structure
-
-Servvia is structured as a monorepo utilizing NPM Workspaces to coordinate development across the core API layer and all client interfaces.
+## Architecture
 
 ```
-.
-├── backend/                             # NestJS API Backend (TypeScript)
-│   ├── prisma/                      # Database Schema and Migrations
-│   │   ├── migrations/              # PostgreSQL schema migrations
-│   │   └── schema.prisma            # Prisma schema models (18+ entities)
-│   ├── src/                         # Backend Application Source Code
-│   │   ├── audit/                   # Security audit logs
-│   │   ├── auth/                    # JWT, RBAC, and TOTP authentication
-│   │   ├── kiosk-frontend/                   # Public kiosk read/write controllers
-│   │   ├── menu/                    # Category, item, and modifier CRUD
-│   │   ├── orders/                  # Order lifecycle and status FSM
-│   │   ├── pos-sync/                # POS agent sync job dispatchers
-│   │   ├── printer/                 # ESC/POS printer queue controllers
-│   │   ├── queue/                   # Redis BullMQ config
-│   │   ├── reservations/            # Table booking engine & calendar worker
-│   │   ├── main.ts                  # NestJS application entrypoint
-│   │   └── app.module.ts            # Root dependency injection container
-│   ├── package.json                 # Backend dependencies & run scripts
-│   └── tsconfig.json                # TypeScript settings for Backend
-├── customer-frontend/                        # Customer-Facing React App (JS / CSS)
-│   ├── src/
-│   │   ├── components/              # Reusable UI Blocks (Shadcn, custom)
-│   │   │   ├── reservation/         # 5-Step Booking Wizard
-│   │   │   └── ui/                  # Atom level components
-│   │   ├── pages/                   # Top-level Page Views
-│   │   │   ├── About.jsx
-│   │   │   ├── AdminDailyEmail.jsx  # Reservation daily digests
-│   │   │   ├── BookTable.jsx        # Table booking page
-│   │   │   ├── Home.jsx
-│   │   │   └── Menu.jsx             # Customer menu viewer
-│   │   ├── App.jsx                  # Main routing config
-│   │   └── main.jsx                 # Vite application entrypoint
-│   ├── package.json
-│   └── tailwind.config.js
-├── docs/                            # Technical Architecture & Logs
-│   ├── architecture.md              # System design details
-│   ├── prd.md                       # Product requirements document
-│   └── decisions-log.md             # Key architecture decisions
-├── package.json                     # Root configuration for NPM Workspaces
-└── README.md
+ Web clients (React)             Servvia Core (Go)                    NestJS API (transitional)
+ admin console, order tablet,    services/core-platform               apps/api
+ KDS, window display,            canonical domains D1-D12,            existing client routes, auth
+ customer website                REST + WebSocket (/api/realtime)     issuance, media, legacy POS sync
+        |                                  |                                     |
+        |  today: NestJS REST + Socket.IO  |                                     |
+        +----------------------------------|-------------------------------------+
+                                           |                                     |
+                                     PostgreSQL (canonical state, one schema) <--+
+                                     Prisma owns every migration
+                                           |
+                                     Redis: shared rate-limit budget (Go + Nest),
+                                            BullMQ queues (Nest)
 ```
 
-### 3.1 Key File Reference
-
-| File | Purpose |
+| Component | Role |
 |---|---|
-| [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma) | Database schema — all 18+ entity models and their relations |
-| [`backend/src/app.module.ts`](backend/src/app.module.ts) | Root NestJS module — dependency injection container |
-| [`backend/src/main.ts`](backend/src/main.ts) | API server entrypoint — port binding, Swagger, CORS config |
-| [`customer-frontend/src/App.jsx`](customer-frontend/src/App.jsx) | Frontend router — all page-level route definitions |
-| [`package.json`](package.json) | Monorepo root — workspace definitions and shared scripts |
+| **Servvia Core** (Go, `services/core-platform`) | **Permanent canonical core.** It owns the D1–D12 domains, a REST API and raw WebSocket realtime. Not yet serving production traffic. |
+| **NestJS API** (`apps/api`) | **Transitional.** Serves every existing client, issues the access tokens that Go Core verifies (same HS256 secret), and handles legacy routes, media and compatibility. Its canonical ownership moves to Go Core domain by domain. |
+| **IdealPOS / venue integration** (`apps/idealpos-*`, `apps/venue-connector`) | **Transitional.** Serves the current production venue. It is not, and will not become, Servvia's canonical backend. |
+| **PostgreSQL** | The single source of truth, one schema shared by Go Core and the NestJS API |
+| **Prisma** (`apps/api/prisma`) | The sole migration authority for that schema |
+| **Redis** | The shared rate-limit budget (Go Core and Nest, one budget per client) and Nest's BullMQ queues |
 
----
+The approved target technology standard is in [docs/architecture.md §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture).
 
-## 4. Configuration
+## Tenancy
 
-Each workspace has a tracked `.env.example`. Real `.env` and `.env.local`
-files are per-machine and gitignored. `npm run dev` creates missing files from
-the examples and never overwrites existing ones.
+Canonical state is scoped **Organization → Venue**. Every venue belongs to one organization, and every canonical record belongs to one venue.
 
-### 4.1 Backend (`backend/.env`)
+Servvia Core resolves the scope on the server for every request and realtime subscription. The venue must belong to the caller's organization, and tokens or devices pinned to a venue cannot act at another. A client never supplies its organization, and a venue it names is always checked. The multi-tenant model is built in; it does not imply that every tenant or client has been migrated.
 
-| Variable | Description | Example |
-|---|---|---|
-| `DATABASE_URL` | Local PostgreSQL connection used by Prisma | `postgresql://verdura:verdura_local_dev_only@127.0.0.1:5434/verdura_dev` |
-| `REDIS_HOST` | Host address of Redis instance | `127.0.0.1` |
-| `REDIS_PORT` | Networking port for Redis connection | `6379` |
-| `PORT` | Listening port for NestJS server | `3000` |
-| `JWT_ACCESS_SECRET` | Secret key for signing access tokens | `change-me-in-production` |
-| `JWT_REFRESH_SECRET` | Secret key for signing refresh tokens | `change-me-in-production` |
-| `JWT_ACCESS_EXPIRY` | Short-term token expiration window | `15m` |
-| `JWT_REFRESH_EXPIRY` | Long-term refresh cookie validation window | `7d` |
+## Canonical domain model
 
-### 4.2 Frontends
+These are the distinctions Servvia Core enforces.
 
-| Variable | Description | Example |
-|---|---|---|
-| `VITE_API_URL` | Optional API origin; leave empty to use the Vite/nginx proxy | empty |
-| `VITE_VENUE_ID` | Venue used by customer, kiosk, admin and tablet | `10000000-0000-4000-8000-000000000001` |
+| Concept | Meaning |
+|---|---|
+| TableSession | A restaurant visit at a table: occupancy, from open to close |
+| Order | The goods requested |
+| OrderRound | One submission of items within an order (round 1 is its creation) |
+| KitchenTicket | Production work for a station |
+| Check | A financial obligation for accepted order lines |
+| Payment | Money tendered or received against a check |
+| Refund / Reversal | Money returned or corrected |
+| Settlement | The current satisfaction of a check (it can be revoked by returned money) |
+| Shift | A period of staff and cash accountability |
+| Device | An enrolled installation's identity (POS, tablet, KDS, payment adapter) |
+| Terminal | A logical POS workstation |
+| Promotion | A configured offer; what an order received is frozen as an applied snapshot |
+| Realtime event | A notification that canonical state changed; not storage |
 
-Never put secrets in `VITE_` variables: they are bundled into browser code.
+Details are in the phase notes under [docs/migration/](docs/migration/README.md).
 
-### 4.3 Media Storage
+## Repository structure
 
-**Google Cloud Storage is Servvia's canonical media provider — not Google Drive.** Menu-item photographs, promotional imagery, and video are designed to live in GCS; Google Drive is never used for production application media. Full design and current status: `_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md`.
+| Path | Contents |
+|---|---|
+| `services/core-platform/` | **Servvia Core (Go)**: canonical domains, HTTP and WebSocket API, tests ([README](services/core-platform/README.md)) |
+| `apps/api/` | NestJS API (transitional). Also holds **`prisma/schema.prisma` and `prisma/migrations/`**, the single migration authority for all services |
+| `apps/admin-console/` | React admin console. The same source builds the **Order Tablet** and **Kitchen Display** targets (`VITE_APP_MODE`) |
+| `apps/order-tablet/`, `apps/kitchen-display/` | READMEs describing those two build targets (no separate source) |
+| `apps/window-display/` | React window display (signage) and in-venue kiosk ordering |
+| `apps/customer-website/` | React public website: menu and table booking |
+| `apps/idealpos-bridge/`, `apps/idealpos-bridge-ci/`, `apps/idealpos-harness/` | Legacy IdealPOS integration (.NET Framework 4.8, Windows) |
+| `apps/venue-connector/` | Legacy venue connector and IdealPOS tracer (.NET 8) |
+| `contracts/` | Language-neutral contracts: OpenAPI, realtime, events, JSON schemas ([README](contracts/README.md)) |
+| `docs/` | Architecture, ADRs, migration phase notes, integrations, deployment and environments |
+| `scripts/` | Local development orchestration, guards and checks (Node) |
+| `shared/` | Configuration and data shared by the web apps |
+| `docker/`, `docker-compose.yml` | Container images and the local/host compose setup |
+| `local-postgres/` | Optional native local PostgreSQL helper ([README](local-postgres/README.md)) |
+| `windows-deploy/` | Operational scripts for the Windows production host |
+| `_bmad/`, `_bmad-output/` | BMAD workflow configuration (used by the project's `.claude/skills/bmad-*` automation), and the retained operational records: IdealPOS production runbooks, infrastructure migration evidence, GCS media migration records, the deferred-work log |
 
-**Provisioned and live as of 2026-08-17** — two buckets in `australia-southeast1`, project `project-10bd9c5c-d379-4338-8b2`:
+## Technology
 
-| Bucket | Purpose | Anonymous access |
-|---|---|---:|
-| `verdura-media-originals-d3794338b2` | Private originals — every upload lands here first | Never (public access prevention enforced) |
-| `verdura-media-public-d3794338b2` | Approved public delivery — only content that has completed approval | Read-only (`roles/storage.objectViewer` for `allUsers`, granted deliberately and narrowly — see the architecture doc for the exact authorization and verification) |
+Versions are the ones pinned in the repository.
 
-All 46 canonical menu-item photographs are migrated and live at `https://storage.googleapis.com/verdura-media-public-d3794338b2/venues/<venueId>/menu-items/<mediaId>/original/<filename>`, referenced directly from `MenuItem.imageUrl`. Local development (`npm run dev`) still defaults to `MEDIA_STORAGE_PROVIDER=local` for *new* uploads through the `MediaAsset` pipeline — nothing needs GCP credentials just to run the app; already-migrated images render by the browser fetching the public GCS URL directly, independent of the API's own provider configuration.
+| Area | Technology |
+|---|---|
+| Canonical core | Go 1.27.1 (`services/core-platform/go.mod`), pgx, `coder/websocket` |
+| Transitional API | NestJS 11, TypeScript 5, Prisma 5.22, BullMQ, Socket.IO 4, ioredis |
+| Database | PostgreSQL (Docker image `postgres:16-alpine` locally) |
+| Cache and queues | Redis (Docker image `redis:7-alpine` locally) |
+| Web apps | React 18, Vite, TypeScript, Tailwind CSS, Vitest |
+| Venue integration (legacy) | .NET 8 and .NET Framework 4.8 (Windows) |
+| Media | Google Cloud Storage |
+| Realtime | Raw WebSocket (Go Core, permanent); Socket.IO (NestJS, legacy) |
 
-**Admin Console upload flow:** `MenuManagementPage`'s item image picker uploads through the full MediaAsset pipeline — `request-upload` (signed PUT target, server-generated object key) → direct browser PUT to the private originals bucket → `finalize` (server re-verifies size/checksum against the real object) → `publish` (explicit, separately-audited server-side copy into the public bucket) → `associate-menu-item` (atomic, verified write of the resulting public URL onto an *existing* `MenuItem`; a brand-new item instead carries the already-verified delivery URL into its create payload, since there is no `MenuItem` row yet to associate against). The browser never receives a bucket name, a credential, or write access to the public bucket. See `apps/admin-console/src/lib/mediaAssets.ts` for the client-side state machine and `apps/api/src/media/media-assets.service.ts` for the server-side transitions.
+**Target client direction:** Kotlin on native Android for the in-venue devices, and C#/.NET for the Windows POS ([ADR 0001](docs/adr/0001-servvia-is-the-operational-pos.md)). Neither exists in this repository yet.
 
-| Variable | Required | Description | Example |
-|---|---|---|---|
-| `MEDIA_STORAGE_PROVIDER` | No (default `local`) | `local` needs no GCP credentials — uploads go through the API onto local disk, safe for every developer machine. Setting `gcs` is an operator/environment decision, not something these commits configure; the backend refuses to start unless all four GCS variables below are present and non-blank | `local` |
-| `GCP_PROJECT_ID` / `GOOGLE_CLOUD_PROJECT` | Only when `MEDIA_STORAGE_PROVIDER=gcs` | The target GCP project. Either name works — Cloud Run/GKE set `GOOGLE_CLOUD_PROJECT` automatically | `project-10bd9c5c-d379-4338-8b2` |
-| `GCS_MEDIA_BUCKET` | Only when `MEDIA_STORAGE_PROVIDER=gcs` | The private originals bucket new uploads go to. Validated at boot — the backend refuses to start if this is unset or blank while `MEDIA_STORAGE_PROVIDER=gcs`, rather than substituting a local-style default bucket name | `verdura-media-originals-d3794338b2` |
-| `GCS_MEDIA_PUBLIC_BUCKET` | Only when `MEDIA_STORAGE_PROVIDER=gcs` | The separate public-delivery bucket the explicit publish transition copies an approved asset into — never the same value as `GCS_MEDIA_BUCKET`. Same boot-time validation | `verdura-media-public-d3794338b2` |
-| `GCS_SERVICE_ACCOUNT_EMAIL` | Only when `MEDIA_STORAGE_PROVIDER=gcs` | The service account `GcsStorageProvider` always signs as, via impersonation — required, signing cannot work without it (plain ADC has no private key; see the architecture doc's "real defect found" section). Validated at boot alongside the other three | `verdura-media-api@project-10bd9c5c-d379-4338-8b2.iam.gserviceaccount.com` |
-| `GCS_MEDIA_PUBLIC_BASE_URL` | No | Public base URL for the approved-delivery surface, if one exists. Private originals never use this | empty |
-| `GCS_SIGNED_URL_TTL_SECONDS` | No (default `900`) | How long a signed upload/delivery URL stays valid | `900` |
+## Prerequisites
 
-No `.env` value is committed by these changes, no service-account key file belongs in this repository, and Application Default Credentials (plus service-account impersonation) is the only intended credential mechanism. Whoever runs the app with `MEDIA_STORAGE_PROVIDER=gcs` locally needs `roles/iam.serviceAccountTokenCreator` on `GCS_SERVICE_ACCOUNT_EMAIL`, granted via `gcloud iam service-accounts add-iam-policy-binding`. Which provider a given environment actually runs is an operator/environment decision — these commits do not prove, configure, or claim that any particular local or production environment currently has `MEDIA_STORAGE_PROVIDER=gcs` set.
+| Tool | Needed for |
+|---|---|
+| Node.js and npm (a current LTS release) | The workspaces, local orchestration, the NestJS API and the web apps |
+| Docker with Docker Compose | Local PostgreSQL and Redis (`npm run dev`, `npm run db:start`) |
+| Go matching `services/core-platform/go.mod` | Building and testing Servvia Core |
+| .NET SDK 8 | Only for the legacy venue connector. The .NET Framework 4.8 projects build on Windows only. |
 
-**Local development behavior:** `npm run dev` needs zero new setup, zero GCP credentials, and zero new local services — the local `MediaAsset` pipeline emulates both buckets with two directories (`apps/api/storage-assets/` private, `apps/api/storage-assets-public/` public) and serves the public one back over real HTTP at `/api/media-assets/public/:key` (unauthenticated, exactly like a real public bucket's anonymous GET; the private root has no serving route at all). The legacy direct-to-disk `MediaController`/`MediaService` (`POST /api/admin/media/:folder`) is unchanged but now has **zero remaining consumers** in this repository — deprecated in place (see its doc comment), left registered rather than deleted.
+Cloud SDKs are not needed for local development. Media defaults to local storage.
 
-**Reassociation tooling:** `apps/api/prisma/scripts/reassociate-orphaned-menu-item-media.ts` repairs a `MenuItem.imageUrl` that has regressed to a stale local path, by checksum-matching it (via the committed migration manifest, `_bmad-output/implementation-artifacts/2026-08-17-gcs-media-migration-manifest.csv`) against an existing `approved`/`public` `MediaAsset`. Dry-run by default; `--apply` is required to write. Checksum-based, idempotent, compare-and-swap protected against concurrent edits, and makes no cloud request of any kind.
-
-**Security model:** short-lived signed upload URLs only (never a proxied file body through the API for GCS uploads); Application Default Credentials + service-account impersonation only — no service-account JSON key is ever created, read, or written to this repository; every object key is server-generated from the venue ID and a server-generated media ID, never client-supplied; checksums are verified exactly (SHA-256, embedded as required upload metadata, verified byte-for-byte on finalize, and again on the public copy after publish) before an asset is approved or published; private originals are never anonymously public — proven by a real anonymous-access test, not assumed; `MenuItem.imageUrl` is only ever written from an asset that is both `approved` and `visibility:public`, enforced server-side in `associateWithMenuItem`, never trusted from client input.
-
-**Troubleshooting:**
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| `MEDIA_STORAGE_PROVIDER=gcs requires <VARIABLE> to be set` (backend fails to boot, naming exactly one of `GCP_PROJECT_ID`/`GOOGLE_CLOUD_PROJECT`, `GCS_SERVICE_ACCOUNT_EMAIL`, `GCS_MEDIA_BUCKET`, or `GCS_MEDIA_PUBLIC_BUCKET`) | `MEDIA_STORAGE_PROVIDER=gcs` set with that variable missing or blank | Set the named variable, or unset `MEDIA_STORAGE_PROVIDER` to fall back to `local` |
-| App boots but GCS calls fail against a bucket that doesn't exist | `GCS_MEDIA_BUCKET`/`GCS_MEDIA_PUBLIC_BUCKET` is set but names a bucket that was never actually provisioned in GCS — boot-time validation only checks the variable is set, not that the bucket exists | Confirm the bucket exists — see the architecture doc's provisioning steps — or correct the variable to the real bucket name |
-| `Cannot sign data without client_email` | Plain ADC (no impersonation) was used to sign — see the architecture doc's "real defect found" section | Ensure `GCS_SERVICE_ACCOUNT_EMAIL` is set and the caller holds `roles/iam.serviceAccountTokenCreator` on it |
-| `IAM Service Account Credentials API has not been used in project ... before or it is disabled` | `iamcredentials.googleapis.com` not enabled, or enabled less than a few minutes ago (propagation delay — observed and resolved during the original migration) | `gcloud services enable iamcredentials.googleapis.com`; wait a minute and retry |
-| A GCS upload fails with a permissions error | No service account/ADC configured, or the bucket doesn't exist | Run `gcloud auth application-default login`; confirm the bucket exists — see the architecture doc's provisioning steps |
-| `MediaAsset must be approved before it can be published` / `... published before it can be associated with a menu item` | Called `publish`/`associate-menu-item` out of order, or on an asset that failed finalize verification | Expected fail-closed behavior — re-run `finalize` first and confirm `status:"approved"` before calling `publish` |
-
----
-
-## 5. Getting Started
-
-Follow these steps to configure, build, and run the platform in your local development environment.
-
-### 5.1 Prerequisites
-
-Ensure the following tools are installed on your host system:
-
-| Tool | Version | Notes |
-|---|---|---|
-| **Node.js** | `20.x` LTS or higher | Required for both API and frontend |
-| **NPM** | `10.x` or higher | Used for monorepo workspace management |
-| **Docker & Docker Compose** | Latest stable | Used to run local PostgreSQL and Redis instances |
-
-### 5.2 Installation
-
-**1. Clone the repository and install all workspace dependencies:**
+## Getting started
 
 ```bash
+git clone https://github.com/ErebusCodes/servvia.git
 cd servvia
-npm install
-```
-
-**2. Start everything:**
-
-```bash
+npm install            # also runs `prisma generate` for apps/api
 npm run dev
 ```
 
-That's it — on both macOS and Windows this single command (`scripts/dev.mjs`) automatically:
+`npm run dev` (`scripts/dev.mjs`) does the following on macOS, Windows and Linux:
+1. Checks that Docker is running.
+2. Starts PostgreSQL (`127.0.0.1:5434`) and Redis (`127.0.0.1:6379`) from `docker-compose.yml`.
+3. Creates missing workspace `.env` files from the tracked `.env.example` files. Existing files are never overwritten.
+4. Applies pending Prisma migrations (`prisma migrate deploy`).
+5. Seeds the database only if it is empty.
+6. Starts the NestJS API and every web app.
 
-- checks Docker is installed and running (installs nothing else natively — no Homebrew services, no Windows services, no Memurai);
-- starts PostgreSQL (port `5434`) and Redis (port `6379`) via the root `docker-compose.yml`, waiting until both are healthy;
-- creates all missing workspace `.env` files from `.env.example` files;
-- verifies the Prisma connection and applies any pending migrations (`prisma migrate deploy`);
-- checks whether the database is empty and runs the canonical seed **exactly once** if so — an already-populated database is never reseeded or overwritten;
-- starts the backend and every frontend (customer, admin, kiosk, kitchen display, order tablet).
-
-The defaults are sufficient for non-payment local development. Email is a
-no-op without its provider key. Kiosk payment is **not production-ready**:
-the current backend does not yet perform the complete server-side payment
-verification and reconciliation required by `docs/mvp.md`. Do not enable
-real-money operation until those P0 gates are closed.
-
-For a Windows POS/Kiosk host that runs the application itself in Docker:
-
-```text
-git clone <repository-url>
-cd verdura
-npm install
-docker compose --profile host up --build -d
-```
-
-The `host` profile builds the API and five frontends (including KDS), applies migrations and
-seeds only a completely empty database. Normal restarts preserve PostgreSQL,
-Redis and uploaded-media volumes. Use either this host profile or `npm run
-dev`; do not run both simultaneously because they expose the same ports.
-
-Other useful commands, all cross-platform:
-
-| Command | What it does |
-|---|---|
-| `npm run db:start` | Start PostgreSQL + Redis via Docker only (no app servers) |
-| `npm run db:stop` | Stop them (data preserved) |
-| `npm run db:status` | Show container health |
-| `npm run db:migrate` | Apply pending Prisma migrations (`prisma migrate deploy`) |
-| `npm run db:seed` | Re-run the canonical seed (idempotent — safe to run anytime) |
-| `npm run db:local:reset` | Destructively reset only the configured local development database, migrate, seed and verify canonical counts |
-| `npm run validate:menu` | Validate canonical menu counts, uniqueness and reservation formatting |
-
-### 5.3 Troubleshooting
-
-| Symptom | Likely Cause | Fix |
+| Surface | Local URL | Start alone |
 |---|---|---|
-| `[dev] Docker was not found on PATH` / `not running` | Docker Desktop not installed or not started | Install/start Docker Desktop, then re-run `npm run dev` |
-| `ECONNREFUSED` on API startup | Redis or Postgres container not healthy yet | `npm run db:status`; check `docker compose logs` |
-| Menu/admin dashboard shows no data or venue ID mismatch | Database is stale/empty or frontend venue configuration differs from the seeded venue | For disposable local development data, run `npm run db:local:reset`; otherwise inspect with `npm run db:status` before changing data |
-| Prisma migration errors | Local DB out of sync with `backend/prisma/migrations/` | `npm run db:migrate` |
-| `VITE_*` variable undefined at runtime | Workspace `.env` missing | Re-run `npm run dev` to create it from the tracked example |
-| Printer jobs not processing | Production venue printer agent is not implemented in this repository | Treat printing as unsupported until the edge-agent acceptance gates in `docs/mvp.md` pass |
+| NestJS API | http://localhost:3000 | `npm run dev:api` |
+| Customer website | http://localhost:5173 | `npm run dev:customer-website` |
+| Window display | http://localhost:5174 | `npm run dev:window-display` |
+| Kitchen display | http://localhost:5175 | `npm run dev:kitchen-display` |
+| Order tablet | http://localhost:5176 | `npm run dev:order-tablet` |
+| Admin console | http://localhost:5177 | `npm run dev:admin-console` |
 
----
+The ports are fixed in `scripts/dev-lock.mjs` (`CANONICAL_PORTS`). `npm run dev:status` and `npm run dev:stop` manage a running session.
 
-## 6. Usage & Workflow Execution
+Servvia Core is not started by `npm run dev`. To run it against the same local database:
 
-The project supports concurrent development of all surfaces from the repository root.
+```bash
+cd services/core-platform
+DATABASE_URL=<your local DATABASE_URL> JWT_ACCESS_SECRET=<same value as apps/api/.env> go run ./cmd/api
+# listens on 127.0.0.1:3100 and is read-only by default (see Servvia Core below)
+```
 
-### 6.1 Development Scripts
+**Other useful root commands:**
 
-All scripts are executed from the workspace root unless otherwise noted:
-
-| Command | Description |
+| Command | Effect |
 |---|---|
-| `npm run dev` | Starts Docker Postgres/Redis, applies migrations, seeds if empty, then launches the API and every frontend dev server concurrently |
-| `npm run dev:backend` | Starts only the NestJS backend in watch mode |
-| `npm run dev:customer-frontend` | Starts only the customer frontend in watch mode |
-| `npm run lint:backend` | Runs ESLint across the backend workspace |
-| `npm run lint:customer-frontend` | Runs ESLint across the frontend workspace |
-| `npm run typecheck --workspace=backend` | Type-checks backend TypeScript without emitting files |
+| `npm run db:start` / `db:stop` / `db:status` | PostgreSQL and Redis containers only (data preserved) |
+| `npm run db:seed` | Re-run the idempotent seed |
+| `npm run db:local:reset` | **LOCAL ONLY, destructive:** drops and rebuilds the local development database, then seeds it. It refuses any non-local `DATABASE_URL`. |
+| `npm run validate:menu` | Validate the canonical menu data |
 
-### 6.2 Application URLs
+## Configuration
 
-This is the locked, permanent local service/port map — see
-`scripts/dev-lock.mjs`'s `CANONICAL_PORTS`, the single source of truth every
-port below is generated from. Do not change these port assignments without
-an explicit new decision; see that file's own doc comment.
+Every workspace has a tracked `.env.example`. Real `.env` files are per machine and git-ignored. **Secrets never go in the repository or in `VITE_*` variables** (those are bundled into browser code). Use environment variables or a secret manager.
 
-| Surface | Local URL | Notes |
+**NestJS API** (`apps/api/.env.example`, the full list):
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection (Prisma) |
+| `REDIS_HOST`, `REDIS_PORT` | Redis for queues and the rate limiter |
+| `PORT`, `NODE_ENV`, `TRUST_PROXY_HOPS` | HTTP port, environment, trusted proxy hops |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_*_EXPIRY` | Token signing (**secret**). The access secret is shared with Go Core. |
+| `INTERNAL_SERVICE_TOKEN` | Service-to-service authentication (**secret**) |
+| `KDS_VENUE_PINS`, `ADMIN_CONSOLE_PIN`, `ADMIN_CONSOLE_EMAIL` | Device and console access (**secret** in production; the development defaults are refused in production) |
+| `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_BILLING_EMAIL` | Seed data (**secret** password) |
+| `STRIPE_SECRET_KEY` | Stripe (**secret**; optional; payment endpoints fail closed without it) |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_BOOKINGS_BCC` | Email (optional) |
+| `MEDIA_STORAGE_PROVIDER` and `MEDIA_*`, `GCS_*`, `GCP_PROJECT_ID` | Media storage. The default `local` needs no cloud credentials. |
+
+**Servvia Core** (`services/core-platform/internal/config`; the full table is in its [README](services/core-platform/README.md#configuration)):
+
+| Variable | Default | Purpose |
 |---|---|---|
-| Customer Frontend | `http://localhost:5173` | Booking engine, menu, landing pages |
-| Window Display | `http://localhost:5174` | Promotional display / in-venue self-order kiosk |
-| Kitchen Display (KDS) | `http://localhost:5175` | Development-only KDS view. Local admin/owner PIN: `108` |
-| Order Tablet | `http://localhost:5176` | Staff/customer in-venue ordering (device PIN stage). Local admin/owner PIN: `108` |
-| Admin Console | `http://localhost:5177` | Menu and operations management. Local admin/owner PIN: `108` |
-| NestJS API | `http://localhost:3000` | REST & WebSocket server |
+| `DATABASE_URL` | required | The same database as the NestJS API |
+| `JWT_ACCESS_SECRET` | required, at least 32 characters | Verifies Nest-issued access tokens. Production refuses the checked-in defaults. |
+| `SERVVIA_CORE_DB_READ_ONLY` | `true` | **Safety default.** Every canonical write answers 503 until this is set to `false`. |
+| `SERVVIA_CORE_HTTP_ADDR` | `127.0.0.1:3100` | Listen address |
+| `REDIS_HOST`, `REDIS_PORT` | `127.0.0.1`, `6379` | Must be the same Redis as the NestJS API (shared rate-limit budget) |
+| `SERVVIA_CORE_REALTIME_POLL_INTERVAL`, `SERVVIA_CORE_REALTIME_RETENTION` | `250ms`, `24h` | Realtime log tailing and pruning |
 
-Order Tablet device enrollment is a separate stage from the admin/owner PIN
-above — see `apps/order-tablet/README.md`. Production must always be
-configured with a real, non-default PIN; `108` is rejected outright in
-production (`NODE_ENV=production`) regardless of configuration.
+**Web apps** (`apps/*/.env.example`): `VITE_API_URL` (leave empty to use the dev proxy) and `VITE_VENUE_ID`.
 
----
+## Database and migrations
 
-## 6.3 Source of Truth and Production Deployment
+**Prisma is the sole schema migration authority.** The schema and migrations live in `apps/api/prisma/`. Go Core has no migration framework: it reads and writes the Prisma-managed schema.
 
-The authoritative tracked source of truth for all Servvia application code is `main` in the canonical repository. The Mac environment is the synchronized development/review environment, and the Windows host (`DESKTOP-SOKKOQ7`) acts as the primary production-facing work/integration surface, which must never diverge from `main`.
+**Local and disposable databases:**
 
-A standing session protocol (SOP) governs all implementation, secure SSH access, synchronization, safety constraints, and session-close verification invariants. See the canonical environment governance document [`docs/source-of-truth-and-environments.md`](docs/source-of-truth-and-environments.md) for the full operating policy and session protocol, and [`docs/windows-production-deployment.md`](docs/windows-production-deployment.md) for the current physical layout and service settings on the Windows host.
-
----
-
-## 7. Contributing Guidelines
-
-We enforce rigorous code standards to ensure quality, security, and maintainability.
-
-### 7.1 Branching Strategy
-
-- **`main` is protected.** Direct pushes are blocked — all changes go through pull requests.
-- **Branch naming:** Use `feature/` or `bugfix/` prefixes (e.g., `feature/kds-websockets`, `bugfix/stripe-webhook-retry`).
-- **Every PR must pass:** TypeScript compilation, ESLint validation, and all test suites before review.
-- **Peer review:** At least one senior developer approval is required before merging.
-
-### 7.2 Commit Message Convention
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-<type>(<scope>): <short summary>
-
-feat(reservations): add dietary preference inheritance for group bookings
-fix(printer): handle ESC/POS timeout on dropped TCP connection
-chore(backend): upgrade Prisma to 5.x
+```bash
+npm run db:migrate                                   # apply pending migrations (prisma migrate deploy)
+npm run prisma:status --workspace=apps/api           # migration status
+cd apps/api && npx prisma validate && npx prisma generate
 ```
 
-Valid types: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`.
+**Making a schema change** (run in `apps/api`, against a disposable database):
+1. Edit `prisma/schema.prisma`, then create the migration:
+   ```bash
+   npx prisma migrate dev --name <change>
+   ```
+   Or write the SQL yourself: generate it with `npx prisma migrate diff`, then add any hand-authored `CHECK` constraints. Migrations are additive, and existing migrations are never edited.
+2. Verify from zero on an empty database:
+   ```bash
+   DATABASE_URL=<empty db> npx prisma migrate deploy
+   ```
+3. Verify the upgrade path on a database at the previous migration.
+4. Check for drift:
+   ```bash
+   npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+   ```
+   Exit code 0 means no drift.
 
-Use scope to indicate which package was changed:
+**Production migrations are not an everyday command.** Every production schema change needs its own explicit approval and procedure. The phase notes in [docs/migration/](docs/migration/README.md) record, per migration, its lock behaviour and rollback.
 
-```
-feat(auth): add refresh token rotation
-fix(backend): correct Joi validation for JWT_SECRET
-chore(deps): upgrade NestJS to 11.x
-feat(admin-frontend): scaffold verdura-admin-frontend vite app
-```
+## Servvia Core (Go)
 
-Scopes: `backend`, `admin-frontend`, `kiosk-frontend`, `kds`, `customer-frontend`, `prisma`, `infra`.
+`services/core-platform` owns the canonical domains D1–D12. It ports the NestJS API's HTTP behaviour where the two overlap (tax configuration, the channel menu, access tokens, rate limiting), and proves it with parity tests. New capabilities are Servvia-native APIs specified in `contracts/openapi/`.
 
-### 7.3 Coding Standards
+- **Relationship to the NestJS API.** It uses the same PostgreSQL database, verifies Nest-issued access tokens with the shared `JWT_ACCESS_SECRET`, and shares Redis only for the rate limiter. It listens on `127.0.0.1:3100` by default.
+- **Read-only by default: `SERVVIA_CORE_DB_READ_ONLY=true`.** Every canonical write answers 503 until writes are enabled. Set `SERVVIA_CORE_DB_READ_ONLY=false` only on local or disposable databases. It is not a production deployment instruction: routing any production traffic to Go Core needs its own approval.
+- **Graceful shutdown.** On SIGINT or SIGTERM, `/ready` reports draining and realtime connections close with 1001. In-flight requests finish within the shutdown timeout. Then the kitchen projector and the realtime dispatcher stop.
+- **Probes:** `/health` (liveness) and `/ready` (PostgreSQL).
+- **Guarded.** An architecture test keeps IdealPOS and external-POS concepts out of the canonical packages.
 
-- **TypeScript:** All backend changes must be strictly typed. `any` assertions are not permitted.
-- **Linting:** Run lint checks before committing:
-  ```bash
-  npm run lint:backend
-  npm run lint:customer-frontend
-  ```
-- **Security controls:**
-  - All API routes must implement guards validating role-based claims.
-  - Database interactions must use Prisma's parameterized query interface — never raw string interpolation.
-  - Access tokens must never be logged, exposed in client consoles, or stored in `localStorage`.
+Build and test details, test layers and the parity setup are in [services/core-platform/README.md](services/core-platform/README.md).
 
-### 7.4 NUL-byte source integrity guard
+## Realtime
 
-A file-writing tool once embedded literal `0x00` (NUL) bytes into a committed `.ts` file in place of plain spaces — `git diff` silently rendered the file as binary instead of a normal text diff, so the corruption wasn't visible until an explicit byte-level check caught it. `npm run check:nul-bytes` (`scripts/check-no-nul-bytes.mjs`) guards against a recurrence: it byte-scans every git-tracked text/source file (never binary assets like menu images, which legitimately contain NUL bytes as normal content) and fails if any contains one. It runs in CI as part of the "Root scripts" job on every push; run it locally the same way before a commit if you've had any AI-assisted or programmatic file-writing tool touch source files.
+Servvia Core owns canonical realtime (D12): a raw WebSocket at `GET /api/realtime`.
 
-**Working policy while this remains a known risk with AI-assisted authoring:** don't let a subagent/tool's raw file-write be the last step before a commit touches critical source. Either have the authoring session's own reviewer re-read the file (not just the diff summary) before staging it, or run `npm run check:nul-bytes` immediately after any subagent-created or -modified file and before relying on it further.
+- **PostgreSQL remains the truth.** An event says what changed and which resource to refetch over HTTP.
+- **Durable publication.** Every canonical change records its fact in the same transaction, in the `RealtimeEvent` table, and delivery happens after commit. A delivery failure never affects the change. The table is a delivery log, not canonical state and not a queue.
+- **One venue per connection.** The subscriber authenticates first. The server derives the organization and venue and grants the streams, so isolation is enforced by organization and venue. A kitchen display receives only kitchen-ticket facts, never financial ones.
+- **Delivery is at most once per connection:**
+  - Duplicates are possible; deduplicate by `eventId`.
+  - There is no global ordering. Per aggregate, `version` increases.
+  - On reconnect, subscribe and then refetch over HTTP. There is no replay.
+  - A subscriber that falls behind is disconnected.
+- **D4 outbox is separate.** The kitchen outbox (`OutboxEvent`) stays the kitchen projector's alone. Generic workers (D13) are not implemented yet.
+- **Legacy Socket.IO.** The NestJS `orderUpdate` channel still serves today's web clients until each one is cut over.
 
----
+Protocol and schemas: [contracts/realtime/](contracts/realtime/). Fact definitions: [contracts/events/](contracts/events/).
 
-## 8. License
+## Media
 
-This repository is **UNLICENSED** and proprietary. All source code, assets, database schemas, and documentation are the sole property of Servvia. Unauthorized copying, distribution, modification, or runtime hosting of this code is strictly prohibited.
+Restaurant content — menu photographs, promotional imagery, signage content and video — **does not live in the application repository**. It is stored in **Google Cloud Storage**, and applications reference object keys or public object URLs of the form `https://storage.googleapis.com/<bucket>/<object key>`.
 
-**Copyright © 2026 Servvia. All rights reserved.**
+- Uploads go through the API's `MediaAsset` pipeline: signed upload, server-side verification, then an explicit publish. The browser never receives a credential or a bucket name.
+- Local development uses `MEDIA_STORAGE_PROVIDER=local` and needs no cloud credentials.
+- Bundled application assets are fine: app icons, logos, favicons and required native resources.
+- Design and operational detail: [the GCS media architecture record](_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md).
+
+## Testing and CI
+
+| Component | Commands |
+|---|---|
+| Servvia Core | `cd services/core-platform && gofmt -l . && go vet ./... && go build ./... && go test ./...`, and `go test -race ./...` |
+| Servvia Core integration | `SERVVIA_CORE_TEST_DATABASE_URL=<disposable local db> go test ./tests/integration/`. The helper refuses non-local hosts and production-like names. |
+| Servvia Core parity with NestJS | `go test ./tests/parity/` against a running NestJS API (setup in the core README) |
+| NestJS API | `npm run typecheck --workspace=apps/api`, `npm run build:api`, `npm run lint:api`, `npm test --workspace=apps/api` |
+| NestJS integration | `npm run test:integration --workspace=apps/api` against a migrated, seeded disposable database. Leave `NODE_ENV` unset (Jest uses `test`), and set `SEED_OWNER_PASSWORD` to the seeded owner's password. |
+| Prisma | `cd apps/api && npx prisma format && npx prisma validate && npx prisma generate`, plus the migration checks in [Database and migrations](#database-and-migrations) |
+| Contracts and root scripts | `npm run test:dev-scripts` (includes the contract checker), `npm run check:nul-bytes`, `npm run check:bridge-governance` |
+| Web apps | `npm run lint:admin-console` (and `:customer-website`, `:window-display`), `npm test` (every workspace with tests) |
+| Venue connector (.NET) | `dotnet build apps/venue-connector/VerduraIdealposTracer.slnx`, then `dotnet test --no-build` on the same solution |
+
+**CI** (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests) runs nine jobs:
+- NestJS API: lint, typecheck, unit tests
+- NestJS API: real-PostgreSQL integration tests
+- Admin console (including the Order Tablet and KDS targets): lint, typecheck, unit tests, build
+- Customer website: lint, typecheck, build
+- Window display: lint, typecheck, build
+- Root script tests, plus the NUL-byte and bridge-governance guards
+- Venue connector (.NET): build, unit and crash/replay tests
+- Venue connector (.NET): Windows-only projects build
+- IdealPOS bridge (.NET Framework): vendor-free self-test subset
+
+**CI does not yet run Servvia Core's Go gates.** Run the Go commands above locally. Check the latest run on GitHub rather than assuming it passes.
+
+## Engineering rules
+
+- PostgreSQL holds canonical state, and Servvia Core owns canonical restaurant state. Prisma owns the schema.
+- **The server is the price authority.** Clients send identities and quantities, never amounts. No client computes a canonical financial value.
+- Money is integer minor units. No floating-point money.
+- Idempotency is enforced by the database (unique keys and request fingerprints). Retries are safe.
+- Each concept keeps its own boundaries (the domain model above). No external-POS concept inside the canonical Go domains.
+- Contracts in `contracts/` are the language-neutral boundary between services and clients.
+- Realtime is not canonical storage. Clients refetch canonical state over HTTP after reconnecting.
+- Legacy behaviour is preserved only for the migration period.
+- **No destructive or production operation** (deploy, production migration, production data change, secret rotation) without explicit approval.
+
+## Legacy and transitional components
+
+These remain during the migration and are scheduled for replacement or retirement:
+
+| Component | Status |
+|---|---|
+| NestJS API (`apps/api`) | Serves today's clients. Its routes move to Servvia Core one capability at a time. Known issue: the production start command's entry point; see the known findings in [docs/migration/README.md](docs/migration/README.md). |
+| Socket.IO `orderUpdate` | Legacy realtime, frozen; replaced by `/api/realtime` at each client's cutover |
+| IdealPOS integration: bridge, harness, POS sync, `ConnectorCommand`, native rounds | Serves the live venue. Frozen, and never part of Servvia Core ([retirement plan](docs/migration/idealpos-retirement.md), [integration notes](docs/integrations/idealpos.md)) |
+| Venue connector (`apps/venue-connector`) | Legacy IdealPOS observation tooling |
+| `TabletDevice` enrollment, KDS PINs | Transitional device identities, superseded by D8 devices as clients migrate |
+
+Some identifiers keep the original **Verdura** name: .NET project names, Docker volumes, cloud buckets and some production hosts. They are compatibility identifiers and are deliberately not renamed ([naming inventory](docs/migration/naming-inventory.md)).
+
+## Production and environments
+
+Production today runs the NestJS API, the React applications and the IdealPOS venue integration. Servvia Core does not yet serve production traffic. Local development (above) and production operation are separate; production procedures live in dedicated documents:
+
+- [docs/source-of-truth-and-environments.md](docs/source-of-truth-and-environments.md): the source of truth, environments and the operating protocol
+- [docs/windows-production-deployment.md](docs/windows-production-deployment.md): how the Windows production host actually runs
+- [docs/integrations/idealpos.md](docs/integrations/idealpos.md) and the retained IdealPOS runbooks in `_bmad-output/implementation-artifacts/`
+
+`docker-compose.yml` also defines a `host` profile, `docker compose --profile host up --build -d`. It builds and runs the API and the five web apps in containers on one machine. It is **not** how the current Windows production host runs; that host deliberately does not use it.
+
+Production deploys, migrations, data changes and cloud changes each need explicit operational approval.
+
+## Security
+
+- Never commit secrets: `.env` files, JWT secrets, database passwords, API keys, service-account keys.
+- Device credentials, including payment-adapter credentials, are shown once at enrollment or rotation, and Servvia stores only a verifier. Treat them as secrets.
+- Never expose provider references or card data in responses, logs or realtime events.
+- Venue and organization scope is always enforced on the server; client-supplied scope is never trusted.
+- Operations on production databases need deliberate, explicit approval.
+
+## Documentation map
+
+| Document | Contents |
+|---|---|
+| [docs/adr/](docs/adr/README.md) | Architecture decision records, starting with ADR 0001: Servvia is the operational POS |
+| [docs/migration/README.md](docs/migration/README.md) | Migration phases, per-phase results and known findings; phase notes `d4`–`d12` |
+| [services/core-platform/README.md](services/core-platform/README.md) | Servvia Core: layout, configuration, toolchain, test layers, parity |
+| [contracts/README.md](contracts/README.md) | Contracts index: OpenAPI, realtime, events, schemas |
+| [docs/architecture.md](docs/architecture.md) | Architecture reference and the technology standard (§10) |
+| [docs/source-of-truth-and-environments.md](docs/source-of-truth-and-environments.md) | Source of truth, environments, session protocol |
+| [docs/windows-production-deployment.md](docs/windows-production-deployment.md) | The Windows production host |
+| [docs/decisions-log.md](docs/decisions-log.md) | Decision log |
+| [apps/api/README.md](apps/api/README.md) and the other `apps/*/README.md` | Component notes |
+
+## Contributing
+
+- Work from `main`. Use `feature/…` or `fix/…` branches for pull requests.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). Use the package or domain as the scope, e.g. `feat(orders): …`, `fix(api): …`, `docs(migration): …`.
+- Before a pull request, run the gates for the components you changed (see [Testing and CI](#testing-and-ci)). Run `npm run check:nul-bytes` after any tool-generated file change: it catches NUL bytes that make a source file look binary to git.
+
+## License
+
+UNLICENSED and proprietary. All source code, assets, database schemas and documentation are the property of Servvia. Copyright © 2026 Servvia. All rights reserved.
