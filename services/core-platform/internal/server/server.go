@@ -4,6 +4,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"servvia/services/core-platform/internal/checks/checksapi"
 	"servvia/services/core-platform/internal/devices"
@@ -17,6 +18,7 @@ import (
 	"servvia/services/core-platform/internal/platform/httpx"
 	"servvia/services/core-platform/internal/promotions/promotionsapi"
 	"servvia/services/core-platform/internal/ratelimit"
+	"servvia/services/core-platform/internal/realtime/realtimeapi"
 	"servvia/services/core-platform/internal/refunds/refundsapi"
 	"servvia/services/core-platform/internal/shifts/shiftsapi"
 	"servvia/services/core-platform/internal/tables/tablesapi"
@@ -37,6 +39,8 @@ type Deps struct {
 	Devices       *devicesapi.Handler
 	Refunds       *refundsapi.Handler
 	Promotions    *promotionsapi.Handler
+	// Realtime is the canonical WebSocket endpoint (Phase D12).
+	Realtime *realtimeapi.Handler
 	// DeviceAuth authenticates device credentials (Phase D8), e.g. the
 	// payment adapter on its result route.
 	DeviceAuth    *devices.Service
@@ -220,5 +224,20 @@ func Routes(d Deps) http.Handler {
 	rt.Nest(http.MethodPost, "/api/venues/{venueId}/promotions/{promotionId}/activate", promotionAdmin(pr.Activate))
 	rt.Nest(http.MethodPost, "/api/venues/{venueId}/promotions/{promotionId}/deactivate", promotionAdmin(pr.Deactivate))
 
-	return httpx.Chain(rt, httpx.RequestIDs, httpx.AccessLog(d.Logger), httpx.CORS, httpx.ETag)
+	api := httpx.Chain(rt, httpx.RequestIDs, httpx.AccessLog(d.Logger), httpx.CORS, httpx.ETag)
+	if d.Realtime == nil {
+		return api
+	}
+	// Realtime (Phase D12, contracts/realtime/servvia-realtime.md): a
+	// WebSocket upgrade, so it bypasses the buffering ETag and the Nest
+	// middleware (CORS does not apply; the upgrade checks Origin itself).
+	// Authentication happens inside, before anything is subscribed.
+	ws := httpx.Chain(d.Realtime, httpx.RequestIDs, httpx.AccessLog(d.Logger))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.EqualFold(strings.TrimSuffix(r.URL.Path, "/"), "/api/realtime") {
+			ws.ServeHTTP(w, r)
+			return
+		}
+		api.ServeHTTP(w, r)
+	})
 }

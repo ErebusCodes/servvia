@@ -37,6 +37,9 @@ import (
 	promotionstore "servvia/services/core-platform/internal/promotions/pgstore"
 	"servvia/services/core-platform/internal/promotions/promotionsapi"
 	"servvia/services/core-platform/internal/ratelimit"
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
+	"servvia/services/core-platform/internal/realtime/realtimeapi"
 	"servvia/services/core-platform/internal/refunds"
 	"servvia/services/core-platform/internal/refunds/refundsapi"
 	"servvia/services/core-platform/internal/server"
@@ -132,6 +135,20 @@ func run() error {
 	// on every request.
 	deviceService := devices.NewService(devicestore.New(pool), !cfg.DBReadOnly, devicestore.NewID)
 
+	// Realtime (D12): every committed canonical fact is tailed from the
+	// RealtimeEvent log and fanned out to this process's subscribers. It
+	// only reads, so it runs on a read-only pool too; pruning needs writes.
+	hub := realtime.NewHub(realtime.DefaultBuffer)
+	dispatcher := realtimestore.NewDispatcher(realtimestore.NewLog(pool), hub, logger,
+		cfg.RealtimePollInterval, cfg.RealtimeRetention, !cfg.DBReadOnly)
+	if err := dispatcher.Start(ctx); err != nil {
+		return err
+	}
+	workers.Add(1)
+	go func() { defer workers.Done(); dispatcher.Run(workerCtx) }()
+	realtimeHandler := realtimeapi.NewHandler(hub, identity.NewVerifier(cfg.JWTAccessSecret), identity.NewPostgresTabletDevices(pool),
+		deviceService, venueStore, logger, realtimeapi.DefaultConfig)
+
 	probes := health.New(pool, cfg.ReadinessTimeout)
 	srv := &http.Server{
 		Addr: cfg.HTTPAddr,
@@ -149,6 +166,7 @@ func run() error {
 			Shifts:        shiftsapi.NewHandler(shiftService, venueStore, logger),
 			Devices:       devicesapi.NewHandler(deviceService, venueStore, logger),
 			Refunds:       refundsapi.NewHandler(refundService, venueStore, logger),
+			Realtime:      realtimeHandler,
 			DeviceAuth:    deviceService,
 			Verifier:      identity.NewVerifier(cfg.JWTAccessSecret),
 			TabletDevices: identity.NewPostgresTabletDevices(pool),
@@ -183,6 +201,10 @@ func run() error {
 	probes.Drain()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
+	// Realtime first: refuse new subscriptions and close the open ones
+	// (1001 going away); hijacked WebSockets are not tracked by Shutdown.
+	realtimeHandler.Drain(shutdownCtx)
+	logger.Info("realtime closed")
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return err
 	}

@@ -1,5 +1,13 @@
 # Orders realtime contract (socket.io), as built
 
+> **LEGACY (NestJS), frozen.** The permanent realtime contract is
+> [`servvia-realtime.md`](servvia-realtime.md) (Phase D12: raw WebSocket from
+> Servvia Core, canonical fact envelopes, server-assigned streams). The Go
+> service does **not** reproduce this channel: the decision recorded below
+> ("break compatibility deliberately") was taken. Each existing client
+> keeps using it until its own cutover, when it moves to the new contract
+> plus HTTP refetch. Do not add events or rooms here.
+
 This is the one realtime channel the NestJS API exposes today. It pushes whole `Order` rows to the
 Admin Console (Orders page and Order Tablet) and to the Kitchen Display. The document records the
 existing behaviour so that a Go replacement can be wire-compatible, or can break compatibility

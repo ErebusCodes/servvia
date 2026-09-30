@@ -1,0 +1,1416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://servvia.internal/contracts/realtime/servvia-realtime.schema.json",
+  "title": "Servvia realtime messages (Phase D12)",
+  "description": "NEW SERVVIA-NATIVE. Messages of the Servvia Core WebSocket (GET /api/realtime); see servvia-realtime.md for the protocol, authorization and delivery semantics, and ../events/catalog.md for what each fact means. A server message is one of Subscribed, EventMessage or Error; the client sends exactly one Subscribe.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Subscribed"
+    },
+    {
+      "$ref": "#/$defs/EventMessage"
+    },
+    {
+      "$ref": "#/$defs/Error"
+    }
+  ],
+  "$defs": {
+    "Timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "payload.check.created": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkId",
+        "tableSessionId",
+        "orderIds",
+        "status",
+        "currency",
+        "subtotalCents",
+        "discountCents",
+        "totalCents"
+      ],
+      "properties": {
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "orderIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "status": {
+          "const": "open"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "subtotalCents": {
+          "type": "integer"
+        },
+        "discountCents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalCents": {
+          "type": "integer"
+        }
+      }
+    },
+    "payload.check.settled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkId",
+        "tableSessionId",
+        "status",
+        "settlementId",
+        "cycle"
+      ],
+      "properties": {
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "const": "settled"
+        },
+        "settlementId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cycle": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "payload.check.settlement_revoked": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkId",
+        "tableSessionId",
+        "status",
+        "settlementId",
+        "cycle"
+      ],
+      "properties": {
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "const": "open"
+        },
+        "settlementId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cycle": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "payload.check.voided": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkId",
+        "tableSessionId",
+        "status"
+      ],
+      "properties": {
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "const": "voided"
+        }
+      }
+    },
+    "payload.kitchen_ticket.created": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticketId",
+        "orderId",
+        "roundId",
+        "roundSequence",
+        "station",
+        "status",
+        "tableNumber",
+        "takeawayReference"
+      ],
+      "properties": {
+        "ticketId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "orderId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roundId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roundSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "station": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "new"
+        },
+        "tableNumber": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "takeawayReference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "payload.kitchen_ticket.transitioned": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticketId",
+        "orderId",
+        "station",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "ticketId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "orderId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "station": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from": {
+          "type": "string",
+          "enum": [
+            "new",
+            "acknowledged",
+            "preparing",
+            "ready",
+            "completed",
+            "recalled"
+          ]
+        },
+        "to": {
+          "type": "string",
+          "enum": [
+            "new",
+            "acknowledged",
+            "preparing",
+            "ready",
+            "completed",
+            "recalled"
+          ]
+        }
+      }
+    },
+    "payload.order.created": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderId",
+        "roundId",
+        "tableSessionId",
+        "tableNumber",
+        "takeawayReference",
+        "serviceMode",
+        "source",
+        "status"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roundId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tableNumber": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "takeawayReference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceMode": {
+          "enum": [
+            "dine_in",
+            "takeaway"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "confirmed"
+        }
+      }
+    },
+    "payload.order.round_submitted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "orderId",
+        "roundId",
+        "sequence",
+        "tableSessionId",
+        "serviceMode",
+        "source"
+      ],
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roundId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tableSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceMode": {
+          "enum": [
+            "dine_in",
+            "takeaway"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "payload.payment.created": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paymentId",
+        "checkId",
+        "status",
+        "tenderType",
+        "amountCents",
+        "currency"
+      ],
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        },
+        "tenderType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "amountCents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "payload.payment.status_changed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paymentId",
+        "checkId",
+        "status",
+        "from"
+      ],
+      "properties": {
+        "paymentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        }
+      }
+    },
+    "payload.promotion.activated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionId",
+        "status"
+      ],
+      "properties": {
+        "promotionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "inactive"
+          ]
+        }
+      }
+    },
+    "payload.promotion.created": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionId",
+        "status"
+      ],
+      "properties": {
+        "promotionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "inactive"
+          ]
+        }
+      }
+    },
+    "payload.promotion.disabled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionId",
+        "status"
+      ],
+      "properties": {
+        "promotionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "inactive"
+          ]
+        }
+      }
+    },
+    "payload.promotion.updated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotionId",
+        "status"
+      ],
+      "properties": {
+        "promotionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "active",
+            "inactive"
+          ]
+        }
+      }
+    },
+    "payload.refund.created": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "refundId",
+        "paymentId",
+        "checkId",
+        "status",
+        "amountCents",
+        "currency"
+      ],
+      "properties": {
+        "refundId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "paymentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        },
+        "amountCents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "payload.refund.status_changed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "refundId",
+        "paymentId",
+        "checkId",
+        "status",
+        "from"
+      ],
+      "properties": {
+        "refundId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "paymentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        }
+      }
+    },
+    "payload.reversal.recorded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reversalId",
+        "paymentId",
+        "checkId",
+        "status",
+        "amountCents",
+        "currency"
+      ],
+      "properties": {
+        "reversalId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "paymentId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "checkId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed",
+            "uncertain"
+          ]
+        },
+        "amountCents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "payload.shift.closed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shiftId",
+        "status",
+        "terminalId"
+      ],
+      "properties": {
+        "shiftId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "closed"
+        },
+        "terminalId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "payload.shift.opened": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shiftId",
+        "status",
+        "terminalId"
+      ],
+      "properties": {
+        "shiftId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "open"
+        },
+        "terminalId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "payload.table_session.cancelled": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tableSessionId",
+        "tableId",
+        "tableNumber",
+        "status",
+        "covers"
+      ],
+      "properties": {
+        "tableSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableNumber": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "open",
+            "closed",
+            "cancelled"
+          ]
+        },
+        "covers": {
+          "type": "integer"
+        }
+      }
+    },
+    "payload.table_session.closed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tableSessionId",
+        "tableId",
+        "tableNumber",
+        "status",
+        "covers"
+      ],
+      "properties": {
+        "tableSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableNumber": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "open",
+            "closed",
+            "cancelled"
+          ]
+        },
+        "covers": {
+          "type": "integer"
+        }
+      }
+    },
+    "payload.table_session.opened": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tableSessionId",
+        "tableId",
+        "tableNumber",
+        "status",
+        "covers"
+      ],
+      "properties": {
+        "tableSessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tableNumber": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "open",
+            "closed",
+            "cancelled"
+          ]
+        },
+        "covers": {
+          "type": "integer"
+        }
+      }
+    },
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "eventType",
+        "occurredAt",
+        "organizationId",
+        "venueId",
+        "aggregateType",
+        "aggregateId",
+        "version",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique per event; the same fact redelivered has the same eventId (deduplicate by it)."
+        },
+        "eventType": {
+          "enum": [
+            "check.created",
+            "check.settled",
+            "check.settlement_revoked",
+            "check.voided",
+            "kitchen_ticket.created",
+            "kitchen_ticket.transitioned",
+            "order.created",
+            "order.round_submitted",
+            "payment.created",
+            "payment.status_changed",
+            "promotion.activated",
+            "promotion.created",
+            "promotion.disabled",
+            "promotion.updated",
+            "refund.created",
+            "refund.status_changed",
+            "reversal.recorded",
+            "shift.closed",
+            "shift.opened",
+            "table_session.cancelled",
+            "table_session.closed",
+            "table_session.opened"
+          ]
+        },
+        "occurredAt": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "Server time of the transaction that made the change."
+        },
+        "organizationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "venueId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aggregateType": {
+          "enum": [
+            "check",
+            "kitchen_ticket",
+            "order",
+            "payment",
+            "promotion",
+            "refund",
+            "reversal",
+            "shift",
+            "table_session"
+          ]
+        },
+        "aggregateId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "The aggregate's version after the change; null for an aggregate without one (order). Monotonic per aggregate: drop an event older than what you hold."
+        },
+        "payload": {
+          "type": "object",
+          "description": "Identifiers, statuses and summary amounts only. Refetch the resource over HTTP for detail."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "check.created"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "check"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.check.created"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "check.settled"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "check"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.check.settled"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "check.settlement_revoked"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "check"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.check.settlement_revoked"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "check.voided"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "check"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.check.voided"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "kitchen_ticket.created"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "kitchen_ticket"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.kitchen_ticket.created"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "kitchen_ticket.transitioned"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "kitchen_ticket"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.kitchen_ticket.transitioned"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "order.created"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "order"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.order.created"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "order.round_submitted"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "order"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.order.round_submitted"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "payment.created"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "payment"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.payment.created"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "payment.status_changed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "payment"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.payment.status_changed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "promotion.activated"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "promotion"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.promotion.activated"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "promotion.created"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "promotion"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.promotion.created"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "promotion.disabled"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "promotion"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.promotion.disabled"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "promotion.updated"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "promotion"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.promotion.updated"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "refund.created"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "refund"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.refund.created"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "refund.status_changed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "refund"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.refund.status_changed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "reversal.recorded"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "reversal"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.reversal.recorded"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "shift.closed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "shift"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.shift.closed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "shift.opened"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "shift"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.shift.opened"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "table_session.cancelled"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "table_session"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.table_session.cancelled"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "table_session.closed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "table_session"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.table_session.closed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "eventType": {
+                "const": "table_session.opened"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "aggregateType": {
+                "const": "table_session"
+              },
+              "payload": {
+                "$ref": "#/$defs/payload.table_session.opened"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Subscribe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "venueId"
+      ],
+      "properties": {
+        "type": {
+          "const": "subscribe"
+        },
+        "venueId": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string",
+          "description": "Only when the upgrade carried no Authorization header (browsers). Never logged."
+        }
+      }
+    },
+    "Subscribed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "venueId",
+        "organizationId",
+        "streams",
+        "serverTime"
+      ],
+      "properties": {
+        "type": {
+          "const": "subscribed"
+        },
+        "venueId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "organizationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "streams": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "kitchen",
+              "operations",
+              "financial"
+            ]
+          },
+          "minItems": 1
+        },
+        "serverTime": {
+          "$ref": "#/$defs/Timestamp"
+        }
+      }
+    },
+    "EventMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "event"
+      ],
+      "properties": {
+        "type": {
+          "const": "event"
+        },
+        "event": {
+          "$ref": "#/$defs/Event"
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "code",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "code": {
+          "enum": [
+            "BAD_REQUEST",
+            "UNAUTHENTICATED",
+            "FORBIDDEN",
+            "VENUE_NOT_FOUND",
+            "TOKEN_EXPIRED",
+            "SLOW_CONSUMER",
+            "SHUTTING_DOWN",
+            "INTERNAL"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

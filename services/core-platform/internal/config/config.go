@@ -61,6 +61,12 @@ type Config struct {
 	// order.round_submitted events. It runs only when writes are enabled.
 	KitchenPollInterval time.Duration
 
+	// RealtimePollInterval is how often the realtime dispatcher tails the
+	// RealtimeEvent log (Phase D12). RealtimeRetention is how long a
+	// delivered event is kept before pruning (writes enabled only).
+	RealtimePollInterval time.Duration
+	RealtimeRetention    time.Duration
+
 	LogLevel slog.Level
 }
 
@@ -91,20 +97,22 @@ func load(getenv func(string) string) (Config, error) {
 	}
 
 	cfg := Config{
-		Environment:         get("NODE_ENV", "development"),
-		HTTPAddr:            get("SERVVIA_CORE_HTTP_ADDR", "127.0.0.1:3100"),
-		ReadHeaderTimeout:   duration("SERVVIA_CORE_READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout:         duration("SERVVIA_CORE_READ_TIMEOUT", 15*time.Second),
-		WriteTimeout:        duration("SERVVIA_CORE_WRITE_TIMEOUT", 30*time.Second),
-		IdleTimeout:         duration("SERVVIA_CORE_IDLE_TIMEOUT", 120*time.Second),
-		ShutdownTimeout:     duration("SERVVIA_CORE_SHUTDOWN_TIMEOUT", 20*time.Second),
-		ReadinessTimeout:    duration("SERVVIA_CORE_READINESS_TIMEOUT", 2*time.Second),
-		KitchenPollInterval: duration("SERVVIA_CORE_KITCHEN_POLL_INTERVAL", time.Second),
-		DatabaseURL:         getenv("DATABASE_URL"),
-		JWTAccessSecret:     getenv("JWT_ACCESS_SECRET"),
-		DBReadOnly:          true,
-		DBMaxConns:          10,
-		RedisHost:           get("REDIS_HOST", "127.0.0.1"),
+		Environment:          get("NODE_ENV", "development"),
+		HTTPAddr:             get("SERVVIA_CORE_HTTP_ADDR", "127.0.0.1:3100"),
+		ReadHeaderTimeout:    duration("SERVVIA_CORE_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:          duration("SERVVIA_CORE_READ_TIMEOUT", 15*time.Second),
+		WriteTimeout:         duration("SERVVIA_CORE_WRITE_TIMEOUT", 30*time.Second),
+		IdleTimeout:          duration("SERVVIA_CORE_IDLE_TIMEOUT", 120*time.Second),
+		ShutdownTimeout:      duration("SERVVIA_CORE_SHUTDOWN_TIMEOUT", 20*time.Second),
+		ReadinessTimeout:     duration("SERVVIA_CORE_READINESS_TIMEOUT", 2*time.Second),
+		KitchenPollInterval:  duration("SERVVIA_CORE_KITCHEN_POLL_INTERVAL", time.Second),
+		RealtimePollInterval: duration("SERVVIA_CORE_REALTIME_POLL_INTERVAL", 250*time.Millisecond),
+		RealtimeRetention:    duration("SERVVIA_CORE_REALTIME_RETENTION", 24*time.Hour),
+		DatabaseURL:          getenv("DATABASE_URL"),
+		JWTAccessSecret:      getenv("JWT_ACCESS_SECRET"),
+		DBReadOnly:           true,
+		DBMaxConns:           10,
+		RedisHost:            get("REDIS_HOST", "127.0.0.1"),
 	}
 
 	integer := func(key, fallback string, lo, hi int) int {

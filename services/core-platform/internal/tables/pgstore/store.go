@@ -24,6 +24,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 	"servvia/services/core-platform/internal/tables"
 )
 
@@ -220,6 +222,9 @@ func (st *Store) openOnce(ctx context.Context, cmd tables.OpenCommand) (tables.S
 			return err
 		}
 		created = s
+		if err := recordFact(ctx, tx, "table_session.opened", s); err != nil {
+			return err
+		}
 		return audit(ctx, tx, cmd.Scope, cmd.Actor, "TABLE_SESSION_OPENED", s.ID, nil, snapshot(s))
 	})
 	return created, err
@@ -304,6 +309,15 @@ func (st *Store) Change(ctx context.Context, cmd tables.ChangeCommand) (tables.S
 		if readiness != nil {
 			after["closeReadiness"] = readiness
 		}
+		// Only an ended visit is a realtime fact (Phase D12); a covers change
+		// is not published. Closed stays closed: a later refund or
+		// re-settlement is a check fact and never reopens the session.
+		if fact, ended := map[tables.Status]string{tables.StatusClosed: "table_session.closed",
+			tables.StatusCancelled: "table_session.cancelled"}[changed.Status]; ended && before.Status == tables.StatusOpen {
+			if err := recordFact(ctx, tx, fact, changed); err != nil {
+				return err
+			}
+		}
 		return audit(ctx, tx, cmd.Scope, cmd.Actor, action, changed.ID, snapshot(before), after)
 	})
 	return changed, err
@@ -374,4 +388,13 @@ func newID() string {
 	_, _ = rand.Read(b[:])
 	b[6], b[8] = b[6]&0x0f|0x40, b[8]&0x3f|0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// recordFact records a table-session fact in the transaction that made the
+// change (Phase D12).
+func recordFact(ctx context.Context, tx pgx.Tx, eventType string, s tables.Session) error {
+	_, err := realtimestore.Record(ctx, tx, s.VenueID, realtime.Fact{Type: eventType, AggregateType: "table_session",
+		AggregateID: s.ID, Version: realtime.V(s.Version), Payload: map[string]any{
+			"tableSessionId": s.ID, "tableId": s.TableID, "tableNumber": s.TableNumber, "status": s.Status, "covers": s.Covers}})
+	return err
 }

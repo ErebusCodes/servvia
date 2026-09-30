@@ -111,6 +111,7 @@ func setupOrderParity(t *testing.T, tableCount int) orderParity {
 			{`DELETE FROM "Order" WHERE id = ANY($1)`, orderIDs},
 			{`DELETE FROM "TableSession" WHERE "tableId" = ANY($1)`, p.tables},
 			{`DELETE FROM "Table" WHERE id = ANY($1)`, p.tables},
+			{`DELETE FROM "RealtimeEvent" WHERE "venueId" = ANY($1)`, venues},
 		} {
 			if _, err := writer.Exec(ctx, q.sql, q.ids); err != nil {
 				t.Errorf("cleanup: %v", err)

@@ -1,5 +1,11 @@
 # Events: starting inventory
 
+> **Phase D12:** the canonical facts are now defined once in
+> [`catalog.md`](catalog.md) and delivered by Servvia Core's realtime log
+> (`RealtimeEvent`, [`../realtime/servvia-realtime.md`](../realtime/servvia-realtime.md)).
+> The inventory below describes the NestJS-era mechanisms and the D3/D4
+> outbox, which remain as they are.
+
 **Servvia currently has no event bus.** A search of `apps/api/src` for `EventEmitter`, `@OnEvent`, `kafka`,
 `nats` and `pubsub` found nothing. `apps/api/package.json` has no event-emitter, Kafka or NATS dependency.
 
@@ -44,4 +50,4 @@ How the projector consumes an event:
 - **No exactly-once delivery.** The guarantee is "at least once, and idempotent by unique keys".
 - **A second consumer** of an existing event type must not reuse those columns. It needs its own per-consumer progress record, added additively.
 - **Other event types** are not claimed by the projector.
-- **D5 checks and D6 payments and settlements write no outbox event.** Nothing consumes one yet, and PostgreSQL is the source of truth for them.
+- **D5 checks and D6 payments and settlements write no outbox event.** Nothing consumes one yet, and PostgreSQL is the source of truth for them. Since D12 they record realtime facts (`catalog.md`) in a separate log, `RealtimeEvent`, which has no consumer-progress columns: each Core instance tails it with its own in-memory cursor. It is not a second use of `OutboxEvent`.

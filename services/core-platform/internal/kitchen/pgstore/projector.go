@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"servvia/services/core-platform/internal/kitchen"
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 // RoundSubmitted is the outbox event type the projector consumes (written by
@@ -234,6 +236,17 @@ func (p *Projector) project(ctx context.Context, tx pgx.Tx, eventID, venueID str
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::"OrderSource", now())
 			ON CONFLICT ("roundId", station) DO NOTHING RETURNING id`,
 			newID(), venueID, ev.OrderID, ev.RoundID, station, eventID, sequence, tableNumber, takeaway, source).Scan(&ticketID)
+		if err == nil {
+			// A new ticket (not a re-projection): announce it in the same
+			// transaction (Phase D12). The kitchen stream gets what a screen
+			// shows, never prices.
+			if _, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "kitchen_ticket.created",
+				AggregateType: "kitchen_ticket", AggregateID: ticketID, Version: realtime.V(1), Payload: map[string]any{
+					"ticketId": ticketID, "orderId": ev.OrderID, "roundId": ev.RoundID, "roundSequence": sequence,
+					"station": station, "status": kitchen.StatusNew, "tableNumber": tableNumber, "takeawayReference": takeaway}}); err != nil {
+				return err
+			}
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Already projected: add only what is missing to that ticket.
 			err = tx.QueryRow(ctx, `SELECT id FROM "KitchenTicket" WHERE "roundId" = $1 AND station = $2`,

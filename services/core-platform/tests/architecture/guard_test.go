@@ -41,7 +41,7 @@ var guarded = []string{"cmd", "internal"}
 
 // mustScan are the canonical domain packages the guard must be seeing; if one
 // moves out of a guarded tree, the guard fails instead of silently skipping it.
-var mustScan = []string{"internal/pricing", "internal/venues", "internal/tables", "internal/orders", "internal/kitchen", "internal/checks", "internal/payments", "internal/shifts", "internal/devices", "internal/refunds", "internal/promotions"}
+var mustScan = []string{"internal/pricing", "internal/venues", "internal/tables", "internal/orders", "internal/kitchen", "internal/checks", "internal/payments", "internal/shifts", "internal/devices", "internal/refunds", "internal/promotions", "internal/realtime"}
 
 func TestGoCoreHasNoExternalPOSConcepts(t *testing.T) {
 	root := filepath.Join("..", "..")
@@ -119,6 +119,11 @@ func checkImports(t *testing.T, path string, src []byte) {
 			if strings.Contains(p, bad) {
 				t.Errorf("%s imports %s", path, p)
 			}
+		}
+		// Phase D12: WebSocket code lives only in the realtime transport.
+		// Domain packages record facts; they never talk to subscribers.
+		if strings.HasPrefix(p, "github.com/coder/websocket") && !strings.Contains(filepath.ToSlash(path), "internal/realtime/realtimeapi/") {
+			t.Errorf("%s imports %s outside internal/realtime/realtimeapi", path, p)
 		}
 	}
 }

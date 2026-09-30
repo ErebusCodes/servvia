@@ -21,6 +21,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 	"servvia/services/core-platform/internal/shifts"
 )
 
@@ -123,6 +125,9 @@ func (st *Store) Open(ctx context.Context, cmd shifts.OpenCommand) (shifts.Shift
 			id, cmd.Scope.VenueID, cmd.Actor.StaffID, cmd.Scope.Currency, cmd.OpeningFloatCents, cmd.TerminalID, cmd.RequestKey); err != nil {
 			return err
 		}
+		if err := shiftFact(ctx, tx, cmd.Scope.VenueID, "shift.opened", id, 1, "open", cmd.TerminalID); err != nil {
+			return err
+		}
 		return audit(ctx, tx, cmd.Scope, cmd.Actor, "SHIFT_OPENED", id, nil, map[string]any{
 			"shiftId": id, "staffId": cmd.Actor.StaffID, "openingFloatCents": cmd.OpeningFloatCents, "currency": cmd.Scope.Currency,
 			"terminalId": cmd.TerminalID})
@@ -179,6 +184,9 @@ func (st *Store) Close(ctx context.Context, cmd shifts.CloseCommand) (shifts.Shi
 			return &shifts.VersionConflictError{Current: before.Version} // unreachable under the lock
 		}
 		if result, err = one(ctx, tx, shiftSelect+` WHERE s.id = $1`, cmd.ShiftID); err != nil {
+			return err
+		}
+		if err := shiftFact(ctx, tx, cmd.Scope.VenueID, "shift.closed", result.ID, result.Version, string(result.Status), result.TerminalID); err != nil {
 			return err
 		}
 		return audit(ctx, tx, cmd.Scope, cmd.Actor, "SHIFT_CLOSED", cmd.ShiftID,
@@ -261,4 +269,12 @@ func newID() string {
 	_, _ = rand.Read(b[:])
 	b[6], b[8] = b[6]&0x0f|0x40, b[8]&0x3f|0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// shiftFact records a shift fact in its transaction (Phase D12). Identity and
+// status only: cash figures are read over HTTP by those allowed to.
+func shiftFact(ctx context.Context, tx pgx.Tx, venueID, eventType, shiftID string, version int, status string, terminalID *string) error {
+	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: eventType, AggregateType: "shift", AggregateID: shiftID,
+		Version: realtime.V(version), Payload: map[string]any{"shiftId": shiftID, "status": status, "terminalId": terminalID}})
+	return err
 }

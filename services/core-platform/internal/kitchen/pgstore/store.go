@@ -20,6 +20,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"servvia/services/core-platform/internal/kitchen"
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct{ pool *pgxpool.Pool }
@@ -158,6 +160,12 @@ func (st *Store) Transition(ctx context.Context, cmd kitchen.TransitionCommand) 
 			return fmt.Errorf("record kitchen ticket transition: %w", err)
 		}
 		result, err = one(ctx, tx, `SELECT `+ticketColumns+` FROM "KitchenTicket" WHERE id = $1`, cmd.TicketID)
+		if err != nil {
+			return err
+		}
+		_, err = realtimestore.Record(ctx, tx, cmd.VenueID, realtime.Fact{Type: "kitchen_ticket.transitioned",
+			AggregateType: "kitchen_ticket", AggregateID: result.ID, Version: realtime.V(result.Version), Payload: map[string]any{
+				"ticketId": result.ID, "orderId": result.OrderID, "station": result.Station, "from": before.Status, "to": result.Status}})
 		return err
 	})
 	if err != nil {

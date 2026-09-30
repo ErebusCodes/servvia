@@ -5,7 +5,7 @@ This is the Go service that will own Servvia's canonical restaurant state ([ADR 
 | | |
 |---|---|
 | Go | **go1.27.1** (`go.mod`). Use the repo-local toolchain; see below. |
-| Owns today | Health and readiness probes. At parity with Nest, **not yet serving callers**: the channel menu read `GET /api/menu/venues/{venueId}/channel/{channel}` and the venue tax configuration `GET /api/venues/{id}/tax-config`. Internally: the organization/venue read model and the canonical pricing authority (`internal/pricing`). **New Servvia-native (no Nest equivalent):** table sessions (`contracts/openapi/table-sessions.yaml`), the canonical order core (`contracts/openapi/servvia-orders.yaml`) kitchen tickets (`contracts/openapi/kitchen-tickets.yaml`, projected from the order outbox), checks (`contracts/openapi/checks.yaml`), payments and settlement (`contracts/openapi/payments.yaml`), shifts and cash accountability (`contracts/openapi/shifts.yaml`), devices and terminals (`contracts/openapi/devices.yaml`), refunds and reversals (`contracts/openapi/refunds.yaml`) and promotions (`contracts/openapi/promotions.yaml`, applied through orders), the capabilities that write |
+| Owns today | Health and readiness probes. At parity with Nest, **not yet serving callers**: the channel menu read `GET /api/menu/venues/{venueId}/channel/{channel}` and the venue tax configuration `GET /api/venues/{id}/tax-config`. Internally: the organization/venue read model and the canonical pricing authority (`internal/pricing`). **New Servvia-native (no Nest equivalent):** table sessions (`contracts/openapi/table-sessions.yaml`), the canonical order core (`contracts/openapi/servvia-orders.yaml`) kitchen tickets (`contracts/openapi/kitchen-tickets.yaml`, projected from the order outbox), checks (`contracts/openapi/checks.yaml`), payments and settlement (`contracts/openapi/payments.yaml`), shifts and cash accountability (`contracts/openapi/shifts.yaml`), devices and terminals (`contracts/openapi/devices.yaml`), refunds and reversals (`contracts/openapi/refunds.yaml`), promotions (`contracts/openapi/promotions.yaml`, applied through orders) and canonical realtime (`GET /api/realtime`, `contracts/realtime/servvia-realtime.md`), the capabilities that write |
 | Database | The Prisma-managed schema, session `TimeZone=UTC`. **Read-only by default** (`default_transaction_read_only=on`). With `SERVVIA_CORE_DB_READ_ONLY=false` the pool is read-write for table sessions, canonical orders, kitchen tickets, checks, payments, refunds, shifts, devices and terminals, and promotions, and the kitchen projector runs; otherwise they answer 503 and reads still work. Prisma remains the only migration authority; this service has no migrations. |
 | Auth | Verifies Nest-issued access tokens: HS256, `JWT_ACCESS_SECRET`, no leeway, `sub`, `role` and `organizationId` required. Ports `resolveVenueScope`, `RolesGuard` and `TabletTokenActiveGuard`. See `contracts/schemas/auth-token-claims.schema.json`. |
 | Redis | The **same** Redis as the Nest API, for the rate limiter only. Both services run Nest's Lua script on the same keys, so a client has one budget whichever service answers. |
@@ -50,6 +50,9 @@ internal/refunds/refundsapi/  refund HTTP API: staff routes and the payment-adap
 internal/promotions/     promotion rules: terms, eligibility (venue, status, window, target), admin service (no HTTP, no SQL, no money math)
 internal/promotions/pgstore/ promotion store (version CAS under FOR UPDATE, audit); orders lock a promotion FOR SHARE at the evaluated version
 internal/promotions/promotionsapi/  promotion administration HTTP API
+internal/realtime/       realtime rules: event envelope and fact catalog, stream grants by identity, in-process fan-out hub (no HTTP, no SQL, no WebSocket)
+internal/realtime/pgstore/ Record (inside each domain transaction) and the gap-free log tail / dispatcher
+internal/realtime/realtimeapi/  WebSocket transport: authentication before subscription, streaming, backpressure, drain
 internal/menu/           channel menu: store (SQL), resolver (rules), handler (HTTP)
 internal/server/         route table
 tests/architecture/      guard: no IdealPOS / external-POS concept in cmd/ or internal/
@@ -71,11 +74,12 @@ tests/parity/            the running Nest API compared with Go, request by reque
 | `SERVVIA_CORE_READ_HEADER_TIMEOUT` / `_READ_TIMEOUT` / `_WRITE_TIMEOUT` / `_IDLE_TIMEOUT` | `5s` / `15s` / `30s` / `120s` | |
 | `SERVVIA_CORE_SHUTDOWN_TIMEOUT` / `_READINESS_TIMEOUT` | `20s` / `2s` | |
 | `SERVVIA_CORE_LOG_LEVEL` | `info` | JSON logs to stdout |
+| `SERVVIA_CORE_REALTIME_POLL_INTERVAL` / `_RETENTION` | `250ms` / `24h` | How often the realtime dispatcher tails `RealtimeEvent`, and how long delivered facts are kept (pruning only when writes are enabled). The dispatcher also runs read-only. |
 | `SERVVIA_CORE_KITCHEN_POLL_INTERVAL` | `1s` | How often the kitchen projector looks for new `order.round_submitted` events (writes enabled only) |
 | `REDIS_HOST` / `REDIS_PORT` | `127.0.0.1` / `6379` | Same variables as the Nest API. Must be the **same** Redis, or clients get two rate-limit budgets. |
 | `TRUST_PROXY_HOPS` | `0` | Same as the Nest API (Express `trust proxy`). Decides the client IP in rate-limit keys, so it must match Nest's. A non-integer is refused at startup. |
 
-On SIGINT or SIGTERM the service marks `/ready` as draining, stops accepting connections and waits for in-flight requests up to the shutdown timeout. Then it stops the kitchen projector. An event being projected at that moment rolls back and is projected again later.
+On SIGINT or SIGTERM the service marks `/ready` as draining, refuses new realtime upgrades and closes open realtime connections with 1001, stops accepting connections and waits for in-flight requests up to the shutdown timeout. Then it stops the kitchen projector and the realtime dispatcher. An event being projected at that moment rolls back and is projected again later.
 
 ## Toolchain
 

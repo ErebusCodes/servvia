@@ -97,6 +97,10 @@ type statusRecorder struct {
 	bytes  int
 }
 
+// Unwrap exposes the underlying writer (http.ResponseController and the
+// WebSocket upgrade find its Hijacker through it).
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 func (s *statusRecorder) WriteHeader(code int) {
 	if s.status == 0 {
 		s.status = code

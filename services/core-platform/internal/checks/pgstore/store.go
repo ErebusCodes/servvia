@@ -26,6 +26,8 @@ import (
 	"servvia/services/core-platform/internal/checks"
 	"servvia/services/core-platform/internal/orders"
 	"servvia/services/core-platform/internal/pricing"
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct {
@@ -251,6 +253,12 @@ func (st *Store) Create(ctx context.Context, n checks.NewCheck) (checks.Check, e
 				billed = append(billed, l.orderID)
 			}
 		}
+		if _, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "check.created", AggregateType: "check",
+			AggregateID: checkID, Version: realtime.V(1), Payload: map[string]any{"checkId": checkID, "tableSessionId": sessionID,
+				"orderIds": billed, "status": checks.StatusOpen, "currency": n.Currency, "subtotalCents": totals.SubtotalCents,
+				"discountCents": totals.DiscountCents, "totalCents": totals.TotalCents}}); err != nil {
+			return err
+		}
 		return audit(ctx, tx, cmd.Scope, cmd.Actor, "CHECK_CREATED", checkID, nil, map[string]any{
 			"checkId": checkID, "tableSessionId": sessionID, "orderIds": billed, "lineCount": len(lines),
 			"subtotalCents": totals.SubtotalCents, "discountCents": totals.DiscountCents, "taxCents": totals.TaxCents,
@@ -413,6 +421,11 @@ func (st *Store) Void(ctx context.Context, cmd checks.VoidCommand) (checks.Check
 		}
 		result, err = one(ctx, tx, `SELECT `+checkColumns+` FROM "Check" WHERE id = $1`, cmd.CheckID)
 		if err != nil {
+			return err
+		}
+		if _, err := realtimestore.Record(ctx, tx, result.VenueID, realtime.Fact{Type: "check.voided", AggregateType: "check",
+			AggregateID: result.ID, Version: realtime.V(result.Version), Payload: map[string]any{"checkId": result.ID,
+				"tableSessionId": result.TableSessionID, "status": result.Status}}); err != nil {
 			return err
 		}
 		return audit(ctx, tx, cmd.Scope, checks.Actor(cmd.Actor), "CHECK_VOIDED", cmd.CheckID,

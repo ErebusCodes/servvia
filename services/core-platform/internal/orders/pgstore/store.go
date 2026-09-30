@@ -42,6 +42,8 @@ import (
 	"servvia/services/core-platform/internal/orders"
 	"servvia/services/core-platform/internal/pricing"
 	"servvia/services/core-platform/internal/promotions"
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct {
@@ -251,6 +253,15 @@ func (st *Store) Create(ctx context.Context, n orders.NewOrder) (orders.Order, e
 		if err := outbox(ctx, tx, venueID, orderID, roundID, 1, cmd.TableSessionID, cmd.Source, cmd.ServiceMode, lines); err != nil {
 			return err
 		}
+		if _, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "order.created", AggregateType: "order",
+			AggregateID: orderID, Payload: map[string]any{"orderId": orderID, "roundId": roundID, "tableSessionId": cmd.TableSessionID,
+				"tableNumber": tableNumber, "takeawayReference": takeaway, "serviceMode": cmd.ServiceMode, "source": cmd.Source,
+				"status": orders.StatusConfirmed}}); err != nil {
+			return err
+		}
+		if err := roundFact(ctx, tx, venueID, orderID, roundID, 1, cmd.TableSessionID, cmd.Source, cmd.ServiceMode); err != nil {
+			return err
+		}
 		return audit(ctx, tx, cmd.Scope, cmd.Actor, "CREATE_ORDER", orderID, map[string]any{
 			"orderId": orderID, "totalCents": q.TotalCents, "discountCents": q.DiscountCents, "source": cmd.Source,
 			"serviceMode": cmd.ServiceMode, "tableSessionId": cmd.TableSessionID, "roundId": roundID,
@@ -357,6 +368,9 @@ func (st *Store) AddRound(ctx context.Context, n orders.NewRound) (orders.Order,
 			return fmt.Errorf("update order totals: %w", err)
 		}
 		if err := outbox(ctx, tx, venueID, cmd.OrderID, roundID, sequence, sessionID, orders.Source(source), orders.ServiceDineIn, lines); err != nil {
+			return err
+		}
+		if err := roundFact(ctx, tx, venueID, cmd.OrderID, roundID, sequence, sessionID, orders.Source(source), orders.ServiceDineIn); err != nil {
 			return err
 		}
 		return audit(ctx, tx, cmd.Scope, cmd.Actor, "ORDER_ROUND_SUBMITTED", cmd.OrderID, map[string]any{
@@ -482,6 +496,18 @@ func outbox(ctx context.Context, tx pgx.Tx, venueID, orderID, roundID string, se
 		return fmt.Errorf("write outbox event: %w", err)
 	}
 	return nil
+}
+
+// roundFact records order.round_submitted for realtime subscribers (Phase
+// D12): the same fact as the outbox event above (contracts/events/catalog.md),
+// with the same field names, minus the projector's lines. A subscriber that
+// needs the lines refetches the order.
+func roundFact(ctx context.Context, tx pgx.Tx, venueID, orderID, roundID string, sequence int, sessionID *string,
+	source orders.Source, mode orders.ServiceMode) error {
+	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "order.round_submitted", AggregateType: "order",
+		AggregateID: orderID, Payload: map[string]any{"orderId": orderID, "roundId": roundID, "sequence": sequence,
+			"tableSessionId": sessionID, "serviceMode": mode, "source": source}})
+	return err
 }
 
 func audit(ctx context.Context, tx pgx.Tx, sc orders.Scope, a orders.Actor, action, orderID string, after map[string]any) error {

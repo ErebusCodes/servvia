@@ -444,7 +444,7 @@ func settleIfPaid(ctx context.Context, tx pgx.Tx, checkID string, c lockedCheck,
 		WHERE id = $1 AND status = 'open'`, checkID); err != nil {
 		return fmt.Errorf("settle check: %w", err)
 	}
-	return nil
+	return settlementFact(ctx, tx, checkID, "check.settled", settlementID, cycle)
 }
 
 // revokeIfOwing is the other half: after money was returned (a succeeded
@@ -478,7 +478,7 @@ func revokeIfOwing(ctx context.Context, tx pgx.Tx, checkID string, c lockedCheck
 		WHERE id = $1 AND status = 'settled'`, checkID); err != nil {
 		return false, fmt.Errorf("reopen check: %w", err)
 	}
-	return true, nil
+	return true, settlementFact(ctx, tx, checkID, "check.settlement_revoked", settlementID, cycle)
 }
 
 func settlementEvent(ctx context.Context, tx pgx.Tx, settlementID string, status payments.SettlementStatus, cycle int, amount int64,
@@ -508,7 +508,8 @@ func transition(ctx context.Context, tx pgx.Tx, paymentID string, sequence int, 
 	if err != nil {
 		return fmt.Errorf("record payment transition: %w", err)
 	}
-	return nil
+	// Every payment creation and status change is a realtime fact (D12).
+	return paymentFact(ctx, tx, paymentID, from)
 }
 
 // audit records a staff financial action in the existing AuditLog, in the

@@ -8,8 +8,8 @@ A contract is written from the **current running code**. Each claim cites its so
 |---|---|
 | `openapi/` | HTTP APIs (OpenAPI 3.1): identity and devices, menu reads, venue configuration reads, orders, the connector/device command protocol, and the new Servvia-native APIs, table sessions, canonical orders (`servvia-orders.yaml`), kitchen tickets (`kitchen-tickets.yaml`), checks (`checks.yaml`), payments and settlement (`payments.yaml`), shifts and cash (`shifts.yaml`), devices and terminals (`devices.yaml`), refunds and reversals (`refunds.yaml`) and promotions (`promotions.yaml`), which are specifications rather than records of Nest behaviour |
 | `schemas/` | Shared shapes and rules: access-token claims, venue scope, the ConnectorCommand state machine |
-| `realtime/` | WebSocket contracts (today: socket.io `orderUpdate`) |
-| `events/` | Domain and outbox events. There is no event bus yet; the inventory starts here. |
+| `realtime/` | WebSocket contracts: the Servvia Core realtime protocol and message schemas (`servvia-realtime.md`, `servvia-realtime.schema.json`, Phase D12), and the legacy NestJS socket.io `orderUpdate` channel (`orders-socket.md`, frozen) |
+| `events/` | The canonical fact catalog (`catalog.md`, Phase D12: one definition per fact, delivered by realtime and, for `order.round_submitted`, the kitchen outbox) and the inventory of NestJS-era asynchronous mechanisms (`README.md`). |
 
 Shared business logic is **not** shared as code across languages. Go Core implements the rules, and clients get typed models generated from these contracts.
 

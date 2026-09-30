@@ -295,7 +295,8 @@ func adjustmentTransition(ctx context.Context, tx pgx.Tx, id string, sequence in
 	if err != nil {
 		return fmt.Errorf("record refund transition: %w", err)
 	}
-	return nil
+	// Every return of money is a realtime fact (D12).
+	return adjustmentFact(ctx, tx, id, from)
 }
 
 func adjustmentDetail(n refunds.NewAdjustment, id string, status payments.Status, p lockedPayment) map[string]any {

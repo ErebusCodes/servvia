@@ -21,6 +21,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"servvia/services/core-platform/internal/promotions"
+	"servvia/services/core-platform/internal/realtime"
+	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct{ pool *pgxpool.Pool }
@@ -118,6 +120,9 @@ func (st *Store) Create(ctx context.Context, n promotions.NewPromotion) (promoti
 			t.StartsAt, t.EndsAt, n.Key, n.Fingerprint, n.Actor.StaffID); err != nil {
 			return err
 		}
+		if err := promotionFact(ctx, tx, n.Scope.VenueID, promotions.ActionCreated, id, promotions.StatusInactive, 1); err != nil {
+			return err
+		}
 		return audit(ctx, tx, n.Scope, n.Actor, promotions.ActionCreated, id, nil, snapshot(promotions.Promotion{
 			ID: id, Terms: t, Status: promotions.StatusInactive, Version: 1}))
 	})
@@ -162,6 +167,9 @@ func (st *Store) Change(ctx context.Context, c promotions.Change, decide func(pr
 		}
 		changed = true
 		n.Version = p.Version + 1
+		if err := promotionFact(ctx, tx, c.Scope.VenueID, d.Action, p.ID, n.Status, n.Version); err != nil {
+			return err
+		}
 		return audit(ctx, tx, c.Scope, c.Actor, d.Action, p.ID, snapshot(p), snapshot(n))
 	})
 	var pgErr *pgconn.PgError
@@ -216,4 +224,21 @@ func newID() string {
 	_, _ = rand.Read(b[:])
 	b[6], b[8] = b[6]&0x0f|0x40, b[8]&0x3f|0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// factOf maps each audited promotion change to its realtime fact (D12).
+var factOf = map[string]string{
+	promotions.ActionCreated:   "promotion.created",
+	promotions.ActionUpdated:   "promotion.updated",
+	promotions.ActionActivated: "promotion.activated",
+	promotions.ActionDisabled:  "promotion.disabled",
+}
+
+// promotionFact records a promotion change in its transaction: identity,
+// status and version only. Subscribers refetch the terms (eligibility lists
+// are never pushed).
+func promotionFact(ctx context.Context, tx pgx.Tx, venueID, action, id string, status promotions.Status, version int) error {
+	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: factOf[action], AggregateType: "promotion",
+		AggregateID: id, Version: realtime.V(version), Payload: map[string]any{"promotionId": id, "status": status}})
+	return err
 }

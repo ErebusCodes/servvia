@@ -2799,3 +2799,39 @@ enum PromotionTarget {
   categories
   menu_items
 }
+
+/// Delivery log of canonical realtime facts (Phase D12). A row is written in
+/// the SAME transaction as the canonical change it announces, so the change
+/// and its announcement commit together or not at all; WebSocket delivery
+/// happens after commit and can never undo a change.
+///
+/// It is not canonical state and not a queue: nothing marks a row consumed.
+/// Every Servvia Core instance tails it with its own in-memory cursor
+/// (txId, sequence), reading only rows whose writing transaction is older
+/// than the current snapshot's xmin, so a row committed late is never
+/// skipped. Rows past the retention window are pruned. D4's OutboxEvent and
+/// its kitchen-projector progress columns are unrelated and untouched.
+///
+/// organizationId and venueId are derived from the Venue row by the insert
+/// itself. No foreign keys: a pruned delivery log must never hold canonical
+/// rows hostage. Hand-written CHECKs in migration 20261008000000_realtime_events.
+model RealtimeEvent {
+  /// The envelope's eventId: subscribers deduplicate by it.
+  id               String   @id
+  /// Allocation order within a transaction (not commit order).
+  sequence         BigInt   @unique @default(autoincrement())
+  /// The writing transaction (pg_current_xact_id()), for gap-free tailing.
+  txId             BigInt   @default(dbgenerated("((pg_current_xact_id())::text)::bigint"))
+  organizationId   String
+  venueId          String
+  eventType        String
+  aggregateType    String
+  aggregateId      String
+  /// The aggregate's version after the change, where it has one.
+  aggregateVersion Int?
+  payload          Json
+  occurredAt       DateTime @default(now())
+
+  @@index([txId, sequence])
+  @@index([occurredAt])
+}
