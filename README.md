@@ -2,7 +2,7 @@
 
 Servvia is an enterprise-grade, multi-tenant restaurant operational POS and management platform built to orchestrate and scale hospitality workflows. It covers table service, ordering, kitchen production, bills, payments, cash accountability, devices, promotions, and live operational updates.
 
-This repository is in an active migration. A new canonical core, Servvia Core (Go), is taking ownership of restaurant state one domain at a time from the original NestJS API and its external POS (IdealPOS) integration. Both run side by side today. See [ADR 0001](docs/adr/0001-servvia-is-the-operational-pos.md) and the [migration plan and phase log](docs/migration/README.md).
+This repository is in an active migration. Servvia Core (Go) is becoming the canonical backend of Servvia's own operational POS. It is replacing the domain logic the original NestJS API owned, and progressively removing legacy external-POS dependencies. The target system is entirely Servvia-owned: Servvia Core, Servvia-native POS and device clients, PostgreSQL and language-neutral contracts. Legacy IdealPOS compatibility remains only where the migration still requires it, and is scheduled for retirement. See [ADR 0001: Servvia is the operational POS](docs/adr/0001-servvia-is-the-operational-pos.md) and the [migration plan and phase log](docs/migration/README.md).
 
 ## Contents
 
@@ -21,7 +21,7 @@ This repository is in an active migration. A new canonical core, Servvia Core (G
 13. [Media](#media)
 14. [Testing and CI](#testing-and-ci)
 15. [Engineering rules](#engineering-rules)
-16. [Legacy and transitional components](#legacy-and-transitional-components)
+16. [Legacy migration components](#legacy-migration-components)
 17. [Production and environments](#production-and-environments)
 18. [Security](#security)
 19. [Documentation map](#documentation-map)
@@ -49,43 +49,63 @@ This repository is in an active migration. A new canonical core, Servvia Core (G
 
 **Still transitional or future:**
 - Generic outbox and workers (D13).
-- Client cutover: every existing web client still talks to the NestJS API.
-- Native (Android) clients and a Windows POS client.
-- Venue Edge.
-- Retiring the IdealPOS integration.
+- Servvia-native clients (the Windows POS and the Android device apps; see [Target clients](#target-clients)) and client cutover. Every existing web client still talks to the NestJS API.
+- Venue Edge (local hardware and resilience).
+- Retirement of the legacy migration components, including the IdealPOS compatibility integration.
 
 The remaining phases are tracked in [docs/migration/README.md](docs/migration/README.md). The migration is not complete.
 
-**In production today:** the NestJS API and the React applications. The IdealPOS integration serves the live venue.
+The existing production estate still contains legacy components while Servvia Core and the Servvia-native clients are completed. Those compatibility components are transitional and are not part of the target Servvia architecture. See [Legacy migration components](#legacy-migration-components).
 
 ## Architecture
 
+### Target architecture
+
+Every surface is a client of Servvia Core. None of them owns canonical business rules.
+
 ```
- Web clients (React)             Servvia Core (Go)                    NestJS API (transitional)
- admin console, order tablet,    services/core-platform               apps/api
- KDS, window display,            canonical domains D1-D12,            existing client routes, auth
- customer website                REST + WebSocket (/api/realtime)     issuance, media, legacy POS sync
-        |                                  |                                     |
-        |  today: NestJS REST + Socket.IO  |                                     |
-        +----------------------------------|-------------------------------------+
-                                           |                                     |
-                                     PostgreSQL (canonical state, one schema) <--+
-                                     Prisma owns every migration
-                                           |
-                                     Redis: shared rate-limit budget (Go + Nest),
-                                            BullMQ queues (Nest)
+  Servvia clients
+  Windows POS · Waiter Tablet · Order Tablet · Kiosk · KDS · Window Display
+  Admin Console · Customer Website
+        |            REST (contracts/openapi)  ·  WebSocket realtime (/api/realtime)
+        v
+  Servvia Core (Go)  ── canonical restaurant state: orders, kitchen, checks, payments,
+        |               shifts, devices, promotions, realtime
+        v
+  PostgreSQL  ── the single source of truth; schema owned by Prisma migrations
+
+  Redis ── transient infrastructure (shared rate limiting)
+  Venue Edge (Go, future) ── local hardware and resilience: printers, payment
+                             terminals, cash drawers. Never canonical POS state.
 ```
 
-| Component | Role |
+| Permanent | Transitional (being retired) |
 |---|---|
-| **Servvia Core** (Go, `services/core-platform`) | **Permanent canonical core.** It owns the D1–D12 domains, a REST API and raw WebSocket realtime. Not yet serving production traffic. |
-| **NestJS API** (`apps/api`) | **Transitional.** Serves every existing client, issues the access tokens that Go Core verifies (same HS256 secret), and handles legacy routes, media and compatibility. Its canonical ownership moves to Go Core domain by domain. |
-| **IdealPOS / venue integration** (`apps/idealpos-*`, `apps/venue-connector`) | **Transitional.** Serves the current production venue. It is not, and will not become, Servvia's canonical backend. |
-| **PostgreSQL** | The single source of truth, one schema shared by Go Core and the NestJS API |
-| **Prisma** (`apps/api/prisma`) | The sole migration authority for that schema |
-| **Redis** | The shared rate-limit budget (Go Core and Nest, one budget per client) and Nest's BullMQ queues |
+| Servvia Core (Go): canonical backend, REST and realtime | NestJS API (`apps/api`): serves today's clients while its domain ownership moves to Servvia Core |
+| PostgreSQL: canonical state | The current React implementations of venue-device surfaces (Order Tablet, KDS, Window Display/kiosk), until the native clients replace them |
+| Prisma: the sole schema migration authority | The IdealPOS compatibility integration, POS sync and `ConnectorCommand` |
+| Servvia-owned clients (see [Target clients](#target-clients)) | Legacy bridge, harness and tracer tooling |
+| Servvia realtime (WebSocket) | The Socket.IO `orderUpdate` channel |
+| Venue Edge (future) | |
 
-The approved target technology standard is in [docs/architecture.md §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture).
+### Target clients
+
+These are the target implementations from ADR 0001. **The native clients are not implemented yet.**
+
+| Surface | Target implementation |
+|---|---|
+| Windows POS terminal | C#/.NET |
+| Waiter Tablet | Kotlin/Android |
+| Order Tablet | Kotlin/Android |
+| Kiosk | Kotlin/Android |
+| KDS | Kotlin/Android |
+| Window Display | Kotlin/Android |
+| Admin Console | React/TypeScript |
+| Customer Website | React/TypeScript |
+
+### How the code runs today
+
+Today's web clients (Admin Console, Order Tablet, KDS, Window Display, Customer Website) still call the transitional NestJS API over REST and Socket.IO. Servvia Core runs beside it on the same PostgreSQL schema. It verifies the NestJS-issued access tokens (same HS256 secret) and shares Redis for one rate-limit budget per client. Its APIs are ready for clients, but no client has been switched to them yet. The technology standard is [docs/architecture.md §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture).
 
 ## Tenancy
 
@@ -125,8 +145,6 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 | `apps/order-tablet/`, `apps/kitchen-display/` | READMEs describing those two build targets (no separate source) |
 | `apps/window-display/` | React window display (signage) and in-venue kiosk ordering |
 | `apps/customer-website/` | React public website: menu and table booking |
-| `apps/idealpos-bridge/`, `apps/idealpos-bridge-ci/`, `apps/idealpos-harness/` | Legacy IdealPOS integration (.NET Framework 4.8, Windows) |
-| `apps/venue-connector/` | Legacy venue connector and IdealPOS tracer (.NET 8) |
 | `contracts/` | Language-neutral contracts: OpenAPI, realtime, events, JSON schemas ([README](contracts/README.md)) |
 | `docs/` | Architecture, ADRs, migration phase notes, integrations, deployment and environments |
 | `scripts/` | Local development orchestration, guards and checks (Node) |
@@ -134,24 +152,34 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 | `docker/`, `docker-compose.yml` | Container images and the local/host compose setup |
 | `local-postgres/` | Optional native local PostgreSQL helper ([README](local-postgres/README.md)) |
 | `windows-deploy/` | Operational scripts for the Windows production host |
-| `_bmad/`, `_bmad-output/` | BMAD workflow configuration (used by the project's `.claude/skills/bmad-*` automation), and the retained operational records: IdealPOS production runbooks, infrastructure migration evidence, GCS media migration records, the deferred-work log |
+| `_bmad/`, `_bmad-output/` | Project tooling, not application code: BMAD workflow configuration (used by `.claude/skills/bmad-*`), plus retained records such as legacy production runbooks, infrastructure migration evidence, GCS media migration records and the deferred-work log |
+
+**Legacy migration and compatibility tooling.** These are scheduled for retirement and are not part of the target Servvia POS architecture:
+
+| Path | Contents |
+|---|---|
+| `apps/idealpos-bridge/`, `apps/idealpos-bridge-ci/`, `apps/idealpos-harness/` | Legacy IdealPOS compatibility bridge, its CI subset, and a harness (.NET Framework 4.8, Windows) |
+| `apps/venue-connector/` | Legacy IdealPOS observation tracer (.NET 8) |
 
 ## Technology
 
-Versions are the ones pinned in the repository.
+**Target Servvia stack:**
 
-| Area | Technology |
+| Technology | Role |
 |---|---|
-| Canonical core | Go 1.27.1 (`services/core-platform/go.mod`), pgx, `coder/websocket` |
-| Transitional API | NestJS 11, TypeScript 5, Prisma 5.22, BullMQ, Socket.IO 4, ioredis |
-| Database | PostgreSQL (Docker image `postgres:16-alpine` locally) |
-| Cache and queues | Redis (Docker image `redis:7-alpine` locally) |
-| Web apps | React 18, Vite, TypeScript, Tailwind CSS, Vitest |
-| Venue integration (legacy) | .NET 8 and .NET Framework 4.8 (Windows) |
-| Media | Google Cloud Storage |
-| Realtime | Raw WebSocket (Go Core, permanent); Socket.IO (NestJS, legacy) |
+| Go (1.27.1, `services/core-platform/go.mod`) | Servvia Core: canonical backend, REST, realtime; Venue Edge (future) |
+| PostgreSQL | Canonical state (`postgres:16-alpine` locally) |
+| Prisma | The sole schema migration authority (5.22) |
+| Redis | Transient infrastructure: rate limiting today (`redis:7-alpine` locally) |
+| C#/.NET | The Windows Servvia POS terminal (future) |
+| Kotlin/Android | Dedicated in-venue Servvia clients (future) |
+| React/TypeScript | Admin Console and Customer Website (React 18, Vite, Tailwind CSS, Vitest) |
+| WebSocket | Realtime (Go Core, `coder/websocket`) |
+| Google Cloud Storage | Content media |
 
-**Target client direction:** Kotlin on native Android for the in-venue devices, and C#/.NET for the Windows POS ([ADR 0001](docs/adr/0001-servvia-is-the-operational-pos.md)). Neither exists in this repository yet.
+**Transitional stack:** the NestJS API (NestJS 11, TypeScript 5, BullMQ, Socket.IO 4, ioredis), and the React implementations of the venue-device surfaces.
+
+**Legacy migration code:** the IdealPOS bridge and harness (.NET Framework 4.8) and the venue connector/tracer (.NET 8). They exist only for migration compatibility and are scheduled for retirement.
 
 ## Prerequisites
 
@@ -160,7 +188,7 @@ Versions are the ones pinned in the repository.
 | Node.js and npm (a current LTS release) | The workspaces, local orchestration, the NestJS API and the web apps |
 | Docker with Docker Compose | Local PostgreSQL and Redis (`npm run dev`, `npm run db:start`) |
 | Go matching `services/core-platform/go.mod` | Building and testing Servvia Core |
-| .NET SDK 8 | Only for the legacy venue connector. The .NET Framework 4.8 projects build on Windows only. |
+| .NET SDK 8 | Only to build the legacy migration tooling (the venue connector); the .NET Framework 4.8 projects build on Windows only. Not needed for Servvia Core or the web apps. |
 
 Cloud SDKs are not needed for local development. Media defaults to local storage.
 
@@ -274,13 +302,25 @@ cd apps/api && npx prisma validate && npx prisma generate
 
 ## Servvia Core (Go)
 
-`services/core-platform` owns the canonical domains D1–D12. It ports the NestJS API's HTTP behaviour where the two overlap (tax configuration, the channel menu, access tokens, rate limiting), and proves it with parity tests. New capabilities are Servvia-native APIs specified in `contracts/openapi/`.
+`services/core-platform` is the canonical backend of Servvia's own POS. PostgreSQL is authoritative, and Servvia owns every piece of restaurant state:
+- orders and rounds
+- kitchen tickets
+- checks
+- payments and settlement
+- shifts and cash
+- devices and terminals
+- promotions
+- realtime
+
+No external POS state is authoritative for any of it.
+
+Where Servvia Core and the NestJS API overlap (tax configuration, the channel menu, access tokens, rate limiting), Servvia Core ports Nest's HTTP behaviour and proves it with parity tests. New capabilities are Servvia-native APIs specified in `contracts/openapi/`.
 
 - **Relationship to the NestJS API.** It uses the same PostgreSQL database, verifies Nest-issued access tokens with the shared `JWT_ACCESS_SECRET`, and shares Redis only for the rate limiter. It listens on `127.0.0.1:3100` by default.
 - **Read-only by default: `SERVVIA_CORE_DB_READ_ONLY=true`.** Every canonical write answers 503 until writes are enabled. Set `SERVVIA_CORE_DB_READ_ONLY=false` only on local or disposable databases. It is not a production deployment instruction: routing any production traffic to Go Core needs its own approval.
 - **Graceful shutdown.** On SIGINT or SIGTERM, `/ready` reports draining and realtime connections close with 1001. In-flight requests finish within the shutdown timeout. Then the kitchen projector and the realtime dispatcher stop.
 - **Probes:** `/health` (liveness) and `/ready` (PostgreSQL).
-- **Guarded.** An architecture test keeps IdealPOS and external-POS concepts out of the canonical packages.
+- **Guarded.** An architecture test fails the build if a legacy external-POS concept (IdealPOS, POS sync, `ConnectorCommand`) appears in the canonical packages.
 
 Build and test details, test layers and the parity setup are in [services/core-platform/README.md](services/core-platform/README.md).
 
@@ -322,7 +362,7 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 | Prisma | `cd apps/api && npx prisma format && npx prisma validate && npx prisma generate`, plus the migration checks in [Database and migrations](#database-and-migrations) |
 | Contracts and root scripts | `npm run test:dev-scripts` (includes the contract checker), `npm run check:nul-bytes`, `npm run check:bridge-governance` |
 | Web apps | `npm run lint:admin-console` (and `:customer-website`, `:window-display`), `npm test` (every workspace with tests) |
-| Venue connector (.NET) | `dotnet build apps/venue-connector/VerduraIdealposTracer.slnx`, then `dotnet test --no-build` on the same solution |
+| Legacy venue connector (.NET, migration tooling) | `dotnet build apps/venue-connector/VerduraIdealposTracer.slnx`, then `dotnet test --no-build` on the same solution |
 
 **CI** (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests) runs nine jobs:
 - NestJS API: lint, typecheck, unit tests
@@ -331,45 +371,57 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 - Customer website: lint, typecheck, build
 - Window display: lint, typecheck, build
 - Root script tests, plus the NUL-byte and bridge-governance guards
-- Venue connector (.NET): build, unit and crash/replay tests
-- Venue connector (.NET): Windows-only projects build
-- IdealPOS bridge (.NET Framework): vendor-free self-test subset
+- Legacy migration tooling: venue connector (.NET) build, unit and crash/replay tests
+- Legacy migration tooling: venue connector (.NET) Windows-only projects build
+- Legacy migration tooling: IdealPOS bridge (.NET Framework) vendor-free self-test subset
 
 **CI does not yet run Servvia Core's Go gates.** Run the Go commands above locally. Check the latest run on GitHub rather than assuming it passes.
 
 ## Engineering rules
 
+- **Servvia is the operational POS.** No external POS is canonical.
 - PostgreSQL holds canonical state, and Servvia Core owns canonical restaurant state. Prisma owns the schema.
+- Servvia clients talk to Servvia Core. They never talk directly to restaurant databases or external POS databases.
 - **The server is the price authority.** Clients send identities and quantities, never amounts. No client computes a canonical financial value.
 - Money is integer minor units. No floating-point money.
 - Idempotency is enforced by the database (unique keys and request fingerprints). Retries are safe.
-- Each concept keeps its own boundaries (the domain model above). No external-POS concept inside the canonical Go domains.
+- Each concept keeps its own boundaries (the domain model above).
+- The canonical Go domains contain no IdealPOS, POS-sync or `ConnectorCommand` concept. Legacy IdealPOS compatibility is temporary and removable.
 - Contracts in `contracts/` are the language-neutral boundary between services and clients.
 - Realtime is not canonical storage. Clients refetch canonical state over HTTP after reconnecting.
 - Legacy behaviour is preserved only for the migration period.
 - **No destructive or production operation** (deploy, production migration, production data change, secret rotation) without explicit approval.
 
-## Legacy and transitional components
+## Legacy migration components
 
-These remain during the migration and are scheduled for replacement or retirement:
+The repository still contains older integrations that support the migration and the existing production estate. They are transitional, and each has explicit retirement conditions.
 
 | Component | Status |
 |---|---|
-| NestJS API (`apps/api`) | Serves today's clients. Its routes move to Servvia Core one capability at a time. Known issue: the production start command's entry point; see the known findings in [docs/migration/README.md](docs/migration/README.md). |
+| NestJS API (`apps/api`) | Serves today's clients. Its domain ownership moves to Servvia Core one capability at a time. Known issue: the production start command's entry point (see the known findings in [docs/migration/README.md](docs/migration/README.md)). |
+| IdealPOS bridge and harness (`apps/idealpos-*`) | Legacy compatibility with an external POS, frozen |
+| POS sync (`POSSyncRecord`) and `ConnectorCommand` | Legacy hand-off to the external POS through a venue agent, frozen |
+| Venue connector / tracer (`apps/venue-connector`) | Legacy IdealPOS observation tooling |
 | Socket.IO `orderUpdate` | Legacy realtime, frozen; replaced by `/api/realtime` at each client's cutover |
-| IdealPOS integration: bridge, harness, POS sync, `ConnectorCommand`, native rounds | Serves the live venue. Frozen, and never part of Servvia Core ([retirement plan](docs/migration/idealpos-retirement.md), [integration notes](docs/integrations/idealpos.md)) |
-| Venue connector (`apps/venue-connector`) | Legacy IdealPOS observation tooling |
-| `TabletDevice` enrollment, KDS PINs | Transitional device identities, superseded by D8 devices as clients migrate |
+| `TabletDevice` enrollment, KDS PINs | Transitional device identities, replaced by D8 devices as clients migrate |
 
-Some identifiers keep the original **Verdura** name: .NET project names, Docker volumes, cloud buckets and some production hosts. They are compatibility identifiers and are deliberately not renamed ([naming inventory](docs/migration/naming-inventory.md)).
+**IdealPOS specifically:**
+- No IdealPOS concept is allowed in the canonical Go domains, and an architecture test enforces this.
+- Servvia orders, and Servvia checks, payments and settlement, do not depend on IdealPOS.
+- Servvia's final POS does not require IdealPOS.
+- The legacy integration is retired step by step once Servvia-owned clients and cutover are ready.
+
+See the [IdealPOS retirement map](docs/migration/idealpos-retirement.md).
+
+Some identifiers keep the original **Verdura** name: .NET project names, Docker volumes, cloud buckets and some production hosts. They are legacy compatibility identifiers and are deliberately not renamed ([naming inventory](docs/migration/naming-inventory.md)).
 
 ## Production and environments
 
-Production today runs the NestJS API, the React applications and the IdealPOS venue integration. Servvia Core does not yet serve production traffic. Local development (above) and production operation are separate; production procedures live in dedicated documents:
+Servvia Core does not yet serve production traffic. As migration context: the existing production estate runs the transitional NestJS API and web applications, together with the legacy compatibility components listed above. Local development (above) and production operation are separate. Production procedures live in dedicated documents:
 
 - [docs/source-of-truth-and-environments.md](docs/source-of-truth-and-environments.md): the source of truth, environments and the operating protocol
 - [docs/windows-production-deployment.md](docs/windows-production-deployment.md): how the Windows production host actually runs
-- [docs/integrations/idealpos.md](docs/integrations/idealpos.md) and the retained IdealPOS runbooks in `_bmad-output/implementation-artifacts/`
+- Legacy integration runbooks: see [Documentation map](#documentation-map)
 
 `docker-compose.yml` also defines a `host` profile, `docker compose --profile host up --build -d`. It builds and runs the API and the five web apps in containers on one machine. It is **not** how the current Windows production host runs; that host deliberately does not use it.
 
@@ -387,7 +439,7 @@ Production deploys, migrations, data changes and cloud changes each need explici
 
 | Document | Contents |
 |---|---|
-| [docs/adr/](docs/adr/README.md) | Architecture decision records, starting with ADR 0001: Servvia is the operational POS |
+| [ADR 0001](docs/adr/0001-servvia-is-the-operational-pos.md) | **Servvia is the operational POS**: the governing decision ([all ADRs](docs/adr/README.md)) |
 | [docs/migration/README.md](docs/migration/README.md) | Migration phases, per-phase results and known findings; phase notes `d4`–`d12` |
 | [services/core-platform/README.md](services/core-platform/README.md) | Servvia Core: layout, configuration, toolchain, test layers, parity |
 | [contracts/README.md](contracts/README.md) | Contracts index: OpenAPI, realtime, events, schemas |
@@ -396,6 +448,14 @@ Production deploys, migrations, data changes and cloud changes each need explici
 | [docs/windows-production-deployment.md](docs/windows-production-deployment.md) | The Windows production host |
 | [docs/decisions-log.md](docs/decisions-log.md) | Decision log |
 | [apps/api/README.md](apps/api/README.md) and the other `apps/*/README.md` | Component notes |
+
+**Legacy migration and retirement documentation** (describes components that are being retired, not the Servvia architecture):
+
+| Document | Contents |
+|---|---|
+| [docs/migration/idealpos-retirement.md](docs/migration/idealpos-retirement.md) | The IdealPOS retirement map |
+| [docs/integrations/idealpos.md](docs/integrations/idealpos.md) | Notes on the legacy IdealPOS integration |
+| `_bmad-output/implementation-artifacts/` | Retained runbooks and evidence for the legacy production integration |
 
 ## Contributing
 
