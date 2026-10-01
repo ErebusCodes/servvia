@@ -61,7 +61,7 @@ Both exist and are in active use by the running `VerduraPostgreSQL` service.
 Their migration is planned but **not executed** — see
 [§7](#7-postgresql-migration-maintenance-plan--draft-not-executed) below
 for the drafted maintenance plan and
-[`deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
+`deferred-work.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`)
 for the tracked item. PostgreSQL must not be stopped and neither directory
 may be moved without explicit, separate approval for a maintenance window.
 This is unaffected by the application-checkout consolidation in §1/§5.
@@ -202,7 +202,7 @@ checkout afterward.
 **Prior incidents this consolidation is downstream of:** this same
 checkout (prior to reconciliation) caused two real incidents — a stale
 `VITE_VENUE_ID` outage (documented in
-[`dl-107-dunedin-live-certification-runbook.md` §1c`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md)),
+`dl-107-dunedin-live-certification-runbook.md` §1c (removed with the old BMAD output on 2026-10-01; see git history at `a005642`)),
 and, separately, an unmanaged process serving the pre-reconciliation
 (stale) checkout's code exposed the "Imported from IdealPOS (pending
 review)" staging category on the public Window Display because that stale
@@ -217,10 +217,10 @@ The underlying rule — "no second editable production clone" — is in
 
 - [`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md) —
   environment roles and the rule this layout exists to satisfy.
-- [`../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md) —
+- `_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`) —
   the live-order certification runbook, including the historical path-layout
   investigations that predate this consolidation.
-- [`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md) —
+- `_bmad-output/implementation-artifacts/deferred-work.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`) —
   the PostgreSQL migration plan and other tracked deferred items.
 
 ## 7. PostgreSQL migration maintenance plan — DRAFT, NOT EXECUTED
@@ -440,5 +440,5 @@ been fixed in source. This section makes the outage far less likely and
 fully self-healing without human intervention — it does not make
 `/api/health` or guarded requests fail fast during the (now much shorter)
 window before Redis comes back. See
-[`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
+`_bmad-output/implementation-artifacts/deferred-work.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`)
 for the tracked follow-up.

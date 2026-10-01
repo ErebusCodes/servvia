@@ -152,7 +152,7 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 | `docker/`, `docker-compose.yml` | Container images and the local/host compose setup |
 | `local-postgres/` | Optional native local PostgreSQL helper ([README](local-postgres/README.md)) |
 | `windows-deploy/` | Operational scripts for the Windows production host |
-| `_bmad/`, `_bmad-output/` | Project tooling, not application code: BMAD workflow configuration (used by `.claude/skills/bmad-*`), plus retained records such as legacy production runbooks, infrastructure migration evidence, GCS media migration records and the deferred-work log |
+| `_bmad/`, `_bmad-output/` | Not present. The old BMAD setup (workflow configuration, `.claude/skills/bmad-*`, and records such as legacy runbooks, migration evidence, GCS media records and the deferred-work log) was removed on 2026-10-01; it remains in git history at `a005642`. The fresh official BMAD install, after `PRD/` approval, creates its own layout |
 
 **Legacy migration and compatibility tooling.** These are scheduled for retirement and are not part of the target Servvia POS architecture:
 
@@ -348,7 +348,7 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 - Uploads go through the API's `MediaAsset` pipeline: signed upload, server-side verification, then an explicit publish. The browser never receives a credential or a bucket name.
 - Local development uses `MEDIA_STORAGE_PROVIDER=local` and needs no cloud credentials.
 - Bundled application assets are fine: app icons, logos, favicons and required native resources.
-- Design and operational detail: [the GCS media architecture record](_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md).
+- Design and operational detail: the GCS media architecture record, `_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`).
 
 ## Testing and CI
 
