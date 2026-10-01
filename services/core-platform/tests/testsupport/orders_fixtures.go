@@ -88,6 +88,7 @@ func SeedOrdersFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) Orde
 			{`DELETE FROM "Category" WHERE id = $1`, []any{f.Drinks}},
 			{`DELETE FROM "OutboxEvent" WHERE "venueId" = ANY($1)`, []any{venues}},
 			{`DELETE FROM "RealtimeEvent" WHERE "venueId" = ANY($1)`, []any{venues}},
+			{`DELETE FROM "DomainEvent" WHERE "venueId" = ANY($1)`, []any{venues}}, // deliveries cascade
 			{`DELETE FROM "AuditLog" WHERE "organizationId" = $1`, []any{org}},
 			{`DELETE FROM "TableSession" WHERE "tableId" IN (SELECT id FROM "Table" WHERE "venueId" = ANY($1))`, []any{venues}},
 			{`DELETE FROM "Table" WHERE "venueId" = ANY($1)`, []any{venues}},

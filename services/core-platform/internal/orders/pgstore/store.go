@@ -1,10 +1,12 @@
 // Package pgstore implements orders.Repository on the Prisma-managed "Order",
-// "OrderItem", "OrderRound" and "OutboxEvent" tables (migrations up to
+// "OrderItem" and "OrderRound" tables (migrations from
 // 20260930000000_canonical_orders).
 //
 // It writes only canonical columns. Legacy external-POS columns keep their
 // defaults, and no delivery rows (external POS, KDS, printer) are created:
-// kitchen hand-off is the outbox event, consumed from Phase D4.
+// kitchen hand-off is the order.round_submitted domain event, recorded in the
+// round's transaction with a delivery for the kitchen projector (Phase D13;
+// before D13 it was a row in the single-consumer OutboxEvent table).
 //
 // Invariants rest on the database, not on reads before writes:
 // (venueId, idempotencyKey) and (orderId, requestKey) are unique indexes; an
@@ -39,11 +41,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/orders"
 	"servvia/services/core-platform/internal/pricing"
 	"servvia/services/core-platform/internal/promotions"
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct {
@@ -63,9 +65,8 @@ const (
 	pgUniqueViolation     = "23505"
 	pgForeignKeyViolation = "23503"
 
-	idempotencyIndex   = "Order_venueId_idempotencyKey_key"
-	roundKeyIndex      = "OrderRound_orderId_requestKey_key"
-	roundSubmittedType = "order.round_submitted"
+	idempotencyIndex = "Order_venueId_idempotencyKey_key"
+	roundKeyIndex    = "OrderRound_orderId_requestKey_key"
 )
 
 type querier interface {
@@ -246,14 +247,10 @@ func (st *Store) Create(ctx context.Context, n orders.NewOrder) (orders.Order, e
 		if err != nil {
 			return err
 		}
-		lines, err := insertLines(ctx, tx, orderID, roundID, q.Lines, cmd.Lines, n.Promotion, appliedID)
-		if err != nil {
+		if _, err := insertLines(ctx, tx, orderID, roundID, q.Lines, cmd.Lines, n.Promotion, appliedID); err != nil {
 			return err
 		}
-		if err := outbox(ctx, tx, venueID, orderID, roundID, 1, cmd.TableSessionID, cmd.Source, cmd.ServiceMode, lines); err != nil {
-			return err
-		}
-		if _, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "order.created", AggregateType: "order",
+		if _, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: "order.created", AggregateType: "order",
 			AggregateID: orderID, Payload: map[string]any{"orderId": orderID, "roundId": roundID, "tableSessionId": cmd.TableSessionID,
 				"tableNumber": tableNumber, "takeawayReference": takeaway, "serviceMode": cmd.ServiceMode, "source": cmd.Source,
 				"status": orders.StatusConfirmed}}); err != nil {
@@ -347,8 +344,7 @@ func (st *Store) AddRound(ctx context.Context, n orders.NewRound) (orders.Order,
 		if err != nil {
 			return err
 		}
-		lines, err := insertLines(ctx, tx, cmd.OrderID, roundID, n.Lines, cmd.Lines, n.Promotion, appliedID)
-		if err != nil {
+		if _, err := insertLines(ctx, tx, cmd.OrderID, roundID, n.Lines, cmd.Lines, n.Promotion, appliedID); err != nil {
 			return err
 		}
 		// Totals over every line of every round, computed under the lock:
@@ -366,9 +362,6 @@ func (st *Store) AddRound(ctx context.Context, n orders.NewRound) (orders.Order,
 			"totalCents" = $5, "updatedAt" = now() WHERE id = $1`,
 			cmd.OrderID, totals.SubtotalCents, totals.DiscountCents, totals.TaxCents, totals.TotalCents); err != nil {
 			return fmt.Errorf("update order totals: %w", err)
-		}
-		if err := outbox(ctx, tx, venueID, cmd.OrderID, roundID, sequence, sessionID, orders.Source(source), orders.ServiceDineIn, lines); err != nil {
-			return err
 		}
 		if err := roundFact(ctx, tx, venueID, cmd.OrderID, roundID, sequence, sessionID, orders.Source(source), orders.ServiceDineIn); err != nil {
 			return err
@@ -482,29 +475,13 @@ func insertLines(ctx context.Context, tx pgx.Tx, orderID, roundID string, priced
 	return event, nil
 }
 
-// outbox records that a round of requested items exists, for the kitchen
-// (Phase D4) to turn into a KitchenTicket. Same transaction as the round.
-func outbox(ctx context.Context, tx pgx.Tx, venueID, orderID, roundID string, sequence int, sessionID *string,
-	source orders.Source, mode orders.ServiceMode, lines []map[string]any) error {
-	payload, _ := json.Marshal(map[string]any{
-		"orderId": orderID, "roundId": roundID, "sequence": sequence, "venueId": venueID,
-		"tableSessionId": sessionID, "serviceMode": mode, "source": source, "lines": lines,
-	})
-	_, err := tx.Exec(ctx, `INSERT INTO "OutboxEvent" (id, "venueId", "aggregateType", "aggregateId", "eventType", payload)
-		VALUES ($1, $2, 'order', $3, $4, $5)`, newUUID(), venueID, orderID, roundSubmittedType, payload)
-	if err != nil {
-		return fmt.Errorf("write outbox event: %w", err)
-	}
-	return nil
-}
-
-// roundFact records order.round_submitted for realtime subscribers (Phase
-// D12): the same fact as the outbox event above (contracts/events/catalog.md),
-// with the same field names, minus the projector's lines. A subscriber that
-// needs the lines refetches the order.
+// roundFact records order.round_submitted (contracts/events/catalog.md): the
+// kitchen projector's input (a delivery for it is created with the event)
+// and a realtime fact. It names the round; consumers read the lines from the
+// canonical rows, never from the event.
 func roundFact(ctx context.Context, tx pgx.Tx, venueID, orderID, roundID string, sequence int, sessionID *string,
 	source orders.Source, mode orders.ServiceMode) error {
-	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "order.round_submitted", AggregateType: "order",
+	_, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: "order.round_submitted", AggregateType: "order",
 		AggregateID: orderID, Payload: map[string]any{"orderId": orderID, "roundId": roundID, "sequence": sequence,
 			"tableSessionId": sessionID, "serviceMode": mode, "source": source}})
 	return err

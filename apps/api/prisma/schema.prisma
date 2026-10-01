@@ -2835,3 +2835,77 @@ model RealtimeEvent {
   @@index([txId, sequence])
   @@index([occurredAt])
 }
+
+/// A canonical domain fact (Phase D13): one row per change, written in the
+/// SAME transaction as the change it announces, so the change and its fact
+/// commit together or not at all. It is not canonical state: PostgreSQL's
+/// domain tables are. It guarantees that every committed change can be
+/// observed asynchronously.
+///
+/// The envelope and the fact catalog are D12's (contracts/events/catalog.md).
+/// Consumer progress is NEVER on this row: work consumers track it per
+/// consumer in EventDelivery; broadcast readers (realtime) tail it with an
+/// in-memory (txId, sequence) cursor bounded by the snapshot xmin.
+/// Supersedes RealtimeEvent (no longer written) and, for new rounds, D4's
+/// single-consumer OutboxEvent. Hand-written CHECKs in migration
+/// 20261009000000_domain_events.
+model DomainEvent {
+  /// The envelope's eventId: consumers deduplicate by it.
+  id               String   @id
+  /// Allocation order within a transaction (not commit order).
+  sequence         BigInt   @unique @default(autoincrement())
+  /// The writing transaction (pg_current_xact_id()), for gap-free tailing.
+  txId             BigInt   @default(dbgenerated("((pg_current_xact_id())::text)::bigint"))
+  organizationId   String
+  venueId          String
+  eventType        String
+  aggregateType    String
+  aggregateId      String
+  aggregateVersion Int?
+  payload          Json
+  occurredAt       DateTime @default(now())
+
+  deliveries EventDelivery[]
+
+  @@index([txId, sequence])
+  @@index([occurredAt])
+}
+
+/// One work consumer's progress on one DomainEvent (Phase D13). Created in
+/// the event's transaction for every consumer subscribed to its type.
+/// Claimed with FOR UPDATE SKIP LOCKED and a lease; processed at least once;
+/// retried with bounded backoff; parked as failed (a dead letter) after its
+/// attempt limit or a permanent error, never deleted while failed. One
+/// consumer's outcome never touches another's.
+model EventDelivery {
+  id             String              @id
+  eventId        String
+  /// A registered consumer identity (internal/events), e.g. kitchen_projector.
+  consumer       String
+  status         EventDeliveryStatus @default(pending)
+  /// Claims so far (a crash that loses a lease still counts).
+  attempts       Int                 @default(0)
+  /// Not claimable before this instant (retry backoff).
+  availableAt    DateTime            @default(now())
+  /// The worker holding the claim, until leaseExpiresAt.
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
+  succeededAt    DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now())
+
+  event DomainEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, consumer])
+  @@index([consumer, status, availableAt])
+}
+
+/// pending: to be processed (possibly leased, possibly backing off).
+/// succeeded: processed once. failed: a dead letter, waiting for an operator.
+enum EventDeliveryStatus {
+  pending
+  succeeded
+  failed
+}

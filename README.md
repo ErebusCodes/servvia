@@ -46,9 +46,9 @@ This repository is in an active migration. Servvia Core (Go) is becoming the can
 | D10 | Financially safe table-session close |
 | D11 | Promotions with immutable applied-discount snapshots |
 | D12 | Canonical realtime over WebSocket |
+| D13 | Generic domain-event log and workers (per-consumer delivery, leases, retries, dead letters) |
 
 **Still transitional or future:**
-- Generic outbox and workers (D13).
 - Servvia-native clients (the Windows POS and the Android device apps; see [Target clients](#target-clients)) and client cutover. Every existing web client still talks to the NestJS API.
 - Venue Edge (local hardware and resilience).
 - Retirement of the legacy migration components, including the IdealPOS compatibility integration.
@@ -329,14 +329,14 @@ Build and test details, test layers and the parity setup are in [services/core-p
 Servvia Core owns canonical realtime (D12): a raw WebSocket at `GET /api/realtime`.
 
 - **PostgreSQL remains the truth.** An event says what changed and which resource to refetch over HTTP.
-- **Durable publication.** Every canonical change records its fact in the same transaction, in the `RealtimeEvent` table, and delivery happens after commit. A delivery failure never affects the change. The table is a delivery log, not canonical state and not a queue.
+- **Durable publication.** Every canonical change records its fact in the same transaction, in the `DomainEvent` log (D13), and delivery happens after commit. A delivery failure never affects the change. The table is a delivery log, not canonical state and not a queue.
 - **One venue per connection.** The subscriber authenticates first. The server derives the organization and venue and grants the streams, so isolation is enforced by organization and venue. A kitchen display receives only kitchen-ticket facts, never financial ones.
 - **Delivery is at most once per connection:**
   - Duplicates are possible; deduplicate by `eventId`.
   - There is no global ordering. Per aggregate, `version` increases.
   - On reconnect, subscribe and then refetch over HTTP. There is no replay.
   - A subscriber that falls behind is disconnected.
-- **D4 outbox is separate.** The kitchen outbox (`OutboxEvent`) stays the kitchen projector's alone. Generic workers (D13) are not implemented yet.
+- **Workers are separate from realtime.** Background consumers such as the kitchen projector each keep their own at-least-once progress per event (`EventDelivery`, D13); realtime keeps none. The backlog per consumer is at `GET /api/admin/workers`.
 - **Legacy Socket.IO.** The NestJS `orderUpdate` channel still serves today's web clients until each one is cut over.
 
 Protocol and schemas: [contracts/realtime/](contracts/realtime/). Fact definitions: [contracts/events/](contracts/events/).
@@ -440,7 +440,7 @@ Production deploys, migrations, data changes and cloud changes each need explici
 | Document | Contents |
 |---|---|
 | [ADR 0001](docs/adr/0001-servvia-is-the-operational-pos.md) | **Servvia is the operational POS**: the governing decision ([all ADRs](docs/adr/README.md)) |
-| [docs/migration/README.md](docs/migration/README.md) | Migration phases, per-phase results and known findings; phase notes `d4`–`d12` |
+| [docs/migration/README.md](docs/migration/README.md) | Migration phases, per-phase results and known findings; phase notes `d4`–`d13` |
 | [services/core-platform/README.md](services/core-platform/README.md) | Servvia Core: layout, configuration, toolchain, test layers, parity |
 | [contracts/README.md](contracts/README.md) | Contracts index: OpenAPI, realtime, events, schemas |
 | [docs/architecture.md](docs/architecture.md) | Architecture reference and the technology standard (§10) |

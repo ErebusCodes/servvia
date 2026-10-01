@@ -19,6 +19,8 @@ import (
 	"servvia/services/core-platform/internal/devices"
 	"servvia/services/core-platform/internal/devices/devicesapi"
 	devicestore "servvia/services/core-platform/internal/devices/pgstore"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/health"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/kitchen"
@@ -50,6 +52,8 @@ import (
 	"servvia/services/core-platform/internal/tables/pgstore"
 	"servvia/services/core-platform/internal/tables/tablesapi"
 	"servvia/services/core-platform/internal/venues"
+	"servvia/services/core-platform/internal/workers"
+	"servvia/services/core-platform/internal/workers/workersapi"
 )
 
 func main() {
@@ -99,18 +103,22 @@ func run() error {
 		logger.Warn("best-effort order audit write failed", "error", err)
 	}), pgcatalog.New(pool), !cfg.DBReadOnly).WithPromotions(promotionStore, time.Now)
 
-	// Kitchen tickets change under the same switch. Their projector consumes
-	// order.round_submitted from the outbox, so it runs only where orders
-	// can be written; it stops with the process (an interrupted event stays
-	// unprocessed and is projected again).
+	// Kitchen tickets change under the same switch. The kitchen projection
+	// is the kitchen_projector work consumer (D13): the generic worker
+	// processes its order.round_submitted deliveries at least once. The
+	// legacy D4 loop only drains OutboxEvent rows written before D13. Both
+	// run only where writes are enabled and stop with the process (an
+	// interrupted delivery rolls back and is released for another attempt).
 	kitchenService := kitchen.NewService(kitchenstore.New(pool), !cfg.DBReadOnly)
-	var workers sync.WaitGroup
+	var bg sync.WaitGroup
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
-	defer func() { stopWorkers(); workers.Wait() }()
+	defer func() { stopWorkers(); bg.Wait() }()
 	if !cfg.DBReadOnly {
 		projector := kitchenstore.NewProjector(pool, kitchen.SingleStation{Name: kitchen.DefaultStation}, logger)
-		workers.Add(1)
-		go func() { defer workers.Done(); projector.Run(workerCtx, cfg.KitchenPollInterval) }()
+		kitchenWorker := workers.New(pool, events.KitchenProjector, projector, logger)
+		bg.Add(2)
+		go func() { defer bg.Done(); kitchenWorker.Run(workerCtx, cfg.KitchenPollInterval) }()
+		go func() { defer bg.Done(); projector.Run(workerCtx, cfg.KitchenPollInterval) }()
 	}
 
 	// Checks write under the same switch.
@@ -136,16 +144,16 @@ func run() error {
 	deviceService := devices.NewService(devicestore.New(pool), !cfg.DBReadOnly, devicestore.NewID)
 
 	// Realtime (D12): every committed canonical fact is tailed from the
-	// RealtimeEvent log and fanned out to this process's subscribers. It
+	// DomainEvent log (D13) and fanned out to this process's subscribers. It
 	// only reads, so it runs on a read-only pool too; pruning needs writes.
 	hub := realtime.NewHub(realtime.DefaultBuffer)
-	dispatcher := realtimestore.NewDispatcher(realtimestore.NewLog(pool), hub, logger,
-		cfg.RealtimePollInterval, cfg.RealtimeRetention, !cfg.DBReadOnly)
+	dispatcher := realtimestore.NewDispatcher(eventstore.NewLog(pool), hub, logger,
+		cfg.RealtimePollInterval, cfg.EventRetention, !cfg.DBReadOnly)
 	if err := dispatcher.Start(ctx); err != nil {
 		return err
 	}
-	workers.Add(1)
-	go func() { defer workers.Done(); dispatcher.Run(workerCtx) }()
+	bg.Add(1)
+	go func() { defer bg.Done(); dispatcher.Run(workerCtx) }()
 	realtimeHandler := realtimeapi.NewHandler(hub, identity.NewVerifier(cfg.JWTAccessSecret), identity.NewPostgresTabletDevices(pool),
 		deviceService, venueStore, logger, realtimeapi.DefaultConfig)
 
@@ -167,6 +175,7 @@ func run() error {
 			Devices:       devicesapi.NewHandler(deviceService, venueStore, logger),
 			Refunds:       refundsapi.NewHandler(refundService, venueStore, logger),
 			Realtime:      realtimeHandler,
+			Workers:       workersapi.NewHandler(pool, logger),
 			DeviceAuth:    deviceService,
 			Verifier:      identity.NewVerifier(cfg.JWTAccessSecret),
 			TabletDevices: identity.NewPostgresTabletDevices(pool),

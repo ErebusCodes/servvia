@@ -599,7 +599,12 @@ func deleteOrdersOf(t *testing.T, db *pgxpool.Pool, venueIDs ...string) {
 	for _, q := range []struct {
 		sql string
 		ids []string
-	}{{`DELETE FROM "OrderItem" WHERE id = ANY($1)`, itemIDs}, {`DELETE FROM "Order" WHERE id = ANY($1)`, orderIDs}} {
+	}{
+		{`DELETE FROM "OrderItem" WHERE id = ANY($1)`, itemIDs},
+		{`DELETE FROM "Order" WHERE id = ANY($1)`, orderIDs},
+		// The facts Go's writes recorded (D13); their deliveries cascade.
+		{`DELETE FROM "DomainEvent" WHERE "venueId" = ANY($1)`, venueIDs},
+	} {
 		if _, err := db.Exec(ctx, q.sql, q.ids); err != nil {
 			t.Errorf("cleanup: %v", err)
 		}

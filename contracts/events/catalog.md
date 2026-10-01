@@ -2,10 +2,12 @@
 
 **NEW SERVVIA-NATIVE (Phase D12).** This is the single definition of each canonical Servvia fact: its name, meaning and fields.
 
-Two delivery mechanisms carry facts. Neither is the definition.
+Since Phase D13 every fact is stored once, in `DomainEvent` (with an `EventDelivery` row per subscribed work consumer), and is delivered two ways. Neither is the definition.
 
-- **Realtime** (`RealtimeEvent`): every fact below, delivered to WebSocket subscribers. Protocol: [`../realtime/servvia-realtime.md`](../realtime/servvia-realtime.md). Payload schemas: [`../realtime/servvia-realtime.schema.json`](../realtime/servvia-realtime.schema.json).
-- **Outbox** (`OutboxEvent`, D3/D4): only `order.round_submitted`, for the kitchen projector. Its payload has the same fields as the realtime payload, plus the projector's input (`venueId` and `lines[]`). Its progress columns (`processedAt`, `attempts`, `availableAt`, `failedAt`) belong to that one consumer. Nothing else reads or writes them.
+- **Realtime** (broadcast): every fact below, delivered to WebSocket subscribers by each Core instance tailing `DomainEvent`. No progress is stored. Protocol: [`../realtime/servvia-realtime.md`](../realtime/servvia-realtime.md). Payload schemas: [`../realtime/servvia-realtime.schema.json`](../realtime/servvia-realtime.schema.json).
+- **Work consumers** (at least once, per-consumer progress in `EventDelivery`): today only `kitchen_projector`, subscribed to `order.round_submitted`. See [`README.md`](README.md#servvia-core-domain-events-and-workers-phase-d13).
+
+Legacy tables: `OutboxEvent` (D3/D4) is no longer written; the kitchen projector only drains rows written before D13. `RealtimeEvent` (D12) is no longer written. Neither is dropped.
 
 Every fact is recorded **in the transaction of the change it announces**. A replayed request, a refused request or a no-op change records nothing, the same rule as for AuditLog.
 

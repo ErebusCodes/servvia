@@ -62,10 +62,10 @@ type Config struct {
 	KitchenPollInterval time.Duration
 
 	// RealtimePollInterval is how often the realtime dispatcher tails the
-	// RealtimeEvent log (Phase D12). RealtimeRetention is how long a
+	// DomainEvent log (Phase D12/D13). EventRetention is how long a
 	// delivered event is kept before pruning (writes enabled only).
 	RealtimePollInterval time.Duration
-	RealtimeRetention    time.Duration
+	EventRetention       time.Duration
 
 	LogLevel slog.Level
 }
@@ -107,7 +107,7 @@ func load(getenv func(string) string) (Config, error) {
 		ReadinessTimeout:     duration("SERVVIA_CORE_READINESS_TIMEOUT", 2*time.Second),
 		KitchenPollInterval:  duration("SERVVIA_CORE_KITCHEN_POLL_INTERVAL", time.Second),
 		RealtimePollInterval: duration("SERVVIA_CORE_REALTIME_POLL_INTERVAL", 250*time.Millisecond),
-		RealtimeRetention:    duration("SERVVIA_CORE_REALTIME_RETENTION", 24*time.Hour),
+		EventRetention:       duration("SERVVIA_CORE_EVENT_RETENTION", 7*24*time.Hour),
 		DatabaseURL:          getenv("DATABASE_URL"),
 		JWTAccessSecret:      getenv("JWT_ACCESS_SECRET"),
 		DBReadOnly:           true,

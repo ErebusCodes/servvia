@@ -69,6 +69,7 @@ func SeedTablesFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) Tabl
 		}{
 			{`DELETE FROM "TableSession" WHERE "tableId" IN (SELECT id FROM "Table" WHERE "venueId" = ANY($1))`, venues},
 			{`DELETE FROM "RealtimeEvent" WHERE "venueId" = ANY($1)`, venues},
+			{`DELETE FROM "DomainEvent" WHERE "venueId" = ANY($1)`, venues}, // deliveries cascade
 			{`DELETE FROM "AuditLog" WHERE "organizationId" = ANY($1)`, orgs},
 			{`DELETE FROM "Order" WHERE "venueId" = ANY($1)`, venues},
 			{`DELETE FROM "Table" WHERE "venueId" = ANY($1)`, venues},

@@ -19,9 +19,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/kitchen"
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct{ pool *pgxpool.Pool }
@@ -163,8 +163,8 @@ func (st *Store) Transition(ctx context.Context, cmd kitchen.TransitionCommand) 
 		if err != nil {
 			return err
 		}
-		_, err = realtimestore.Record(ctx, tx, cmd.VenueID, realtime.Fact{Type: "kitchen_ticket.transitioned",
-			AggregateType: "kitchen_ticket", AggregateID: result.ID, Version: realtime.V(result.Version), Payload: map[string]any{
+		_, err = eventstore.Record(ctx, tx, cmd.VenueID, events.Fact{Type: "kitchen_ticket.transitioned",
+			AggregateType: "kitchen_ticket", AggregateID: result.ID, Version: events.V(result.Version), Payload: map[string]any{
 				"ticketId": result.ID, "orderId": result.OrderID, "station": result.Station, "from": before.Status, "to": result.Status}})
 		return err
 	})

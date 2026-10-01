@@ -24,8 +24,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/tables"
 )
 
@@ -393,8 +393,8 @@ func newID() string {
 // recordFact records a table-session fact in the transaction that made the
 // change (Phase D12).
 func recordFact(ctx context.Context, tx pgx.Tx, eventType string, s tables.Session) error {
-	_, err := realtimestore.Record(ctx, tx, s.VenueID, realtime.Fact{Type: eventType, AggregateType: "table_session",
-		AggregateID: s.ID, Version: realtime.V(s.Version), Payload: map[string]any{
+	_, err := eventstore.Record(ctx, tx, s.VenueID, events.Fact{Type: eventType, AggregateType: "table_session",
+		AggregateID: s.ID, Version: events.V(s.Version), Payload: map[string]any{
 			"tableSessionId": s.ID, "tableId": s.TableID, "tableNumber": s.TableNumber, "status": s.Status, "covers": s.Covers}})
 	return err
 }

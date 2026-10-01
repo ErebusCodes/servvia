@@ -23,6 +23,7 @@ import (
 	"servvia/services/core-platform/internal/shifts/shiftsapi"
 	"servvia/services/core-platform/internal/tables/tablesapi"
 	"servvia/services/core-platform/internal/venues"
+	"servvia/services/core-platform/internal/workers/workersapi"
 )
 
 type Deps struct {
@@ -41,6 +42,8 @@ type Deps struct {
 	Promotions    *promotionsapi.Handler
 	// Realtime is the canonical WebSocket endpoint (Phase D12).
 	Realtime *realtimeapi.Handler
+	// Workers reports the D13 worker backlog.
+	Workers *workersapi.Handler
 	// DeviceAuth authenticates device credentials (Phase D8), e.g. the
 	// payment adapter on its result route.
 	DeviceAuth    *devices.Service
@@ -223,6 +226,13 @@ func Routes(d Deps) http.Handler {
 	rt.Nest(http.MethodPatch, "/api/venues/{venueId}/promotions/{promotionId}", promotionAdmin(pr.Update))
 	rt.Nest(http.MethodPost, "/api/venues/{venueId}/promotions/{promotionId}/activate", promotionAdmin(pr.Activate))
 	rt.Nest(http.MethodPost, "/api/venues/{venueId}/promotions/{promotionId}/deactivate", promotionAdmin(pr.Deactivate))
+
+	// Worker backlog (Phase D13): owners and admins from a staff login
+	// session. Counts only, never payloads.
+	if d.Workers != nil {
+		rt.Nest(http.MethodGet, "/api/admin/workers", httpx.Chain(http.HandlerFunc(d.Workers.Backlog),
+			identity.Authenticate(d.Verifier), identity.RequireStaffSession, identity.RequireRoles(workersapi.Roles...)))
+	}
 
 	api := httpx.Chain(rt, httpx.RequestIDs, httpx.AccessLog(d.Logger), httpx.CORS, httpx.ETag)
 	if d.Realtime == nil {

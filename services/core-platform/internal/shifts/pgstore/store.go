@@ -21,8 +21,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/shifts"
 )
 
@@ -274,7 +274,7 @@ func newID() string {
 // shiftFact records a shift fact in its transaction (Phase D12). Identity and
 // status only: cash figures are read over HTTP by those allowed to.
 func shiftFact(ctx context.Context, tx pgx.Tx, venueID, eventType, shiftID string, version int, status string, terminalID *string) error {
-	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: eventType, AggregateType: "shift", AggregateID: shiftID,
-		Version: realtime.V(version), Payload: map[string]any{"shiftId": shiftID, "status": status, "terminalId": terminalID}})
+	_, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: eventType, AggregateType: "shift", AggregateID: shiftID,
+		Version: events.V(version), Payload: map[string]any{"shiftId": shiftID, "status": status, "terminalId": terminalID}})
 	return err
 }

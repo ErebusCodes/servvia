@@ -20,9 +20,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/promotions"
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct{ pool *pgxpool.Pool }
@@ -238,7 +238,7 @@ var factOf = map[string]string{
 // status and version only. Subscribers refetch the terms (eligibility lists
 // are never pushed).
 func promotionFact(ctx context.Context, tx pgx.Tx, venueID, action, id string, status promotions.Status, version int) error {
-	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: factOf[action], AggregateType: "promotion",
-		AggregateID: id, Version: realtime.V(version), Payload: map[string]any{"promotionId": id, "status": status}})
+	_, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: factOf[action], AggregateType: "promotion",
+		AggregateID: id, Version: events.V(version), Payload: map[string]any{"promotionId": id, "status": status}})
 	return err
 }

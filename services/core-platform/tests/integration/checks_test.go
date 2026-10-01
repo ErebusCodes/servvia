@@ -164,7 +164,9 @@ func TestCheckBillsAVisitWithSeveralOrders(t *testing.T) {
 		{"no POS sync record", `SELECT count(*) FROM "POSSyncRecord" WHERE "orderId" = ANY($1)`, []any{[]string{a.ID, b.ID}}, 0},
 		{"no printer job", `SELECT count(*) FROM "PrinterJob" WHERE "orderId" = ANY($1)`, []any{[]string{a.ID, b.ID}}, 0},
 		{"no connector command", `SELECT count(*) FROM "ConnectorCommand" WHERE "venueId" = $1`, []any{h.f.Venue}, 0},
-		{"no outbox event for checks", `SELECT count(*) FROM "OutboxEvent" WHERE "venueId" = $1 AND "aggregateType" <> 'order'`, []any{h.f.Venue}, 0},
+		{"no legacy outbox rows", `SELECT count(*) FROM "OutboxEvent" WHERE "venueId" = $1`, []any{h.f.Venue}, 0},
+		{"no work deliveries for check facts", `SELECT count(*) FROM "EventDelivery" d JOIN "DomainEvent" e ON e.id = d."eventId"
+			WHERE e."venueId" = $1 AND e."aggregateType" = 'check'`, []any{h.f.Venue}, 0},
 	} {
 		if got := h.count(t, c2.sql, c2.args...); got != c2.want {
 			t.Errorf("%s: %d", c2.what, got)
