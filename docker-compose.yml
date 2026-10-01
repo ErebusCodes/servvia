@@ -87,7 +87,7 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/customer-website
+        WORKSPACE: apps/web/customer-website
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
     ports: ['5173:80']
@@ -116,7 +116,7 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/admin-console
+        WORKSPACE: apps/web/admin-console
         VITE_APP_MODE: kds
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
@@ -130,7 +130,7 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/admin-console
+        WORKSPACE: apps/web/admin-console
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
     ports: ['5177:80']  # must match CANONICAL_PORTS['admin-console'] in scripts/dev-lock.mjs
@@ -146,7 +146,7 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/admin-console
+        WORKSPACE: apps/web/admin-console
         VITE_APP_MODE: tablet
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped

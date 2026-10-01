@@ -1444,7 +1444,7 @@ export class OrdersService {
   /**
    * The only venue tax configuration this method's arithmetic is correct
    * for (DL-072): NZ, GST-inclusive menu prices. Mirrors
-   * `apps/admin-console/src/pages/order-tablet/billing.ts`'s
+   * `apps/web/admin-console/src/pages/order-tablet/billing.ts`'s
    * `SUPPORTED_TAX_PROFILE`/`containedGstCents` exactly — this is a
    * deliberate parity duplication, not an independent formula. If either
    * the supported profile or the `3/23` extraction formula ever changes,
@@ -1453,7 +1453,7 @@ export class OrdersService {
    * again (see 2026-08-20 GST reconciliation fix and its regression
    * tests, `orders.service.spec.ts` "computeTotals (GST correction)").
    * A real cross-app shared package was considered and deliberately not
-   * built this session (apps/api is CommonJS/ts-node, apps/admin-console
+   * built this session (apps/api is CommonJS/ts-node, apps/web/admin-console
    * is Vite/ESM — wiring a dual-consumable workspace package safely was
    * judged disproportionate risk for this fix); flagged as a follow-up.
    */

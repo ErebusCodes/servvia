@@ -8,13 +8,13 @@ ARG VITE_VENUE_ID
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
-COPY apps/customer-website/package.json apps/customer-website/package.json
-COPY apps/admin-console/package.json apps/admin-console/package.json
+COPY apps/web/customer-website/package.json apps/web/customer-website/package.json
+COPY apps/web/admin-console/package.json apps/web/admin-console/package.json
 COPY apps/window-display/package.json apps/window-display/package.json
 COPY apps/api/prisma apps/api/prisma
 RUN npm ci
-COPY apps/customer-website apps/customer-website
-COPY apps/admin-console apps/admin-console
+COPY apps/web/customer-website apps/web/customer-website
+COPY apps/web/admin-console apps/web/admin-console
 COPY apps/window-display apps/window-display
 COPY shared shared
 ENV VITE_VENUE_ID=$VITE_VENUE_ID

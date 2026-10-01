@@ -9,7 +9,7 @@
 // built frontend behaves identically either way:
 //   - /api/*, /socket.io/*, /media/* are proxied same-origin to the API
 //     (required: VITE_API_URL is deliberately left empty at build time —
-//     see apps/admin-console/.env.example's own comment on why a
+//     see apps/web/admin-console/.env.example's own comment on why a
 //     same-origin call, not a cross-origin one, is required for the
 //     refresh_token cookie's SameSite=Strict enforcement to work at all).
 //   - everything else falls back to index.html (client-side SPA routing).

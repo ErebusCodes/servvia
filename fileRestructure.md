@@ -1,7 +1,7 @@
 # Servvia repository structure (source of truth)
 
-> **Status:** APPROVED — Stage 1 complete; authoritative repository structure
-> **Change record CC-1 is APPROVED** (2026-10-01, section 9.1): the `PRD/` boundary and the old BMAD reset.
+> **Status:** APPROVED — Stage 1 complete; authoritative repository structure. Change records CC-1 and CC-2 are APPROVED (section 9.1).
+>
 > **Authority:** once approved, this document is the authoritative source for where Servvia code belongs. Implementation follows it; it is changed only through [Architecture Change Control](#9-architecture-change-control).
 > **Evidence basis:** read-only inspection on 2026-10-01 of commit `a005642` plus the uncommitted working tree (which contains the prepared D13 Checkpoint A and an uncommitted, partial external-POS cleanup).
 
@@ -58,13 +58,30 @@ The work proceeds in three stages (section 10): **structure → scaffold → imp
 
 This is the agreed target. It records **structural ownership**: which part of the system owns which kind of code. It is **not** an instruction that every listed directory must exist now (see rules 13–15).
 
+The tree follows the monorepo convention of section 4.2 (CC-2): **deployable artifact type first, platform second.**
+
 The tree establishes architectural ownership and the important project boundaries. It does **not** prohibit small internal implementation-support packages inside a component. For example, `services/core-platform/internal/server/` (HTTP routing) and `services/core-platform/internal/platform/httpx/` (HTTP helpers) are implementation details of `services/core-platform/`, not a separate architectural subsystem.
 
 ```
 servvia/
 │
-├── services/
+├── apps/                         deployable client applications: apps/<platform>/<application>/
+│   ├── web/
+│   │   ├── admin-console/
+│   │   ├── customer-website/
+│   │   └── landing-page/
 │   │
+│   ├── windows/
+│   │   └── pos-terminal/
+│   │
+│   └── android/
+│       ├── waiter-tablet/
+│       ├── order-tablet/
+│       ├── kiosk/
+│       ├── kds/
+│       └── window-display/
+│
+├── services/                     backend / long-running services: services/<service>/
 │   ├── core-platform/
 │   │   ├── cmd/
 │   │   │   ├── api/
@@ -172,107 +189,46 @@ servvia/
 │   │   ├── go.mod
 │   │   └── go.sum
 │   │
-│   ├── venue-edge/
-│   │   ├── cmd/
-│   │   │   └── agent/
-│   │   │       └── main.go
-│   │   ├── internal/
-│   │   │   ├── registration/
-│   │   │   ├── device-registry/
-│   │   │   ├── payment-terminal/
-│   │   │   ├── receipt-printer/
-│   │   │   ├── kitchen-printer/
-│   │   │   ├── cash-drawer/
-│   │   │   ├── customer-display/
-│   │   │   ├── barcode-scanner/
-│   │   │   ├── local-cache/
-│   │   │   ├── local-database/
-│   │   │   ├── command-queue/
-│   │   │   ├── sync/
-│   │   │   ├── retry/
-│   │   │   ├── recovery/
-│   │   │   ├── heartbeat/
-│   │   │   ├── remote-config/
-│   │   │   ├── updates/
-│   │   │   └── diagnostics/
-│   │   ├── tests/
-│   │   ├── go.mod
-│   │   └── go.sum
-│   │
-│   └── workers/
-│       ├── notification-worker/
-│       ├── scheduled-jobs/
-│       ├── reporting-worker/
-│       └── maintenance-worker/
+│   └── venue-edge/
+│       ├── cmd/
+│       │   └── agent/
+│       │       └── main.go
+│       ├── internal/
+│       │   ├── registration/
+│       │   ├── device-registry/
+│       │   ├── payment-terminal/
+│       │   ├── receipt-printer/
+│       │   ├── kitchen-printer/
+│       │   ├── cash-drawer/
+│       │   ├── customer-display/
+│       │   ├── barcode-scanner/
+│       │   ├── local-cache/
+│       │   ├── local-database/
+│       │   ├── command-queue/
+│       │   ├── sync/
+│       │   ├── retry/
+│       │   ├── recovery/
+│       │   ├── heartbeat/
+│       │   ├── remote-config/
+│       │   ├── updates/
+│       │   └── diagnostics/
+│       ├── tests/
+│       ├── go.mod
+│       └── go.sum
 │
-├── desktop/
-│   └── pos-terminal/
-│       ├── Servvia.Pos.sln
-│       ├── src/
-│       │   ├── Servvia.Pos.App/
-│       │   ├── Servvia.Pos.Features/
-│       │   ├── Servvia.Pos.Infrastructure/
-│       │   └── Servvia.Pos.Devices/
-│       └── tests/
-│
-├── android/
-│   ├── apps/
-│   │   ├── waiter-tablet/
-│   │   ├── order-tablet/
-│   │   ├── kiosk/
-│   │   ├── kds/
-│   │   └── window-display/
-│   │
-│   ├── core/
-│   │   ├── auth/
-│   │   ├── networking/
-│   │   ├── realtime/
-│   │   ├── database/
-│   │   ├── offline/
-│   │   ├── sync/
-│   │   ├── retry/
-│   │   ├── device-identity/
-│   │   ├── remote-config/
-│   │   ├── device-health/
-│   │   ├── kiosk-mode/
-│   │   ├── telemetry/
-│   │   ├── logging/
-│   │   ├── crash-reporting/
-│   │   ├── security/
-│   │   ├── updates/
-│   │   └── design-system/
-│   │
-│   ├── models/
-│   │   ├── menu/
-│   │   ├── orders/
-│   │   ├── tables/
-│   │   ├── checks/
-│   │   ├── kitchen/
-│   │   ├── payments/
-│   │   ├── promotions/
-│   │   └── devices/
-│   │
-│   ├── build-logic/
-│   ├── gradle/
-│   ├── settings.gradle.kts
-│   └── build.gradle.kts
-│
-├── web/
-│   ├── landing-page/
-│   ├── admin-console/
-│   └── customer-website/
-│
-├── data/
-│   ├── analytics/
-│   ├── forecasting/
-│   ├── ai/
-│   └── pipelines/
+├── packages/                     reusable libraries only, created when multiple consumers genuinely share code
 │
 ├── contracts/
 │   ├── openapi/
 │   ├── events/
 │   ├── realtime/
 │   └── schemas/
+│
+├── data/
+│   ├── analytics/
+│   ├── forecasting/
+│   ├── ai/
+│   └── pipelines/
 │
 ├── database/
 │   ├── migrations/
@@ -332,8 +288,8 @@ servvia/
 9. **Prisma is currently the migration authority** during the transition (`apps/api/prisma/`). Moving migration ownership or location to `database/` is a separate migration task. It is not permission to rewrite migration history.
 10. **Published migrations are never renamed or rewritten.**
 11. **`services/core-platform/internal/events/` and `services/core-platform/internal/workers/` are valid, current Core implementations** (Phase D13).
-    - Working D13 functionality is **not** moved merely to satisfy a decorative `services/workers/` layout.
-    - `services/workers/` is only for genuinely separate worker processes, if such separation ever becomes necessary.
+    - Working D13 functionality is **not** moved into a separate worker service merely for layout.
+    - A separate worker process, if one ever becomes genuinely necessary, would be its own `services/<service>/` (section 4.2).
 12. **Do not create duplicate implementations** merely because a target folder exists.
 13. **The target tree is structural ownership.** It is not an instruction that every listed subdirectory must exist immediately.
 14. **Stage 2 scaffolding must avoid hundreds of meaningless empty directories.**
@@ -347,11 +303,11 @@ These meanings are fixed. They are part of the agreed structure and change only 
 
 | Target | Meaning |
 |---|---|
-| `android/apps/waiter-tablet/` | Staff-operated mobile POS / waiter ordering. **The current web staff "Order Tablet" is its predecessor.** |
-| `android/apps/order-tablet/` | Customer-operated table ordering. A separate native customer application, **not yet created**. Its UX and features are not defined by this document. |
-| `android/apps/kiosk/` | Customer self-service ordering. |
-| `android/apps/window-display/` | Promotions and digital signage. |
-| `android/apps/kds/` | Kitchen display. |
+| `apps/android/waiter-tablet/` | Staff-operated mobile POS / waiter ordering. **The current web staff "Order Tablet" is its predecessor.** |
+| `apps/android/order-tablet/` | Customer-operated table ordering. A separate native customer application, **not yet created**. Its UX and features are not defined by this document. |
+| `apps/android/kiosk/` | Customer self-service ordering. |
+| `apps/android/window-display/` | Promotions and digital signage. |
+| `apps/android/kds/` | Kitchen display. |
 
 **Core device ownership**
 
@@ -389,8 +345,8 @@ Current device code is mapped into these boundaries during implementation, not d
 - Published migrations are never moved, renamed or rewritten (rule 10).
 
 **Web**
-- `web/landing-page/` is its own React + TypeScript application boundary. Public-home content now in `apps/customer-website/` may later be reused or moved into it. Its product requirements are not defined here.
-- `web/customer-website/` is React + TypeScript. The current JavaScript implementation migrates to TypeScript incrementally; no wholesale rewrite is required before the app is moved or used.
+- `apps/web/landing-page/` is its own React + TypeScript application boundary. Public-home content now in `apps/web/customer-website/` may later be reused or moved into it. Its product requirements are not defined here.
+- `apps/web/customer-website/` is React + TypeScript. The current JavaScript implementation migrates to TypeScript incrementally; no wholesale rewrite is required before the app is moved or used.
 
 **Product requirements (CC-1)**
 - `PRD/` is the authoritative product and requirements source material used to generate BMAD planning.
@@ -398,9 +354,45 @@ Current device code is mapped into these boundaries during implementation, not d
 - `docs/planning/` is planning **output**. It is not a PRD input source.
 
 **Transitional KDS**
-- The `apps/admin-console` KDS mode (`VITE_APP_MODE=kds`) is the **transitional web KDS of record**.
+- The `apps/web/admin-console` KDS mode (`VITE_APP_MODE=kds`) is the **transitional web KDS of record**.
 - The `apps/window-display` `KdsPage` is a duplicate transitional implementation, to retire once safe.
-- The permanent target is `android/apps/kds/`.
+- The permanent target is `apps/android/kds/`.
+
+### 4.2 Monorepo convention (CC-2)
+
+The convention is **deployable artifact type first, platform second.**
+
+| Kind of code | Location |
+|---|---|
+| Deployable client application | `apps/<platform>/<application>/` (platforms: `web`, `windows`, `android`) |
+| Backend or long-running service | `services/<service>/` |
+| Reusable library or shared module | `packages/<scope>/<package>/` |
+| Cross-language contract | `contracts/` |
+| Data, ML or analytics workload | `data/` |
+| Database ownership and migration target | `database/` |
+| Deployment and runtime infrastructure | `infrastructure/` |
+| Development, CI, codegen and scripts | `tooling/` |
+| Documentation | `docs/` |
+| Authoritative product requirements | `PRD/` |
+
+**Examples:**
+- `apps/web/admin-console/`, `apps/web/customer-website/`, `apps/web/landing-page/`;
+- `apps/windows/pos-terminal/`;
+- `apps/android/{waiter-tablet, order-tablet, kiosk, kds, window-display}/`;
+- `services/core-platform/`, `services/venue-edge/`.
+
+**Rules:**
+- **Services stay under `services/`.** Go Core and Venue Edge are never placed under `apps/`.
+- **`packages/` holds reusable code only:**
+  - it is never deployed independently;
+  - a package is created only when **multiple consumers genuinely share code**;
+  - it is never a catch-all `shared/` dumping ground;
+  - platform-scoped packages may later live under `packages/web/`, `packages/android/`, `packages/dotnet/` or `packages/go/`, only if real shared consumers justify it;
+  - no subtrees are defined in advance and no placeholders are created for hypothetical libraries.
+- **Transitional exception:** `apps/api/` (NestJS) is a backend but sits under `apps/` today. It is transitional, is not moved, and retires as its callers migrate to Go Core.
+- **Migration state (2026-10-01):**
+  - The Admin Console and Customer Website now live at `apps/web/admin-console/` and `apps/web/customer-website/`.
+  - `apps/window-display/`, `apps/order-tablet/` and `apps/kitchen-display/` remain transitional current implementations at their current paths; their permanent successors are under `apps/android/` (section 4.1).
 
 ---
 
@@ -410,10 +402,11 @@ Only two things are frozen at this stage:
 
 | Frozen item | Value |
 |---|---|
-| Location | `desktop/pos-terminal/` |
+| Location | `apps/windows/pos-terminal/` |
 | Technology | C# / .NET / Windows |
 
 - **Agreed structural boundary:** four solution folders, `Servvia.Pos.App`, `Servvia.Pos.Features`, `Servvia.Pos.Infrastructure` and `Servvia.Pos.Devices`, inside `Servvia.Pos.sln`. No feature breakdown inside them is agreed yet.
+- **Detailed requirements: PENDING USER POS ANALYSIS REPORT.**
 - **Requirements are not yet defined.** A detailed POS analysis report will be supplied later by the owner. That report becomes the requirements basis for:
   - POS features, workflows, screens and navigation;
   - manager functions;
@@ -441,17 +434,17 @@ Legend:
 | Current path | Target | Disposition |
 |---|---|---|
 | `services/core-platform/` | `services/core-platform/` | **KEEP.** Permanent target component; already contains substantial implementation (section 7.2). |
-| `apps/admin-console/` | `web/admin-console/` | **MOVE/EVOLVE.** Do not rewrite solely for relocation. Also hosts the transitional staff Order Tablet and the transitional KDS of record (build modes). |
-| `apps/admin-console/src/pages/order-tablet/` (built with `VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `android/apps/waiter-tablet/` | **TRANSITIONAL.** The current staff-operated Order Tablet is the predecessor of the **Waiter Tablet**. |
-| `apps/order-tablet/` | none (README only; describes the staff Order Tablet build mode) | **TRANSITIONAL.** Retires with the web staff Order Tablet. It is **not** the predecessor of `android/apps/order-tablet/`. |
-| none | `android/apps/order-tablet/` | **BUILD.** Customer Order Tablet, a new native customer application. Not yet created. |
-| `apps/admin-console` KDS mode (`VITE_APP_MODE=kds`, `KitchenDisplayPage`) | `android/apps/kds/` | **TRANSITIONAL.** The web KDS of record. |
+| `apps/web/admin-console/` | `apps/web/admin-console/` | **KEEP: TARGET + IMPLEMENTED IN TARGET LOCATION** (moved from `apps/admin-console/` under CC-2, without rewrite). Also hosts the transitional staff Order Tablet and the transitional KDS of record (build modes). |
+| `apps/web/admin-console/src/pages/order-tablet/` (built with `VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `apps/android/waiter-tablet/` | **TRANSITIONAL.** The current staff-operated Order Tablet is the predecessor of the **Waiter Tablet**. |
+| `apps/order-tablet/` | none (README only; describes the staff Order Tablet build mode) | **TRANSITIONAL.** Retires with the web staff Order Tablet. It is **not** the predecessor of `apps/android/order-tablet/`. |
+| none | `apps/android/order-tablet/` | **BUILD.** Customer Order Tablet, a new native customer application. Not yet created. |
+| `apps/web/admin-console` KDS mode (`VITE_APP_MODE=kds`, `KitchenDisplayPage`) | `apps/android/kds/` | **TRANSITIONAL.** The web KDS of record. |
 | `apps/window-display/src/pages/KdsPage.tsx` | none | **RETIRE LATER.** Duplicate transitional KDS; retire once safe. |
-| `apps/kitchen-display/` | none (README only) | **TRANSITIONAL.** Documents the KDS build mode; retires with it. |
-| `apps/window-display/` (signage) | `android/apps/window-display/` | **TRANSITIONAL** React implementation of promotions and signage. |
-| `apps/window-display/src/pages/KioskOrderPage.tsx` | `android/apps/kiosk/` | **TRANSITIONAL.** Kiosk ordering inside window-display is transitional only. |
-| `apps/customer-website/` | `web/customer-website/` | **MOVE/EVOLVE + INCREMENTAL TYPESCRIPT MIGRATION.** Preserve useful implementation. |
-| public-home content in `apps/customer-website/` | `web/landing-page/` | **MOVE LATER, optional.** May be reused when the landing page is built. |
+| `apps/kitchen-display/` | `apps/android/kds/` | **TRANSITIONAL.** README only; documents the KDS build mode. Its permanent successor is the native KDS. |
+| `apps/window-display/` (signage) | `apps/android/window-display/` | **TRANSITIONAL** React implementation of promotions and signage. |
+| `apps/window-display/src/pages/KioskOrderPage.tsx` | `apps/android/kiosk/` | **TRANSITIONAL.** Kiosk ordering inside window-display is transitional only. |
+| `apps/web/customer-website/` | `apps/web/customer-website/` | **KEEP: TARGET + IMPLEMENTED IN TARGET LOCATION** (moved from `apps/customer-website/` under CC-2, without rewrite). Incremental TypeScript migration continues. |
+| public-home content in `apps/web/customer-website/` | `apps/web/landing-page/` | **MOVE LATER, optional.** May be reused when the landing page is built. |
 | `apps/api/` (NestJS) | Go Core (`services/core-platform/`) | **TRANSITIONAL, MIGRATE.** Canonical transactional ownership continues moving to Go Core. Prisma remains here during migration. |
 | `apps/api/prisma/` | `database/` | **Migration authority during the transition.** No movement until an explicitly approved migration-authority task (section 4.1). |
 | `apps/api/src/{legacy-external-pos, pos-sync, connector, payment-observation}` and the connector-dispatch part of `apps/api/src/printer` | none | **RETIRE LATER.** External-POS surfaces, still live in Nest. Retire only per replacement and caller safety. |
@@ -468,15 +461,17 @@ Legend:
 | `docs/planning/` | `docs/planning/` | **KEEP.** Planning output; not a PRD input source. |
 | `DESIGN.md`, `PRODUCT.md` | under `docs/` | **MOVE LATER.** The exact sub-location is chosen during the docs reorganisation. |
 | `.github/` | `.github/` | **KEEP.** |
+| `web/`, `desktop/`, `android/` (obsolete Stage 2 scaffold) | `apps/web/`, `apps/windows/`, `apps/android/` | **REMOVED** in the CC-2 migration (section 8.D). Their scaffold READMEs were migrated to the new paths. |
+| `packages/` | `packages/` | **TARGET BOUNDARY CREATED, NO SHARED PACKAGES YET.** README only; packages are created only when genuinely shared (section 4.2). |
 | `.claude/` | repository root | **KEEP.** Repository-local development and agent configuration; not product architecture. |
 | `_bmad/`, `_bmad-output/` | none (not mapped) | **OUT OF SCOPE.** Governed solely by section 8.C. |
 | `tableMap.svg` | none | Unrelated; untouched. |
 
 **Not yet implemented at all:**
 - `services/venue-edge/`
-- `desktop/pos-terminal/`
-- `android/` (every app, including the Customer Order Tablet)
-- `web/landing-page/`
+- `apps/windows/pos-terminal/`
+- `apps/android/` (every app, including the Customer Order Tablet)
+- `apps/web/landing-page/`
 - `data/`
 
 ---
@@ -485,6 +480,9 @@ Legend:
 
 Statuses:
 - **TARGET + IMPLEMENTED**
+- **TARGET + IMPLEMENTED IN TARGET LOCATION** (moved into its permanent path)
+- **TARGET + STRUCTURAL SCAFFOLD ONLY** (README boundary; no product code)
+- **TARGET BOUNDARY CREATED** (boundary exists; nothing inside it yet)
 - **TARGET + PARTIALLY IMPLEMENTED**
 - **TARGET + EXISTS IN OLD LOCATION**
 - **TARGET + NOT YET CREATED**
@@ -496,18 +494,18 @@ Statuses:
 | Target area | Current path | Target path | Technology | Status | Real code? | Action | Important dependency |
 |---|---|---|---|---|---|---|---|
 | Core POS platform (REST, realtime, events, workers) | `services/core-platform/` (module `servvia/services/core-platform`) | same | Go | TARGET + PARTIALLY IMPLEMENTED | Yes: domains D1–D13 with unit, contract, architecture, PostgreSQL integration and parity tests | KEEP / BUILD | No client calls it yet; no container image or deployment route exists; Nest still serves every client |
-| Venue Edge | none | `services/venue-edge/` | Go | TARGET + NOT YET CREATED | No | BUILD | Printing and payment-terminal transport depend on it. The deleted `.NET` venue-connector was external-POS tooling, not its basis |
-| Separate worker processes | none | `services/workers/` | Go | TARGET + NOT YET CREATED | No | BUILD only if a separate process is needed (rule 11) | D13 workers already run in-process in `internal/workers/` |
-| Main POS Terminal | none | `desktop/pos-terminal/` | C# / .NET / Windows | TARGET + NOT YET CREATED | No | BUILD (after the POS report) | Section 5 freeze |
-| Waiter Tablet | web staff Order Tablet in `apps/admin-console/src/pages/order-tablet/` (`VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `android/apps/waiter-tablet/` | Kotlin / Android | TRANSITIONAL (web predecessor) | Web only | BUILD native, MIGRATE callers | The current web page talks to Nest, including external-POS native rounds |
-| Customer Order Tablet | none | `android/apps/order-tablet/` | Kotlin / Android | TARGET + NOT YET CREATED | No | BUILD | `contracts/`; UX not defined by this document |
-| Customer Kiosk | `apps/window-display/src/pages/KioskOrderPage.tsx` | `android/apps/kiosk/` | Kotlin / Android | TRANSITIONAL (web) | Web only | BUILD native | Nest `POST /api/kiosk/orders` |
-| KDS | of record: `apps/admin-console` KDS mode (`KitchenDisplayPage.tsx`); duplicate: `apps/window-display/src/pages/KdsPage.tsx` | `android/apps/kds/` | Kotlin / Android | TRANSITIONAL (web); the duplicate is RETIRE LATER | Web only | BUILD native; retire the duplicate once safe | Go kitchen tickets (D4) exist; the web KDS pages use Nest |
-| Window Display / Promotions | `apps/window-display/` (signage page) | `android/apps/window-display/` | Kotlin / Android | TRANSITIONAL (React) | Web only | BUILD native | GCS media via the Nest `media` module |
-| Android shared core and models | none | `android/core/`, `android/models/` | Kotlin | TARGET + NOT YET CREATED | No | BUILD | `contracts/` |
-| Landing Page | none as a separate project | `web/landing-page/` | React + TypeScript | TARGET + NOT YET CREATED | No | BUILD (own application boundary) | `apps/customer-website` public-home content may be reused |
-| Admin Console | `apps/admin-console/` (77 TS/TSX, 13 JS/JSX files) | `web/admin-console/` | React + TypeScript | TARGET + EXISTS IN OLD LOCATION | Yes | MOVE / EVOLVE | Calls Nest; also hosts the staff Order Tablet and KDS build modes |
-| Customer Website | `apps/customer-website/` (2 TS/TSX, 88 JS/JSX files) | `web/customer-website/` | React + TypeScript | TARGET + EXISTS IN OLD LOCATION | Yes, mostly JavaScript | MOVE/EVOLVE + INCREMENTAL TYPESCRIPT MIGRATION | Calls Nest |
+| Venue Edge | none | `services/venue-edge/` | Go | TARGET + STRUCTURAL SCAFFOLD ONLY | No | BUILD | Printing and payment-terminal transport depend on it. The deleted `.NET` venue-connector was external-POS tooling, not its basis |
+| Separate worker processes | none | `services/<service>/` (only if ever needed) | Go | Not planned | No | BUILD only if a separate process is genuinely needed (rule 11) | D13 workers already run in-process in `internal/workers/` |
+| Main POS Terminal | none | `apps/windows/pos-terminal/` | C# / .NET / Windows | TARGET + STRUCTURAL SCAFFOLD ONLY | No | BUILD (after the POS report) | Section 5 freeze |
+| Waiter Tablet | web staff Order Tablet in `apps/web/admin-console/src/pages/order-tablet/` (`VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `apps/android/waiter-tablet/` | Kotlin / Android | TRANSITIONAL (web predecessor); target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native, MIGRATE callers | The current web page talks to Nest, including external-POS native rounds |
+| Customer Order Tablet | none | `apps/android/order-tablet/` | Kotlin / Android | TARGET + STRUCTURAL SCAFFOLD ONLY | No | BUILD | `contracts/`; UX not defined by this document |
+| Customer Kiosk | `apps/window-display/src/pages/KioskOrderPage.tsx` | `apps/android/kiosk/` | Kotlin / Android | TRANSITIONAL (web); target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native | Nest `POST /api/kiosk/orders` |
+| KDS | of record: `apps/web/admin-console` KDS mode (`KitchenDisplayPage.tsx`); duplicate: `apps/window-display/src/pages/KdsPage.tsx` | `apps/android/kds/` | Kotlin / Android | TRANSITIONAL (web); the duplicate is RETIRE LATER; target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native; retire the duplicate once safe | Go kitchen tickets (D4) exist; the web KDS pages use Nest |
+| Window Display / Promotions | `apps/window-display/` (signage page) | `apps/android/window-display/` | Kotlin / Android | TRANSITIONAL (React); target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native | GCS media via the Nest `media` module |
+| Android shared code | none | `packages/android/` (only when genuinely shared, section 4.2) | Kotlin | TARGET + NOT YET CREATED (`packages/` boundary exists; no Android package yet) | No | BUILD only when shared | `contracts/` |
+| Landing Page | none as a separate project | `apps/web/landing-page/` | React + TypeScript | TARGET + STRUCTURAL SCAFFOLD ONLY | No | BUILD (own application boundary) | `apps/web/customer-website` public-home content may be reused |
+| Admin Console | `apps/web/admin-console/` (77 TS/TSX, 13 JS/JSX files) | `apps/web/admin-console/` | React + TypeScript | TARGET + IMPLEMENTED IN TARGET LOCATION | Yes | KEEP / EVOLVE | Calls Nest; also hosts the staff Order Tablet and KDS build modes |
+| Customer Website | `apps/web/customer-website/` (2 TS/TSX, 88 JS/JSX files) | `apps/web/customer-website/` | React + TypeScript | TARGET + IMPLEMENTED IN TARGET LOCATION | Yes, mostly JavaScript | KEEP / EVOLVE + INCREMENTAL TYPESCRIPT MIGRATION | Calls Nest |
 | AI / Analytics / Forecasting | none (no Python product code in the repository) | `data/` | Python | TARGET + NOT YET CREATED | No | BUILD | PostgreSQL read access model to be defined |
 | Contracts | `contracts/{openapi, events, realtime, schemas}` | same | OpenAPI / JSON Schema / Markdown | TARGET + IMPLEMENTED | Yes | KEEP | Holds both Servvia Core contracts and still-served transitional Nest contracts |
 | Database migrations and seeds | `apps/api/prisma/` (schema, 41 migrations, seed), `local-postgres/`, `shared/menu/` | `database/` | PostgreSQL / Prisma | TARGET + EXISTS IN OLD LOCATION | Yes | MIGRATE only after an approved migration-authority task | Stage 2 may create the `database/` boundary but must not copy, move or duplicate Prisma schema or migrations |
@@ -560,6 +558,22 @@ The current Go convention is a domain package plus a transport subpackage (`<dom
 
 ---
 
+### 7.3 Target location state (after the CC-2 migration, 2026-10-01)
+
+| Target path | State |
+|---|---|
+| `apps/web/admin-console/` | TARGET + IMPLEMENTED IN TARGET LOCATION |
+| `apps/web/customer-website/` | TARGET + IMPLEMENTED IN TARGET LOCATION |
+| `apps/web/landing-page/` | TARGET + STRUCTURAL SCAFFOLD ONLY |
+| `apps/windows/pos-terminal/` | TARGET + STRUCTURAL SCAFFOLD ONLY (detail: PENDING USER POS ANALYSIS REPORT) |
+| `apps/android/{waiter-tablet, order-tablet, kiosk, kds, window-display}/` | TARGET + STRUCTURAL SCAFFOLD ONLY |
+| `services/core-platform/` | TARGET + PARTIALLY IMPLEMENTED (section 7.1) |
+| `services/venue-edge/` | TARGET + STRUCTURAL SCAFFOLD ONLY |
+| `packages/` | TARGET BOUNDARY CREATED, NO SHARED PACKAGES YET |
+| `apps/api/`, `apps/window-display/`, `apps/order-tablet/`, `apps/kitchen-display/` | TRANSITIONAL current implementations (not moved) |
+
+---
+
 ## 8. Known implementation-location differences
 
 After this revision there are no unresolved questions that would force Stage 2 to redesign a top-level ownership boundary.
@@ -575,14 +589,16 @@ After this revision there are no unresolved questions that would force Stage 2 t
 | 5 | `internal/server/` and `internal/platform/httpx/` not pictured | Implementation-support packages of Core, permitted by section 3. KEEP while they serve Core. |
 | 6 | Go test layout vs `tests/unit` and `tests/concurrency` | Normal Go conventions (section 4.1). Existing layout is valid; tests are not moved in Stage 2. |
 | 7 | `cmd/migrate/` vs Prisma authority | Prisma remains authority. `cmd/migrate/` only if migration ownership is explicitly changed; no competing Go migration system. |
-| 8 | Staff-operated web "Order Tablet" | Predecessor of `android/apps/waiter-tablet/`. `android/apps/order-tablet/` is the customer-operated application, not yet created. |
-| 9 | Two web KDS implementations | `apps/admin-console` KDS mode is the transitional KDS of record; `apps/window-display` `KdsPage` is a duplicate to retire once safe. Target `android/apps/kds/`. |
-| 10 | Kiosk ordering inside `apps/window-display` | Transitional only. Permanent split: `android/apps/kiosk/` (self-service ordering) and `android/apps/window-display/` (promotions and signage). |
+| 8 | Staff-operated web "Order Tablet" | Predecessor of `apps/android/waiter-tablet/`. `apps/android/order-tablet/` is the customer-operated application, not yet created. |
+| 9 | Two web KDS implementations | `apps/web/admin-console` KDS mode is the transitional KDS of record; `apps/window-display` `KdsPage` is a duplicate to retire once safe. Target `apps/android/kds/`. |
+| 10 | Kiosk ordering inside `apps/window-display` | Transitional only. Permanent split: `apps/android/kiosk/` (self-service ordering) and `apps/android/window-display/` (promotions and signage). |
 | 11 | Customer website mostly JavaScript | MOVE/EVOLVE + INCREMENTAL TYPESCRIPT MIGRATION; no wholesale rewrite required first. |
-| 12 | No landing-page project | `web/landing-page/` is its own React + TypeScript application boundary; customer-website public-home content may be reused later. |
+| 12 | No landing-page project | `apps/web/landing-page/` is its own React + TypeScript application boundary; customer-website public-home content may be reused later. |
 | 13 | Prisma location vs `database/` | Prisma remains authority. Stage 2 may create the `database/` boundary but must not copy, move or duplicate Prisma schema or migrations. |
 | 14 | Nest socket.io realtime alongside Go WebSocket realtime | Nest realtime is transitional and retires with its Nest callers. |
 | 15 | Root items outside the target tree | Dispositions fixed in section 6 (`.claude/` KEEP; `find_css_rules.py` and `local-postgres/` MOVE LATER; `DESIGN.md`/`PRODUCT.md` under `docs/` later; `_bmad/`, `_bmad-output/` ignored (section 8.C); `shared/` decomposed by owner; `tableMap.svg` untouched). |
+
+| 16 | Deployable apps split across `web/`, `desktop/` and `android/` top-level folders (Stage 2 scaffold) | CC-2: every deployable client lives under `apps/<platform>/<application>/`; backends under `services/`; reusable code under `packages/` (section 4.2). Migrated on 2026-10-01 (section 8.D). |
 
 ### 8.B Non-architectural migration decisions that can be made later
 
@@ -596,6 +612,7 @@ These do not change any ownership boundary and do not block Stage 2:
   - for audit and historical material (`docs/audit/` and `docs/audits/`).
   - Documentation consolidation is an incremental docs task. Audit material is documentation, not runtime architecture, and reports are not duplicated to fill target folders.
 - **How `shared/` is decomposed**, caller by caller.
+- **Where the Android Gradle root and shared build logic live** within `apps/android/` (or a `packages/android/` build module). Decided with the Android SDK and Gradle decisions, when Android work starts.
 - **When the duplicate `KdsPage` and the web staff Order Tablet** are retired, governed by caller and replacement safety.
 
 ### 8.C BMAD and the PRD (amended by CC-1)
@@ -618,6 +635,33 @@ This is the single disposition of BMAD material. It overrides every other mentio
 - It is planning infrastructure, not product architecture.
 - Its planning is generated from `PRD/` plus this document.
 
+### 8.D Obsolete Stage 2 scaffold paths (CC-2): removed
+
+The Stage 2 scaffold created `web/`, `desktop/` and `android/` (README files only). In the CC-2 migration of 2026-10-01 they were **removed**, after their relevant README content was migrated:
+
+| Removed obsolete scaffold path | Replaced by |
+|---|---|
+| `web/landing-page/` (removed obsolete scaffold) | `apps/web/landing-page/` |
+| `web/admin-console/`, `web/customer-website/` (removed obsolete scaffold placeholders) | the real applications at `apps/web/admin-console/` and `apps/web/customer-website/` |
+| `desktop/pos-terminal/` (removed obsolete scaffold) | `apps/windows/pos-terminal/` |
+| `android/apps/<application>/` (removed obsolete scaffold) | `apps/android/<application>/` |
+| `android/core/`, `android/models/`, `android/build-logic/` (removed obsolete scaffold) | not recreated; shared Android code goes to `packages/android/` only when genuinely shared |
+
+### 8.E Architectural debt: cross-application source coupling
+
+**Recorded during the CC-2 migration (2026-10-01). Not refactored.**
+
+**The coupling.** `apps/window-display/` compiles directly against source in `apps/web/customer-website/`:
+- the Vite alias `@` points to `../web/customer-website/src` (`apps/window-display/vite.config.ts`);
+- the TypeScript `paths` and `include` entries reference that tree (`apps/window-display/tsconfig.json`);
+- the Tailwind content globs scan it (`apps/window-display/tailwind.config.ts`).
+
+**Rules for resolving it:**
+- **Independently deployable applications should not permanently depend directly on another application's source tree.**
+- **Genuinely shared code is eventually extracted into a justified package** under `packages/<scope>/<package>/` (section 4.2).
+- **No package is created until the actual shared boundary has been identified.** That means knowing which modules both applications really use.
+- **The coupling remains temporarily** to preserve working behaviour. Resolving it is a scoped task when either application is next changed in this area, or when `apps/window-display/` is replaced by its native successors. It is not a broad restructuring task.
+
 ---
 
 ## 9. Architecture Change Control
@@ -634,6 +678,7 @@ This is the single disposition of BMAD material. It overrides every other mentio
 | ID | Date | Change | Status |
 |---|---|---|---|
 | CC-1 | 2026-10-01 | Adds the top-level `PRD/` boundary (authoritative requirements source for BMAD planning; documentation, not runtime code). Classifies `docs/planning/` as planning output, not a PRD input. Records the removal of the old BMAD setup and the order: `PRD/` approved → fresh official BMAD install (section 8.C). | **APPROVED** (2026-10-01) |
+| CC-2 | 2026-10-01 | **Reason:** adopt a unified enterprise monorepo convention, deployable artifact type first and platform second (section 4.2). **Effect:** eliminates duplicate and ambiguous top-level app paths; makes `apps/` the single home for deployable clients (`apps/web/`, `apps/windows/`, `apps/android/`); keeps backend runtimes under `services/`; introduces `packages/` for genuinely reusable libraries; keeps `contracts/`, `data/`, `database/`, `infrastructure/`, `tooling/`, `docs/` and `PRD/` as separate concerns. The Stage 2 `web/`, `desktop/` and `android/` scaffold becomes obsolete (section 8.D). Migration executed 2026-10-01: the Admin Console and Customer Website moved to `apps/web/`; the scaffold moved to `apps/web/landing-page/`, `apps/windows/pos-terminal/` and `apps/android/*`; `packages/` created; the obsolete `web/`, `desktop/` and `android/` were removed. | **APPROVED** (2026-10-01) |
 
 ---
 

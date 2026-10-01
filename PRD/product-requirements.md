@@ -64,15 +64,15 @@
 | Surface | Location | Technology | Role | Source |
 |---|---|---|---|---|
 | Go Core | `services/core-platform/` | Go | Canonical state, REST, realtime, events, workers | `[FR]` |
-| Windows POS | `desktop/pos-terminal/` | C# / .NET | Main POS terminal. **Pending POS report** | `[FR]` |
-| Waiter Tablet | `android/apps/waiter-tablet/` | Kotlin | Staff-operated mobile POS (predecessor: web staff Order Tablet) | `[FR]` |
-| Customer Order Tablet | `android/apps/order-tablet/` | Kotlin | Customer-operated table ordering (new) | `[FR]` |
-| Kiosk | `android/apps/kiosk/` | Kotlin | Customer self-service ordering | `[FR]` |
-| KDS | `android/apps/kds/` | Kotlin | Kitchen display (transitional of record: admin-console KDS mode) | `[FR]` |
-| Window Display | `android/apps/window-display/` | Kotlin | Promotions and signage; also the entrance menu display (`[OLD FR-5]`) | `[FR] [OLD FR-5]` |
-| Admin Console | `web/admin-console/` | React + TypeScript | Administration and oversight | `[FR]` |
-| Customer Website | `web/customer-website/` | React + TypeScript | Public site | `[FR] [BR]` |
-| Landing Page | `web/landing-page/` | React + TypeScript | Public landing page (requirements not yet defined) | `[FR]` |
+| Windows POS | `apps/windows/pos-terminal/` | C# / .NET | Main POS terminal. **Pending POS report** | `[FR]` |
+| Waiter Tablet | `apps/android/waiter-tablet/` | Kotlin | Staff-operated mobile POS (predecessor: web staff Order Tablet) | `[FR]` |
+| Customer Order Tablet | `apps/android/order-tablet/` | Kotlin | Customer-operated table ordering (new) | `[FR]` |
+| Kiosk | `apps/android/kiosk/` | Kotlin | Customer self-service ordering | `[FR]` |
+| KDS | `apps/android/kds/` | Kotlin | Kitchen display (transitional of record: admin-console KDS mode) | `[FR]` |
+| Window Display | `apps/android/window-display/` | Kotlin | Promotions and signage; also the entrance menu display (`[OLD FR-5]`) | `[FR] [OLD FR-5]` |
+| Admin Console | `apps/web/admin-console/` | React + TypeScript | Administration and oversight | `[FR]` |
+| Customer Website | `apps/web/customer-website/` | React + TypeScript | Public site | `[FR] [BR]` |
+| Landing Page | `apps/web/landing-page/` | React + TypeScript | Public landing page (requirements not yet defined) | `[FR]` |
 | Venue Edge | `services/venue-edge/` | Go | Venue hardware and local resilience | `[FR] [TOM §1]` |
 | Analytics / AI | `data/` | Python | Outside the transaction path | `[FR]` |
 

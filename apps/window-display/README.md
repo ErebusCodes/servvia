@@ -13,7 +13,7 @@ This app was moved here unchanged from the old `kiosk-frontend` directory (2026-
 | Route | What it does | Compliant? |
 |---|---|---|
 | `/` (default) | `KioskWindowSignagePage` — read-only signage/promos | Yes |
-| `/menu`, `/about`, `/contact` | Read-only pages aliased directly from `apps/customer-website/src` | Yes |
+| `/menu`, `/about`, `/contact` | Read-only pages aliased directly from `apps/web/customer-website/src` | Yes |
 | `/book` | Reservation booking page, same alias | Borderline — not ordering, but not pure signage either |
 | `/tables` | `TableSelectionPage` — table/order-type selection | **No — reachable transactional route** |
 | `/order` | `KioskOrderPage` — cart construction, modifiers, `@stripe/terminal-js` payment, order submission | **No — reachable transactional route** |
@@ -34,7 +34,7 @@ npm run build:window-display
 
 ## Allowed dependencies
 
-Repo-root `shared/` (menu data, kiosk config) and, via a pre-existing cross-app alias, `apps/customer-website/src` (Menu/BookTable/About/Contact pages — a carry-over from before this app existed under `apps/`, not a pattern to extend). Do not add new dependencies on `apps/admin-console` or `apps/api` internals beyond the existing REST/WebSocket API calls.
+Repo-root `shared/` (menu data, kiosk config) and, via a pre-existing cross-app alias, `apps/web/customer-website/src` (Menu/BookTable/About/Contact pages — a carry-over from before this app existed under `apps/`, not a pattern to extend). Do not add new dependencies on `apps/web/admin-console` or `apps/api` internals beyond the existing REST/WebSocket API calls.
 
 ## Prohibited (once compliant)
 

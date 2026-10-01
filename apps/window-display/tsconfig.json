@@ -16,8 +16,8 @@
     "allowJs": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["../customer-website/src/*"]
+      "@/*": ["../web/customer-website/src/*"]
     }
   },
-  "include": ["src", "../customer-website/src/**/*.jsx", "../customer-website/src/**/*.js"]
+  "include": ["src", "../web/customer-website/src/**/*.jsx", "../web/customer-website/src/**/*.js"]
 }

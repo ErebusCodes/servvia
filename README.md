@@ -141,10 +141,10 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 |---|---|
 | `services/core-platform/` | **Servvia Core (Go)**: canonical domains, HTTP and WebSocket API, tests ([README](services/core-platform/README.md)) |
 | `apps/api/` | NestJS API (transitional). Also holds **`prisma/schema.prisma` and `prisma/migrations/`**, the single migration authority for all services |
-| `apps/admin-console/` | React admin console. The same source builds the **Order Tablet** and **Kitchen Display** targets (`VITE_APP_MODE`) |
+| `apps/web/admin-console/` | React admin console. The same source builds the **Order Tablet** and **Kitchen Display** targets (`VITE_APP_MODE`) |
 | `apps/order-tablet/`, `apps/kitchen-display/` | READMEs describing those two build targets (no separate source) |
 | `apps/window-display/` | React window display (signage) and in-venue kiosk ordering |
-| `apps/customer-website/` | React public website: menu and table booking |
+| `apps/web/customer-website/` | React public website: menu and table booking |
 | `contracts/` | Language-neutral contracts: OpenAPI, realtime, events, JSON schemas ([README](contracts/README.md)) |
 | `docs/` | Architecture, ADRs, migration phase notes, integrations, deployment and environments |
 | `scripts/` | Local development orchestration, guards and checks (Node) |

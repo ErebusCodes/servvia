@@ -84,7 +84,7 @@ one-time fact — see
 [`source-of-truth-and-environments.md` §3](./source-of-truth-and-environments.md#3-deployment-verification-gate)
 for the full rule and what counts as expected untracked state (this
 checkout's own expected untracked entries: the nested `verdura_MVP\`
-subtree, see §5, and build output such as `apps/admin-console/dist-admin\`
+subtree, see §5, and build output such as `apps/web/admin-console/dist-admin\`
 and `dist-kds\`, plus any timestamped `dist*.rollback-*\` copies kept from a
 redeploy — all gitignored, see §4).
 
@@ -128,9 +128,9 @@ all are gitignored build output.
 
 ### Three apps, one workspace: the output directories are not interchangeable
 
-`apps/admin-console` builds three different products, selected by
+`apps/web/admin-console` builds three different products, selected by
 `VITE_APP_MODE` (`src/App.tsx` dispatches on it). Each mode writes to its own
-directory, and **that mapping lives in `apps/admin-console/vite.config.ts`
+directory, and **that mapping lives in `apps/web/admin-console/vite.config.ts`
 (`OUT_DIR_BY_APP_MODE`) — not in the caller**:
 
 | `VITE_APP_MODE` | Product | `outDir` |

@@ -146,7 +146,7 @@ jobs:
       # at render time and render an explicit "not configured" error state
       # without it — correct fail-closed behavior for a real misconfigured
       # deployment, but it means their tests need a real value here too,
-      # same as apps/admin-console/.env.example's own documented default
+      # same as apps/web/admin-console/.env.example's own documented default
       # (the canonical local-dev seed venue, also used by docker-compose.yml).
       VITE_VENUE_ID: 10000000-0000-4000-8000-000000000001
     steps:
@@ -157,8 +157,8 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint:admin-console
-      - run: npm run typecheck --workspace=apps/admin-console
-      - run: npm test --workspace=apps/admin-console
+      - run: npm run typecheck --workspace=apps/web/admin-console
+      - run: npm test --workspace=apps/web/admin-console
       # All three device-mode builds — Order Tablet and Kitchen Display are
       # the same source built with a different VITE_APP_MODE (see
       # apps/order-tablet/README.md's own "where the code actually lives"
@@ -208,11 +208,11 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run lint:customer-website
-      - run: npm run typecheck --workspace=apps/customer-website
+      - run: npm run typecheck --workspace=apps/web/customer-website
       # Only shared/menu/menuClient.js's normalizePublicMenu() has coverage
       # so far (node --test, no framework) — not a full app test suite, but
       # real regression coverage, not nothing.
-      - run: npm test --workspace=apps/customer-website
+      - run: npm test --workspace=apps/web/customer-website
       - run: npm run build:customer-website
 
   window-display:

@@ -139,10 +139,10 @@ describe('KioskController#getVenueMenu — imageUrl pass-through', () => {
   });
 
   it('returns isAvailable:false items too — this endpoint is intentionally unfiltered', async () => {
-    // Order Tablet/Admin Console (apps/admin-console/src/store/menu.store.ts)
+    // Order Tablet/Admin Console (apps/web/admin-console/src/store/menu.store.ts)
     // reads this same endpoint and needs every item, including unavailable
     // ones, to render staff's grayed-out "86'd" cards. The public/customer
-    // surfaces (apps/customer-website/src/shared/menu/menuClient.js) do their
+    // surfaces (apps/web/customer-website/src/shared/menu/menuClient.js) do their
     // own isAvailable filtering client-side instead — see
     // normalizePublicMenu's own regression suite
     // (menuClient.test.mjs) for that half of the contract. If this endpoint

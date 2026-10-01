@@ -44,7 +44,7 @@ const LOCAL_PG_DIR = join(ROOT, 'local-postgres');
 // Order Tablet and Kitchen Display are device-mode builds of admin-console
 // (VITE_APP_MODE=tablet / =kds), not separate workspaces with their own
 // .env — see apps/order-tablet/README.md and apps/kitchen-display/README.md.
-const FRONTEND_DIRS = ['apps/customer-website', 'apps/admin-console', 'apps/window-display'];
+const FRONTEND_DIRS = ['apps/web/customer-website', 'apps/web/admin-console', 'apps/window-display'];
 const shutdownGraceMs = 3000;
 
 const SERVICES = [

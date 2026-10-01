@@ -1441,7 +1441,7 @@ describe('OrdersService', () => {
 
     // DL-072's own worked example: a $70.00 GST-inclusive item stays
     // $70.00, never $80.50 (the additive-GST defect). Matches
-    // apps/admin-console/src/pages/order-tablet/billing.test.ts's
+    // apps/web/admin-console/src/pages/order-tablet/billing.test.ts's
     // identical worked example for the same $70.00 figure -- the closest
     // parity evidence available without a real shared cross-app package
     // (see computeTotals's own doc comment for why one wasn't built this

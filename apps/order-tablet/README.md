@@ -8,7 +8,7 @@ The staff-operated in-venue ordering surface: table and seat selection, menu and
 
 ## Where the code actually lives
 
-`apps/admin-console/src/pages/order-tablet/OrderTabletPage.tsx`, built in a dedicated device mode:
+`apps/web/admin-console/src/pages/order-tablet/OrderTabletPage.tsx`, built in a dedicated device mode:
 
 ```bash
 # from the repository root
@@ -22,7 +22,7 @@ npm run build:order-tablet
 
 This section previously claimed zero tests, a blocked auth decision, and an unfixed billing defect. All three claims were stale by the time this file was last edited; none of them hold against the code that actually exists on `main` today. Re-verify against the code before trusting *this* section too, the next time it goes stale.
 
-- **Tests exist and pass.** `OrderTabletPage.test.tsx` (1,063 lines), `TabletDeviceGate.test.tsx`, and `billing.test.ts` cover the tablet UI, device-gate auth flow, and billing math. `npx vitest run` (apps/admin-console): 127/127 pass. `npx tsc --noEmit`: clean. `npm run build:order-tablet`: succeeds.
+- **Tests exist and pass.** `OrderTabletPage.test.tsx` (1,063 lines), `TabletDeviceGate.test.tsx`, and `billing.test.ts` cover the tablet UI, device-gate auth flow, and billing math. `npx vitest run` (apps/web/admin-console): 127/127 pass. `npx tsc --noEmit`: clean. `npm run build:order-tablet`: succeeds.
 - **Auth is implemented**, not blocked: a hybrid model — persisted device JWT, memory-only staff-PIN-elevation JWT, memory-only manager-step-up JWT (`tabletDeviceAuth.store.ts`). PIN verification is real and server-side (Argon2id against `Staff.pinHash`, constant-time decoy compare on no-match, real-time device revocation) — never a hardcoded or client-side PIN. See `apps/api/src/tablet/tablet-auth.service.ts`.
 - **The billing defect is fixed.** `billing.ts`'s `computeCartTotals()` charges no service charge and discloses GST as contained in the price, never added on top; its own top comment documents this as the fix for exactly the bug this file used to describe as current.
 - **Idealpos/EFTPOS/KDS/KOT handoff is partially implemented, not "not implemented".** Real, tested-against-real-Postgres machinery exists end-to-end at the Verdura-side boundary: idempotent order persistence, `POSSyncRecord`/`ConnectorCommand` dispatch with a lease/CAS claim protocol, KOT-double-print prevention keyed on `venue.posAdapterType`, and a tablet-side status panel that polls and truthfully distinguishes "submitted to Verdura" from "sent to Idealpos" from "Idealpos confirmed" from failure (never a fabricated success state). What remains genuinely unverified — because it requires a real Windows host with IdealPOS and IdealposBridge installed, which this repository's own development environment does not have — is whether a real order has ever reached physical IdealPOS and produced a real native KOT. See `apps/venue-connector/README.md` and `docs/integrations/idealpos.md` for exactly what is and isn't proven on that side.
@@ -30,4 +30,4 @@ This section previously claimed zero tests, a blocked auth decision, and an unfi
 
 ## Prohibited here
 
-Nothing — this directory has no code to constrain. The behavioral boundary (Order Tablet is the only app permitted to submit orders) is enforced by what `apps/admin-console`'s device-mode entry point renders, not by anything in this directory.
+Nothing — this directory has no code to constrain. The behavioral boundary (Order Tablet is the only app permitted to submit orders) is enforced by what `apps/web/admin-console`'s device-mode entry point renders, not by anything in this directory.

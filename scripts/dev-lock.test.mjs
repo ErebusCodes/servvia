@@ -349,7 +349,7 @@ test('window-display/vite.config.ts port matches CANONICAL_PORTS', () => {
 });
 
 test("admin-console/vite.config.ts base port (plain 'npm run dev:admin-console', no VITE_APP_MODE) matches CANONICAL_PORTS", () => {
-  assert.equal(extractVitePort('apps/admin-console/vite.config.ts'), CANONICAL_PORTS['admin-console']);
+  assert.equal(extractVitePort('apps/web/admin-console/vite.config.ts'), CANONICAL_PORTS['admin-console']);
 });
 
 test("package.json's dev:kitchen-display --port override matches CANONICAL_PORTS", () => {
@@ -368,7 +368,7 @@ test('apps/api/.env.example default PORT matches CANONICAL_PORTS', () => {
 });
 
 test('customer-website/vite.config.js port matches CANONICAL_PORTS', () => {
-  assert.equal(extractVitePort('apps/customer-website/vite.config.js'), CANONICAL_PORTS['customer-website']);
+  assert.equal(extractVitePort('apps/web/customer-website/vite.config.js'), CANONICAL_PORTS['customer-website']);
 });
 
 // docker-compose.yml is a separate deployment configuration surface that

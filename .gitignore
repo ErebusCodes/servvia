@@ -34,7 +34,7 @@ apps/api/storage/
 # separate per-app copies) are explicitly allowed through below.
 *.mp4
 !Asset/video/intro.mp4
-!apps/customer-website/public/video/intro.mp4
+!apps/web/customer-website/public/video/intro.mp4
 !apps/window-display/public/video/intro.mp4
 
 AUDIT_REPORT.md
@@ -55,14 +55,14 @@ AUDIT_REPORT_V2.md
 # `dist/` rule above does not match these directories' names; anchored so
 # `dist-admin`/`dist-kds` elsewhere in the tree would still be trackable if
 # ever legitimate. Each is one VITE_APP_MODE's output -- see
-# apps/admin-console/vite.config.ts's OUT_DIR_BY_APP_MODE.
-/apps/admin-console/dist-admin/
-/apps/admin-console/dist-kds/
+# apps/web/admin-console/vite.config.ts's OUT_DIR_BY_APP_MODE.
+/apps/web/admin-console/dist-admin/
+/apps/web/admin-console/dist-kds/
 
 # Timestamped rollback copies taken before a production rebuild on the
 # Windows host (dist.rollback-*, dist-admin.rollback-*). Machine-local
 # operational state, never committed.
-/apps/admin-console/dist*.rollback-*/
+/apps/web/admin-console/dist*.rollback-*/
 
 # Venue-connector local capture output (tools/verdura-run-capture.cmd)
 apps/venue-connector/.captures/

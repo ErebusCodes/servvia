@@ -59,7 +59,7 @@ export default defineConfig(({ mode }) => {
         // marketing pages (Menu/BookTable/About/Contact) as its own fallback
         // routes. Both apps are siblings under apps/, so this stays a plain
         // relative sibling path, not a package dependency.
-        '@': path.resolve(__dirname, '../customer-website/src'),
+        '@': path.resolve(__dirname, '../web/customer-website/src'),
       },
     },
     server: {
@@ -68,7 +68,7 @@ export default defineConfig(({ mode }) => {
       fs: {
         allow: [
           path.resolve(__dirname),
-          // repo root — needed for both the apps/customer-website sibling
+          // repo root — needed for both the apps/web/customer-website sibling
           // import above and the repo-root shared/ imports in src/pages/.
           path.resolve(__dirname, '../..'),
         ],

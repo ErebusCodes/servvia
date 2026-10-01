@@ -8,7 +8,7 @@ The kitchen-facing fulfilment queue: receives submitted orders, presents them as
 
 ## Where the code actually lives
 
-`apps/admin-console/src/pages/kitchen/KitchenDisplayPage.tsx`, built in a dedicated device mode:
+`apps/web/admin-console/src/pages/kitchen/KitchenDisplayPage.tsx`, built in a dedicated device mode:
 
 ```bash
 # from the repository root
@@ -16,7 +16,7 @@ npm run dev:kitchen-display     # VITE_APP_MODE=kds, port 5175
 npm run build:kitchen-display
 ```
 
-This is the **canonical** KDS implementation, selected over the alternative embedded in `apps/window-display/src/pages/KdsPage.tsx` because it has automated test coverage (`apps/admin-console/src/store/kdsDeviceAuth.store.test.ts`) and is the implementation the repository's own scripts have actually wired up. The embedded `apps/window-display` copy has not been deleted or merged — it is flagged as a likely-duplicate pending a feature-by-feature comparison. See the repository structure decision record (`_bmad-output/implementation-artifacts/2026-08-17-repository-restructure.md`) and `_bmad-output/implementation-artifacts/deferred-work.md` for that follow-up.
+This is the **canonical** KDS implementation, selected over the alternative embedded in `apps/window-display/src/pages/KdsPage.tsx` because it has automated test coverage (`apps/web/admin-console/src/store/kdsDeviceAuth.store.test.ts`) and is the implementation the repository's own scripts have actually wired up. The embedded `apps/window-display` copy has not been deleted or merged — it is flagged as a likely-duplicate pending a feature-by-feature comparison. See the repository structure decision record (`_bmad-output/implementation-artifacts/2026-08-17-repository-restructure.md`) and `_bmad-output/implementation-artifacts/deferred-work.md` for that follow-up.
 
 `KitchenDisplayPage.tsx` shares `shared/orders.ts` and `shared/menu/menuData.js` with other Admin Console pages (`OrdersPage`, and Order Tablet) — the same non-extractability reasoning documented in `apps/order-tablet/README.md` applies here.
 
