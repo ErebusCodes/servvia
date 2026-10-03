@@ -91,7 +91,10 @@ export function validateObjective(o) {
     if (t.expectBaselineFailure) need(isStrArray(t.files) && t.files.length > 0, `required test ${t.id}: files (the test sources to place on the baseline) are required`);
   }
   need(isStrArray(o.surfaces?.allowed ?? []) && isStrArray(o.surfaces?.forbidden ?? []), 'surfaces.allowed and surfaces.forbidden must be globs');
-  for (const x of o.expectationChanges ?? []) need(isStr(x.path) && isStr(x.reason), 'expectation change needs path and reason');
+  for (const x of o.expectationChanges ?? []) {
+    need(isStr(x.path) && isStr(x.reason), 'expectation change needs path and reason');
+    need(isStrArray(x.retiresTests ?? []), `expectation change ${x.path}: retiresTests must list test names`);
+  }
   for (const x of o.allowedSkips ?? []) need(isStr(x.reason) && (isStr(x.test) || isStr(x.path)), 'allowed skip needs reason and test or path');
   for (const x of o.allowedSuppressions ?? []) need(isStr(x.path) && isStr(x.reason), 'allowed suppression needs path and reason');
   return e;

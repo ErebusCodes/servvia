@@ -61,7 +61,7 @@ parent is `baseline`. Validated by `validateObjective` in `lib/objective.mjs`.
 | `checks` | `id`, `category`, `runner` (`jest`, `go-test`, `node-test`, `command`), `args`, `cwd`, `mandatory`, `minTests`, `configFiles` (configuration the check depends on: protected), optional `flakePolicy.approvedRetries` |
 | `requiredTests` | tests that must run and pass; `expectBaselineFailure: true` (with `files`) means the evaluator also runs them on the baseline and expects them to fail there; `false` needs a `baselineException`: `regression-characterization`, `architecture-completeness`, `refactoring-invariant` or `coverage` |
 | `surfaces.allowed`, `surfaces.forbidden` | where the implementation may and may not change code |
-| `expectationChanges` | existing tests, fixtures, snapshots, manifests or build configuration the story is approved to change, each with a reason |
+| `expectationChanges` | existing tests, fixtures, snapshots, manifests or build configuration the story is approved to change, each with a reason; authorizing a test file never authorizes removing its tests: each removed test must be named in `retiresTests` |
 | `allowedSkips`, `allowedSuppressions` | skips and lint/type suppressions the objective accepts |
 | `completionCriteria` | what "done" means, in words, for the orchestrator |
 

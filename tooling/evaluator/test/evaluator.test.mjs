@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { globToRegExp, matches } from '../lib/glob.mjs';
 import { redact, redactDeep, secretValues, REDACTED } from '../lib/redact.mjs';
-import { countTests } from '../lib/integrity.mjs';
+import { countTests, testNames } from '../lib/integrity.mjs';
 import { computeVerdict } from '../lib/verdict.mjs';
 import { validateObjective } from '../lib/objective.mjs';
 import { EVALUATOR_ROOT } from '../lib/evaluate.mjs';
@@ -35,6 +35,11 @@ describe('pure functions', () => {
     }
     assert.ok(out.includes(REDACTED));
     assert.deepEqual(redactDeep({ a: ['password=x1'], n: 3 }), { a: [`password=${REDACTED}`], n: 3 });
+  });
+
+  test('test names are extracted in JS and Go', () => {
+    assert.deepEqual(testNames('a.test.mjs', "test('adds', () => {});\nit(\"it's ok\", () => {});\ndescribe('x', () => {});"), ['adds', "it's ok"]);
+    assert.deepEqual(testNames('a_test.go', 'func TestA(t *testing.T) {}\nfunc helper() {}\nfunc TestB(t *testing.T) {}'), ['TestA', 'TestB']);
   });
 
   test('test declarations are counted in JS and Go', () => {
@@ -133,6 +138,25 @@ describe('evaluation of candidates against a frozen objective', () => {
     }
   });
 
+  test('authorizing changes to a test file never authorizes removing its tests', async () => {
+    const oneLeft = "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport { add } from './math.mjs';\ntest('adds numbers', () => assert.equal(add(2, 3), 5));\n";
+    const authorized = makeFixture({ expectationChanges: [{ path: 'sample/math.test.mjs', reason: 'restated' }] });
+    try {
+      const record = await authorized.run(authorized.candidate({ ...VALID, 'sample/math.test.mjs': oneLeft }));
+      assert.equal(record.verdict, 'INTEGRITY_VIOLATION');
+      assert.match(record.findings.find((f) => f.code === 'tests-removed').detail, /adds negatives/);
+    } finally {
+      authorized.cleanup();
+    }
+    const retiring = makeFixture({ expectationChanges: [{ path: 'sample/math.test.mjs', reason: 'negative case retired', retiresTests: ['adds negatives'] }], checks: [{ ...objectiveFor('x').checks[0], minTests: 2 }] });
+    try {
+      const record = await retiring.run(retiring.candidate({ ...VALID, 'sample/math.test.mjs': oneLeft }));
+      assert.equal(record.verdict, 'PASS', JSON.stringify(record.findings));
+    } finally {
+      retiring.cleanup();
+    }
+  });
+
   test('a new lint or type suppression needs review', async () => {
     const record = await fx.run(fx.candidate({ ...VALID, 'sample/math.mjs': `// eslint-disable-next-line\n${MULTIPLY_IMPL}` }));
     assert.equal(record.verdict, 'NEEDS_REVIEW');
@@ -177,7 +201,7 @@ test('leaks', () => {
   });
 
   test('a mandatory check that executes too few tests is an integrity violation', async () => {
-    const emptied = makeFixture({ expectationChanges: [{ path: 'sample/*.test.mjs', reason: 'fixture: tests restructured' }] });
+    const emptied = makeFixture({ expectationChanges: [{ path: 'sample/*.test.mjs', reason: 'fixture: tests restructured', retiresTests: ['adds numbers', 'adds negatives'] }] });
     try {
       const empty = "import test from 'node:test';\n";
       const record = await emptied.run(emptied.candidate({ ...VALID, 'sample/math.test.mjs': empty, 'sample/multiply.test.mjs': empty }));

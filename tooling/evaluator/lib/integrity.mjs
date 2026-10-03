@@ -25,8 +25,26 @@ export function countTests(path, text) {
   return (text.match(/(?<![\w.$])(?:it|test)\s*(?:\.each\s*\([^)]*\)\s*)?\(/g) ?? []).length;
 }
 
+/**
+ * Names of the tests declared in a file: it('…')/test('…') string titles in
+ * JS/TS, func TestX in Go. Dynamic titles are not extracted; the count check
+ * below still covers them.
+ */
+export function testNames(path, text) {
+  if (text == null) return [];
+  if (path.endsWith('.go')) return [...text.matchAll(/^func (Test\w*)\s*\(/gm)].map((m) => m[1]);
+  return [...text.matchAll(/(?<![\w.$])(?:it|test)\s*\(\s*(['"])((?:\\.|(?!\1).)*)\1/g)].map((m) => m[2]);
+}
+
 function authorized(objective, path) {
   return (objective.expectationChanges ?? []).some((x) => matches(path, [x.path]));
+}
+
+/** Tests the objective explicitly retires in this file (by name). */
+function retired(objective, path) {
+  return (objective.expectationChanges ?? [])
+    .filter((x) => matches(path, [x.path]))
+    .flatMap((x) => x.retiresTests ?? []);
 }
 
 export function checkConfigPaths(objective) {
@@ -72,9 +90,18 @@ export function staticIntegrity({ repo, anchorCommit, candidateCommit, objective
 
     if (status === 'M' || status === 'T') {
       if (isTest) {
-        const before = countTests(path, showFile(repo, anchorCommit, path)?.toString('utf8'));
-        const after = countTests(path, showFile(repo, candidateCommit, path)?.toString('utf8'));
-        if (after < before && !ok) {
+        // Authorizing changes to a file never authorizes removing its tests:
+        // each removed test must be retired by name in the objective.
+        const anchorText = showFile(repo, anchorCommit, path)?.toString('utf8');
+        const candidateText = showFile(repo, candidateCommit, path)?.toString('utf8');
+        const retiring = retired(objective, path);
+        const kept = new Set(testNames(path, candidateText));
+        const removed = testNames(path, anchorText).filter((name) => !kept.has(name) && !retiring.includes(name));
+        const before = countTests(path, anchorText);
+        const after = countTests(path, candidateText);
+        if (removed.length > 0) {
+          add(IV, 'tests-removed', path, `tests removed without being retired by the objective: ${removed.join(', ')}`);
+        } else if (after < before - retiring.length) {
           add(IV, 'tests-removed', path, `test declarations fell from ${before} to ${after}`);
         } else if (!ok) {
           add(NR, 'unapproved-expectation-change', path, 'an existing test was modified without an approved expectation change');
