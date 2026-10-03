@@ -1,6 +1,6 @@
 # Servvia repository structure (source of truth)
 
-> **Status:** APPROVED — Stage 1 complete; authoritative repository structure. Change records CC-1 and CC-2 are APPROVED (section 9.1).
+> **Status:** APPROVED — Stage 1 complete; authoritative repository structure. Change records CC-1, CC-2 and CC-3 are APPROVED (section 9.1).
 >
 > **Authority:** once approved, this document is the authoritative source for where Servvia code belongs. Implementation follows it; it is changed only through [Architecture Change Control](#9-architecture-change-control).
 > **Evidence basis:** read-only inspection on 2026-10-01 of commit `a005642` plus the uncommitted working tree (which contains the prepared D13 Checkpoint A and an uncommitted, partial external-POS cleanup).
@@ -28,8 +28,7 @@ The work proceeds in three stages (section 10): **structure → scaffold → imp
 | Realtime/WebSocket services | Go |
 | Venue Edge / Hardware Orchestration | Go |
 | Main POS Terminal | C# / .NET / Windows |
-| Waiter Tablet | Kotlin / Android |
-| Customer Order Tablet | Kotlin / Android |
+| Waiter Tablet (Staff Mode and Guest Mode; CC-3) | Kotlin / Android |
 | Customer Kiosk | Kotlin / Android |
 | Kitchen Display System (KDS) | Kotlin / Android |
 | Window Display / Promotions | Kotlin / Android |
@@ -76,7 +75,6 @@ servvia/
 │   │
 │   └── android/
 │       ├── waiter-tablet/
-│       ├── order-tablet/
 │       ├── kiosk/
 │       ├── kds/
 │       └── window-display/
@@ -303,8 +301,7 @@ These meanings are fixed. They are part of the agreed structure and change only 
 
 | Target | Meaning |
 |---|---|
-| `apps/android/waiter-tablet/` | Staff-operated mobile POS / waiter ordering. **The current web staff "Order Tablet" is its predecessor.** |
-| `apps/android/order-tablet/` | Customer-operated table ordering. A separate native customer application, **not yet created**. Its UX and features are not defined by this document. |
+| `apps/android/waiter-tablet/` | **The single tablet ordering application (CC-3).** One app with two operating modes over the same venue, table, visit and order context: **Staff Mode** (staff-operated mobile POS / waiter ordering) and **Guest Mode** (customer-operated table ordering, a restricted context with no staff permissions). **The current web "Order Tablet" is its predecessor and reference implementation** for both modes. Guest Mode UX and features are not defined by this document. No separate customer tablet application exists (section 8.F). |
 | `apps/android/kiosk/` | Customer self-service ordering. |
 | `apps/android/window-display/` | Promotions and digital signage. |
 | `apps/android/kds/` | Kitchen display. |
@@ -378,7 +375,7 @@ The convention is **deployable artifact type first, platform second.**
 **Examples:**
 - `apps/web/admin-console/`, `apps/web/customer-website/`, `apps/web/landing-page/`;
 - `apps/windows/pos-terminal/`;
-- `apps/android/{waiter-tablet, order-tablet, kiosk, kds, window-display}/`;
+- `apps/android/{waiter-tablet, kiosk, kds, window-display}/`;
 - `services/core-platform/`, `services/venue-edge/`.
 
 **Rules:**
@@ -435,9 +432,9 @@ Legend:
 |---|---|---|
 | `services/core-platform/` | `services/core-platform/` | **KEEP.** Permanent target component; already contains substantial implementation (section 7.2). |
 | `apps/web/admin-console/` | `apps/web/admin-console/` | **KEEP: TARGET + IMPLEMENTED IN TARGET LOCATION** (moved from `apps/admin-console/` under CC-2, without rewrite). Also hosts the transitional staff Order Tablet and the transitional KDS of record (build modes). |
-| `apps/web/admin-console/src/pages/order-tablet/` (built with `VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `apps/android/waiter-tablet/` | **TRANSITIONAL.** The current staff-operated Order Tablet is the predecessor of the **Waiter Tablet**. |
-| `apps/order-tablet/` | none (README only; describes the staff Order Tablet build mode) | **TRANSITIONAL.** Retires with the web staff Order Tablet. It is **not** the predecessor of `apps/android/order-tablet/`. |
-| none | `apps/android/order-tablet/` | **BUILD.** Customer Order Tablet, a new native customer application. Not yet created. |
+| `apps/web/admin-console/src/pages/order-tablet/` (built with `VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `apps/android/waiter-tablet/` | **TRANSITIONAL.** The current Order Tablet (with `Staff mode` and `Guest mode`) is the predecessor and reference implementation of the **Waiter Tablet** in both modes (CC-3). |
+| `apps/order-tablet/` | none (README only; describes the Order Tablet build mode) | **TRANSITIONAL.** Retires with the web Order Tablet. |
+| none (planned Customer Order Tablet, formerly `apps/android/order-tablet/`) | `apps/android/waiter-tablet/` (Guest Mode) | **MERGED (CC-3).** Customer-operated table ordering is Waiter Tablet Guest Mode. The `apps/android/order-tablet/` scaffold is removed. |
 | `apps/web/admin-console` KDS mode (`VITE_APP_MODE=kds`, `KitchenDisplayPage`) | `apps/android/kds/` | **TRANSITIONAL.** The web KDS of record. |
 | `apps/window-display/src/pages/KdsPage.tsx` | none | **RETIRE LATER.** Duplicate transitional KDS; retire once safe. |
 | `apps/kitchen-display/` | `apps/android/kds/` | **TRANSITIONAL.** README only; documents the KDS build mode. Its permanent successor is the native KDS. |
@@ -470,7 +467,7 @@ Legend:
 **Not yet implemented at all:**
 - `services/venue-edge/`
 - `apps/windows/pos-terminal/`
-- `apps/android/` (every app, including the Customer Order Tablet)
+- `apps/android/` (every app, including the Waiter Tablet in both modes)
 - `apps/web/landing-page/`
 - `data/`
 
@@ -497,8 +494,7 @@ Statuses:
 | Venue Edge | none | `services/venue-edge/` | Go | TARGET + STRUCTURAL SCAFFOLD ONLY | No | BUILD | Printing and payment-terminal transport depend on it. The deleted `.NET` venue-connector was external-POS tooling, not its basis |
 | Separate worker processes | none | `services/<service>/` (only if ever needed) | Go | Not planned | No | BUILD only if a separate process is genuinely needed (rule 11) | D13 workers already run in-process in `internal/workers/` |
 | Main POS Terminal | none | `apps/windows/pos-terminal/` | C# / .NET / Windows | TARGET + STRUCTURAL SCAFFOLD ONLY | No | BUILD (after the POS report) | Section 5 freeze |
-| Waiter Tablet | web staff Order Tablet in `apps/web/admin-console/src/pages/order-tablet/` (`VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `apps/android/waiter-tablet/` | Kotlin / Android | TRANSITIONAL (web predecessor); target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native, MIGRATE callers | The current web page talks to Nest, including external-POS native rounds |
-| Customer Order Tablet | none | `apps/android/order-tablet/` | Kotlin / Android | TARGET + STRUCTURAL SCAFFOLD ONLY | No | BUILD | `contracts/`; UX not defined by this document |
+| Waiter Tablet (Staff Mode and Guest Mode) | web Order Tablet in `apps/web/admin-console/src/pages/order-tablet/` (`VITE_APP_MODE=tablet`; documented by `apps/order-tablet/README.md`) | `apps/android/waiter-tablet/` | Kotlin / Android | TRANSITIONAL (web predecessor); target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native, MIGRATE callers | The current web page talks to Nest, including external-POS native rounds |
 | Customer Kiosk | `apps/window-display/src/pages/KioskOrderPage.tsx` | `apps/android/kiosk/` | Kotlin / Android | TRANSITIONAL (web); target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native | Nest `POST /api/kiosk/orders` |
 | KDS | of record: `apps/web/admin-console` KDS mode (`KitchenDisplayPage.tsx`); duplicate: `apps/window-display/src/pages/KdsPage.tsx` | `apps/android/kds/` | Kotlin / Android | TRANSITIONAL (web); the duplicate is RETIRE LATER; target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native; retire the duplicate once safe | Go kitchen tickets (D4) exist; the web KDS pages use Nest |
 | Window Display / Promotions | `apps/window-display/` (signage page) | `apps/android/window-display/` | Kotlin / Android | TRANSITIONAL (React); target path: TARGET + STRUCTURAL SCAFFOLD ONLY | Web only | BUILD native | GCS media via the Nest `media` module |
@@ -566,7 +562,7 @@ The current Go convention is a domain package plus a transport subpackage (`<dom
 | `apps/web/customer-website/` | TARGET + IMPLEMENTED IN TARGET LOCATION |
 | `apps/web/landing-page/` | TARGET + STRUCTURAL SCAFFOLD ONLY |
 | `apps/windows/pos-terminal/` | TARGET + STRUCTURAL SCAFFOLD ONLY (detail: PENDING USER POS ANALYSIS REPORT) |
-| `apps/android/{waiter-tablet, order-tablet, kiosk, kds, window-display}/` | TARGET + STRUCTURAL SCAFFOLD ONLY |
+| `apps/android/{waiter-tablet, kiosk, kds, window-display}/` | TARGET + STRUCTURAL SCAFFOLD ONLY |
 | `services/core-platform/` | TARGET + PARTIALLY IMPLEMENTED (section 7.1) |
 | `services/venue-edge/` | TARGET + STRUCTURAL SCAFFOLD ONLY |
 | `packages/` | TARGET BOUNDARY CREATED, NO SHARED PACKAGES YET |
@@ -589,7 +585,7 @@ After this revision there are no unresolved questions that would force Stage 2 t
 | 5 | `internal/server/` and `internal/platform/httpx/` not pictured | Implementation-support packages of Core, permitted by section 3. KEEP while they serve Core. |
 | 6 | Go test layout vs `tests/unit` and `tests/concurrency` | Normal Go conventions (section 4.1). Existing layout is valid; tests are not moved in Stage 2. |
 | 7 | `cmd/migrate/` vs Prisma authority | Prisma remains authority. `cmd/migrate/` only if migration ownership is explicitly changed; no competing Go migration system. |
-| 8 | Staff-operated web "Order Tablet" | Predecessor of `apps/android/waiter-tablet/`. `apps/android/order-tablet/` is the customer-operated application, not yet created. |
+| 8 | Web "Order Tablet" (`Staff mode` and `Guest mode`) | Predecessor and reference implementation of `apps/android/waiter-tablet/`, in both Staff Mode and Guest Mode. The separately planned customer application `apps/android/order-tablet/` was merged into Waiter Tablet Guest Mode and removed (CC-3, section 8.F). |
 | 9 | Two web KDS implementations | `apps/web/admin-console` KDS mode is the transitional KDS of record; `apps/window-display` `KdsPage` is a duplicate to retire once safe. Target `apps/android/kds/`. |
 | 10 | Kiosk ordering inside `apps/window-display` | Transitional only. Permanent split: `apps/android/kiosk/` (self-service ordering) and `apps/android/window-display/` (promotions and signage). |
 | 11 | Customer website mostly JavaScript | MOVE/EVOLVE + INCREMENTAL TYPESCRIPT MIGRATION; no wholesale rewrite required first. |
@@ -662,6 +658,32 @@ The Stage 2 scaffold created `web/`, `desktop/` and `android/` (README files onl
 - **No package is created until the actual shared boundary has been identified.** That means knowing which modules both applications really use.
 - **The coupling remains temporarily** to preserve working behaviour. Resolving it is a scoped task when either application is next changed in this area, or when `apps/window-display/` is replaced by its native successors. It is not a broad restructuring task.
 
+### 8.F Waiter Tablet: one application, two modes (CC-3)
+
+**Decided 2026-10-02 by the owner (CC-3).** The Waiter Tablet is the single tablet ordering application. The formerly separate Customer Order Tablet is its **Guest Mode**. Requirements: `PRD/product-requirements.md` section 8 (WT-1 to WT-6, with the requirements mapping).
+
+**Four concepts stay separate:**
+
+| Concept | Values | Meaning |
+|---|---|---|
+| Application identity | `waiter-tablet` | The one Android tablet ordering app, `apps/android/waiter-tablet/` |
+| Operating mode | Staff Mode, Guest Mode | Who is operating the tablet now, and therefore its presentation, permissions and available actions |
+| Actor | Staff identity, or the device / guest-session identity | Who performed an action on the tablet |
+| Order provenance | `OrderSource` values, actor and device identity | Where and by whom an order was entered. Consolidation removes none of this information (PRD WT-6); whether the mode is recorded, and the future meaning of the existing values, is open (PRD O-21) |
+
+**Security boundary.** Guest Mode never grants access to staff-authorised functionality, and entering Staff Mode requires successful staff authorisation, enforced by trusted application and backend controls rather than user-interface visibility alone (PRD WT-4, WT-5). The native mechanism is open (PRD O-20). Existing evidence: DL-081 (approved model of the current web Order Tablet) and Servvia Core, where an unelevated tablet token (kind `tablet_device`) is a device identity refused by `identity.RequireStaff`, and only an elevated tablet (`tablet_staff`, `tablet_manager`) counts as staff.
+
+**Remaining `order_tablet` terminology (kept; migration not performed).** These values are live data, contracts or code, so they are recorded as terminology debt rather than renamed:
+
+| Occurrence | Classification | What it means today | Status |
+|---|---|---|---|
+| `DeviceKind.order_tablet` (Prisma, `internal/devices`, `contracts/openapi/devices.yaml`) | Physical device classification | The tablet installation, regardless of mode. Effectively the Waiter Tablet device | KEEP for compatibility. The D8 plan to add a separate waiter-tablet kind later, and any rename, are decided with PRD O-21 |
+| `MenuChannel.order_tablet` (Prisma, `internal/menu`, Nest menu, admin console, `contracts/openapi/menu-read.yaml`) | Menu channel classification | The tablet's menu channel; shows unavailable ("86'd") items dimmed (staff policy) | KEEP. Whether Guest Mode keeps this channel and its policy is decided with PRD O-21 |
+| `OrderSource.waiter_tablet` and `OrderSource.order_tablet` (Prisma, `internal/orders`, `contracts/openapi/servvia-orders.yaml`, `kitchen-tickets.yaml`) | Order-source / audit classification | Two canonical tablet sources with no documented difference in meaning. Servvia Core accepts **both only from a staff-elevated tablet** (`StaffMaySubmit`); neither is defined as Guest Mode. Guest-mode orders currently go through Nest `POST /api/tablet/orders` with legacy source `staff`, attributed to a per-device system actor | KEEP both. Their meaning is decided with PRD O-21 before any guest order path in Core is built |
+| `TabletDevice` / `TabletEnrollment` ("Order Tablet identity") | Transitional device identity (Nest) | Current web tablets | TRANSITIONAL; retires when the Android Waiter Tablet migrates |
+| `apps/order-tablet/`, `src/pages/order-tablet/`, `OrderTabletPage`, `npm run dev:order-tablet` / `build:order-tablet`, `VITE_APP_MODE=tablet`, `/order-tablet` route, browser storage key `verdura-order-tablet-pending-submission-v*` | Legacy application terminology (current web predecessor) | The working transitional web tablet | KEEP until the web Order Tablet retires (section 6); not renamed |
+| Historical documents (`docs/integrations/*order-tablet*`, `docs/decisions-log.md`, `docs/epics.md`, checkpoints, archives, migration SQL comments) | Historical documentation | Records of past decisions | Not rewritten |
+
 ---
 
 ## 9. Architecture Change Control
@@ -679,6 +701,7 @@ The Stage 2 scaffold created `web/`, `desktop/` and `android/` (README files onl
 |---|---|---|---|
 | CC-1 | 2026-10-01 | Adds the top-level `PRD/` boundary (authoritative requirements source for BMAD planning; documentation, not runtime code). Classifies `docs/planning/` as planning output, not a PRD input. Records the removal of the old BMAD setup and the order: `PRD/` approved → fresh official BMAD install (section 8.C). | **APPROVED** (2026-10-01) |
 | CC-2 | 2026-10-01 | **Reason:** adopt a unified enterprise monorepo convention, deployable artifact type first and platform second (section 4.2). **Effect:** eliminates duplicate and ambiguous top-level app paths; makes `apps/` the single home for deployable clients (`apps/web/`, `apps/windows/`, `apps/android/`); keeps backend runtimes under `services/`; introduces `packages/` for genuinely reusable libraries; keeps `contracts/`, `data/`, `database/`, `infrastructure/`, `tooling/`, `docs/` and `PRD/` as separate concerns. The Stage 2 `web/`, `desktop/` and `android/` scaffold becomes obsolete (section 8.D). Migration executed 2026-10-01: the Admin Console and Customer Website moved to `apps/web/`; the scaffold moved to `apps/web/landing-page/`, `apps/windows/pos-terminal/` and `apps/android/*`; `packages/` created; the obsolete `web/`, `desktop/` and `android/` were removed. | **APPROVED** (2026-10-01) |
+| CC-3 | 2026-10-02 | **Tablet application consolidation.** **Reason:** the existing Order Tablet already serves staff and guests as `Staff mode` and `Guest mode` of one table and order experience, so two Android tablet products would duplicate one operational context. **Effect:** `apps/android/waiter-tablet/` becomes the single tablet ordering application, with **Staff Mode** (staff-operated ordering, formerly the Waiter Tablet scope) and **Guest Mode** (customer-operated table ordering, formerly the separate Customer Order Tablet). **Guest self-ordering stays in scope as Guest Mode; it is not removed from the product.** Guest Mode UX and detailed features remain undefined, as before. The `apps/android/order-tablet/` scaffold is removed and no `customer-tablet` application is created. Guest Mode never grants access to staff-authorised functionality; entering Staff Mode requires successful staff authorisation (mechanism open, PRD O-20). Existing order-origin data is kept and no database or schema value changes (open, PRD O-21). Requirements: PRD section 8 (WT-1 to WT-6, with a mapping); terminology debt: section 8.F. Supersedes the separate Customer Order Tablet entry of section 4.1. | **APPROVED** (2026-10-02, owner decision) |
 
 ---
 

@@ -1,6 +1,6 @@
 # Servvia: consolidated product requirements
 
-> **Status:** Baseline draft (CC-1), 2026-10-01. **Awaiting owner review.**
+> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. **Awaiting owner review.**
 > **Architecture authority:** [`fileRestructure.md`](../fileRestructure.md).
 > **Sources and conflicts:** [README.md](README.md). Each requirement carries its source tag:
 > - `[FR]`: `fileRestructure.md`
@@ -14,11 +14,12 @@
 > - `[DS]`: `DESIGN.md`
 > - `[REPO]`: implemented Servvia Core behaviour, observed in the repository (evidence of existing capability, referenced rather than rebuilt)
 > - `[OWNER-QB-2026-10-01]`: the owner's enterprise-quality instruction of 2026-10-01 (Part B). It is not attributed to any older document.
+> - `[OWNER-CC-3-2026-10-02]`: the owner's tablet-consolidation decision of 2026-10-02 (change record CC-3 of `fileRestructure.md`). It is not attributed to any older document.
 >
 > Requirements carried from `[OLD]` are restated without its superseded stack.
 >
 > **Structure:**
-> - **Part A, functional requirements (sections 1–14).** Consolidated from sources; no new requirements.
+> - **Part A, functional requirements (sections 1–14).** Consolidated from sources; no new requirements, except the owner's CC-3 decision (WT-1 to WT-6, tagged `[OWNER-CC-3-2026-10-02]`).
 > - **Part B, Enterprise Quality Bar and non-functional requirements (sections 15–27).** The owner's quality instruction, tied to Servvia's architecture.
 >   - Every numeric target in Part B is either inherited, with its source, or marked **OWNER TARGET REQUIRED**.
 >   - Policy details that are not yet approved are marked **OWNER DECISION REQUIRED**.
@@ -52,10 +53,10 @@
 | Owner | All financial data, platform configuration, staff access, reports | `[OLD P2] [P2 §3]` |
 | Manager / front of house | Reservations, live orders, tables, menu changes; supervision. POS manager functions are pending the POS report | `[OLD P3] [P2 §3]` |
 | POS staff / cashier | Run payments and service at the main terminal. Workflow pending the POS report | `[OLD P5] [P2 §3]` |
-| Waiter | Staff-operated ordering at the table (Waiter Tablet) | `[FR] [P2 §3]` |
+| Waiter | Staff-operated ordering at the table (Waiter Tablet, Staff Mode) | `[FR] [P2 §3] [OWNER-CC-3-2026-10-02]` |
 | Kitchen staff | Incoming work in real time; advance it with minimal interaction | `[OLD P4]` |
 | Platform administrator | Venues, users, roles, configuration, devices, printers | `[OLD P6]` |
-| Customer at a table tablet | Customer-operated table ordering | `[FR] [P2 §3]` |
+| Customer at a table tablet | Customer-operated table ordering (Waiter Tablet, Guest Mode) | `[FR] [P2 §3] [OWNER-CC-3-2026-10-02]` |
 | Kiosk customer | Self-service ordering, touch-first, no training | `[OLD P1] [P2 §3]` |
 | Public website guest | Discover the venue, explore the menu, contact, reserve (and pre-order; open O-18) on mobile and desktop | `[BR] [OLD P1]` |
 
@@ -65,8 +66,7 @@
 |---|---|---|---|---|
 | Go Core | `services/core-platform/` | Go | Canonical state, REST, realtime, events, workers | `[FR]` |
 | Windows POS | `apps/windows/pos-terminal/` | C# / .NET | Main POS terminal. **Pending POS report** | `[FR]` |
-| Waiter Tablet | `apps/android/waiter-tablet/` | Kotlin | Staff-operated mobile POS (predecessor: web staff Order Tablet) | `[FR]` |
-| Customer Order Tablet | `apps/android/order-tablet/` | Kotlin | Customer-operated table ordering (new) | `[FR]` |
+| Waiter Tablet | `apps/android/waiter-tablet/` | Kotlin | The single tablet ordering application: **Staff Mode** (staff-operated mobile POS) and **Guest Mode** (customer-operated table ordering). Predecessor and reference: the web Order Tablet, which already has both modes. The separate Customer Order Tablet was merged into it by CC-3 (section 8) | `[FR] [OWNER-CC-3-2026-10-02]` |
 | Kiosk | `apps/android/kiosk/` | Kotlin | Customer self-service ordering | `[FR]` |
 | KDS | `apps/android/kds/` | Kotlin | Kitchen display (transitional of record: admin-console KDS mode) | `[FR]` |
 | Window Display | `apps/android/window-display/` | Kotlin | Promotions and signage; also the entrance menu display (`[OLD FR-5]`) | `[FR] [OLD FR-5]` |
@@ -140,6 +140,31 @@
 | RPT-2 | The service-day reporting minimum needed to close a day at the pilot is **open** (O-6). | MUST (pilot) | `[P2 §11]` |
 
 ## 8. Customer-facing devices and web
+
+**Waiter Tablet (CC-3).** One tablet application with two operating modes. Both modes share one context: venue → service area → table → visit (table session) → menu → order → kitchen and service workflow. Where staff and guest experiences differ, the difference is mode-specific presentation, permissions or workflow, never a separate application.
+
+| ID | Requirement | Priority | Source |
+|---|---|---|---|
+| WT-1 | **The Waiter Tablet is one application** (`apps/android/waiter-tablet/`) with a **Staff Mode** and a **Guest Mode** over the same venue, table, visit and order context. No separate customer tablet application exists. | MUST | `[OWNER-CC-3-2026-10-02] [FR]` |
+| WT-2 | **Staff Mode** is the former Waiter Tablet scope: staff-operated ordering at the table (staff-operated mobile POS). Its behaviour is defined by the other requirements of this document; CC-3 adds none. | MUST | `[FR] [P2 §3] [OWNER-CC-3-2026-10-02]` |
+| WT-3 | **Guest Mode** is the former Customer Order Tablet scope: customer-operated table ordering, associated with the same table and visit as Staff Mode. Guest self-ordering stays in scope. Its UX and detailed features are **not yet defined**, as before CC-3. | MUST | `[FR] [P2 §3] [OWNER-CC-3-2026-10-02]` |
+| WT-4 | **Guest Mode never grants access to staff-authorised functionality.** It is a restricted operating context, enforced by trusted application and backend controls, not by user-interface visibility alone (PR-3). | MUST | `[OWNER-CC-3-2026-10-02] [DL]` |
+| WT-5 | **Entering Staff Mode requires successful staff authorisation,** enforced by the same trusted controls (WT-4); a customer cannot switch the tablet into Staff Mode. The mechanism for the native application is **open** (O-20). | MUST | `[OWNER-CC-3-2026-10-02] [DL]` |
+| WT-6 | **Consolidation removes no order-origin information.** Every order still retains its source channel, actor and device identity (section 5). Whether an order must also record its operating mode (Staff Mode or Guest Mode), and how, is **open** (O-21). | MUST | `[TOM §6] [OWNER-CC-3-2026-10-02]` |
+
+**Requirements mapping (CC-3).** Nothing was removed; each former requirement has a new home:
+
+| Former requirement (before CC-3) | Now |
+|---|---|
+| Actor "Customer at a table tablet: customer-operated table ordering" `[FR] [P2 §3]` | Same actor row (section 3), served by **Waiter Tablet → Guest Mode** (WT-3) |
+| Surface "Customer Order Tablet, `apps/android/order-tablet/`, Kotlin, customer-operated table ordering (new)" `[FR]` | **Waiter Tablet → Guest Mode** (section 4, WT-1, WT-3). The path `apps/android/order-tablet/` is removed |
+| "Its UX and features are not defined" (`fileRestructure.md` 4.1) | Kept: Guest Mode UX is not yet defined (WT-3) |
+| Accessibility "Customer Order Tablet: OWNER TARGET REQUIRED" (section 23) | Waiter Tablet (both modes): **OWNER TARGET REQUIRED** (section 23) |
+| Actor "Waiter: staff-operated ordering at the table (Waiter Tablet)" `[FR] [P2 §3]` | **Waiter Tablet → Staff Mode** (WT-2) |
+| Surface "Waiter Tablet: staff-operated mobile POS (predecessor: web staff Order Tablet)" `[FR]` | **Waiter Tablet → Staff Mode** (section 4, WT-2). The web Order Tablet is now the predecessor of both modes |
+| O-1 "Is the Waiter Tablet required for the pilot venue?" | Unchanged; it now covers both modes |
+
+**Kiosk, window display and public web.**
 
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
@@ -257,7 +282,7 @@ Stories that need any of these are **BLOCKED** until the report exists. `[P2 §2
 
 ## 14. Open owner decisions
 
-O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [README.md](README.md).
+O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [README.md](README.md). O-20 and O-21 come from CC-3 (section 8).
 
 | ID | Decision |
 |---|---|
@@ -280,6 +305,8 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 | O-17 | Which Servvia channels count for availability propagation (C-7) |
 | O-18 | Public web online ordering or pre-ordering scope (C-8) |
 | O-19 | Confirm the inherited numeric performance and availability targets for the Go Core architecture (C-9; section 19) |
+| O-20 | Waiter Tablet: the staff authorisation mechanism for entering Staff Mode in the native application (WT-5). Reference only: `[DL]` DL-081 approved device identity, a restricted customer mode, named staff elevation by personal PIN and manager step-up for the current web Order Tablet; whether that model carries over to the native application is not decided |
+| O-21 | Waiter Tablet: whether and how an order records Staff Mode versus Guest Mode (WT-6), and the future meaning and names of the existing `OrderSource.waiter_tablet`, `OrderSource.order_tablet`, `DeviceKind.order_tablet` and `MenuChannel.order_tablet` values (`fileRestructure.md` 8.F) |
 
 ---
 
@@ -528,7 +555,7 @@ KDS and printer delivery states are shown truthfully (KIT-2, PR-4).
 | Customer Website | WCAG 2.1 AA contrast and keyboard; visible focus; reduced motion; touch targets of at least 44 px; body text of at least 16 px | `[BR] [DS]` |
 | Kiosk | touch targets of at least 48×48 px; contrast of at least 4.5:1; readable at 600 mm | `[OLD NFR-5.2]` |
 | Landing Page | **OWNER TARGET REQUIRED** | — |
-| Waiter Tablet, Customer Order Tablet, KDS, Window Display (Android) | **OWNER TARGET REQUIRED** | — |
+| Waiter Tablet (Staff Mode and Guest Mode), KDS, Window Display (Android) | **OWNER TARGET REQUIRED** | — |
 | Windows POS | **OWNER TARGET REQUIRED**; detail **PENDING USER POS ANALYSIS REPORT** | — |
 
 ## 24. Release and production readiness

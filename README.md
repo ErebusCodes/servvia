@@ -65,7 +65,7 @@ Every surface is a client of Servvia Core. None of them owns canonical business 
 
 ```
   Servvia clients
-  Windows POS · Waiter Tablet · Order Tablet · Kiosk · KDS · Window Display
+  Windows POS · Waiter Tablet (Staff/Guest) · Kiosk · KDS · Window Display
   Admin Console · Customer Website
         |            REST (contracts/openapi)  ·  WebSocket realtime (/api/realtime)
         v
@@ -90,13 +90,12 @@ Every surface is a client of Servvia Core. None of them owns canonical business 
 
 ### Target clients
 
-These are the target implementations from ADR 0001. **The native clients are not implemented yet.**
+These are the target implementations from ADR 0001, as amended by CC-3 in [`fileRestructure.md`](fileRestructure.md). **The native clients are not implemented yet.**
 
 | Surface | Target implementation |
 |---|---|
 | Windows POS terminal | C#/.NET |
-| Waiter Tablet | Kotlin/Android |
-| Order Tablet | Kotlin/Android |
+| Waiter Tablet (Staff Mode and Guest Mode; CC-3 merged the planned customer Order Tablet into it) | Kotlin/Android |
 | Kiosk | Kotlin/Android |
 | KDS | Kotlin/Android |
 | Window Display | Kotlin/Android |
