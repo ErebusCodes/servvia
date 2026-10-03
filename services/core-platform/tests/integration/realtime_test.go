@@ -78,13 +78,13 @@ func realtimeSetup(t *testing.T, cfg realtimeapi.Config, buffer int) *realtimeHa
 	go func() { defer close(done); dispatcher.Run(runCtx) }()
 	venueStore := venues.NewPostgresStore(pool)
 	handler := realtimeapi.NewHandler(hub, identity.NewVerifier(rtSecret), identity.NewPostgresTabletDevices(pool), h.devices,
-		venueStore, identity.NewPostgresVenueGrants(pool), logger, cfg)
+		venueStore, identity.NewPostgresVenueGrants(pool), admitStaff, logger, cfg)
 	routes := server.Routes(server.Deps{
 		Logger: logger, Health: health.New(pool, time.Second),
 		Menu:     menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:   venues.NewHandler(venueStore, logger),
 		Verifier: identity.NewVerifier(rtSecret), TabletDevices: identity.NewPostgresTabletDevices(pool),
-		VenueGrants: identity.NewPostgresVenueGrants(pool),
+		VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices, Realtime: handler,
 	})
 	srv := httptest.NewUnstartedServer(routes)
@@ -111,6 +111,9 @@ var fastConfig = realtimeapi.Config{AuthTimeout: 500 * time.Millisecond, PingInt
 func sign(c jwt.MapClaims) string {
 	if _, set := c["exp"]; !set {
 		c["exp"] = time.Now().Add(time.Hour).Unix()
+	}
+	if _, set := c["sid"]; !set {
+		c["sid"] = testsupport.UUID()
 	}
 	s, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString([]byte(rtSecret))
 	return s

@@ -20,7 +20,7 @@ internal/platform/httpx/ request/correlation IDs, access log, panic recovery, Ne
 internal/platform/postgres/  read-only pgx pool
 internal/ratelimit/      Redis sliding-window limiter shared with Nest's RateLimitGuard
 internal/health/         /health (liveness) and /ready (PostgreSQL ping, draining on shutdown)
-internal/identity/       access-token verification, venue scope, roles, tablet revocation, Authenticate middleware
+internal/identity/       access-token verification, venue scope, roles, tablet revocation, active-staff and session revocation, Authenticate middleware
 internal/venues/         organization and venue read model (no external-POS columns), tax-config handler
 internal/pricing/        pure price authority: lines, modifiers, expected-price check, discount math (percent, allocation), NZ GST, integer cents
 internal/pricing/pgcatalog/  loads the pricing catalog from PostgreSQL

@@ -53,7 +53,7 @@ func sessionRoutes(writable bool) http.Handler {
 		Venues:        venues.NewHandler(venueStore{}, logger),
 		TableSessions: tablesapi.NewHandler(tables.NewService(mem, writable), venueStore{}, logger),
 		Verifier:      identity.NewVerifier(secret),
-		TabletDevices: activeDevices{}, VenueGrants: grantAll{},
+		TabletDevices: activeDevices{}, VenueGrants: grantAll{}, StaffSessions: activeStaff,
 		RateLimiter: ratelimit.New(admit, 0, logger),
 	})
 }

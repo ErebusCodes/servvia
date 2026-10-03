@@ -97,7 +97,7 @@ func venueAccessRoutes(grants identity.VenueGrants) http.Handler {
 		Logger: logger, Health: health.New(okPinger{}, time.Second),
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Venues:   venues.NewHandler(venueStore{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grants,
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grants, StaffSessions: activeStaff,
 		RateLimiter: ratelimit.New(admit, 0, logger),
 	})
 }

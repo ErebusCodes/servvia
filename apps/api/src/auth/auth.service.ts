@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { Staff, StaffRole } from '@prisma/client';
 import { Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import ms from 'ms';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { StaffService } from '../staff/staff.service';
@@ -11,6 +12,8 @@ import { AuditLogService } from '../audit/audit.service';
 import { safeCompare } from '../common/utils/safe-compare';
 import { assertPinNotInsecureDefault } from './utils/insecure-default-pin.util';
 import { isProductionRuntime } from '../config/runtime-environment';
+import { SessionRevocationService } from './session-revocation.service';
+import { isStaffSessionKind } from './staff-session';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -24,6 +27,7 @@ export class AuthService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly staffService: StaffService,
     private readonly auditLogService: AuditLogService,
+    private readonly revocations: SessionRevocationService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -35,7 +39,9 @@ export class AuthService implements OnModuleInit {
       httpOnly: true,
       secure: isProductionRuntime(this.config.get<string>('NODE_ENV')),
       sameSite: 'strict' as const,
-      path: '/api/auth/refresh',
+      // Story 2.5: /api/auth, not /api/auth/refresh, so the browser also sends
+      // the cookie to POST /api/auth/logout, which revokes its session.
+      path: '/api/auth',
     };
   }
 
@@ -112,12 +118,21 @@ export class AuthService implements OnModuleInit {
     return staff;
   }
 
-  signAccessToken(staff: Staff): string {
+  /**
+   * A new login session ID (Story 2.5). Every access and refresh token of
+   * the session carries it as `sid`; logout revokes it.
+   */
+  newSessionId(): string {
+    return randomUUID();
+  }
+
+  signAccessToken(staff: Staff, sessionId: string): string {
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
       sub: staff.id,
       email: staff.email,
       role: staff.role,
       organizationId: staff.organizationId,
+      sid: sessionId,
     };
     return this.jwt.sign(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
@@ -163,9 +178,9 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  signRefreshToken(staff: Staff): string {
+  signRefreshToken(staff: Staff, sessionId: string): string {
     return this.jwt.sign(
-      { sub: staff.id },
+      { sub: staff.id, sid: sessionId },
       {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
         expiresIn: this.config.get('JWT_REFRESH_EXPIRY', '7d'),
@@ -199,35 +214,72 @@ export class AuthService implements OnModuleInit {
     });
   }
 
-  async logout(token: string | undefined, ipAddress?: string, userAgent?: string): Promise<void> {
-    if (!token) {
-      this.logger.warn('Anonymous logout: no refresh token provided');
+  /**
+   * Ends a login session (Story 2.5): its `sid` is revoked in Redis for the
+   * longest token lifetime of the session, so its refresh and access tokens
+   * are refused by Nest and by the Go Core. The session is named by the
+   * refresh cookie, or failing that by the caller's staff access token. A
+   * revocation that cannot be written fails (500) rather than reporting a
+   * logout that did not happen.
+   */
+  async logout(
+    refreshToken: string | undefined,
+    accessToken: string | undefined,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    const session = this.sessionOf(refreshToken, accessToken);
+    if (!session) {
+      this.logger.warn('Anonymous logout: no valid refresh or access token provided');
       return;
     }
-    try {
-      const payload = this.jwt.verify<{ sub: string }>(token, {
-        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+    const refreshExpiry = this.config.get<string>('JWT_REFRESH_EXPIRY', '7d');
+    await this.revocations.revoke(session.sessionId, ms(refreshExpiry as ms.StringValue) / 1000);
+    const staff = await this.staffService.findById(session.staffId);
+    if (staff) {
+      await this.auditLogService.logAuthEvent({
+        organizationId: staff.organizationId,
+        actorId: staff.id,
+        actorEmail: staff.email,
+        actorRole: staff.role,
+        action: 'logout',
+        resource: 'auth',
+        ipAddress,
+        userAgent,
       });
-      const staffId = payload.sub;
-      const staff = await this.staffService.findById(staffId);
-      if (staff) {
-        await this.auditLogService.logAuthEvent({
-          organizationId: staff.organizationId,
-          actorId: staff.id,
-          actorEmail: staff.email,
-          actorRole: staff.role,
-          action: 'logout',
-          resource: 'auth',
-          ipAddress,
-          userAgent,
-        });
-      } else {
-        this.logger.warn(`Anonymous logout: staff record not found for id: ${staffId}`);
-      }
-    } catch (err) {
-      this.logger.warn(
-        `Anonymous logout: invalid or expired refresh token: ${(err as Error).message}`,
-      );
+    } else {
+      this.logger.warn(`Logout: staff record not found for id: ${session.staffId}`);
     }
+  }
+
+  private sessionOf(
+    refreshToken: string | undefined,
+    accessToken: string | undefined,
+  ): { staffId: string; sessionId: string } | null {
+    if (refreshToken) {
+      try {
+        const payload = this.jwt.verify<{ sub: string; sid?: string }>(refreshToken, {
+          secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+          algorithms: ['HS256'],
+        });
+        if (payload.sub && payload.sid) return { staffId: payload.sub, sessionId: payload.sid };
+      } catch (err) {
+        this.logger.warn(`Logout: invalid or expired refresh token: ${(err as Error).message}`);
+      }
+    }
+    if (accessToken) {
+      try {
+        const payload = this.jwt.verify<JwtPayload>(accessToken, {
+          secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+          algorithms: ['HS256'],
+        });
+        if (isStaffSessionKind(payload.kind) && payload.sub && payload.sid) {
+          return { staffId: payload.sub, sessionId: payload.sid };
+        }
+      } catch (err) {
+        this.logger.warn(`Logout: invalid or expired access token: ${(err as Error).message}`);
+      }
+    }
+    return null;
   }
 }

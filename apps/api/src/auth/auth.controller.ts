@@ -1,8 +1,8 @@
 import { Controller, Post, Body, Res, Req, HttpCode, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
-import { Staff } from '@prisma/client';
 import { AuthService } from './auth.service';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
+import { StaffWithSession } from './strategies/jwt-refresh.strategy';
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { RateLimit } from './decorators/rate-limit.decorator';
 import { LoginDto } from './dto/login.dto';
@@ -35,8 +35,9 @@ export class AuthController {
       ipAddress,
       userAgent,
     );
-    const accessToken = this.authService.signAccessToken(staff);
-    const refreshToken = this.authService.signRefreshToken(staff);
+    const sessionId = this.authService.newSessionId();
+    const accessToken = this.authService.signAccessToken(staff, sessionId);
+    const refreshToken = this.authService.signRefreshToken(staff, sessionId);
     this.authService.setRefreshCookie(res, refreshToken);
 
     await this.authService.logLoginSuccess(staff, ipAddress, userAgent);
@@ -63,8 +64,9 @@ export class AuthController {
       : undefined;
     const userAgent = req ? (req.headers['user-agent'] as string) : undefined;
     const staff = await this.authService.validateAdminPin(dto.pin, ipAddress, userAgent);
-    const accessToken = this.authService.signAccessToken(staff);
-    const refreshToken = this.authService.signRefreshToken(staff);
+    const sessionId = this.authService.newSessionId();
+    const accessToken = this.authService.signAccessToken(staff, sessionId);
+    const refreshToken = this.authService.signRefreshToken(staff, sessionId);
     this.authService.setRefreshCookie(res, refreshToken);
 
     return {
@@ -77,8 +79,8 @@ export class AuthController {
   @UseGuards(JwtRefreshGuard)
   @RateLimit({ limit: 10, windowSeconds: 900 })
   @HttpCode(200)
-  refresh(@Req() req: Request & { user: Staff }): { accessToken: string } {
-    const accessToken = this.authService.signAccessToken(req.user);
+  refresh(@Req() req: Request & { user: StaffWithSession }): { accessToken: string } {
+    const accessToken = this.authService.signAccessToken(req.user, req.user.sessionId);
     return { accessToken };
   }
 
@@ -93,7 +95,10 @@ export class AuthController {
       : undefined;
     const userAgent = req ? (req.headers['user-agent'] as string) : undefined;
 
+    const authorization = req?.headers.authorization;
+    const accessToken = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+
     this.authService.clearRefreshCookie(res);
-    await this.authService.logout(token, ipAddress, userAgent);
+    await this.authService.logout(token, accessToken, ipAddress, userAgent);
   }
 }

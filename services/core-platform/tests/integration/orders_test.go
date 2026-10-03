@@ -583,12 +583,12 @@ func TestOrderAPIAgainstPostgres(t *testing.T) {
 		Venues:        venues.NewHandler(venueStore, logger),
 		TableSessions: tablesapi.NewHandler(tables.NewService(tablestore.New(pool), true), venueStore, logger),
 		Orders:        ordersapi.NewHandler(h.orders, venueStore, logger),
-		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
+		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": h.f.Cashier, "email": "waiter@example.test", "role": "cashier", "organizationId": h.f.Org,
-		"exp": time.Now().Add(time.Minute).Unix(),
+		"sid": testsupport.UUID(), "exp": time.Now().Add(time.Minute).Unix(),
 	}).SignedString([]byte(secret))
 	call := func(method, path string, body any) (int, map[string]any, []byte) {
 		raw, _ := json.Marshal(body)

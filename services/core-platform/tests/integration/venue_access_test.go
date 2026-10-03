@@ -77,7 +77,7 @@ func TestStaffVenueAccessAgainstPostgres(t *testing.T) {
 		Menu:     menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:   venues.NewHandler(venueStore, logger),
 		Verifier: identity.NewVerifier(rtSecret), TabletDevices: identity.NewPostgresTabletDevices(pool),
-		VenueGrants: grants, RateLimiter: ratelimit.New(admitAll{}, 0, logger),
+		VenueGrants: grants, StaffSessions: admitStaff, RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	id := testsupport.UUID()
 	for _, r := range []struct{ method, path string }{

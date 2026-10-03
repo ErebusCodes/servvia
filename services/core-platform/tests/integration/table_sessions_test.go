@@ -434,12 +434,12 @@ func TestTableSessionAPIAgainstPostgres(t *testing.T) {
 		Menu:          menu.NewHandler(menu.NewPostgresStore(h.pool), logger),
 		Venues:        venues.NewHandler(venueStore, logger),
 		TableSessions: tablesapi.NewHandler(h.svc, venueStore, logger),
-		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(h.pool), VenueGrants: identity.NewPostgresVenueGrants(h.pool),
+		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(h.pool), VenueGrants: identity.NewPostgresVenueGrants(h.pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": h.f.Cashier, "email": "waiter@example.test", "role": "cashier", "organizationId": h.f.Org,
-		"exp": time.Now().Add(time.Minute).Unix(),
+		"sid": testsupport.UUID(), "exp": time.Now().Add(time.Minute).Unix(),
 	}).SignedString([]byte(secret))
 	req := httptest.NewRequest(http.MethodPost, "/api/venues/"+h.f.Venue+"/tables/"+h.f.TableA+"/sessions",
 		strings.NewReader(`{"covers":5,"idempotencyKey":"`+key()+`"}`))

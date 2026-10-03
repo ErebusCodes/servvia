@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
+	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/platform/postgres"
 	"servvia/services/core-platform/internal/pricing"
 	"servvia/services/core-platform/internal/pricing/pgcatalog"
@@ -23,6 +24,16 @@ import (
 	"servvia/services/core-platform/internal/venues"
 	"servvia/services/core-platform/tests/testsupport"
 )
+
+// admitStaff admits every staff token that carries a session ID. The
+// PostgreSQL and Redis stores are tested in staff_session_test.go.
+var admitStaff = identity.StaffSessions{Staff: activeStaffStore{}, Revocations: activeStaffStore{}}
+
+type activeStaffStore struct{}
+
+func (activeStaffStore) StaffActive(context.Context, string) (bool, error) { return true, nil }
+
+func (activeStaffStore) SessionRevoked(context.Context, string) (bool, error) { return false, nil }
 
 type admitAll struct{}
 

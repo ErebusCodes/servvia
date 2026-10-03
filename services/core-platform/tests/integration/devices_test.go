@@ -369,11 +369,11 @@ func TestPaymentAdapterDeviceRoute(t *testing.T) {
 		Venues:   venues.NewHandler(venueStore, logger),
 		Payments: paymentsapi.NewHandler(h.payments, venueStore, logger),
 		Devices:  devicesapi.NewHandler(h.devices, venueStore, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices,
 	})
 	owner, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": h.f.Owner, "email": "o@example.test", "role": "owner",
-		"organizationId": h.f.Org, "exp": time.Now().Add(time.Minute).Unix()}).SignedString([]byte(secret))
+		"organizationId": h.f.Org, "sid": testsupport.UUID(), "exp": time.Now().Add(time.Minute).Unix()}).SignedString([]byte(secret))
 	call := func(tok, path string, body any) (int, []byte) {
 		raw, _ := json.Marshal(body)
 		req := httptest.NewRequest("POST", path, strings.NewReader(string(raw)))

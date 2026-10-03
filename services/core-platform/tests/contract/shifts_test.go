@@ -50,7 +50,7 @@ func shiftRoutes(writable bool) http.Handler {
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Venues:   venues.NewHandler(venueStore{}, logger),
 		Shifts:   shiftsapi.NewHandler(shifts.NewService(noShifts{}, writable), venueStore{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{},
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{}, StaffSessions: activeStaff,
 		RateLimiter: ratelimit.New(admit, 0, logger),
 	})
 }

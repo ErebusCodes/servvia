@@ -60,7 +60,7 @@ func setup(t *testing.T) harness {
 		Menu:          menu.NewHandler(menu.NewPostgresStore(reader), logger),
 		Venues:        venues.NewHandler(venues.NewPostgresStore(reader), logger),
 		Verifier:      identity.NewVerifier("integration-secret-0123456789abcdef"),
-		TabletDevices: identity.NewPostgresTabletDevices(reader), VenueGrants: identity.NewPostgresVenueGrants(reader),
+		TabletDevices: identity.NewPostgresTabletDevices(reader), VenueGrants: identity.NewPostgresVenueGrants(reader), StaffSessions: admitStaff,
 		// The menu suite is about PostgreSQL; the limiter has its own suite.
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})}

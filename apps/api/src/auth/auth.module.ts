@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { StaffModule } from '../staff/staff.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthService } from './auth.service';
+import { SessionRevocationService } from './session-revocation.service';
 import { AuthController } from './auth.controller';
 import { KdsAuthController } from './kds-auth.controller';
 import { KdsAuthService } from './kds-auth.service';
@@ -34,6 +35,7 @@ import { ServiceTokenGuard } from './guards/service-token.guard';
   controllers: [AuthController, KdsAuthController],
   providers: [
     AuthService,
+    SessionRevocationService,
     KdsAuthService,
     JwtStrategy,
     JwtRefreshStrategy,

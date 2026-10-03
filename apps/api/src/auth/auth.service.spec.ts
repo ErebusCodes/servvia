@@ -6,6 +6,7 @@ import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { StaffService } from '../staff/staff.service';
 import { AuditLogService } from '../audit/audit.service';
+import { SessionRevocationService } from './session-revocation.service';
 import { StaffRole, Staff } from '@prisma/client';
 
 const mockJwtService = {
@@ -26,6 +27,11 @@ const mockStaffService = {
 
 const mockAuditLogService = {
   logAuthEvent: jest.fn(),
+};
+
+const mockRevocations = {
+  revoke: jest.fn(),
+  isRevoked: jest.fn(),
 };
 
 const fakeStaff: Staff = {
@@ -60,26 +66,28 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: StaffService, useValue: mockStaffService },
         { provide: AuditLogService, useValue: mockAuditLogService },
+        { provide: SessionRevocationService, useValue: mockRevocations },
       ],
     }).compile();
     service = module.get<AuthService>(AuthService);
   });
 
-  it('signAccessToken calls JwtService.sign with sub, email, role, organizationId', () => {
-    service.signAccessToken(fakeStaff);
+  it('signAccessToken calls JwtService.sign with sub, email, role, organizationId, sid', () => {
+    service.signAccessToken(fakeStaff, 'session-uuid');
     expect(mockJwtService.sign).toHaveBeenCalledWith(
       {
         sub: fakeStaff.id,
         email: fakeStaff.email,
         role: fakeStaff.role,
         organizationId: fakeStaff.organizationId,
+        sid: 'session-uuid',
       },
       expect.any(Object),
     );
   });
 
   it('signAccessToken returns the signed token string', () => {
-    const result = service.signAccessToken(fakeStaff);
+    const result = service.signAccessToken(fakeStaff, 'session-uuid');
     expect(typeof result).toBe('string');
     expect(result).toBe('signed-token');
   });
@@ -120,9 +128,18 @@ describe('AuthService', () => {
     expect(() => service.verifyAccessToken('bad-token')).toThrow(UnauthorizedException);
   });
 
-  it('signRefreshToken calls JwtService.sign with sub only', () => {
-    service.signRefreshToken(fakeStaff);
-    expect(mockJwtService.sign).toHaveBeenCalledWith({ sub: fakeStaff.id }, expect.any(Object));
+  it('signRefreshToken calls JwtService.sign with sub and the session id only', () => {
+    service.signRefreshToken(fakeStaff, 'session-uuid');
+    expect(mockJwtService.sign).toHaveBeenCalledWith(
+      { sub: fakeStaff.id, sid: 'session-uuid' },
+      expect.any(Object),
+    );
+  });
+
+  it('newSessionId returns a fresh UUID each time', () => {
+    const a = service.newSessionId();
+    expect(a).toMatch(/^[0-9a-f-]{36}$/);
+    expect(service.newSessionId()).not.toBe(a);
   });
 
   it('setRefreshCookie sets httpOnly cookie', () => {
@@ -147,14 +164,14 @@ describe('AuthService', () => {
     );
   });
 
-  it('setRefreshCookie scopes cookie to /api/auth/refresh', () => {
+  it('setRefreshCookie scopes cookie to /api/auth, so logout receives it', () => {
     const cookieFn = jest.fn();
     const mockRes = { cookie: cookieFn } as unknown as Response;
     service.setRefreshCookie(mockRes, 'refresh-token-value');
     expect(cookieFn).toHaveBeenCalledWith(
       'refresh_token',
       'refresh-token-value',
-      expect.objectContaining({ path: '/api/auth/refresh' }),
+      expect.objectContaining({ path: '/api/auth' }),
     );
   });
 
@@ -188,13 +205,13 @@ describe('AuthService', () => {
     );
   });
 
-  it('clearRefreshCookie calls res.clearCookie scoped to /api/auth/refresh', () => {
+  it('clearRefreshCookie calls res.clearCookie scoped to /api/auth', () => {
     const clearCookieFn = jest.fn();
     const mockRes = { clearCookie: clearCookieFn } as unknown as Response;
     service.clearRefreshCookie(mockRes);
     expect(clearCookieFn).toHaveBeenCalledWith(
       'refresh_token',
-      expect.objectContaining({ path: '/api/auth/refresh' }),
+      expect.objectContaining({ path: '/api/auth' }),
     );
   });
 
@@ -331,9 +348,9 @@ describe('AuthService', () => {
     });
 
     it('logout creates audit log record when token is valid', async () => {
-      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid' });
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
       mockStaffService.findById.mockResolvedValue(fakeStaff);
-      await service.logout('refresh-token-val', '1.2.3.4', 'Mozilla');
+      await service.logout('refresh-token-val', undefined, '1.2.3.4', 'Mozilla');
       expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith({
         organizationId: fakeStaff.organizationId,
         actorId: fakeStaff.id,
@@ -350,7 +367,62 @@ describe('AuthService', () => {
       mockJwtService.verify.mockImplementation(() => {
         throw new Error('invalid token');
       });
-      await service.logout('invalid-token-val', '1.2.3.4', 'Mozilla');
+      await service.logout('invalid-token-val', 'invalid-access-val', '1.2.3.4', 'Mozilla');
+      expect(mockAuditLogService.logAuthEvent).not.toHaveBeenCalled();
+      expect(mockRevocations.revoke).not.toHaveBeenCalled();
+    });
+
+    it('logout revokes the refresh token session for the refresh lifetime (Story 2.5)', async () => {
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
+      mockStaffService.findById.mockResolvedValue(fakeStaff);
+      await service.logout('refresh-token-val', undefined);
+      expect(mockJwtService.verify).toHaveBeenCalledWith('refresh-token-val', {
+        secret: 'test-JWT_REFRESH_SECRET',
+        algorithms: ['HS256'],
+      });
+      expect(mockRevocations.revoke).toHaveBeenCalledWith('session-uuid', 7 * 24 * 60 * 60);
+    });
+
+    it('logout falls back to the staff access token when there is no refresh cookie', async () => {
+      mockJwtService.verify.mockReturnValue({
+        sub: 'staff-uuid',
+        role: StaffRole.owner,
+        organizationId: 'org-uuid',
+        sid: 'session-uuid',
+      });
+      mockStaffService.findById.mockResolvedValue(fakeStaff);
+      await service.logout(undefined, 'access-token-val');
+      expect(mockJwtService.verify).toHaveBeenCalledWith('access-token-val', {
+        secret: 'test-JWT_ACCESS_SECRET',
+        algorithms: ['HS256'],
+      });
+      expect(mockRevocations.revoke).toHaveBeenCalledWith('session-uuid', 7 * 24 * 60 * 60);
+    });
+
+    it('logout does not treat a device token as a staff session', async () => {
+      mockJwtService.verify.mockReturnValue({
+        sub: 'kds-device:venue-uuid',
+        role: StaffRole.kitchen,
+        organizationId: 'org-uuid',
+        kind: 'kds_device',
+        sid: 'session-uuid',
+      });
+      await service.logout(undefined, 'kds-token-val');
+      expect(mockRevocations.revoke).not.toHaveBeenCalled();
+    });
+
+    it('logout without a session id (a token from before session ids) revokes nothing', async () => {
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid' });
+      await service.logout('legacy-refresh-token', undefined);
+      expect(mockRevocations.revoke).not.toHaveBeenCalled();
+    });
+
+    it('logout fails, without auditing, when the revocation cannot be written', async () => {
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
+      mockRevocations.revoke.mockRejectedValueOnce(new Error('Command timed out'));
+      await expect(service.logout('refresh-token-val', undefined)).rejects.toThrow(
+        'Command timed out',
+      );
       expect(mockAuditLogService.logAuthEvent).not.toHaveBeenCalled();
     });
   });

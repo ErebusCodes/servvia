@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
+import { StaffWithSession } from './strategies/jwt-refresh.strategy';
 
 const fakeStaff: Staff = {
   id: 'd866a2e8-460d-4560-bf65-f48bf2b61404',
@@ -31,6 +32,7 @@ const mockAuthService = {
   validateAdminPin: jest.fn(),
   signAccessToken: jest.fn().mockReturnValue('access-token'),
   signRefreshToken: jest.fn().mockReturnValue('refresh-token'),
+  newSessionId: jest.fn().mockReturnValue('session-uuid'),
   setRefreshCookie: jest.fn(),
   clearRefreshCookie: jest.fn(),
   logLoginSuccess: jest.fn(),
@@ -49,6 +51,7 @@ describe('AuthController', () => {
     jest.clearAllMocks();
     mockAuthService.signAccessToken.mockReturnValue('access-token');
     mockAuthService.signRefreshToken.mockReturnValue('refresh-token');
+    mockAuthService.newSessionId.mockReturnValue('session-uuid');
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: mockAuthService }],
@@ -78,6 +81,13 @@ describe('AuthController', () => {
         role: fakeStaff.role,
       });
       expect(mockAuthService.setRefreshCookie).toHaveBeenCalledWith(mockRes, 'refresh-token');
+    });
+
+    it('binds the access and refresh tokens to one new login session (Story 2.5)', async () => {
+      mockAuthService.validateLogin.mockResolvedValue(fakeStaff);
+      await controller.login({ email: 'owner@verdura.co.nz', password: 'correct' }, mockRes);
+      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
+      expect(mockAuthService.signRefreshToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
     });
 
     it('throws UnauthorizedException on non-existent email', async () => {
@@ -112,11 +122,12 @@ describe('AuthController', () => {
   });
 
   describe('refresh', () => {
-    it('returns a new accessToken using req.user from the guard', () => {
-      const req = { user: fakeStaff } as Request & { user: Staff };
+    it('returns a new accessToken in the same session, using req.user from the guard', () => {
+      const user = { ...fakeStaff, sessionId: 'session-uuid' };
+      const req = { user } as Request & { user: StaffWithSession };
       const result = controller.refresh(req);
       expect(result.accessToken).toBe('access-token');
-      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff);
+      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(user, 'session-uuid');
     });
   });
 
@@ -127,8 +138,8 @@ describe('AuthController', () => {
       const result = await controller.loginWithAdminPin({ pin: '108' }, mockRes);
 
       expect(mockAuthService.validateAdminPin).toHaveBeenCalledWith('108', undefined, undefined);
-      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff);
-      expect(mockAuthService.signRefreshToken).toHaveBeenCalledWith(fakeStaff);
+      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
+      expect(mockAuthService.signRefreshToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
       expect(mockAuthService.setRefreshCookie).toHaveBeenCalledWith(mockRes, 'refresh-token');
       expect(result.user.role).toBe(StaffRole.owner);
     });
@@ -149,6 +160,22 @@ describe('AuthController', () => {
       const logoutRes = { clearCookie: jest.fn() } as unknown as Response;
       await controller.logout(logoutRes);
       expect(mockAuthService.clearRefreshCookie).toHaveBeenCalledWith(logoutRes);
+    });
+
+    it('passes the refresh cookie and the bearer access token to logout', async () => {
+      const logoutRes = { clearCookie: jest.fn() } as unknown as Response;
+      const req = {
+        cookies: { refresh_token: 'refresh-token-val' },
+        headers: { authorization: 'Bearer access-token-val', 'user-agent': 'Mozilla' },
+        ip: '1.2.3.4',
+      } as unknown as Request;
+      await controller.logout(logoutRes, req);
+      expect(mockAuthService.logout).toHaveBeenCalledWith(
+        'refresh-token-val',
+        'access-token-val',
+        '1.2.3.4',
+        'Mozilla',
+      );
     });
   });
 });

@@ -48,6 +48,7 @@ Streams are granted by identity. The client never chooses them.
 **Credential lifetime:**
 - The connection closes (4401 `TOKEN_EXPIRED`) when its access token expires.
 - Tablet and device credentials are re-checked every 60 s, and revocation closes the connection (4401).
+- Staff tokens (a login session, a tablet elevated by staff or manager PIN) are refused at subscription, and closed at the next re-check, when the staff member is deactivated or the login session is logged out (4401 `UNAUTHENTICATED`, "Session expired or account deactivated"; Story 2.5).
 - A re-check that cannot be completed (the credential cannot be verified) closes the connection with 1011 `INTERNAL`, never 4401. Reconnect; a revoked credential is then refused with 4401.
 - Reconnect with a fresh credential.
 
@@ -98,7 +99,7 @@ The server sends `{"type":"error","code","message"}` and then closes:
 | Code | Close | When |
 |---|---|---|
 | `BAD_REQUEST` | 4400 | Missing, late, malformed or extra-property `subscribe` message; no venue |
-| `UNAUTHENTICATED` | 4401 | Missing, invalid or expired credential; a revoked device |
+| `UNAUTHENTICATED` | 4401 | Missing, invalid or expired credential; a revoked device; a deactivated staff member or logged-out session |
 | `TOKEN_EXPIRED` | 4401 | The credential expired during the connection |
 | `FORBIDDEN` | 4403 | An identity with no realtime grant, or a pinned identity naming another venue |
 | `VENUE_NOT_FOUND` | 4404 | The venue is not in the credential's organization |

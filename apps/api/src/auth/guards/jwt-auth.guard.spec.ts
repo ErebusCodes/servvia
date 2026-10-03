@@ -10,6 +10,8 @@ import { Roles } from '../decorators/roles.decorator';
 import { JwtStrategy } from '../strategies/jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
+import { StaffService } from '../../staff/staff.service';
+import { SessionRevocationService } from '../session-revocation.service';
 
 const SECRET = 'integration-test-jwt-access-secret-32chars!!';
 
@@ -32,6 +34,26 @@ const validStaffPayload = {
   email: 'owner@verdura.co.nz',
   role: StaffRole.admin,
   organizationId: 'org-uuid',
+  sid: 'session-uuid',
+};
+
+// The staff row and the session revocation store, as the strategy sees them.
+const staffState: { isActive: boolean | null; error?: Error } = { isActive: true };
+const revocationState: { revoked: boolean; error?: Error } = { revoked: false };
+const fakeStaffService = {
+  findById: jest.fn((id: string) => {
+    if (staffState.error) return Promise.reject(staffState.error);
+    return Promise.resolve(
+      staffState.isActive === null ? null : { id, isActive: staffState.isActive },
+    );
+  }),
+};
+const fakeRevocations = {
+  isRevoked: jest.fn(() =>
+    revocationState.error
+      ? Promise.reject(revocationState.error)
+      : Promise.resolve(revocationState.revoked),
+  ),
 };
 
 /**
@@ -50,7 +72,13 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true }), PassportModule],
       controllers: [ProtectedTestController],
-      providers: [JwtStrategy, JwtAuthGuard, RolesGuard],
+      providers: [
+        JwtStrategy,
+        JwtAuthGuard,
+        RolesGuard,
+        { provide: StaffService, useValue: fakeStaffService },
+        { provide: SessionRevocationService, useValue: fakeRevocations },
+      ],
     }).compile();
 
     app = moduleRef.createNestApplication();
@@ -59,6 +87,13 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
 
   afterAll(async () => {
     await app.close();
+  });
+
+  beforeEach(() => {
+    staffState.isActive = true;
+    staffState.error = undefined;
+    revocationState.revoked = false;
+    revocationState.error = undefined;
   });
 
   it('rejects a request with no Authorization header', async () => {
@@ -136,5 +171,62 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
       .get('/test/protected')
       .set('Authorization', `Bearer ${token}`)
       .expect(403);
+  });
+
+  describe('Story 2.5: deactivated staff and logged-out sessions', () => {
+    const ended = {
+      statusCode: 401,
+      message: 'Session expired or account deactivated',
+      error: 'Unauthorized',
+    };
+
+    it('refuses a staff token after the staff member is deactivated', async () => {
+      staffState.isActive = false;
+      await request(app.getHttpServer())
+        .get('/test/protected')
+        .set('Authorization', `Bearer ${sign(validStaffPayload)}`)
+        .expect(401, ended);
+    });
+
+    it('refuses a staff token of a deleted or unknown staff member', async () => {
+      staffState.isActive = null;
+      await request(app.getHttpServer())
+        .get('/test/protected')
+        .set('Authorization', `Bearer ${sign(validStaffPayload)}`)
+        .expect(401, ended);
+    });
+
+    it('refuses a staff token after logout revoked its session', async () => {
+      revocationState.revoked = true;
+      await request(app.getHttpServer())
+        .get('/test/protected')
+        .set('Authorization', `Bearer ${sign(validStaffPayload)}`)
+        .expect(401, ended);
+    });
+
+    it('refuses a staff session token without a session id', async () => {
+      const { sid, ...withoutSid } = validStaffPayload;
+      void sid;
+      await request(app.getHttpServer())
+        .get('/test/protected')
+        .set('Authorization', `Bearer ${sign(withoutSid)}`)
+        .expect(401, ended);
+    });
+
+    it('fails closed with 500 when the revocation store cannot be reached', async () => {
+      revocationState.error = new Error('Command timed out');
+      await request(app.getHttpServer())
+        .get('/test/protected')
+        .set('Authorization', `Bearer ${sign(validStaffPayload)}`)
+        .expect(500);
+    });
+
+    it('fails closed with 500 when the staff member cannot be looked up', async () => {
+      staffState.error = new Error('connection refused');
+      await request(app.getHttpServer())
+        .get('/test/protected')
+        .set('Authorization', `Bearer ${sign(validStaffPayload)}`)
+        .expect(500);
+    });
   });
 });

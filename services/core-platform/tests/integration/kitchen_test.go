@@ -603,7 +603,7 @@ func TestKitchenAPIAgainstPostgres(t *testing.T) {
 		Menu:     menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:   venues.NewHandler(venueStore, logger),
 		Kitchen:  kitchenapi.NewHandler(h.kitchen, venueStore, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	// A KDS device token, as POST /api/kiosk/kds/auth issues it.
