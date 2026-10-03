@@ -96,7 +96,7 @@ A single restaurant using `NullAdapter` is useful for product testing, but does 
 | Public reservation journey | **Implemented** | Calls the backend and persists reservations |
 | Kiosk menu, table selection, cart and order submission | **Partial** | Real order persistence; real-money verification is unsafe |
 | KDS live feed and state transitions | **Implemented** | Real REST/WebSocket path with venue-scoped device authentication |
-| Admin authentication | **Implemented** | Named staff sign-in with self-set passwords (Stories 2.4, 8.1); the shared admin PIN is removed; no SSO |
+| Admin authentication | **Implemented** | Previous route bypass removed; admin PIN is not enterprise identity |
 | Admin orders, reservations, menu and table management | **Implemented/Partial** | Principal paths use backend APIs; enterprise controls remain absent |
 | Order Tablet submission and status updates | **Implemented** | Current version calls backend order endpoints |
 | Dashboard, reports, inventory, payments, staff, audit and integration surfaces | **Prototype/Partial** | Significant mock, simulated, or local state remains |
