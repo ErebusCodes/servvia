@@ -25,6 +25,7 @@
 // flag — an integration suite that writes has no legitimate reason to run
 // against a production database, and an override would eventually be set.
 
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -73,6 +74,13 @@ function databaseNameOf(url: string | undefined): string | null {
 }
 
 loadDotEnv();
+
+// Story 12.14: every spec file gets its own BullMQ key namespace. A stale
+// API process left over from an earlier run, or a run in another terminal,
+// uses BullMQ's default prefix (or another run's), so it can never consume
+// this file's jobs. Always set, never inherited: isolation is not optional.
+// integration-rate-limit-reset.ts deletes the namespace when the file ends.
+process.env.QUEUE_PREFIX = `it-${randomUUID().replace(/-/g, '')}`;
 
 // An explicit integration URL wins, always. This is the supported way to run
 // the suite, and it is why no override flag is needed for the check below.

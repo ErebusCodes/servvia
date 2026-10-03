@@ -26,6 +26,7 @@ import { TabletModule } from './tablet/tablet.module';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { validateEnvironment } from './config/environment.validation';
+import { QUEUE_PREFIX_PATTERN } from './queue/queue.constants';
 
 export const configValidationSchema = Joi.object({
   // Required, no default: an unset environment refuses to start rather than
@@ -36,6 +37,9 @@ export const configValidationSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
   REDIS_HOST: Joi.string().default('127.0.0.1'),
   REDIS_PORT: Joi.number().default(6379),
+  // Story 12.14: BullMQ key prefix. Unset in production (BullMQ's default);
+  // the integration-test harness sets a unique one per spec file.
+  QUEUE_PREFIX: Joi.string().pattern(QUEUE_PREFIX_PATTERN).optional(),
   // Local filesystem media storage. All
   // optional — MediaService falls back to ./storage and http://localhost:PORT.
   MEDIA_STORAGE_PATH: Joi.string().optional(),

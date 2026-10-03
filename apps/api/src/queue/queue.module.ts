@@ -5,7 +5,7 @@ import { PrintJobsProcessor } from './processors/print-jobs.processor';
 import { PosSyncProcessor } from './processors/pos-sync.processor';
 import { EmailsProcessor } from './processors/emails.processor';
 import { EmailModule } from '../email/email.module';
-import { QUEUE_NAMES } from './queue.constants';
+import { QUEUE_NAMES, queuePrefix } from './queue.constants';
 
 export { QUEUE_NAMES };
 
@@ -16,6 +16,8 @@ export { QUEUE_NAMES };
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
+        // Story 12.14: undefined (BullMQ's default prefix) unless configured.
+        prefix: queuePrefix(config.get<string>('QUEUE_PREFIX')),
         connection: {
           host: config.get<string>('REDIS_HOST', '127.0.0.1'),
           port: parseInt(config.get<string>('REDIS_PORT', '6379'), 10),

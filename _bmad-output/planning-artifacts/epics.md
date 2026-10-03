@@ -1280,7 +1280,8 @@ So that a stray process consuming the same queues cannot make a suite fail.
 
 - Traceability: TEST-21; 2026-10-03 failure classification (test infrastructure, not product behaviour).
 - Depends on: none. Applies until the legacy POS sync is retired (docs/migration/idealpos-retirement.md, step 5).
-- Status: READY
+- Implementation note: isolation is by construction (a unique BullMQ prefix per spec file, `QUEUE_PREFIX`; unset in production), so a foreign consumer cannot attach to a run's namespace and no fail-fast check is needed. Proven by a full run with a stale default-prefix consumer attached (it received no jobs).
+- Status: DONE
 
 ### Story 12.15: Kitchen (KDS device) status changes fail on the audit actor foreign key
 
