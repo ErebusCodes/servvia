@@ -17,13 +17,14 @@ import { Request } from 'express';
 import { Staff, StaffRole, ReservationStatus } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 import { TransitionReservationDto } from './dto/transition-reservation.dto';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
 @Roles(StaffRole.admin, StaffRole.manager)
 @Controller('admin/reservations')
 export class ReservationsController {

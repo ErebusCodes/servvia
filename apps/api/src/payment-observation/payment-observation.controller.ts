@@ -14,6 +14,7 @@ import { Request } from 'express';
 import { StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
@@ -53,7 +54,7 @@ function assertNotTabletOrKdsIdentity(user: AuthenticatedUser): void {
   }
 }
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
 @Controller('admin')
 export class PaymentObservationController {
   constructor(private readonly paymentObservationService: PaymentObservationService) {}

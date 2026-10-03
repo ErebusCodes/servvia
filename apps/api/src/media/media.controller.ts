@@ -13,6 +13,7 @@ import { memoryStorage } from 'multer';
 import { StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { MediaService } from './media.service';
 
@@ -31,7 +32,7 @@ import { MediaService } from './media.service';
  * new callers. Route: POST /api/admin/media/:folder.
  */
 @Controller('admin/media')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
 @Roles(StaffRole.admin, StaffRole.manager)
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}

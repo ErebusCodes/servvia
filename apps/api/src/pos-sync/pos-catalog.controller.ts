@@ -10,6 +10,7 @@ import { PosCatalogService } from './pos-catalog.service';
 import { LinkPosCandidateDto } from './dto/link-pos-candidate.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
 /**
@@ -21,7 +22,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
  * (`CategoriesController#update`/`#remove`).
  */
 @Controller('admin/pos-catalog')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
 export class PosCatalogController {
   constructor(private readonly posCatalogService: PosCatalogService) {}
 

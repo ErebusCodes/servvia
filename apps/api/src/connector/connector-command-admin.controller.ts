@@ -3,6 +3,7 @@ import { Request } from 'express';
 import { Staff, StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RateLimit } from '../auth/decorators/rate-limit.decorator';
@@ -16,7 +17,7 @@ import { CreateConnectorCommandDto } from './dto/create-connector-command.dto';
  * EFTPOS, a printer, or a Windows host.
  */
 @Controller('venues/:venueId/connector/commands')
-@UseGuards(JwtAuthGuard, RolesGuard, RateLimitGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard)
 export class ConnectorCommandAdminController {
   constructor(private readonly commandService: ConnectorCommandService) {}
 

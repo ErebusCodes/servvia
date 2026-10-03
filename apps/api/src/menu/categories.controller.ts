@@ -4,12 +4,13 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
 
 @Controller('admin/menu/categories')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 

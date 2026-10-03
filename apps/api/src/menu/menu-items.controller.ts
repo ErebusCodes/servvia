@@ -17,12 +17,13 @@ import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
 
 @Controller('admin/menu/items')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
 @Roles(StaffRole.admin, StaffRole.manager)
 export class MenuItemsController {
   constructor(private readonly menuItemsService: MenuItemsService) {}

@@ -548,6 +548,23 @@ So that a revoked session can never become valid again for the rest of its life.
 - Depends on: Story 2.5.
 - Status: DONE
 
+### Story 2.9: Device and tablet credentials reach only the routes made for them
+
+As an owner,
+I want a PIN-elevated tablet or a KDS screen to reach only the routes built for devices,
+So that a 4-digit PIN on a shared device can never administer the venue.
+
+**Acceptance Criteria:**
+
+**Given** ten administration controllers (menu items and categories, media and media assets, reservations, POS catalogue, connector and connector-command administration, payment observation and its fixtures) and the venue and table writes accepted any signed JWT whose role claim passed, with no device re-check (found in the 2026-10-04 review of Story 12.15), so a tablet elevated with an owner's or admin's PIN, whose token carries that role, could administer them, and kept doing so after the device was revoked
+**When** every JWT route must declare whether it is staff-session-only or device-capable with a device re-check
+**Then** the administration routes refuse every device and tablet credential (403), the device routes still work and stop when the device is revoked, and an architecture test fails if any JWT route declares neither.
+
+- Traceability: SEC-16.1 (least privilege), NFR-SEC-1; Story 2.4 (attributable administration); Story 12.15 review finding.
+- Depends on: none.
+- Implementation (2026-10-04): StaffSessionOnlyGuard on the ten controllers and on the venue and table routes that are not used by tablets (the tablet keeps the table list and venue tax configuration, both with TabletTokenActiveGuard). The Order Tablet and KDS frontends call none of the closed routes. `token-scope.architecture.spec.ts` checks every route of every controller (46 routes were unscoped before; none now).
+- Status: DONE
+
 ## Epic 3: Recoverable production data
 
 Operators can bring the production database to a known migration baseline, and can recover it from tested backups. Audit P0-05 and P0-12.

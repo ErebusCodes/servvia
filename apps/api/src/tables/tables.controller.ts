@@ -5,6 +5,7 @@ import { UpdateTableDto } from './dto/update-table.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TabletTokenActiveGuard } from '../auth/guards/tablet-token-active.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
@@ -17,6 +18,7 @@ export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
 
   @Post()
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin)
   async create(
     @Param('venueId') venueId: string,
@@ -52,6 +54,7 @@ export class TablesController {
   }
 
   @Get(':id')
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin, StaffRole.manager, StaffRole.kitchen)
   async findOne(
     @Param('venueId') venueId: string,
@@ -63,6 +66,7 @@ export class TablesController {
   }
 
   @Patch(':id')
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin)
   async update(
     @Param('venueId') venueId: string,
@@ -74,6 +78,7 @@ export class TablesController {
   }
 
   @Delete(':id')
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin)
   async remove(
     @Param('venueId') venueId: string,

@@ -5,6 +5,7 @@ import { UpdateVenueDto } from './dto/update-venue.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TabletTokenActiveGuard } from '../auth/guards/tablet-token-active.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
@@ -17,18 +18,21 @@ export class VenuesController {
   constructor(private readonly venuesService: VenuesService) {}
 
   @Post()
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin)
   async create(@Body() dto: CreateVenueDto, @Req() req: Request & { user: Staff }) {
     return this.venuesService.create(req.user.organizationId, dto);
   }
 
   @Get()
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin, StaffRole.manager)
   async findAll(@Req() req: Request & { user: Staff }) {
     return this.venuesService.findAll(req.user.organizationId);
   }
 
   @Get(':id')
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin, StaffRole.manager)
   async findOne(@Param('id') id: string, @Req() req: Request & { user: Staff }) {
     return this.venuesService.findOne(id, req.user.organizationId);
@@ -64,6 +68,7 @@ export class VenuesController {
   }
 
   @Patch(':id')
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin)
   async update(
     @Param('id') id: string,
@@ -74,6 +79,7 @@ export class VenuesController {
   }
 
   @Delete(':id')
+  @UseGuards(StaffSessionOnlyGuard)
   @Roles(StaffRole.admin)
   async remove(@Param('id') id: string, @Req() req: Request & { user: Staff }) {
     return this.venuesService.remove(id, req.user.organizationId);

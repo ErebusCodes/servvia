@@ -3,13 +3,14 @@ import { Request } from 'express';
 import { Staff, StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { MediaAssetsService } from './media-assets.service';
 import { RequestUploadDto } from './dto/request-upload.dto';
 import { AssociateMenuItemDto } from './dto/associate-menu-item.dto';
 
 @Controller('admin/media-assets')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
 @Roles(StaffRole.admin, StaffRole.manager)
 export class MediaAssetsController {
   constructor(private readonly mediaAssets: MediaAssetsService) {}
