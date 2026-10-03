@@ -138,6 +138,104 @@ jobs:
       - name: Integration tests
         run: npm run test:integration --workspace=apps/api
 
+  core-platform:
+    # Story 1.2 (audit P0-02): Servvia Core (Go) quality gate. Every Go
+    # command runs with verified module checksums (go mod verify, and
+    # GOFLAGS=-mod=readonly), and the database-backed suites run against
+    # real service containers. Finding, recorded and deliberately not changed
+    # here: this job uses PostgreSQL 18, the documented production major
+    # version, while the api-integration job above still uses 16.
+    name: Core (Go) — format, vet, build, race tests with PostgreSQL 18 and Redis
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: servvia
+          POSTGRES_PASSWORD: servvia_ci_only
+          POSTGRES_DB: servvia_core_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U servvia"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # CI-only values for ephemeral service containers; not real secrets.
+      CORE_DB_SERVER_URL: postgresql://servvia:servvia_ci_only@127.0.0.1:5432
+      DATABASE_URL: postgresql://servvia:servvia_ci_only@127.0.0.1:5432/servvia_core_ci
+      SERVVIA_CORE_TEST_DATABASE_URL: postgresql://servvia:servvia_ci_only@127.0.0.1:5432/servvia_core_ci
+      SERVVIA_CORE_TEST_REDIS_ADDR: 127.0.0.1:6379
+      GOFLAGS: -mod=readonly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - name: Prisma schema is valid (apps/api/prisma is the migration authority)
+        run: npx prisma validate --schema apps/api/prisma/schema.prisma
+      - name: Apply every migration from zero
+        run: npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - name: Migrations match the Prisma schema (no drift)
+        run: |
+          psql "$CORE_DB_SERVER_URL/postgres" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE servvia_core_shadow'
+          npx prisma migrate diff \
+            --from-migrations apps/api/prisma/migrations \
+            --to-schema-datamodel apps/api/prisma/schema.prisma \
+            --shadow-database-url "$CORE_DB_SERVER_URL/servvia_core_shadow" \
+            --exit-code
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/core-platform/go.mod
+          cache-dependency-path: services/core-platform/go.sum
+      - name: Module checksums verify
+        working-directory: services/core-platform
+        run: go mod verify
+      - name: gofmt
+        working-directory: services/core-platform
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt needed for:"; echo "$unformatted"; exit 1
+          fi
+      - name: go vet
+        working-directory: services/core-platform
+        run: go vet ./...
+      - name: go build
+        working-directory: services/core-platform
+        run: go build ./...
+      - name: Tests with the race detector (unit, contract, architecture, PostgreSQL and Redis integration)
+        working-directory: services/core-platform
+        run: |
+          rc=0
+          go test -race -count=1 -json ./... > "$RUNNER_TEMP/core-tests.json" || rc=$?
+          jq -r 'select(.Action=="fail" and .Test != null) | "FAIL \(.Package) \(.Test)"' "$RUNNER_TEMP/core-tests.json"
+          jq -s -r '[.[] | select(.Test != null and (.Action=="pass" or .Action=="fail" or .Action=="skip"))]
+            | group_by(.Action) | map("\(.[0].Action): \(length)") | join(", ")' "$RUNNER_TEMP/core-tests.json"
+          exit $rc
+      - name: No suite skipped silently (only the Nest parity suite may skip)
+        run: |
+          skipped="$(jq -r 'select(.Action=="skip" and .Test != null and (.Package | test("/tests/parity$") | not)) | "\(.Package) \(.Test)"' "$RUNNER_TEMP/core-tests.json")"
+          if [ -n "$skipped" ]; then
+            echo "::error::Tests skipped although PostgreSQL and Redis are configured:"; echo "$skipped"; exit 1
+          fi
+      - name: Nest parity suite
+        if: ${{ env.SERVVIA_CORE_PARITY_NEST_URL == '' }}
+        run: echo "::notice::Parity suite skipped explicitly — SERVVIA_CORE_PARITY_NEST_URL is not configured in CI."
+
   admin-console:
     name: Admin Console (Order Tablet / KDS) — lint, typecheck, unit tests, build
     runs-on: ubuntu-latest
