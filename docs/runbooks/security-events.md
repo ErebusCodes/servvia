@@ -26,8 +26,11 @@ This page covers Story 12.13 (foundation) and Story 12.2 (request IDs).
   | `staff_session_refused` | warn |
   | `staff_session_check_failed` | error |
   | `credential_setup_refused` | warn |
+  | `venue_access_denied` | warn (Story 2.10; Core's name and fields) |
+  | `venue_access_check_failed` | error |
   | `rate_limit_exceeded` | warn |
   | `rate_limit_unavailable` | error |
+  | `audit_write_failed` | error (an `AuditLog` row written off the response path could not be written) |
 
 - **Request IDs.** Both services:
   - accept a safe inbound `X-Request-Id` (`[A-Za-z0-9._:-]`, 1–128
@@ -49,22 +52,32 @@ This page covers Story 12.13 (foundation) and Story 12.2 (request IDs).
   - Tests prove all of this: `security-events.spec.ts` and
     `test/security-events.integration-spec.ts`.
 - **Security events are not the audit trail.** `AuditLog` remains the
-  business audit trail, and a refusal writes no `AuditLog` row. To pick these
-  lines out of the Nest API's mixed output, select lines that parse as JSON
-  and have an `event` field.
+  business audit trail. Refused sessions, venue access and rate-limited
+  requests write no `AuditLog` row; a refused sign-in for an existing account
+  also writes a `login_failed` row, off the response path (an unknown address
+  writes none, so waiting for it would reveal which accounts exist). To pick
+  these lines out of the Nest API's mixed output, select lines that parse as
+  JSON and have an `event` field.
+- **Client addresses** (`client_ip`) are the address the rate limiter counts,
+  believed from X-Forwarded-For only behind a loopback proxy
+  (`apps/api/src/config/client-ip.ts`), never a raw header a client wrote.
 
-## What is still owed (Story 12.13 remains BLOCKED for these)
+## What is done, and what is still owed
 
-- **Durable store and shipping:**
-  - a collector on the host reading both services' stdout files;
-  - the store it ships to.
+Kept apart, because they are owned differently:
 
-  The provider and its cost are an owner decision, and no sink is configured
-  in the repository.
-- **Retention:**
-  - at least 90 days, per the acceptance criteria;
-  - anything longer is an owner decision.
-- **Rotation of the NSSM stdout files on the host:**
-  - NSSM's file rotation (`AppRotateFiles`, `AppRotateBytes`) is host
-    configuration, not tracked in this repository;
-  - it is applied with the deployment, which needs authorization.
+1. **Application security events — done.** Structured, redacted events from
+   a fixed taxonomy, with request and correlation IDs, in both services (above).
+   They are emitted to stdout only: that is not durable and not centralized.
+2. **A durable, centralized sink — external/infrastructure, not chosen.** A
+   collector on the host reading both services' stdout, and the store it ships
+   to. No provider is selected and none is configured in the repository; until
+   one is, events exist only in the host's stdout files.
+3. **Host output rotation — infrastructure/operations, not done.** NSSM's
+   rotation (`AppRotateFiles`, `AppRotateBytes`) is host configuration, not in
+   this repository, applied with an authorized deployment (see the cutover
+   list in `docs/windows-production-deployment.md`).
+4. **Retention.** At least 90 days is already established (NFR-AUD; Story
+   12.13's acceptance criteria); it is not a decision still to make. Retention
+   beyond that, and any material recurring cost of a provider, are owner and
+   infrastructure decisions.
