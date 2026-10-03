@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -150,13 +151,22 @@ func refuse(close websocket.StatusCode, code, msg string) *refusal {
 	return &refusal{close: close, code: code, msg: msg}
 }
 
+// errCredentialRevoked: a re-check found the credential revoked, unknown or
+// no longer valid for this venue. It is the only re-check outcome that
+// closes with 4401; any other error is a verification failure (1011).
+var errCredentialRevoked = errors.New("this device has been revoked or is unknown")
+
 // subscriber is an authenticated, authorized identity at one venue.
 type subscriber struct {
 	organizationID, venueID string
 	granted                 []realtime.Audience
 	expiresAt               time.Time // zero: no expiry (device credential)
-	// stillValid re-checks revocation; nil when there is nothing to re-check.
-	stillValid func(context.Context) bool
+	// recheck verifies the credential again (revocation); nil when there is
+	// nothing to re-check. It returns nil when the credential is still
+	// valid, errCredentialRevoked when it is not, and any other error when
+	// it could not be verified. Verification failure fails closed: the
+	// subscription is refused or ended (PRD section 16, items 5 and 12).
+	recheck func(context.Context) error
 }
 
 // ServeHTTP serves GET /api/realtime.
@@ -241,8 +251,21 @@ func (h *Handler) stream(ctx context.Context, conn *websocket.Conn, s *realtime.
 			h.closeWith(ctx, conn, CloseUnauthenticated, "TOKEN_EXPIRED", "The credential expired; reconnect with a fresh one")
 			return
 		case <-revalidate.C:
-			if sub.stillValid != nil && !sub.stillValid(ctx) {
+			if sub.recheck == nil {
+				continue
+			}
+			switch err := sub.recheck(ctx); {
+			case err == nil:
+			case errors.Is(err, errCredentialRevoked):
 				h.closeWith(ctx, conn, CloseUnauthenticated, "UNAUTHENTICATED", "This device has been revoked or is unknown")
+				return
+			default:
+				// Not a revocation: the credential could not be verified. Fail
+				// closed with 1011 (reconnect), never 4401, so a transient
+				// server fault is not reported as a revoked credential.
+				h.logger.WarnContext(ctx, "realtime credential re-check failed",
+					"error", err, "request_id", httpx.RequestIDFrom(ctx))
+				h.closeWith(ctx, conn, websocket.StatusInternalError, "INTERNAL", "Internal server error")
 				return
 			}
 		case <-ping.C:
@@ -347,12 +370,23 @@ func (h *Handler) tokenSubscriber(ctx context.Context, token, requestedVenue str
 	if p.DeviceID != "" && (p.Kind == identity.KindTabletStaff || p.Kind == identity.KindTabletManager ||
 		p.Kind == identity.KindTabletDevice) {
 		deviceID := p.DeviceID
-		sub.stillValid = func(ctx context.Context) bool {
+		sub.recheck = func(ctx context.Context) error {
 			active, err := h.tablets.TabletDeviceActive(ctx, deviceID)
-			return err != nil || active // a lookup failure is not a revocation
+			switch {
+			case err != nil:
+				return fmt.Errorf("check tablet device: %w", err)
+			case !active:
+				return errCredentialRevoked
+			}
+			return nil
 		}
-		if !sub.stillValid(ctx) {
+		// Admission fails closed too: a lookup error is returned as an error
+		// (1011 INTERNAL), and a revoked or unknown device is refused (4401).
+		switch err := sub.recheck(ctx); {
+		case errors.Is(err, errCredentialRevoked):
 			return subscriber{}, refuse(CloseUnauthenticated, "UNAUTHENTICATED", "This device has been revoked or is unknown")
+		case err != nil:
+			return subscriber{}, err
 		}
 	}
 	return sub, nil
@@ -383,10 +417,15 @@ func (h *Handler) deviceSubscriber(ctx context.Context, token, requestedVenue st
 	}
 	granted, _ := realtime.Grant(realtime.Identity{Kind: realtime.Device, DeviceKind: string(devices.KindKDS)})
 	return subscriber{organizationID: v.OrganizationID, venueID: v.ID, granted: granted,
-		stillValid: func(ctx context.Context) bool {
+		recheck: func(ctx context.Context) error {
 			_, err := h.devices.Authenticate(ctx, token, devices.KindKDS, v.ID)
-			return err == nil || !(errors.Is(err, devices.ErrUnauthenticated) || errors.Is(err, devices.ErrWrongKind) ||
-				errors.Is(err, devices.ErrWrongVenue))
+			switch {
+			case err == nil:
+				return nil
+			case errors.Is(err, devices.ErrUnauthenticated), errors.Is(err, devices.ErrWrongKind), errors.Is(err, devices.ErrWrongVenue):
+				return errCredentialRevoked
+			}
+			return fmt.Errorf("check kds device: %w", err)
 		}}, nil
 }
 

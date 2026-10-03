@@ -45,7 +45,7 @@ development_status:
   epic-1-retrospective: optional
 
   epic-2: backlog
-  2-1-realtime-credential-revocation-fails-closed: backlog
+  2-1-realtime-credential-revocation-fails-closed: done
   2-2-staff-venue-access-is-enforced-by-core: backlog
   2-3-remove-the-unauthenticated-local-file-write-endpoint-from-pr: backlog
   2-4-named-staff-sign-in-replaces-the-shared-admin-pin: backlog
