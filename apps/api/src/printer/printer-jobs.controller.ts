@@ -1,4 +1,13 @@
-import { Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Request } from 'express';
 import { StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -7,9 +16,29 @@ import { TabletTokenActiveGuard } from '../auth/guards/tablet-token-active.guard
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
-import { PrinterJobsService } from './printer-jobs.service';
+import { auditActorFromUser } from '../audit/audit-actor';
+import { PrinterJobsService, ReprintActor } from './printer-jobs.service';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
+
+/**
+ * The staff member behind a reprint or retry, with the tablet they acted
+ * through (Story 12.15). Both actions record the requesting Staff row, so a
+ * credential that names no staff member is refused before anything changes.
+ */
+function reprintActorOf(user: AuthenticatedUser): ReprintActor {
+  const actor = auditActorFromUser(user);
+  if (actor.actorType === 'device' || actor.actorType === 'system') {
+    throw new ForbiddenException('Only a staff member may request this');
+  }
+  return {
+    id: actor.actorId,
+    email: actor.actorEmail,
+    role: actor.actorRole,
+    deviceKind: actor.deviceKind,
+    deviceId: actor.deviceId,
+  };
+}
 
 const PRINTER_JOB_VIEW_ROLES = [
   StaffRole.admin,
@@ -67,7 +96,7 @@ export class PrinterJobsController {
     @Param('jobId') jobId: string,
   ) {
     const scopedVenueId = resolveVenueScope(req.user, undefined);
-    const actor = { id: req.user.id, email: req.user.email, role: req.user.role };
+    const actor = reprintActorOf(req.user);
     return this.printerJobsService.requestReprint(
       printerId,
       jobId,
@@ -89,7 +118,7 @@ export class PrinterJobsController {
     @Param('jobId') jobId: string,
   ) {
     const scopedVenueId = resolveVenueScope(req.user, undefined);
-    const actor = { id: req.user.id, email: req.user.email, role: req.user.role };
+    const actor = reprintActorOf(req.user);
     return this.printerJobsService.retryDispatch(
       printerId,
       jobId,

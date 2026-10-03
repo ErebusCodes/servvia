@@ -1315,6 +1315,7 @@ So that the kitchen can work without errors.
 
 - Traceability: NFR-AUD, SEC-16.1; Story 2.7 finding.
 - Decision (Tier 2, 2026-10-03): actor identity, device identity and provenance are separate. `AuditLog.actorType` is staff, device or system; the Staff foreign key stays for staff actors only, with a CHECK constraint per actor type and an UPDATE-rejecting trigger. No synthetic Staff row is created for a device. `AuditLog.venueId` restricts venue deletion instead of nulling history.
+- Follow-up (2026-10-04 review): printer reprint and retry and native-round resolution recorded a staff member acting through an elevated tablet without the tablet; they now record it, and refuse a device credential (which names no staff member) before changing anything.
 - Status: DONE
 
 ### Story 12.16: Device-originated orders without a synthetic staff creator

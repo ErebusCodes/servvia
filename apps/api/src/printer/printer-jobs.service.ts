@@ -24,10 +24,16 @@ const NON_REPRINTABLE_STATUSES: PrintJobStatus[] = [
   PrintJobStatus.connector_dispatched,
 ];
 
-interface ReprintActor {
+/**
+ * The staff member requesting the reprint or retry, and the device they
+ * acted through when it was an elevated tablet (Story 12.15).
+ */
+export interface ReprintActor {
   id: string;
   email: string;
   role: StaffRole;
+  deviceKind?: string;
+  deviceId?: string;
 }
 
 /**
@@ -226,6 +232,8 @@ export class PrinterJobsService {
       actorId: actor.id,
       actorEmail: actor.email,
       actorRole: actor.role,
+      deviceKind: actor.deviceKind,
+      deviceId: actor.deviceId,
       action: 'PRINTER_JOB_REPRINT_REQUESTED',
       resource: 'printer_job',
       resourceId: reprint.id,
@@ -323,6 +331,8 @@ export class PrinterJobsService {
       actorId: actor.id,
       actorEmail: actor.email,
       actorRole: actor.role,
+      deviceKind: actor.deviceKind,
+      deviceId: actor.deviceId,
       action: 'PRINTER_JOB_MANUAL_RETRY_REQUESTED',
       resource: 'printer_job',
       resourceId: jobId,

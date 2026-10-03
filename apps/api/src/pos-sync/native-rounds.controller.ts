@@ -89,6 +89,7 @@ import {
   type RoundStatusView,
   type SubmitRoundResult,
 } from './waiterpad/native-table-round.service';
+import { auditActorFromUser } from '../audit/audit-actor';
 import { SubmitNativeRoundDto } from './dto/submit-native-round.dto';
 import { ResolveNativeRoundDto } from './dto/resolve-native-round.dto';
 
@@ -591,9 +592,8 @@ export class NativeRoundsController {
         .logAuthEvent({
           organizationId: req.user.organizationId,
           venueId: order.venueId,
-          actorId: req.user.id,
-          actorEmail: req.user.email,
-          actorRole: req.user.role,
+          // The staff member, and the tablet they acted through (Story 12.15).
+          ...auditActorFromUser(req.user),
           action:
             result.outcome === 'present'
               ? 'NATIVE_ROUND_ATTESTED_PRESENT'
