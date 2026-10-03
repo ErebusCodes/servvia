@@ -12,6 +12,7 @@ import Redis from 'ioredis';
 import { Request, Response } from 'express';
 import { RATE_LIMIT_KEY, RateLimitOptions } from '../decorators/rate-limit.decorator';
 import { REDIS_CLIENT } from '../../redis/redis.constants';
+import { logSecurityEvent } from '../../observability/security-events';
 
 const LUA_LIMIT_SCRIPT = `
   local key = KEYS[1]
@@ -211,6 +212,12 @@ export class RateLimitGuard implements CanActivate {
       const oldestTime = result[2] ?? 0;
 
       if (isRateLimited) {
+        logSecurityEvent('rate_limit_exceeded', 'request over the per-address limit', {
+          route: routeId,
+          client_ip: ip,
+          limit,
+          window_seconds: windowSeconds,
+        });
         let retryAfterSeconds = windowSeconds;
         if (oldestTime > 0) {
           const timeToWaitMs = oldestTime + windowMs - now;
@@ -237,9 +244,10 @@ export class RateLimitGuard implements CanActivate {
       if (err instanceof HttpException) {
         throw err;
       }
-      this.logger.error(
-        `RateLimitGuard error (failing closed): ${err instanceof Error ? err.message : String(err)}`,
-      );
+      logSecurityEvent('rate_limit_unavailable', 'rate limit unavailable, failing closed', {
+        route: routeId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       throw new HttpException(
         {
           statusCode: HttpStatus.SERVICE_UNAVAILABLE,

@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { HttpException, Logger, UnauthorizedException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '@nestjs/common';
+import { setSecurityEventSink } from '../observability/security-events';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { StaffService } from '../staff/staff.service';
@@ -279,16 +280,20 @@ describe('AuthService', () => {
     });
 
     it('never logs the submitted address of an unknown account', async () => {
-      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-      mockStaffService.findByEmail.mockResolvedValue(null);
-      mockStaffService.verifyPassword.mockResolvedValue(false);
-      await expect(service.validateLogin('someone.secret@example.com', 'x')).rejects.toThrow(
-        UnauthorizedException,
-      );
-      const logged = warn.mock.calls.map((c) => String(c[0])).join('\n');
-      expect(logged).toContain('login_failed_unknown_account');
-      expect(logged).not.toContain('someone.secret');
-      warn.mockRestore();
+      const lines: string[] = [];
+      const previous = setSecurityEventSink((line) => lines.push(line));
+      try {
+        mockStaffService.findByEmail.mockResolvedValue(null);
+        mockStaffService.verifyPassword.mockResolvedValue(false);
+        await expect(service.validateLogin('someone.secret@example.com', 'x')).rejects.toThrow(
+          UnauthorizedException,
+        );
+      } finally {
+        setSecurityEventSink(previous);
+      }
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0])).toMatchObject({ event: 'login_failed_unknown_account' });
+      expect(lines[0]).not.toContain('someone.secret');
     });
 
     it('uses the same error message for all failure modes', async () => {

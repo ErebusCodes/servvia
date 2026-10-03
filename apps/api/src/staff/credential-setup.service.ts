@@ -1,10 +1,11 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit.service';
 import { StaffSessionService } from '../auth/staff-session.service';
+import { logSecurityEvent } from '../observability/security-events';
 
 /**
  * How long a credential setup code stays usable (Story 8.1). Long enough to
@@ -38,8 +39,6 @@ export async function unusablePasswordHash(): Promise<string> {
  */
 @Injectable()
 export class CredentialSetupService {
-  private readonly logger = new Logger(CredentialSetupService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditLogService,
@@ -117,7 +116,22 @@ export class CredentialSetupService {
       token.staff.deletedAt ||
       !token.staff.organization.isActive
     ) {
-      this.logger.warn('Credential setup refused');
+      // The reason is for the operator only; the caller always gets the same 401.
+      logSecurityEvent('credential_setup_refused', 'credential setup code refused', {
+        reason: !token
+          ? 'unknown'
+          : !secretMatches
+            ? 'mismatch'
+            : token.usedAt
+              ? 'used'
+              : token.revokedAt
+                ? 'replaced'
+                : token.expiresAt <= now
+                  ? 'expired'
+                  : 'account_unavailable',
+        staff_id: token && secretMatches ? token.staffId : undefined,
+        client_ip: ipAddress,
+      });
       throw new UnauthorizedException(INVALID_SETUP_CODE_MESSAGE);
     }
 

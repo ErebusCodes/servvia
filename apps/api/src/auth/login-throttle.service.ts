@@ -3,13 +3,13 @@ import {
   HttpStatus,
   Inject,
   Injectable,
-  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac } from 'crypto';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { logSecurityEvent } from '../observability/security-events';
 
 /** Sign-in attempts allowed per account within the window (Story 2.4, NFR-SEC-2). */
 export const LOGIN_ACCOUNT_ATTEMPT_LIMIT = 10;
@@ -52,8 +52,6 @@ export function accountFingerprint(email: string, secret: string): string {
  */
 @Injectable()
 export class LoginThrottleService {
-  private readonly logger = new Logger(LoginThrottleService.name);
-
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly config: ConfigService,
@@ -80,17 +78,29 @@ export class LoginThrottleService {
         ),
       );
     } catch (err) {
-      this.logger.error(
-        `login_throttle_unavailable error=${err instanceof Error ? err.message : String(err)}`,
+      logSecurityEvent(
+        'login_throttle_unavailable',
+        'sign-in throttle unavailable, failing closed',
+        {
+          error: err instanceof Error ? err.message : String(err),
+        },
       );
       throw new ServiceUnavailableException('Authentication is temporarily unavailable.');
     }
     if (!Number.isFinite(count)) {
-      this.logger.error('login_throttle_unavailable error=invalid reply');
+      logSecurityEvent(
+        'login_throttle_unavailable',
+        'sign-in throttle unavailable, failing closed',
+        {
+          error: 'invalid reply',
+        },
+      );
       throw new ServiceUnavailableException('Authentication is temporarily unavailable.');
     }
     if (count > LOGIN_ACCOUNT_ATTEMPT_LIMIT) {
-      this.logger.warn(`login_throttled account=${this.fingerprint(email)}`);
+      logSecurityEvent('login_throttled', 'sign-in attempts over the per-account limit', {
+        account: this.fingerprint(email),
+      });
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
@@ -108,9 +118,9 @@ export class LoginThrottleService {
       await this.redis.del(this.key(email));
     } catch (err) {
       // The sign-in already succeeded; a count left behind only expires later.
-      this.logger.warn(
-        `login_throttle_clear_failed error=${err instanceof Error ? err.message : String(err)}`,
-      );
+      logSecurityEvent('login_throttle_unavailable', 'sign-in throttle count not cleared', {
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }

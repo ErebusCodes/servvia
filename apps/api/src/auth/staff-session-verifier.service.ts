@@ -1,4 +1,5 @@
-import { HttpException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { logSecurityEvent } from '../observability/security-events';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { StaffService } from '../staff/staff.service';
 import { StaffSessionService } from './staff-session.service';
@@ -25,8 +26,6 @@ export class StaffSessionCheckError extends Error {
  */
 @Injectable()
 export class StaffSessionVerifier {
-  private readonly logger = new Logger(StaffSessionVerifier.name);
-
   constructor(
     private readonly staffService: StaffService,
     private readonly sessions: StaffSessionService,
@@ -54,13 +53,24 @@ export class StaffSessionVerifier {
     } catch (err) {
       if (err instanceof HttpException) {
         if (err instanceof UnauthorizedException) {
-          this.logger.warn(
-            `staff_session_refused staff_id=${payload.sub} kind=${payload.kind ?? 'staff_session'} role=${payload.role}`,
+          // Same event and fields as Go Core's LogStaffSessionRefused.
+          logSecurityEvent(
+            'staff_session_refused',
+            'staff token refused: deactivated, logged out or without a session',
+            {
+              staff_id: payload.sub,
+              kind: payload.kind ?? 'staff_session',
+              role: payload.role,
+              organization_id: payload.organizationId,
+            },
           );
         }
         throw err;
       }
-      this.logger.error(`Staff session check failed: ${(err as Error).message}`);
+      logSecurityEvent('staff_session_check_failed', 'staff session check failed, failing closed', {
+        staff_id: payload.sub,
+        error: (err as Error).message,
+      });
       throw new StaffSessionCheckError();
     }
   }

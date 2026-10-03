@@ -1105,6 +1105,7 @@ So that an incident can be reconstructed.
 
 - Traceability: OBS-20; audit P1-02.
 - Depends on: none.
+- Progress (2026-10-04): Nest now assigns and echoes `X-Request-Id` and `X-Correlation-Id` by Core's rules and attaches both to its security events. Nest does not call Core today, so there is nothing to forward yet. Remaining: Core metrics, and request IDs on Nest's other (non-security) logs.
 - Status: READY
 
 ### Story 12.3: Core database timeouts, device-route rate limits and dead-letter replay
@@ -1283,7 +1284,8 @@ So that refusals such as `venue_access_denied` and `staff_session_refused` can b
 
 - Traceability: NFR-AUD, NFR-OBS; venue-access denial persistence (Tier 2, 2026-10-03 batch).
 - Depends on: Stories 4.1, 4.2 and 12.2.
-- Status: BLOCKED: retention beyond the 90-day floor and the sink's cost need owner decisions (Tier 3).
+- Foundation (2026-10-04, unblocked part): the Nest API emits security events as JSON lines in Core's shape from a fixed taxonomy (`apps/api/src/observability/security-events.ts`; sign-in, session, credential-setup and rate-limit refusals and failures), with every field redacted in-process before it is written (secret-named fields, JWTs, Bearer/Basic values, setup codes, email addresses, control characters; tested unit and end to end), each carrying the request and correlation IDs (Story 12.2). AuditLog is unchanged and no refusal writes to it. Contract and what remains: `docs/runbooks/security-events.md`.
+- Status: BLOCKED for the rest: the durable sink and its cost, retention beyond the 90-day floor (owner decisions, Tier 3), and NSSM stdout rotation on the host (deployment, needs authorization).
 
 ### Story 12.14: Isolated queue infrastructure for Nest integration tests
 

@@ -1,4 +1,4 @@
-import { HttpException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -8,14 +8,13 @@ import { isUUID } from 'class-validator';
 import { StaffService } from '../../staff/staff.service';
 import { StaffSessionService } from '../staff-session.service';
 import { STAFF_SESSION_ENDED_MESSAGE } from '../staff-session';
+import { logSecurityEvent } from '../../observability/security-events';
 
 /** The refreshing staff member and the login session the refresh token belongs to. */
 export type StaffWithSession = Staff & { sessionId: string };
 
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
-  private readonly logger = new Logger(JwtRefreshStrategy.name);
-
   constructor(
     config: ConfigService,
     private readonly staffService: StaffService,
@@ -52,14 +51,26 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
       live = await this.sessions.isLive(payload.sid, payload.sub);
     } catch (err) {
       if (err instanceof HttpException) throw err;
-      this.logger.error(`Session check failed: ${(err as Error).message}`);
+      logSecurityEvent(
+        'staff_session_check_failed',
+        'refresh session check failed, failing closed',
+        {
+          staff_id: payload.sub,
+          error: (err as Error).message,
+        },
+      );
       throw new Error('Session check failed');
     }
-    if (!live) {
-      throw new UnauthorizedException(STAFF_SESSION_ENDED_MESSAGE);
-    }
-    const staff = await this.staffService.findById(payload.sub);
-    if (!staff || !staff.isActive) {
+    const staff = live ? await this.staffService.findById(payload.sub) : null;
+    if (!live || !staff || !staff.isActive) {
+      logSecurityEvent(
+        'staff_session_refused',
+        'refresh refused: session ended or staff inactive',
+        {
+          staff_id: payload.sub,
+          kind: 'refresh',
+        },
+      );
       throw new UnauthorizedException(STAFF_SESSION_ENDED_MESSAGE);
     }
     return { ...staff, sessionId: payload.sid };

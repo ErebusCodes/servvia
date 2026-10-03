@@ -12,6 +12,7 @@ import { isProductionRuntime } from '../config/runtime-environment';
 import { StaffSessionService } from './staff-session.service';
 import { isStaffSessionKind } from './staff-session';
 import { LoginThrottleService } from './login-throttle.service';
+import { logSecurityEvent } from '../observability/security-events';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -63,6 +64,12 @@ export class AuthService implements OnModuleInit {
     const valid = await this.staffService.verifyPassword(hashToVerify, password);
     if (!valid || !staff || !staff.isActive) {
       if (staff) {
+        logSecurityEvent('login_failed', 'staff sign-in refused', {
+          staff_id: staff.id,
+          organization_id: staff.organizationId,
+          reason: valid ? 'inactive' : 'wrong_password',
+          client_ip: ipAddress,
+        });
         await this.auditLogService.logAuthEvent({
           organizationId: staff.organizationId,
           actorId: staff.id,
@@ -75,9 +82,10 @@ export class AuthService implements OnModuleInit {
         });
       } else {
         // Never the address itself: it is user input, and personal data.
-        this.logger.warn(
-          `login_failed_unknown_account account=${this.loginThrottle.fingerprint(email)}`,
-        );
+        logSecurityEvent('login_failed_unknown_account', 'sign-in for no account', {
+          account: this.loginThrottle.fingerprint(email),
+          client_ip: ipAddress,
+        });
       }
       throw new UnauthorizedException('Invalid credentials');
     }

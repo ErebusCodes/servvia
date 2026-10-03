@@ -27,6 +27,7 @@ import { SecurityHeadersMiddleware } from './common/middleware/security-headers.
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
 import { validateEnvironment } from './config/environment.validation';
 import { QUEUE_PREFIX_PATTERN } from './queue/queue.constants';
+import { RequestContextMiddleware } from './observability/request-context';
 
 export const configValidationSchema = Joi.object({
   // Required, no default: an unset environment refuses to start rather than
@@ -194,7 +195,8 @@ export const configValidationSchema = Joi.object({
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(SecurityHeadersMiddleware, CsrfMiddleware)
+      // First, so every later middleware and handler logs with the request's IDs.
+      .apply(RequestContextMiddleware, SecurityHeadersMiddleware, CsrfMiddleware)
       .forRoutes({ path: '*path', method: RequestMethod.ALL });
   }
 }
