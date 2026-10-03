@@ -55,9 +55,13 @@ export function productionConfigurationViolations(config: Record<string, unknown
     violations.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must differ');
   }
 
-  const adminPin = asString(config.ADMIN_CONSOLE_PIN);
-  if (adminPin) {
-    violations.push(...pinViolations('ADMIN_CONSOLE_PIN', adminPin));
+  // Story 2.4: the shared Admin Console PIN is gone; administrators sign in
+  // by name. A host that still carries the old secret is refused, so nobody
+  // relies on, or keeps, a PIN that no longer opens anything.
+  if (asString(config.ADMIN_CONSOLE_PIN)) {
+    violations.push(
+      'ADMIN_CONSOLE_PIN is no longer used (administrators sign in by name); remove it',
+    );
   }
 
   const kdsPins = asString(config.KDS_VENUE_PINS);

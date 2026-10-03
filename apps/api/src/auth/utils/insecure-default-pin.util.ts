@@ -4,8 +4,8 @@ import { isProductionRuntime } from '../../config/runtime-environment';
 /**
  * The single value checked into `.env.example`/`docker-compose.yml` as the
  * default for every PIN-based auth surface in this repository
- * (`KDS_VENUE_PINS`, `ADMIN_CONSOLE_PIN`) — see docs/decisions-log.md DL-081
- * and the separate Admin Console `AdminPinGate` security finding. A
+ * (`KDS_VENUE_PINS`; the Admin Console PIN was removed in Story 2.4) — see
+ * docs/decisions-log.md DL-081. A
  * deployment that silently keeps this value in production grants
  * whoever-guesses-it real access, so every PIN-verification call site must
  * refuse to compare against it once `NODE_ENV=production`, rather than

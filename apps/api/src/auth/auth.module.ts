@@ -6,6 +6,7 @@ import { StaffModule } from '../staff/staff.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthService } from './auth.service';
 import { SessionsModule } from './sessions.module';
+import { LoginThrottleService } from './login-throttle.service';
 import { StaffSessionVerifier } from './staff-session-verifier.service';
 import { AuthController } from './auth.controller';
 import { KdsAuthController } from './kds-auth.controller';
@@ -37,6 +38,7 @@ import { ServiceTokenGuard } from './guards/service-token.guard';
   controllers: [AuthController, KdsAuthController],
   providers: [
     AuthService,
+    LoginThrottleService,
     StaffSessionVerifier,
     KdsAuthService,
     JwtStrategy,

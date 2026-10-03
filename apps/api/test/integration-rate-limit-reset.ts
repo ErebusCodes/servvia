@@ -35,7 +35,9 @@ beforeAll(async () => {
   });
   try {
     await redis.connect();
-    const keys = await redis.keys('rate-limit:*');
+    // Per-address buckets, and Story 2.4's per-account sign-in counts, which
+    // earlier files' deliberate failed sign-ins would otherwise carry over.
+    const keys = [...(await redis.keys('rate-limit:*')), ...(await redis.keys('login-account:*'))];
     if (keys.length > 0) await redis.del(...keys);
   } catch {
     // Best-effort only: if Redis isn't reachable at all, the test file's

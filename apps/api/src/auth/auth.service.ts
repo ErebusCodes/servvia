@@ -8,11 +8,10 @@ import ms from 'ms';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { StaffService } from '../staff/staff.service';
 import { AuditLogService } from '../audit/audit.service';
-import { safeCompare } from '../common/utils/safe-compare';
-import { assertPinNotInsecureDefault } from './utils/insecure-default-pin.util';
 import { isProductionRuntime } from '../config/runtime-environment';
 import { StaffSessionService } from './staff-session.service';
 import { isStaffSessionKind } from './staff-session';
+import { LoginThrottleService } from './login-throttle.service';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -27,6 +26,7 @@ export class AuthService implements OnModuleInit {
     private readonly staffService: StaffService,
     private readonly auditLogService: AuditLogService,
     private readonly sessions: StaffSessionService,
+    private readonly loginThrottle: LoginThrottleService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -50,6 +50,9 @@ export class AuthService implements OnModuleInit {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<Staff> {
+    // Story 2.4: at most LOGIN_ACCOUNT_ATTEMPT_LIMIT attempts per account per
+    // window, for every email alike, before anything is looked up.
+    await this.loginThrottle.reserveAttempt(email);
     const staff = await this.staffService.findByEmail(email);
     // Always verify against a hash regardless of whether staff was found.
     // This normalises response time and prevents email enumeration via timing.
@@ -71,49 +74,14 @@ export class AuthService implements OnModuleInit {
           userAgent,
         });
       } else {
-        this.logger.warn(`Anonymous login failure: email: ${email}`);
+        // Never the address itself: it is user input, and personal data.
+        this.logger.warn(
+          `login_failed_unknown_account account=${this.loginThrottle.fingerprint(email)}`,
+        );
       }
       throw new UnauthorizedException('Invalid credentials');
     }
-    return staff;
-  }
-
-  async validateAdminPin(pin: string, ipAddress?: string, userAgent?: string): Promise<Staff> {
-    const configuredPin = this.config.get<string>('ADMIN_CONSOLE_PIN');
-    const configuredEmail = this.config.get<string>('ADMIN_CONSOLE_EMAIL');
-
-    if (!configuredPin || !configuredEmail) {
-      this.logger.warn('Admin console PIN login failed');
-      throw new UnauthorizedException('Invalid PIN');
-    }
-
-    assertPinNotInsecureDefault(configuredPin, 'ADMIN_CONSOLE_PIN');
-
-    if (!safeCompare(pin, configuredPin)) {
-      this.logger.warn('Admin console PIN login failed');
-      throw new UnauthorizedException('Invalid PIN');
-    }
-
-    const staff = await this.staffService.findByEmail(configuredEmail);
-    if (
-      !staff ||
-      !staff.isActive ||
-      (staff.role !== StaffRole.owner && staff.role !== StaffRole.admin)
-    ) {
-      this.logger.warn('Admin console PIN account is unavailable or lacks an admin role');
-      throw new UnauthorizedException('Invalid PIN');
-    }
-
-    await this.auditLogService.logAuthEvent({
-      organizationId: staff.organizationId,
-      actorId: staff.id,
-      actorEmail: staff.email,
-      actorRole: staff.role,
-      action: 'login',
-      resource: 'auth',
-      ipAddress,
-      userAgent,
-    });
+    await this.loginThrottle.clear(email);
     return staff;
   }
 

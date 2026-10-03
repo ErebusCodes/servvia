@@ -427,9 +427,9 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
   });
 
-  // ── Local-development PIN "108" — Kitchen Display / Order Tablet / Admin ──
-  // Console. Proves the real HTTP path end to end for whatever PIN is
-  // actually configured locally (KDS_VENUE_PINS / ADMIN_CONSOLE_PIN) — these
+  // ── Local-development PIN "108" — Kitchen Display / Order Tablet ──────────
+  // Proves the real HTTP path end to end for whatever PIN is actually
+  // configured locally (KDS_VENUE_PINS) — these
   // early-return, exactly like the block above, if this environment has not
   // configured the seeded venue/account with a real value, so this suite
   // stays honest in CI (which does not set KDS_VENUE_PINS) as well as local
@@ -459,41 +459,6 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
       await request(app.getHttpServer())
         .post('/api/kiosk/kds/auth')
         .send({ venueId: seededVenue.id, pin: '999' })
-        .expect(401);
-    });
-
-    it('Admin Console: PIN login against the configured owner account issues a real owner-role staff token, scoped to the real organisation', async () => {
-      const configuredPin = process.env.ADMIN_CONSOLE_PIN;
-      const configuredEmail = process.env.ADMIN_CONSOLE_EMAIL;
-      if (!configuredPin || !configuredEmail) {
-        return; // not configured in this environment
-      }
-
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/admin-pin')
-        .send({ pin: configuredPin })
-        .expect(200);
-      expect(res.body.accessToken).toEqual(expect.any(String));
-      expect(res.body.user.email).toBe(configuredEmail);
-      expect(['owner', 'admin']).toContain(res.body.user.role);
-
-      // The issued token must be a genuine staff-tier JWT (no `kind` claim
-      // — the same shape a normal email/password login produces), carrying
-      // the real owner/admin's own role and real organisation, never a
-      // synthetic or device-tier identity. Decoded directly rather than
-      // exercised against a business-logic endpoint, so this assertion has
-      // no order/print/billing side effects.
-      const payload = JSON.parse(
-        Buffer.from((res.body.accessToken as string).split('.')[1], 'base64').toString('utf8'),
-      ) as { sub: string; role: string; organizationId: string; kind?: string };
-      expect(payload.kind).toBeUndefined();
-      expect(['owner', 'admin']).toContain(payload.role);
-      expect(payload.organizationId).toEqual(expect.any(String));
-
-      // An incorrect PIN must still fail.
-      await request(app.getHttpServer())
-        .post('/api/auth/admin-pin')
-        .send({ pin: '999999' })
         .expect(401);
     });
   });

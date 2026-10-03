@@ -1,12 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpException, Logger, UnauthorizedException } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { StaffService } from '../staff/staff.service';
 import { AuditLogService } from '../audit/audit.service';
 import { StaffSessionService } from './staff-session.service';
+import { LoginThrottleService } from './login-throttle.service';
 import { StaffRole, Staff } from '@prisma/client';
 
 const mockJwtService = {
@@ -32,6 +33,12 @@ const mockAuditLogService = {
 const mockSessions = {
   start: jest.fn(),
   revoke: jest.fn(),
+};
+
+const mockLoginThrottle = {
+  reserveAttempt: jest.fn(),
+  clear: jest.fn(),
+  fingerprint: jest.fn((email: string) => `fp(${email.length})`),
 };
 
 const fakeStaff: Staff = {
@@ -67,6 +74,7 @@ describe('AuthService', () => {
         { provide: StaffService, useValue: mockStaffService },
         { provide: AuditLogService, useValue: mockAuditLogService },
         { provide: StaffSessionService, useValue: mockSessions },
+        { provide: LoginThrottleService, useValue: mockLoginThrottle },
       ],
     }).compile();
     service = module.get<AuthService>(AuthService);
@@ -248,60 +256,47 @@ describe('AuthService', () => {
       );
     });
 
+    it('reserves a per-account attempt before looking anything up (Story 2.4)', async () => {
+      mockLoginThrottle.reserveAttempt.mockRejectedValueOnce(new HttpException('Too many', 429));
+      await expect(service.validateLogin('owner@verdura.co.nz', 'correct')).rejects.toThrow(
+        HttpException,
+      );
+      expect(mockLoginThrottle.reserveAttempt).toHaveBeenCalledWith('owner@verdura.co.nz');
+      expect(mockStaffService.findByEmail).not.toHaveBeenCalled();
+      expect(mockStaffService.verifyPassword).not.toHaveBeenCalled();
+    });
+
+    it('clears the account count only on success', async () => {
+      mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
+      mockStaffService.verifyPassword.mockResolvedValueOnce(false);
+      await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockLoginThrottle.clear).not.toHaveBeenCalled();
+      mockStaffService.verifyPassword.mockResolvedValueOnce(true);
+      await service.validateLogin('owner@verdura.co.nz', 'correct');
+      expect(mockLoginThrottle.clear).toHaveBeenCalledWith('owner@verdura.co.nz');
+    });
+
+    it('never logs the submitted address of an unknown account', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      mockStaffService.findByEmail.mockResolvedValue(null);
+      mockStaffService.verifyPassword.mockResolvedValue(false);
+      await expect(service.validateLogin('someone.secret@example.com', 'x')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      const logged = warn.mock.calls.map((c) => String(c[0])).join('\n');
+      expect(logged).toContain('login_failed_unknown_account');
+      expect(logged).not.toContain('someone.secret');
+      warn.mockRestore();
+    });
+
     it('uses the same error message for all failure modes', async () => {
       mockStaffService.findByEmail.mockResolvedValue(null);
       mockStaffService.verifyPassword.mockResolvedValue(false);
       await expect(service.validateLogin('nobody@verdura.co.nz', 'any')).rejects.toThrow(
         new UnauthorizedException('Invalid credentials'),
       );
-    });
-  });
-
-  describe('validateAdminPin', () => {
-    beforeEach(() => {
-      mockConfigService.get.mockImplementation((key: string, def: string): string => {
-        if (key === 'ADMIN_CONSOLE_PIN') return '108';
-        if (key === 'ADMIN_CONSOLE_EMAIL') return 'owner@verdura.co.nz';
-        return def;
-      });
-    });
-
-    it('returns the configured active owner for PIN 108 and audits the login', async () => {
-      mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
-
-      await expect(service.validateAdminPin('108', '1.2.3.4', 'Mozilla')).resolves.toBe(fakeStaff);
-      expect(mockStaffService.findByEmail).toHaveBeenCalledWith('owner@verdura.co.nz');
-      expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ actorId: fakeStaff.id, action: 'login', resource: 'auth' }),
-      );
-    });
-
-    it('rejects an incorrect PIN before looking up an account', async () => {
-      await expect(service.validateAdminPin('999')).rejects.toThrow(
-        new UnauthorizedException('Invalid PIN'),
-      );
-      expect(mockStaffService.findByEmail).not.toHaveBeenCalled();
-    });
-
-    it('fails closed when PIN login is not configured', async () => {
-      mockConfigService.get.mockImplementation((_key: string, def: string): string => def);
-      await expect(service.validateAdminPin('108')).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('rejects a configured non-admin account', async () => {
-      mockStaffService.findByEmail.mockResolvedValue({ ...fakeStaff, role: StaffRole.cashier });
-      await expect(service.validateAdminPin('108')).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('fails closed in production when the configured PIN is still the insecure checked-in default ("108")', async () => {
-      const previousEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-      try {
-        await expect(service.validateAdminPin('108')).rejects.toThrow();
-        expect(mockStaffService.findByEmail).not.toHaveBeenCalled();
-      } finally {
-        process.env.NODE_ENV = previousEnv;
-      }
     });
   });
 

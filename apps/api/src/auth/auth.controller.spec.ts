@@ -32,7 +32,6 @@ const fakeStaff: Staff = {
 
 const mockAuthService = {
   validateLogin: jest.fn(),
-  validateAdminPin: jest.fn(),
   signAccessToken: jest.fn().mockReturnValue('access-token'),
   signRefreshToken: jest.fn().mockReturnValue('refresh-token'),
   startSession: jest.fn().mockResolvedValue('session-uuid'),
@@ -134,30 +133,6 @@ describe('AuthController', () => {
       const result = controller.refresh(req);
       expect(result.accessToken).toBe('access-token');
       expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(user, 'session-uuid');
-    });
-  });
-
-  describe('admin PIN login', () => {
-    it('mints the normal staff session for a valid admin PIN', async () => {
-      mockAuthService.validateAdminPin.mockResolvedValue(fakeStaff);
-
-      const result = await controller.loginWithAdminPin({ pin: '108' }, mockRes);
-
-      expect(mockAuthService.validateAdminPin).toHaveBeenCalledWith('108', undefined, undefined);
-      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
-      expect(mockAuthService.signRefreshToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
-      expect(mockAuthService.setRefreshCookie).toHaveBeenCalledWith(mockRes, 'refresh-token');
-      expect(result.user.role).toBe(StaffRole.owner);
-    });
-
-    it('does not mint tokens for an invalid PIN', async () => {
-      mockAuthService.validateAdminPin.mockRejectedValue(new UnauthorizedException('Invalid PIN'));
-
-      await expect(controller.loginWithAdminPin({ pin: '999' }, mockRes)).rejects.toThrow(
-        UnauthorizedException,
-      );
-      expect(mockAuthService.signAccessToken).not.toHaveBeenCalled();
-      expect(mockAuthService.setRefreshCookie).not.toHaveBeenCalled();
     });
   });
 

@@ -25,7 +25,6 @@ describe('validateEnvironment', () => {
     const production = validate({
       ...base,
       NODE_ENV: 'production',
-      ADMIN_CONSOLE_PIN: '482913',
       KDS_VENUE_PINS: JSON.stringify({ 'venue-1': '7391' }),
     });
     expect(production.NODE_ENV).toBe('production');
@@ -67,12 +66,12 @@ describe('validateEnvironment', () => {
         { JWT_REFRESH_SECRET: secrets.JWT_ACCESS_SECRET },
         /must differ/,
       ],
+      // Story 2.4: the shared admin PIN is removed; any leftover value is refused.
       [
-        'admin PIN 108',
-        { ADMIN_CONSOLE_PIN: '108' },
-        /ADMIN_CONSOLE_PIN is the checked-in default PIN/,
+        'a leftover admin PIN, even a strong one',
+        { ADMIN_CONSOLE_PIN: '482913' },
+        /ADMIN_CONSOLE_PIN is no longer used/,
       ],
-      ['3-digit admin PIN', { ADMIN_CONSOLE_PIN: '427' }, /ADMIN_CONSOLE_PIN is shorter than 4/],
       [
         'KDS PIN 108',
         { KDS_VENUE_PINS: JSON.stringify({ v1: '108' }) },
@@ -103,7 +102,7 @@ describe('validateEnvironment', () => {
     const leaky = {
       ...base,
       NODE_ENV: 'production',
-      ADMIN_CONSOLE_PIN: '12',
+      ADMIN_CONSOLE_PIN: '482913',
       KDS_VENUE_PINS: JSON.stringify({ v1: '108' }),
       JWT_ACCESS_SECRET: 'verdura-local-dev-only-access-secret-32chars-min',
     };
@@ -115,15 +114,15 @@ describe('validateEnvironment', () => {
     }
     expect(message).not.toBe('');
     expect(message).not.toContain('verdura-local-dev-only-access-secret-32chars-min');
-    expect(message).not.toMatch(/"12"|"108"/);
+    expect(message).not.toMatch(/482913|"108"/);
     // A schema-level failure (a pattern mismatch) is reported without its value too.
-    expect(() => validate({ ...base, NODE_ENV: 'production', ADMIN_CONSOLE_PIN: '12a' })).toThrow(
-      /ADMIN_CONSOLE_PIN: string\.pattern\.base/,
-    );
+    expect(() =>
+      validate({ ...base, NODE_ENV: 'production', QUEUE_PREFIX: 'not:a-prefix' }),
+    ).toThrow(/QUEUE_PREFIX: string\.pattern\.base/);
     try {
-      validate({ ...base, NODE_ENV: 'production', ADMIN_CONSOLE_PIN: '12a' });
+      validate({ ...base, NODE_ENV: 'production', QUEUE_PREFIX: 'not:a-prefix' });
     } catch (e) {
-      expect((e as Error).message).not.toContain('12a');
+      expect((e as Error).message).not.toContain('not:a-prefix');
     }
   });
 

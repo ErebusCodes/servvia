@@ -21,6 +21,9 @@ export const INVALID_SETUP_CODE_MESSAGE = 'Invalid or expired setup code';
 const DUMMY_HASH =
   '$argon2id$v=19$m=65536,t=3,p=4$ny2DnHXAff2D5lmWycbuTw$LxRCa+qjRHgy6Uj9tsonUQ0Xx+6lH//N/p/0bMoRGmk';
 
+/** Who issues a setup code: a staff member, or a named system process. */
+export type CredentialSetupIssuer = { staffId: string } | { system: string };
+
 /** An Argon2id hash nobody knows the input of: an account that cannot sign in yet. */
 export async function unusablePasswordHash(): Promise<string> {
   return argon2.hash(randomBytes(32).toString('base64url'), { type: argon2.argon2id });
@@ -45,11 +48,13 @@ export class CredentialSetupService {
 
   /**
    * Issues a new code for a staff member, ending their earlier unused codes.
-   * Runs inside the caller's transaction when one is given.
+   * The issuer is the owner or admin issuing it, or the operator bootstrap
+   * command (Story 2.4). Runs inside the caller's transaction when one is
+   * given.
    */
   async issue(
     staffId: string,
-    issuedById: string,
+    issuer: CredentialSetupIssuer,
     tx: Prisma.TransactionClient = this.prisma,
     now: Date = new Date(),
   ): Promise<{ code: string; expiresAt: Date }> {
@@ -62,7 +67,9 @@ export class CredentialSetupService {
     const token = await tx.staffCredentialToken.create({
       data: {
         staffId,
-        issuedById,
+        ...('staffId' in issuer
+          ? { issuedById: issuer.staffId }
+          : { issuedBySystem: issuer.system }),
         expiresAt,
         tokenHash: await argon2.hash(secret, { type: argon2.argon2id }),
       },

@@ -75,13 +75,6 @@ export const configValidationSchema = Joi.object({
   TABLET_DEVICE_TOKEN_EXPIRY: Joi.string().default('30d'),
   TABLET_STAFF_ELEVATION_EXPIRY: Joi.string().default('20m'),
   TABLET_MANAGER_STEPUP_EXPIRY: Joi.string().default('5m'),
-  // Admin console PIN login. Both values are required to enable the endpoint;
-  // when either is absent, PIN login fails closed.
-  ADMIN_CONSOLE_PIN: Joi.string()
-    .pattern(/^\d{3,12}$/)
-    .optional()
-    .allow(''),
-  ADMIN_CONSOLE_EMAIL: Joi.string().email().optional().allow(''),
   // Email — Resend (E5-S4): all optional; graceful no-op when absent
   RESEND_API_KEY: Joi.string().optional().allow(''),
   EMAIL_FROM: Joi.string().optional().default('Verdura Reservations <no-reply@verdura.co.nz>'),

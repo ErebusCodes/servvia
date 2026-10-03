@@ -131,7 +131,7 @@ export class StaffAdministrationService {
             })),
           });
         }
-        const issued = await this.credentials.issue(created.id, actor.id, tx);
+        const issued = await this.credentials.issue(created.id, { staffId: actor.id }, tx);
         const loaded = await this.load(actor.organizationId, created.id, tx);
         await this.log(tx, actor, 'STAFF_CREATED', created.id, undefined, {
           name: loaded.name,
@@ -308,7 +308,7 @@ export class StaffAdministrationService {
     const passwordHash = await unusablePasswordHash();
     return this.prisma.$transaction(async (tx) => {
       await tx.staff.update({ where: { id: target.id }, data: { passwordHash } });
-      const setup = await this.credentials.issue(target.id, actor.id, tx);
+      const setup = await this.credentials.issue(target.id, { staffId: actor.id }, tx);
       await this.sessions.revokeAllForStaff(target.id, 'credential_reset', tx);
       await this.log(tx, actor, 'STAFF_CREDENTIAL_RESET', target.id, undefined, {
         expiresAt: setup.expiresAt,

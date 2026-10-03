@@ -29,10 +29,12 @@ describe('ProtectedRoute', () => {
       vi.unstubAllEnvs();
     });
 
-    it('renders the admin PIN gate for an unauthenticated user', () => {
+    it('renders the named staff sign-in for an unauthenticated user (Story 2.4)', () => {
       renderAt('/dashboard');
       expect(screen.getByText('Operations Console')).toBeInTheDocument();
-      expect(screen.getByLabelText('Admin PIN')).toBeInTheDocument();
+      expect(screen.getByLabelText('Email')).toBeInTheDocument();
+      expect(screen.getByLabelText('Password')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/PIN/i)).not.toBeInTheDocument();
       expect(screen.queryByText('Dashboard Content')).not.toBeInTheDocument();
     });
 
@@ -64,7 +66,7 @@ describe('ProtectedRoute', () => {
       vi.unstubAllEnvs();
     });
 
-    it('still requires the admin PIN when unauthenticated', () => {
+    it('still requires named sign-in when unauthenticated', () => {
       renderAt('/dashboard');
       expect(screen.getByText('Operations Console')).toBeInTheDocument();
       expect(screen.queryByText('Dashboard Content')).not.toBeInTheDocument();

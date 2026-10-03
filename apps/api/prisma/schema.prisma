@@ -540,23 +540,26 @@ model StaffSession {
 
 // A single-use code with which a staff member sets their own password
 // (Story 8.1): issued when an owner or admin creates the account or resets
-// its credential, so no administrator ever chooses or sees a staff member's
-// password. Only an Argon2id hash of the secret is stored; the code
+// its credential, or by the operator bootstrap command (Story 2.4), so no
+// administrator ever chooses or sees a staff member's password. Only an Argon2id hash of the secret is stored; the code
 // (`<id>.<secret>`) is shown once to the issuer. Issuing a new code ends the
 // staff member's earlier unused ones.
 model StaffCredentialToken {
-  id         String    @id @default(uuid())
-  staffId    String
-  tokenHash  String
-  expiresAt  DateTime
-  usedAt     DateTime?
+  id             String    @id @default(uuid())
+  staffId        String
+  tokenHash      String
+  expiresAt      DateTime
+  usedAt         DateTime?
   // Set when a newer code replaced this one before it was used.
-  revokedAt  DateTime?
-  issuedById String
-  createdAt  DateTime  @default(now())
+  revokedAt      DateTime?
+  // Exactly one issuer (database CHECK): the owner or admin who issued the
+  // code, or the operator bootstrap command (Story 2.4) by its process name.
+  issuedById     String?
+  issuedBySystem String?
+  createdAt      DateTime  @default(now())
 
-  staff    Staff @relation("CredentialTokenFor", fields: [staffId], references: [id], onDelete: Cascade)
-  issuedBy Staff @relation("CredentialTokenIssuedBy", fields: [issuedById], references: [id])
+  staff    Staff  @relation("CredentialTokenFor", fields: [staffId], references: [id], onDelete: Cascade)
+  issuedBy Staff? @relation("CredentialTokenIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
 
   @@index([staffId])
 }

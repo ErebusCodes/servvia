@@ -43,8 +43,8 @@ async function bootstrap() {
   }
 
   // Production must never boot with the checked-in dummy JWT secrets — same
-  // fail-closed discipline already applied per-request to KDS_VENUE_PINS/
-  // ADMIN_CONSOLE_PIN (insecure-default-pin.util.ts), extended here to the
+  // fail-closed discipline already applied per-request to KDS_VENUE_PINS
+  // (insecure-default-pin.util.ts), extended here to the
   // strictly higher-value target a forgeable JWT secret represents.
   try {
     assertSecretNotInsecureDefault(process.env.JWT_ACCESS_SECRET, 'JWT_ACCESS_SECRET');
