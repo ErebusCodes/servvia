@@ -15,6 +15,7 @@ import * as argon2 from 'argon2';
 import type Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { AuthService } from '../src/auth/auth.service';
 import { REDIS_CLIENT } from '../src/redis/redis.constants';
 
 describe('Orders API (integration, real local Postgres)', () => {
@@ -629,6 +630,50 @@ describe('Orders API (integration, real local Postgres)', () => {
         items: [{ menuItemId, quantity: 1 }],
       })
       .expect(400);
+  });
+
+  it('Story 2.7: a kitchen (KDS venue-PIN) token cannot create or cancel orders', async () => {
+    const kdsToken = app.get(AuthService).signKdsDeviceToken(venueId, organizationId);
+    const table = await freeTable();
+    const body = {
+      venueId,
+      tableId: table.id,
+      serviceMode: 'dine_in',
+      notes: noteTag('kitchen-role'),
+      items: [{ menuItemId, quantity: 1 }],
+    };
+
+    // Create: refused for the kitchen role.
+    await request(app.getHttpServer())
+      .post('/api/admin/orders')
+      .set('Authorization', `Bearer ${kdsToken}`)
+      .send({ ...body, idempotencyKey: `idem_integration_test_kitchen_create_${Date.now()}` })
+      .expect(403);
+
+    const created = await request(app.getHttpServer())
+      .post('/api/admin/orders')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ ...body, idempotencyKey: `idem_integration_test_kitchen_${Date.now()}` })
+      .expect(201);
+    try {
+      // Cancel: refused, and the order is unchanged.
+      await request(app.getHttpServer())
+        .patch(`/api/admin/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${kdsToken}`)
+        .send({ status: 'cancelled' })
+        .expect(403);
+      expect(
+        (await prisma.order.findUniqueOrThrow({ where: { id: created.body.id } })).status,
+      ).toBe(created.body.status);
+
+      // The allowed kitchen transitions (preparing, ready, completed) are
+      // proven at the controller (orders.controller.spec.ts). Through Nest they
+      // currently fail with 500, a pre-existing defect: the status-change audit
+      // row uses the KDS device's synthetic actor ID, which is not a Staff row
+      // (AuditLog_actorId_fkey). That is tracked separately and not asserted here.
+    } finally {
+      await cleanupOrder(created.body.id);
+    }
   });
 
   it('13, 14, 15. valid status transitions succeed and persist; invalid transitions are rejected', async () => {

@@ -1,6 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Request } from 'express';
-import { StaffRole } from '@prisma/client';
+import { OrderStatus, StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TabletTokenActiveGuard } from '../auth/guards/tablet-token-active.guard';
@@ -23,6 +34,16 @@ const STAFF_ORDER_ROLES = [
   StaffRole.cashier,
   StaffRole.kitchen,
 ] as const;
+
+// Least privilege (Story 2.7, audit section 4.6): the kitchen role (the KDS
+// venue-PIN token) reads orders and advances kitchen preparation only. It
+// cannot create an order, and cannot cancel or otherwise change one.
+const ORDER_ENTRY_ROLES = [StaffRole.admin, StaffRole.manager, StaffRole.cashier] as const;
+export const KITCHEN_STATUS_TRANSITIONS: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
+  OrderStatus.preparing,
+  OrderStatus.ready,
+  OrderStatus.completed,
+]);
 
 @Controller()
 export class OrdersController {
@@ -81,7 +102,7 @@ export class OrdersController {
    * A kds_device token may only create orders for its own venue.
    */
   @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
-  @Roles(...STAFF_ORDER_ROLES)
+  @Roles(...ORDER_ENTRY_ROLES)
   @Post('admin/orders')
   createStaffOrder(@Req() req: AuthedRequest, @Body() dto: CreateStaffOrderDto) {
     resolveVenueScope(req.user, dto.venueId);
@@ -97,6 +118,9 @@ export class OrdersController {
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
   ) {
+    if (req.user.role === StaffRole.kitchen && !KITCHEN_STATUS_TRANSITIONS.has(dto.status)) {
+      throw new ForbiddenException('The kitchen role may only advance kitchen preparation');
+    }
     const actor = {
       id: req.user.id,
       email: req.user.email,

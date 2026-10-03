@@ -118,4 +118,28 @@ describe('EmailService', () => {
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('RESEND_API_KEY'));
     });
   });
+
+  // Story 2.7: guest-supplied text is HTML-escaped in every email.
+  describe('HTML injection', () => {
+    const hostile: ReservationEmailPayload = {
+      ...payload,
+      guestName: '<script>alert(1)</script><img src=x onerror="steal()">',
+      venueName: 'Verdura & "Co" <b>',
+    };
+
+    it.each([
+      ['confirmation', 'sendReservationConfirmed'],
+      ['cancellation', 'sendReservationCancelled'],
+    ] as const)('escapes the guest and venue names in the %s email', async (_name, method) => {
+      const service = await makeService('re_test_key');
+      await service[method](hostile);
+      const html = (mockSend.mock.calls[0] as [Record<string, unknown>])[0].html as string;
+      expect(html).not.toContain('<script>');
+      expect(html).not.toContain('<img');
+      expect(html).toContain(
+        '&lt;script&gt;alert(1)&lt;/script&gt;&lt;img src=x onerror=&quot;steal()&quot;&gt;',
+      );
+      expect(html).toContain('Verdura &amp; &quot;Co&quot; &lt;b&gt;');
+    });
+  });
 });

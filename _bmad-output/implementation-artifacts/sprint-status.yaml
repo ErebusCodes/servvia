@@ -51,7 +51,7 @@ development_status:
   2-4-named-staff-sign-in-replaces-the-shared-admin-pin: backlog
   2-5-token-revocation-and-active-staff-re-checks: backlog
   2-6-transitional-socket-io-authentication-and-cors-hardening: backlog
-  2-7-kitchen-role-cannot-create-or-cancel-orders-reservation-emai: backlog
+  2-7-kitchen-role-cannot-create-or-cancel-orders-reservation-emai: done
   epic-2-retrospective: optional
 
   epic-3: backlog

@@ -7,6 +7,7 @@ import { OrdersService } from './orders.service';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 const mockOrdersService = {
@@ -115,5 +116,59 @@ describe('OrdersController venue scoping', () => {
         undefined,
       );
     });
+  });
+});
+
+// Story 2.7: the kitchen role (KDS venue-PIN token) cannot create or cancel orders.
+describe('OrdersController kitchen-role least privilege', () => {
+  let controller: OrdersController;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [OrdersController],
+      providers: [
+        { provide: OrdersService, useValue: mockOrdersService },
+        { provide: RateLimitGuard, useValue: { canActivate: () => true } },
+        { provide: REDIS_CLIENT, useValue: { eval: jest.fn() } },
+        { provide: PrismaService, useValue: { tabletDevice: { findUnique: jest.fn() } } },
+      ],
+    }).compile();
+    controller = module.get<OrdersController>(OrdersController);
+  });
+
+  it('does not grant the kitchen role order creation', () => {
+    const handler = Object.getOwnPropertyDescriptor(OrdersController.prototype, 'createStaffOrder')
+      ?.value as object;
+    const roles = Reflect.getMetadata(ROLES_KEY, handler) as StaffRole[];
+    expect(roles).not.toContain(StaffRole.kitchen);
+    expect(roles).toEqual(
+      expect.arrayContaining([StaffRole.admin, StaffRole.manager, StaffRole.cashier]),
+    );
+  });
+
+  it.each(['cancelled', 'pending', 'confirmed'])(
+    'refuses a kitchen token setting %s (403), before the service',
+    (status) => {
+      expect(() =>
+        controller.updateStatus(reqWith(kdsUser), 'order-1', { status } as never),
+      ).toThrow(ForbiddenException);
+      expect(mockOrdersService.updateStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['preparing', 'ready', 'completed'])(
+    'lets a kitchen token advance preparation to %s',
+    (status) => {
+      void controller.updateStatus(reqWith(kdsUser), 'order-1', { status } as never);
+      expect(mockOrdersService.updateStatus).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('lets a cashier cancel', () => {
+    void controller.updateStatus(reqWith({ ...staffUser, role: StaffRole.cashier }), 'order-1', {
+      status: 'cancelled',
+    } as never);
+    expect(mockOrdersService.updateStatus).toHaveBeenCalledTimes(1);
   });
 });
