@@ -80,7 +80,7 @@ function runPhase({ objective, checks, cwd, env, scratch, tools, label, retry })
   }
   const runs = {};
   for (const check of checks) {
-    const ctx = { node: process.execPath, go: tools.goRoot ? join(tools.goRoot, 'bin', 'go') : 'go', cwd: join(cwd, check.cwd ?? '.'), env: { ...env, ...(check.env ?? {}) }, scratch, attempt: `${label}-1` };
+    const ctx = { node: process.execPath, go: tools.goRoot ? join(tools.goRoot, 'bin', 'go') : 'go', cwd: join(cwd, check.cwd ?? '.'), cwdInRepo: (check.cwd ?? '.').replace(/^\.\/?/, ''), env: { ...env, ...(check.env ?? {}) }, scratch, attempt: `${label}-1` };
     const started = Date.now();
     let run = runCheck(check, ctx);
     run.durationMs = Date.now() - started;

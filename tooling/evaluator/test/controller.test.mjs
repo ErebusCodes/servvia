@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { errorClass, failureSignature, normalizeText } from '../lib/signature.mjs';
 import { locationOf } from '../lib/packet.mjs';
+import { parseGoTestJson } from '../lib/runners.mjs';
 import { readLedger } from '../lib/controller.mjs';
 import { pruneEvidence } from '../lib/cleanup.mjs';
 import { EVALUATOR_ROOT } from '../lib/evaluate.mjs';
@@ -42,6 +43,28 @@ describe('failure signatures', () => {
     const other = failureSignature(rec('adds numbers', 'connect ECONNREFUSED 127.0.0.1:41234'));
     assert.equal(one.signature, two.signature);
     assert.notEqual(one.signature, other.signature);
+  });
+
+  test('go test -json: failure output and a repository location are kept for each failed test', () => {
+    const ev = (o) => JSON.stringify({ Package: 'servvia/services/core-platform/internal/ratelimit', ...o });
+    const stdout = [
+      ev({ Action: 'run', Test: 'TestOK' }), ev({ Action: 'pass', Test: 'TestOK' }),
+      ev({ Action: 'run', Test: 'TestClientIP' }),
+      ev({ Action: 'output', Test: 'TestClientIP', Output: '=== RUN   TestClientIP\n' }),
+      ev({ Action: 'output', Test: 'TestClientIP', Output: '    ratelimit_test.go:155: direct client, hops 1: 127.0.0.2\n' }),
+      ev({ Action: 'output', Test: 'TestClientIP', Output: '--- FAIL: TestClientIP (0.00s)\n' }),
+      ev({ Action: 'fail', Test: 'TestClientIP' }),
+      JSON.stringify({ Package: 'servvia/services/core-platform/internal/broken', Action: 'fail' }),
+    ].join('\n');
+    const { tests } = parseGoTestJson(stdout, { module: 'servvia/services/core-platform', cwdInRepo: 'services/core-platform' });
+    const failed = tests.find((t) => t.name.endsWith('TestClientIP'));
+    assert.equal(failed.status, 'failed');
+    assert.match(failed.message, /direct client, hops 1/);
+    assert.doesNotMatch(failed.message, /=== RUN|--- FAIL/);
+    assert.equal(locationOf(failed.message), 'services/core-platform/internal/ratelimit/ratelimit_test.go:155');
+    assert.equal(errorClass(failed.message), normalizeText('services/core-platform/internal/ratelimit/ratelimit_test.go:155: direct client, hops 1: 127.0.0.2'));
+    assert.ok(tests.some((t) => t.name === 'servvia/services/core-platform/internal/broken (package failed)' && t.status === 'failed'));
+    assert.equal(tests.find((t) => t.name.endsWith('TestOK')).status, 'passed');
   });
 
   test('a packet location is read from a workspace stack frame', () => {

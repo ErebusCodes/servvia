@@ -54,33 +54,70 @@ function jest(check, ctx) {
   return { ...proc, tests };
 }
 
-function goTest(check, ctx) {
-  const argv = [ctx.go, 'test', ...check.args, '-json'];
-  const proc = runProcess(argv, { cwd: ctx.cwd, env: ctx.env, timeoutSeconds: check.timeoutSeconds });
-  if (proc.spawnError) return { ...proc, harnessError: proc.spawnError, tests: [] };
+/** The module path in go.mod, to turn a package import path into a repository directory. */
+function goModule(cwd) {
+  const mod = join(cwd, 'go.mod');
+  if (!existsSync(mod)) return null;
+  return readFileSync(mod, 'utf8').match(/^module\s+(\S+)/m)?.[1] ?? null;
+}
+
+/**
+ * A failed Go test's own output, without go test's framing lines, with its
+ * `file_test.go:N:` references qualified by the package's directory in the
+ * repository (when the module path tells us), so a location can be read.
+ */
+function goFailureMessage(lines, pkg, module, cwdInRepo) {
+  const dir = module && pkg.startsWith(module) && cwdInRepo != null
+    ? [cwdInRepo, pkg.slice(module.length).replace(/^\//, '')].filter(Boolean).join('/')
+    : null;
+  return lines
+    .filter((l) => !/^\s*(?:=== (?:RUN|PAUSE|CONT|NAME)|--- (?:FAIL|PASS|SKIP)|PASS$|FAIL$)/.test(l))
+    .map((l) => (dir ? l.replace(/(^|\s)([\w.-]+\.go:\d+:)/g, `$1${dir}/$2`) : l))
+    .join('')
+    .slice(0, 4000);
+}
+
+/** Parses `go test -json` output into the common test results. Pure, for testing. */
+export function parseGoTestJson(stdout, { module = null, cwdInRepo = null } = {}) {
   const final = new Map();
+  const output = new Map();
   const failedPackages = new Set();
   let parsed = 0;
-  for (const line of proc.stdout.split('\n')) {
+  for (const line of String(stdout).split('\n')) {
     if (!line.startsWith('{')) continue;
     let ev;
     try { ev = JSON.parse(line); } catch { continue; }
     parsed += 1;
+    if (ev.Action === 'output' && ev.Test) {
+      const key = `${ev.Package} ${ev.Test}`;
+      if (!output.has(key)) output.set(key, []);
+      output.get(key).push(ev.Output ?? '');
+      continue;
+    }
     if (!['pass', 'fail', 'skip'].includes(ev.Action)) continue;
     if (ev.Test) final.set(`${ev.Package} ${ev.Test}`, ev.Action);
     else if (ev.Action === 'fail') failedPackages.add(ev.Package);
   }
-  if (parsed === 0 && proc.exitCode !== 0) {
-    return { ...proc, harnessError: null, tests: [{ name: 'go test (build failed)', status: 'failed', message: proc.stderr.slice(-4000) }] };
-  }
   const tests = [...final].map(([name, action]) => ({
     name,
     status: action === 'pass' ? 'passed' : action === 'fail' ? 'failed' : 'skipped',
+    message: action === 'fail' ? goFailureMessage(output.get(name) ?? [], name.split(' ')[0], module, cwdInRepo) : '',
   }));
   for (const pkg of failedPackages) {
     if (![...final.keys()].some((k) => k.startsWith(`${pkg} `) && final.get(k) === 'fail')) {
-      tests.push({ name: `${pkg} (package failed)`, status: 'failed' });
+      tests.push({ name: `${pkg} (package failed)`, status: 'failed', message: '' });
     }
+  }
+  return { tests, parsed };
+}
+
+function goTest(check, ctx) {
+  const argv = [ctx.go, 'test', ...check.args, '-json'];
+  const proc = runProcess(argv, { cwd: ctx.cwd, env: ctx.env, timeoutSeconds: check.timeoutSeconds });
+  if (proc.spawnError) return { ...proc, harnessError: proc.spawnError, tests: [] };
+  const { tests, parsed } = parseGoTestJson(proc.stdout, { module: goModule(ctx.cwd), cwdInRepo: ctx.cwdInRepo });
+  if (parsed === 0 && proc.exitCode !== 0) {
+    return { ...proc, harnessError: null, tests: [{ name: 'go test (build failed)', status: 'failed', message: proc.stderr.slice(-4000) }] };
   }
   return { ...proc, tests };
 }
