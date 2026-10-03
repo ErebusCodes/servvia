@@ -74,7 +74,7 @@ async function bootstrap() {
   // Test.createTestingModule(...).compile() + app.init() (used by e2e/unit
   // specs with an intentionally fake DATABASE_URL) needs AppModule to
   // resolve without a live database. That same tolerance previously let a
-  // real `node dist/main` boot fully, bind its port, and serve every
+  // real `node dist/src/main` boot fully, bind its port, and serve every
   // Prisma-backed route as a misleading generic 500 while looking "up" — the
   // menu API included. Verify connectivity here, only on the real server
   // startup path (bootstrap() is never invoked by the test module compiler),

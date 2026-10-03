@@ -507,9 +507,9 @@ The audit and the decisions are in [d13-outbox-workers.md](d13-outbox-workers.md
 - **Found and fixed while testing:** the lease check read `leaseExpiresAt > now()` into a boolean, so a delivery completed by another worker (lease cleared) failed with a scan error instead of the explicit lease-lost path; the expression is now NULL-safe. The Go parity cleanup did not remove the facts Go's writes recorded for its fixture venues, which the kitchen worker would later dead-letter; it now does.
 - **Not done:** a retry endpoint (the function exists; exposing it is an operator-console decision), further business consumers (notifications, printing, analytics arrive with their phases), dropping `OutboxEvent` and `RealtimeEvent`, client cutover.
 
-## Known finding: API production entry point (pre-existing, not yet addressed)
+## Known finding: API production entry point (resolved 2026-10-03)
 
-`apps/api/scripts/connector-command-harness.ts` (committed 2026-08-24) is inside the API's TypeScript build scope, so `nest build` emits `dist/src/main.js`. `npm run start:prod`, the backend Dockerfile's `CMD` and `docker/start-backend.mjs` all run `node dist/main`, which does not exist. Check how the Windows host starts `VerduraAPI` before changing anything.
+`apps/api/scripts/connector-command-harness.ts` (committed 2026-08-24) is inside the API's TypeScript build scope, so `nest build` emits `dist/src/main.js`. `npm run start:prod`, the backend Dockerfile's `CMD` and `docker/start-backend.mjs` all ran `node dist/main`, which did not exist. **Resolved (Story 1.4):** `start:prod` now runs the emitted `dist/src/main`. The build output is unchanged, and the Dockerfile and `start-backend.mjs` delegate to `start:prod`. CI runs `scripts/check-api-entry.mjs` after the build, and it fails if they diverge again. How the Windows host starts `VerduraAPI` is configured on the host and remains NOT VERIFIED; check it before the next deployment.
 
 ## Known environment finding (not yet addressed)
 
