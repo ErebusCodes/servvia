@@ -36,17 +36,18 @@ The source documents were inspected in the working tree on 2026-10-01. None was 
 | Tag | Source | Classification | How it was used |
 |---|---|---|---|
 | **[FR]** | `fileRestructure.md` | **AUTHORITY** (architecture and ownership) | Product surfaces, technologies, ownership, transitional mapping |
-| **[P2]** | `docs/product-requirements.md` (Step 2 baseline, 2026-10-01) | **CURRENT SOURCE** | The backbone of the consolidated PRD: definition, principles, actors, surfaces, domain, capability state, milestones, open items |
-| **[TOM]** | `docs/target-operating-model.md` (revised 2026-09-30) | **CURRENT SOURCE** (it declares itself normative) | Order invariant, in-person and online flows, kitchen routing, identifiers and states, failure policy, edge constraints, release acceptance |
-| **[ADR]** | `docs/adr/0001-servvia-is-the-operational-pos.md` | **CURRENT SOURCE** (accepted decision) | Ownership of canonical state; distinct domain concepts |
-| **[DL]** | `docs/decisions-log.md` (decisions in force) | **CURRENT SOURCE** | Money and modifier contract (A, B); truthfulness; ownership rule; open payment-terminal and receipt obligations |
+| **[P2]** | `docs/product-requirements.md` (Step 2 draft, 2026-10-01; kept as a bannered **evidence snapshot**, body unchanged, SHA-256 `348eaae4…`) | **SOURCE EVIDENCE, not authority** (corrected 2026-10-03; earlier this row said CURRENT SOURCE) | The backbone of the consolidated PRD: definition, principles, actors, surfaces, domain, capability state, milestones, open items |
+| **[TOM]** | `docs/target-operating-model.md` (accepted-baseline version: 2026-08-15, superseded in part by ADR 0001 on 2026-09-28). Corrected 2026-10-03: an unaccepted 2026-09-30 revision was previously named here | **SUPERSEDED IN PART.** §1–3 do not govern; the truthful-state and durable-outbox principles and the non-IdealPOS rules still apply | Order invariant, in-person and online flows, kitchen routing, identifiers and states, failure policy, edge constraints, release acceptance |
+| **[ADR]** | `docs/adr/0001-servvia-is-the-operational-pos.md` (cited by Decision item, e.g. `[ADR 7]`) | **CURRENT SOURCE** (accepted decision) | Ownership of canonical state; distinct domain concepts; server pricing; Venue Edge scope |
+| **[DL]** | `docs/decisions-log.md` (accepted full log, cited by entry, e.g. `[DL-115]`). Corrected 2026-10-03: an unaccepted "decisions in force" rewrite was previously named here | **CURRENT SOURCE** for entries in force | Ownership rule (DL-105); DL-115; DL-081 (tablet model, reference); open payment-terminal and receipt obligations |
+| **[MIG]** | `docs/migration/README.md`, "Decisions recorded 2026-09-29" | **CURRENT SOURCE** (recorded decisions A and B) | Money and modifier contract (A, B). These were previously tagged `[DL A]`/`[DL B]`, but they are not in the decisions log |
 | **[OLD]** | `docs/prd.md` (June 2026 PRD) | **SUPERSEDED IN PART** | Functional and non-functional requirements carried forward only where they do not conflict with [FR], [TOM] or [ADR]. Stack-specific wording (NestJS, Prisma, BullMQ, browser-based devices, Service Worker) is superseded by [FR]. The original IDs (FR-x.y, NFR-x.y) are kept as provenance |
-| **[MVP]** | `docs/mvp.md` (2026-08-15 assessment, 2026-09-30 header) | **SUPERSEDED IN PART** | The principles and pilot acceptance criteria that are consistent with "Servvia is the POS" are carried forward. Its multi-POS integration buying thesis is not (conflict C-1) |
+| **[MVP]** | `docs/mvp.md` (accepted-baseline version: 2026-08-15 assessment). Corrected 2026-10-03: an unaccepted "2026-09-30 header" revision was previously named here | **SUPERSEDED IN PART** | The principles and pilot acceptance criteria that are consistent with "Servvia is the POS" are carried forward. Its multi-POS integration buying thesis is not (conflict C-1) |
 | **[BR]** | `PRODUCT.md` | **CURRENT SOURCE** (public web brand) | Customer website and landing page users, purpose, principles, accessibility |
 | **[DS]** | `DESIGN.md` | **CURRENT SOURCE** (public web design system) | Referenced for web visual requirements; values are not duplicated |
 | **[REPO]** | The repository: implemented Servvia Core behaviour and tests | **EVIDENCE** of existing capability | Referenced so that proven behaviour (idempotency, locking, transactional events, audit, workers, tenant-scoped tests) is required and not rebuilt. Never a source of new product requirements |
 | **[OWNER-QB-2026-10-01]** | The owner's enterprise-quality instruction of 2026-10-01 | **CURRENT SOURCE** (owner instruction) | Part B: the Enterprise Quality Bar, security, integrity, reliability, performance dimensions, observability, testing, UX, accessibility, release gates, defect policy, DoD input, NFR matrix. It does not set numbers: missing targets are **OWNER TARGET REQUIRED** and unapproved policies are **OWNER DECISION REQUIRED** |
-| — | `docs/ux.md`, `docs/offline.md`, `docs/printers.md`, `docs/domain-model.md`, `docs/architecture.md`, `docs/source-of-truth-and-environments.md` | **REFERENCE, not consolidated** | Self-described as target designs or inferred UX (2026-06/08). Only their headers and normative banners were inspected. Their detail is design material for later stories, not requirements. Consolidating them is a follow-up (open item R-1) |
+| — | `docs/ux.md`, `docs/offline.md`, `docs/printers.md`, `docs/domain-model.md`, `docs/architecture.md`, `docs/source-of-truth-and-environments.md` | **REFERENCE, not consolidated** | Self-described as target designs or inferred UX (2026-06/08). Only their headers and normative banners were inspected. Their detail is design material for later stories, not requirements. **Classified 2026-10-03 (R-1): design and reference evidence, not requirements authority.** Any normative rule they contain must be represented in an authoritative requirement or decision before implementation depends on it |
 | — | `docs/epics.md`, `docs/sprints.md` | **NOT A SOURCE** | Earlier planning output |
 | — | `docs/planning/` | **NOT A SOURCE** | Planning output (CC-1) |
 
@@ -75,6 +76,26 @@ The consolidated PRD does not resolve these silently. Each is either an owner de
 
 ## Open items for this baseline
 
-- **R-1:** Consolidate requirement-level content from `docs/ux.md`, `docs/offline.md` and `docs/printers.md`, or confirm they remain design references only.
+- **R-1:** *Decided for now (2026-10-03):* `docs/ux.md`, `docs/offline.md` and `docs/printers.md` remain design and reference evidence only. They are not consolidated.
 - **R-2:** Owner review of the source classifications above.
 - **R-3:** Set every **OWNER TARGET REQUIRED** value and decide every **OWNER DECISION REQUIRED** policy in Part B. The list is in `product-requirements.md` sections 15–27.
+
+## Provenance status (2026-10-03)
+
+Source citations were reconciled against the accepted baseline (`54dcfc0`, plus the CC-3 working changes).
+- Citations that named unaccepted revisions of `[TOM]`, `[DL]` or `[MVP]` were retagged only where an accepted source carries the same meaning (ADR 0001 items, `[MIG]`, `[FR]`, `[REPO]`, `[DECISION-2026-10-03]`). No requirement text was changed to make a citation fit.
+- No unaccepted revision is cited as authority.
+
+**Resolved 2026-10-03 by Tier-2 governance decision** (`[DECISION-2026-10-03]`; no `†` remains):
+
+| Requirement | Was | Resolution |
+|---|---|---|
+| ORD-4 | `[MVP 9.1]†`: legacy POS-handoff wording ("missing menu or station configuration … reconciliation task") | **Reworded** to Core's actual validation behaviour: refused with a stable, specific error; no order created. Sources `[ADR 5] [MVP §2] [REPO]` (typed pricing errors in `services/core-platform/internal/pricing/errors.go`; every venue routes to the default station, so "missing station configuration" cannot occur). POS mapping and the "reconciliation task" are removed as legacy |
+| ORD-5 | `[TOM §3]†`: "opens or joins a check" | **Reworded** to canonical semantics: ordering does not open or modify a check; a check is created separately over the visit's unbilled lines. Sources `[ADR 4] [REPO]` (`docs/migration/d5-checks.md`) |
+| PRT-1 | `[MVP 9.5]†`: "reprints … attributed" unsourced | **Kept.** Attribution follows from NFR-AUD and section 17 traceability `[TOM §6]`; explicit reprints from `[OLD FR-8.6]`. Source repaired; no new behaviour |
+
+**Not yet accepted:** the `[P2]` evidence snapshot exists in the working tree but is not committed. Its 36 content citations become valid source evidence when it is committed.
+
+**Production-cutover rule (section 11):** sourced to `[DECISION-2026-10-03]` and the owner's approval of this baseline. It does **not** depend on the separate, still unapproved decision about the 11 October 2026 milestone (draft DL-117), which is not a source of this PRD.
+
+**O-2:** decided 2026-10-03 (transitional credential issuance under PR-7). See the O-2 row in `product-requirements.md` section 14.

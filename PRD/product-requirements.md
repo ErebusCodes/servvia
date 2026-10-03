@@ -1,15 +1,18 @@
 # Servvia: consolidated product requirements
 
-> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. **Awaiting owner review.**
+> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. Further changes 2026-10-03: source provenance reconciled (README "Provenance status"); production cutover rule; kitchen printing at the pilot made conditional on venue requirement; O-2 decided (transitional credential issuance); ORD-4 and ORD-5 reworded to canonical Core semantics; PRT-1 source repaired. **Awaiting owner review.**
 > **Architecture authority:** [`fileRestructure.md`](../fileRestructure.md).
 > **Sources and conflicts:** [README.md](README.md). Each requirement carries its source tag:
 > - `[FR]`: `fileRestructure.md`
-> - `[P2]`: `docs/product-requirements.md`
-> - `[TOM]`: `docs/target-operating-model.md`
-> - `[ADR]`: `docs/adr/0001-servvia-is-the-operational-pos.md`
-> - `[DL]`: `docs/decisions-log.md`
+> - `[P2]`: `docs/product-requirements.md`, the 2026-10-01 Step 2 draft, kept as a bannered evidence snapshot (not authority)
+> - `[TOM]`: `docs/target-operating-model.md`, as in the accepted baseline (2026-08-15, superseded in part by ADR 0001). Its §1–3 do not govern. Only its retained truthful-state and durable-outbox principles, and its non-IdealPOS rules, are cited
+> - `[ADR]`: `docs/adr/0001-servvia-is-the-operational-pos.md`, with its Decision item number where given (for example `[ADR 7]`)
+> - `[DL]`: `docs/decisions-log.md`, with its entry number where given (for example `[DL-115]`)
+> - `[MIG]`: `docs/migration/README.md`, "Decisions recorded 2026-09-29" (A, B)
 > - `[OLD]`: `docs/prd.md`, with its original ID
-> - `[MVP]`: `docs/mvp.md`, with its original section
+> - `[MVP]`: `docs/mvp.md` (2026-08-15 assessment, as in the accepted baseline), with its original section
+> - `[DECISION-2026-10-03]`: the governance decisions of 2026-10-03, approved through the project's decision orchestration: the production-cutover rule (section 11), O-2 (transitional credential issuance), ORD-4 and ORD-5 rewording, and PRT-1 source repair. Recorded in [README.md](README.md) "Provenance status". It is not attributed to any older document
+> - `†` after a tag (none remain as of 2026-10-03): provenance unresolved; see the provenance status in [README.md](README.md)
 > - `[BR]`: `PRODUCT.md`
 > - `[DS]`: `DESIGN.md`
 > - `[REPO]`: implemented Servvia Core behaviour, observed in the repository (evidence of existing capability, referenced rather than rebuilt)
@@ -27,7 +30,7 @@
 
 ## 1. Product definition
 
-- **Servvia is the operational POS** and restaurant platform. Servvia Core records the service day: tables and visits, orders and rounds, kitchen tickets, checks, payments, settlement, refunds, shifts and cash, devices and terminals, promotions, tax, rounding and totals, audit and domain events. `[P2 §1] [TOM §1] [ADR]`
+- **Servvia is the operational POS** and restaurant platform. Servvia Core records the service day: tables and visits, orders and rounds, kitchen tickets, checks, payments, settlement, refunds, shifts and cash, devices and terminals, promotions, tax, rounding and totals, audit and domain events. `[P2 §1] [ADR 1]`
 - **There is no external POS.** No canonical concept is shaped around another POS product. `[ADR] [FR]`
 - **It serves single-venue and multi-venue operators.** A second venue must be onboardable through configuration, without code changes. `[OLD BG-7] [P2 §7]`
 
@@ -35,12 +38,12 @@
 
 | ID | Principle | Source |
 |---|---|---|
-| PR-1 | **PostgreSQL holds the canonical record**, behind Go Core. No client or edge process writes it directly. | `[TOM §1] [ADR] [FR]` |
-| PR-2 | **Clients are presentation and input only.** No client owns business rules or pricing. | `[TOM §1] [P2 §2]` |
-| PR-3 | **The server owns validation:** price, tax, totals, payment state, tenancy, permissions, transitions, idempotency. | `[MVP §2] [TOM §3]` |
-| PR-4 | **Never fake success.** No surface reports a payment, kitchen delivery or print it has not confirmed. Delivery states are explicit and independent. | `[MVP §2] [DL] [TOM §6–7]` |
-| PR-5 | **Money is stored as integer minor units.** A fractional modifier price is invalid data. | `[DL A]` |
-| PR-6 | **The modifier contract is identifier-based.** Clients send product, modifier-group and option IDs, never names. | `[DL B]` |
+| PR-1 | **PostgreSQL holds the canonical record**, behind Go Core. No client or edge process writes it directly. | `[ADR 2] [FR]` |
+| PR-2 | **Clients are presentation and input only.** No client owns business rules or pricing. | `[ADR 5–6] [P2 §2]` |
+| PR-3 | **The server owns validation:** price, tax, totals, payment state, tenancy, permissions, transitions, idempotency. | `[MVP §2] [ADR 5]` |
+| PR-4 | **Never fake success.** No surface reports a payment, kitchen delivery or print it has not confirmed. Delivery states are explicit and independent. | `[MVP §2] [TOM §6–7]` |
+| PR-5 | **Money is stored as integer minor units.** A fractional modifier price is invalid data. | `[MIG A]` |
+| PR-6 | **The modifier contract is identifier-based.** Clients send product, modifier-group and option IDs, never names. | `[MIG B]` |
 | PR-7 | **One long-term owner per capability.** Temporary overlap needs a source owner, a target owner, cutover and retirement criteria, and a bounded period. | `[DL]` |
 | PR-8 | **Build before cleanup:** replacement → callers migrated → behaviour proven → legacy retired. | `[P2 §2] [FR]` |
 | PR-9 | **Externally acknowledged facts are corrected by explicit compensating actions,** never by silent edits. | `[MVP §2]` |
@@ -73,7 +76,7 @@
 | Admin Console | `apps/web/admin-console/` | React + TypeScript | Administration and oversight | `[FR]` |
 | Customer Website | `apps/web/customer-website/` | React + TypeScript | Public site | `[FR] [BR]` |
 | Landing Page | `apps/web/landing-page/` | React + TypeScript | Public landing page (requirements not yet defined) | `[FR]` |
-| Venue Edge | `services/venue-edge/` | Go | Venue hardware and local resilience | `[FR] [TOM §1]` |
+| Venue Edge | `services/venue-edge/` | Go | Venue hardware and local resilience | `[FR] [ADR 7]` |
 | Analytics / AI | `data/` | Python | Outside the transaction path | `[FR]` |
 
 ## 5. Domain and system of record
@@ -95,22 +98,22 @@
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
 | ORD-1 | **Every accepted order is durably recorded by Core before kitchen fulfilment is released.** One transaction persists the round, its immutable commercial snapshot, its idempotency key, the kitchen tickets and their domain events. | MUST | `[TOM §2] [OLD FR-4.5–4.6]` |
-| ORD-2 | Core validates venue, table session, menu availability, modifiers and price, and computes tax and totals server-side. | MUST | `[TOM §3]` |
+| ORD-2 | Core validates venue, table session, menu availability, modifiers and price, and computes tax and totals server-side. | MUST | `[ADR 5] [MVP §2]` |
 | ORD-3 | A repeated submission with the same idempotency key returns the original result and creates no duplicate. | MUST | `[MVP 9.1] [TOM §7]` |
-| ORD-4 | Missing menu or station configuration blocks submission with a stable error and a reconciliation task. | MUST | `[MVP 9.1]` |
-| ORD-5 | An order carries its table, source and line/modifier context, and opens or joins a check. | MUST | `[OLD FR-4.8] [TOM §3]` |
+| ORD-4 | An order submission that references menu data Core cannot validate (an unknown, unavailable or invalid item or option, a stale price, or an unsupported tax configuration) is refused with a stable, specific error and creates no order. | MUST | `[ADR 5] [MVP §2] [REPO] [DECISION-2026-10-03]` |
+| ORD-5 | An order carries its table session (visit), source and line/modifier context. Ordering does not open or modify a check. A check is created separately over the visit's unbilled lines. | MUST | `[OLD FR-4.8] [ADR 4] [REPO] [DECISION-2026-10-03]` |
 | KIT-1 | **Servvia owns KDS and KOT routing.** Routing is line-level, using the station configuration effective at submission; one round may produce several station tickets. | MUST | `[TOM §5] [OLD FR-4.7] [MVP 9.5]` |
 | KIT-2 | KDS and each printer have independent delivery states; neither implies payment success. | MUST | `[TOM §6]` |
 | KIT-3 | Orders appear on the KDS in real time (target under 3 s from submission). | MUST | `[OLD FR-6.2, NFR-1.4]` |
 | KIT-4 | A KDS ticket shows order ID, table, time, items with quantities and modifiers, and notes. Staff advance it through its states. | MUST | `[OLD FR-6.3–6.4]` |
 | KIT-5 | A visual and audible alert when an order is ready; age colour-coding with a configurable threshold. | SHOULD | `[OLD FR-6.5–6.6]` |
 | KIT-6 | The KDS keeps showing received tickets during a backend outage and reconnects automatically. | MUST | `[OLD FR-6.9, NFR-4.3]` |
-| PAY-1 | **In-person flow:** kitchen preparation may begin before payment; the check shows unpaid until a payment is recorded. Payment is by card (through Venue Edge) or by cash within a shift. | MUST | `[TOM §3] [MVP 9.2]` |
+| PAY-1 | **In-person flow:** kitchen preparation may begin before payment; the check shows unpaid until a payment is recorded. Payment is by card (through Venue Edge) or by cash within a shift. | MUST | `[ADR 4] [ADR 7] [REPO]` |
 | PAY-2 | **Online/prepaid flow:** a pending order with an immutable price snapshot. Payment is verified server-side (status, currency, amount, merchant/venue binding, replay protection) before release to KDS/KOT. A failed, cancelled or abandoned payment releases nothing unless an approved "prepare before payment" policy exists. | MUST (where online payment is enabled) | `[TOM §4] [OLD FR-4.16] [MVP 9.2]` |
 | PAY-3 | Payment amount and currency equal the server-computed total. One provider payment cannot create more than one order. Signed webhook replay is idempotent. Missing provider configuration fails closed in production. | MUST | `[MVP 9.2]` |
 | PAY-4 | Payment implementation is provider-neutral. Provider-specific fields live in adapter metadata. | MUST | `[TOM §8] [P2 §18]` |
 | PAY-5 | No raw card data enters Servvia. | MUST | `[TOM §4] [OLD FR-4.9]` |
-| PAY-6 | An uncertain terminal or printer outcome is reconciled before any retry that could duplicate a charge or ticket. An online payment that succeeds before a later failure is never charged again. | MUST | `[TOM §7]` |
+| PAY-6 | An uncertain terminal or printer outcome is reconciled before any retry that could duplicate a charge or ticket. An online payment that succeeds before a later failure is never charged again. | MUST | `[TOM §7] [ADR 7]` |
 | PAY-7 | Partial and full refunds. | MUST | `[TOM §9] [P2 §8]` |
 | REC-1 | Receipts: content and NZ receipt and tax-invoice obligations are **open** (O-5). Print content for orders includes order ID, table, items with modifiers, instructions, time and venue. | MUST | `[DL] [OLD FR-8.10]` |
 
@@ -122,7 +125,7 @@
 | MENU-2 | Structured nutrition and allergens per item: calories, protein, carbohydrates, fat; allergens from a fixed list. Allergens are shown during browsing on ordering surfaces. | MUST | `[OLD FR-3.3, FR-4.15]` |
 | MENU-3 | Item images: upload, replace, remove. Server-side type validation (content, not extension) and a maximum upload size (default 10 MB). Conversion to an efficient web format. | MUST (conversion SHOULD) | `[OLD FR-3.4–3.5, NFR-2.13]` |
 | MENU-4 | Items are venue-scoped, or shared across an organization with venue overrides (price, availability). | MUST | `[OLD FR-3.7]` |
-| MENU-5 | Modifier groups with required flag, minimum and maximum selections, and options with price deltas (identifier-based, PR-6). | SHOULD | `[OLD FR-3.8] [DL B]` |
+| MENU-5 | Modifier groups with required flag, minimum and maximum selections, and options with price deltas (identifier-based, PR-6). | SHOULD | `[OLD FR-3.8] [MIG B]` |
 | MENU-6 | **The availability toggle takes effect immediately on every customer-facing surface,** with no rebuild or cache flush. Historical orders stay intact. | MUST | `[OLD FR-3.9–3.10]` |
 | AVL-1 | An availability change ("86") propagates to Servvia channels. Each channel shows its own state, partial failure creates a recovery action, and propagation p95 is under 30 s. The exact channels are open (O-17). | MUST (pilot) | `[MVP 9.3]` |
 | TBL-1 | Table configuration per venue: number, name, seating capacity. | MUST | `[OLD FR-7.8]` |
@@ -184,10 +187,10 @@
 
 | ID | Requirement | Priority | Source |
 |---|---|---|---|
-| EDGE-1 | **Venue Edge owns local hardware and resilience:** printers, payment terminals, cash drawers, customer displays, offline command queue, sync, retry and diagnostics. It is never an independent source of business truth. | MUST | `[TOM §1] [P2 §17]` |
-| EDGE-2 | Outbound-only authenticated communication. A revocable, venue-bound identity. Encrypted local storage. A durable local queue with leases, idempotent reports, an explicit `unknown` outcome, and expiry. No direct database or shared Redis access. | MUST | `[TOM §8] [MVP 9.4]` |
+| EDGE-1 | **Venue Edge owns local hardware and resilience:** printers, payment terminals, cash drawers, customer displays, offline command queue, sync, retry and diagnostics. It is never an independent source of business truth. | MUST | `[ADR 7] [P2 §17]` |
+| EDGE-2 | Outbound-only authenticated communication. A revocable, venue-bound identity. Encrypted local storage. A durable local queue with leases, idempotent reports, an explicit `unknown` outcome, and expiry. No direct database or shared Redis access. | MUST | `[TOM §8] [ADR 2] [ADR 7] [MVP 9.4]` |
 | EDGE-3 | The local queue survives process and machine restart. Internet loss loses or duplicates nothing. Reconnect preserves order and idempotency. Heartbeat, versions, queue depth and oldest age are visible. | MUST | `[MVP 9.4]` |
-| PRT-1 | Multiple named printers per venue with role, connection and paper width. Station routing per KIT-1. Each KOT prints once per station; reprints are explicit and attributed. Printed acknowledgement is distinct from command delivery. | MUST | `[OLD FR-8.1–8.2] [MVP 9.5]` |
+| PRT-1 | Multiple named printers per venue with role, connection and paper width. Station routing per KIT-1. Each KOT prints once per station; reprints are explicit and attributed (NFR-AUD). Printed acknowledgement is distinct from command delivery. | MUST | `[OLD FR-8.1–8.2, FR-8.6] [MVP 9.5] [TOM §6]` |
 | PRT-2 | Failed jobs retry with backoff to a configurable maximum, then enter `failed` with an Admin alert. Each job is logged (ID, order, printer, attempts, status, times, error). If the printer is unreachable, the order is still accepted and the job queued. | MUST | `[OLD FR-8.4–8.7, FR-4.10]` |
 | PRT-3 | Print protocol and hardware are **open** (O-4). Latency is validated on real venue hardware (target under 3 s). | MUST | `[OLD FR-8.9, NFR-1.3] [MVP 9.5]` |
 
@@ -209,7 +212,7 @@
 ## 11. Milestones and acceptance
 
 - **First usable product** (staging, entirely on Go Core, no Nest transactional path):
-  - staff sign-in;
+  - staff sign-in. Every transactional request is authorized by Go Core, which verifies the credential and enforces roles and venue access. Credentials may be issued by the transitional NestJS identity service (O-2);
   - visit open;
   - orders and rounds;
   - kitchen tickets on the KDS;
@@ -220,7 +223,7 @@
   - refund.
 
   `[P2 §10]`
-- **FIRST INDEPENDENT SERVVIA PILOT:** a real venue runs its service days on Servvia, with no external POS, in production, with venue hardware: card terminal, receipt and kitchen printing, cash drawer. `[P2 §11]`
+- **FIRST INDEPENDENT SERVVIA PILOT:** a real venue runs its service days on Servvia, with no external POS, in production, with venue hardware: card terminal, receipt printing, kitchen printing **if the venue requires it**, cash drawer. `[P2 §11]` Whether the pilot venue requires kitchen printing is not yet established; hardware and protocol detail stay with O-4.
 - **Release acceptance (no venue go-live without these):**
   - correct pricing and tax;
   - no duplicate charges;
@@ -233,7 +236,9 @@
   - audit correlation;
   - staff-visible recovery for every failure state.
 
-  Moving a live venue onto Servvia is a separate operations decision. `[TOM §9]`
+  `[TOM §9]` (the acceptance list above)
+
+  **Production cutover:** a live venue must not be moved onto Servvia merely because a calendar target exists. Production cutover is a separately approved operational action, and it requires evidence that the applicable release-acceptance criteria above have been met. `[DECISION-2026-10-03]`
 - **Pilot acceptance criteria** are the consistent subset of `[MVP]` sections 9.1, 9.2, 9.4, 9.5, 9.6 and 9.7, as restated in ORD, PAY, EDGE, PRT and NFR above. Section 9.3 is restated as AVL-1. `[MVP §9]`
 - **Engineering:** unit, database-integration and critical device-journey tests in CI; concurrency tests show no overbooking or number collision; queue-failure, provider-timeout, Redis-outage and reconnect tests pass. `[MVP 9.7] [P2 §23]`
 
@@ -287,7 +292,7 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 | ID | Decision |
 |---|---|
 | O-1 | Is the Waiter Tablet required for the pilot venue? |
-| O-2 | May Nest serve non-transactional administration at pilot time? |
+| O-2 | **Decided 2026-10-03 (transitional architecture, PR-7)** `[DECISION-2026-10-03]`. **What Nest may do:** NestJS may temporarily issue staff and device credentials and continue non-transactional administration during the first pilot. **What Go Core stays authoritative for:** transactional authorization, credential verification at transactional boundaries, venue access and scoping, financial role enforcement, and transactional state. **Ownership:** the target owner of credential issuance is Go Core. **Retirement:** the overlap ends when Core provides the replacement credential issuance and the applicable clients have migrated and passed acceptance. **Guest credentials** never acquire Staff authority (WT-4, WT-5). Application mode, actor identity and provenance stay separate concepts. **Not waived:** the missing enforcement of staff venue scope in Core remains a security gap that must be fixed (section 16, item 3). |
 | O-3 | In-person card provider and terminal (also open in `[DL]`) |
 | O-4 | Pilot printers, cash drawer and KDS hardware; print protocol |
 | O-5 | Receipt content and NZ receipt and tax-invoice obligations (also open in `[DL]`) |
@@ -343,7 +348,7 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 | Q | Deployment and rollback safety | Every release is reversible or has a documented forward-fix path. Migrations follow the published-migration rules (never renamed or rewritten; ordered). A schema change is deployed so that running code stays correct. | `[OWNER-QB-2026-10-01]` `[FR rules 9–10]` |
 | R | Configuration and secrets | One documented configuration contract per service. Production refuses development defaults. Secrets are externally managed and never committed or logged. | `[OWNER-QB-2026-10-01]` `[OLD NFR-2.12] [MVP 9.6]` |
 | S | Dependency and supply chain | Dependencies are pinned through lockfiles and module checksums, and scanned for known vulnerabilities. Vulnerability remediation timelines: **OWNER DECISION REQUIRED**. | `[OWNER-QB-2026-10-01]` |
-| T | Compatibility and upgrade | APIs and events are versioned through `contracts/`. Breaking changes are explicit and coordinated with clients and Venue Edge. Edge and device upgrade, revocation and compatibility are managed. | `[OWNER-QB-2026-10-01]` `[MVP P2] [DL]` |
+| T | Compatibility and upgrade | APIs and events are versioned through `contracts/`. Breaking changes are explicit and coordinated with clients and Venue Edge. Edge and device upgrade, revocation and compatibility are managed. | `[OWNER-QB-2026-10-01]` `[MVP P2] [FR]` |
 | U | Maintainability | Code lives in its `fileRestructure.md` owner. One long-term owner per capability (PR-7). Architecture guard tests stay green. | `[OWNER-QB-2026-10-01]` `[FR] [DL] [REPO]` |
 | V–AA | Testing (automated, integration, contract, end-to-end, load and performance, security) | Section 21. | `[OWNER-QB-2026-10-01]` |
 | AB | Accessibility | Section 23. | `[OWNER-QB-2026-10-01]` |
@@ -412,8 +417,8 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 4. **Idempotent command handling** (section 15, row J).
 5. **Immutable evidence:** order commercial snapshots and financial records are never edited; they are corrected only by compensating records (PR-9). `[TOM §2] [MVP §2]`
 6. **No silent loss of committed operations.** Committed events are delivered at least once to each consumer; failures are dead-lettered and visible. `[REPO]`
-7. **Deterministic pricing authority:** the same inputs always produce the same server-computed price, tax and totals. `[TOM §3]`
-8. **Integer minor-unit money** (PR-5). `[DL A]`
+7. **Deterministic pricing authority:** the same inputs always produce the same server-computed price, tax and totals. `[ADR 5]`
+8. **Integer minor-unit money** (PR-5). `[MIG A]`
 9. **Safe retry semantics:** a retry reuses the same key and version, and never duplicates a charge, ticket or refund. `[TOM §7]`
 10. **Reconciliation capability:**
     - payments against the provider;
@@ -422,7 +427,7 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 
     `[TOM §7] [MVP 8.1]`
 11. **Traceability** from each user or device action to the resulting state (actor and device identity, correlation ID). `[TOM §6]`
-12. **Uncertain external outcomes** (terminal or provider) are held explicitly as uncertain and reconciled before any retry (PAY-6). `[TOM §7–8]`
+12. **Uncertain external outcomes** (terminal or provider) are held explicitly as uncertain and reconciled before any retry (PAY-6). `[TOM §7–8] [ADR 7]`
 
 ## 18. Reliability and resilience
 
