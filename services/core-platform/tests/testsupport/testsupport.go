@@ -86,6 +86,11 @@ var forbiddenDatabaseName = regexp.MustCompile(`(?i)(^|[_-])(prod|production|liv
 // DisposableDatabaseURL returns SERVVIA_CORE_TEST_DATABASE_URL, skipping the
 // test when it is unset and failing when it does not point at a disposable
 // local database. These suites write fixtures.
+//
+// The URL it returns pins the session to UTC (pgx sends an unknown URL
+// parameter as a runtime parameter), so a fixture written through a plain
+// pgxpool agrees with the code under test, whose pools pin UTC themselves
+// (internal/platform/postgres/pool.go), on a cluster of any TimeZone.
 func DisposableDatabaseURL(t *testing.T) string {
 	t.Helper()
 	raw := os.Getenv("SERVVIA_CORE_TEST_DATABASE_URL")
@@ -104,7 +109,12 @@ func DisposableDatabaseURL(t *testing.T) string {
 	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
 		t.Fatalf("refusing database host %q: tests only run against a local disposable database", host)
 	}
-	return raw
+	q := u.Query()
+	if q.Get("timezone") == "" {
+		q.Set("timezone", "UTC")
+		u.RawQuery = q.Encode()
+	}
+	return u.String()
 }
 
 // DisposableRedisAddr returns SERVVIA_CORE_TEST_REDIS_ADDR (host:port),

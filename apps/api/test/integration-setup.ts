@@ -28,6 +28,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { withUtcSession } from '../src/prisma/prisma.service';
 
 /**
  * Names that must never receive a write from this suite.
@@ -113,3 +114,8 @@ if (FORBIDDEN_DATABASE_NAMES.test(databaseName)) {
       'run against production, and a flag would eventually be set.',
   );
 }
+
+// Every client a spec builds, PrismaService or a PrismaClient of its own,
+// uses a UTC session (withUtcSession, as the API itself does), so fixtures
+// and the SQL under test agree on what now() means on any cluster.
+process.env.DATABASE_URL = withUtcSession(process.env.DATABASE_URL);
