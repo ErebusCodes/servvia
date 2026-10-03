@@ -28,6 +28,7 @@
     "seed": "ts-node -r dotenv/config -r tsconfig-paths/register prisma/seed.ts",
     "db:counts": "ts-node -r dotenv/config -r tsconfig-paths/register prisma/seed-status.ts",
     "staff:issue-setup-code": "ts-node -r dotenv/config -r tsconfig-paths/register scripts/provisioning/issue-credential-setup.ts",
+    "staff:bootstrap-owner": "ts-node -r dotenv/config -r tsconfig-paths/register scripts/provisioning/bootstrap-first-owner.ts",
     "correct-pos-sync-records": "ts-node -r dotenv/config -r tsconfig-paths/register prisma/scripts/correct-fabricated-pos-sync-records.ts",
     "report-missing-pos-mappings": "ts-node -r dotenv/config -r tsconfig-paths/register prisma/scripts/report-missing-pos-mappings.ts",
     "prisma:migrate": "prisma migrate dev",

@@ -588,6 +588,26 @@ So that venue scoping does not depend on which service serves the request.
 - Implementation (2026-10-04): `VenueAccessGuard` with `@VenueScope` (path, query, body, a record's venue, the tablet token's venue, or a list) and `@OrganizationScope(reason)`, applying Core's decision (`internal/identity/venueaccess.go`); the Socket.IO `joinVenue` check and its periodic re-check; `venue-scope.architecture.spec.ts`; integration test `venue-access.integration-spec.ts`. Organization-level by declaration: the menu catalogue, the POS catalogue, the legacy media library, staff accounts (grants checked by the service), venue creation and tablet lock.
 - Status: DONE
 
+### Story 2.11: A real installation's first owner comes only from a governed bootstrap
+
+As an owner,
+I want no ordinary seed or script to be able to create, reset or restore a named owner on a real installation,
+So that an owner's credential is known only to that owner.
+
+**Acceptance Criteria:**
+
+**Given** `prisma/seed.ts` resets the seeded owner's password and restores a deleted owner on every run, with no production guard and no audit, and `scripts/provisioning/create-owner-staff.mjs` created the production owner with an operator-chosen password (2026-10-04 review)
+**When** the three concerns are separated
+**Then** development and test seeding refuses `NODE_ENV=production` and any production-looking database with no override, and says when it resets the development owner; a real installation's first owner is created only by `npm run staff:bootstrap-owner`, which refuses while the organization has an active owner, gives the account no usable password, grants every venue of the organization, and prints a single-use setup code, all committed with system-actor audit records under the per-organization owner lock; credential recovery stays `npm run staff:issue-setup-code` (Story 2.4).
+
+**And** the operator-password script is retired (it refuses to run)
+**And** concurrent bootstrap runs for one organization create exactly one owner.
+
+- Traceability: NFR-SEC-1, NFR-AUD; Stories 2.4 and 8.1; 2026-10-04 review finding.
+- Depends on: Stories 2.4, 8.1 and 2.10.
+- Implementation (2026-10-04): `src/config/seed-guard.ts`, `src/staff/owner-bootstrap.ts`, `scripts/provisioning/bootstrap-first-owner.ts`; integration test `owner-bootstrap.integration-spec.ts` (the race test fails 3 of 3 runs without the lock).
+- Status: DONE
+
 ## Epic 3: Recoverable production data
 
 Operators can bring the production database to a known migration baseline, and can recover it from tested backups. Audit P0-05 and P0-12.

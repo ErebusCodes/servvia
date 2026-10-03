@@ -2,6 +2,7 @@ import { PrismaClient, StaffRole } from '@prisma/client';
 import tableConfig from '../../../shared/table-config.json';
 import * as argon2 from 'argon2';
 import { assertSecretNotInsecureDefault } from '../src/auth/utils/insecure-default-secret.util';
+import { seedRefusal } from '../src/config/seed-guard';
 
 const prisma = new PrismaClient();
 
@@ -14,6 +15,16 @@ const { LOCAL_VENUE_ID, LOCAL_ORG_SLUG, LOCAL_VENUE_SLUG } =
   };
 
 async function main() {
+  // Development and test data only: never a real installation (seed-guard.ts).
+  const refusal = seedRefusal(process.env);
+  if (refusal) {
+    throw new Error(
+      `Refusing to seed: ${refusal}. prisma/seed.ts writes development data and resets the ` +
+        "seeded owner's password. Create a real installation's first owner with " +
+        'npm run staff:bootstrap-owner, and recover a lost credential with ' +
+        'npm run staff:issue-setup-code.',
+    );
+  }
   const seedPassword = process.env.SEED_OWNER_PASSWORD;
   if (!seedPassword) throw new Error('SEED_OWNER_PASSWORD env var is required');
   assertSecretNotInsecureDefault(seedPassword, 'SEED_OWNER_PASSWORD');
@@ -29,6 +40,7 @@ async function main() {
 
   const passwordHash = await argon2.hash(seedPassword, { type: argon2.argon2id });
 
+  const existingOwner = await prisma.staff.findUnique({ where: { email: ownerEmail } });
   const seededOwner = await prisma.staff.upsert({
     where: { email: ownerEmail },
     create: {
@@ -40,6 +52,13 @@ async function main() {
     },
     update: { passwordHash, deletedAt: null },
   });
+  if (existingOwner) {
+    // Deliberate for a reproducible development database, and said aloud.
+    console.log(
+      `Seed: the development owner ${ownerEmail} already existed; its password was reset to ` +
+        `SEED_OWNER_PASSWORD${existingOwner.deletedAt ? ' and the account was restored' : ''}.`,
+    );
+  }
 
   const venue = await prisma.venue.upsert({
     where: {
@@ -121,7 +140,7 @@ async function main() {
   const tablesData = tableConfig;
 
   // Delete any tables not in the seeded range to ensure only T1-T18 exist
-  const seededTableNumbers = tablesData.map(t => t.tableNumber);
+  const seededTableNumbers = tablesData.map((t) => t.tableNumber);
   await prisma.table.deleteMany({
     where: {
       venueId: venue.id,
@@ -154,7 +173,9 @@ async function main() {
     });
   }
 
-  console.log(`Seeded org "${org.name}", owner account "${ownerEmail}", venue "${venue.name}", and ${tablesData.length} tables.`);
+  console.log(
+    `Seeded org "${org.name}", owner account "${ownerEmail}", venue "${venue.name}", and ${tablesData.length} tables.`,
+  );
 
   // ── Menu seed ──────────────────────────────────────────────────────────────
   // The database is seeded from shared/menu/menuData.mjs — the single
@@ -234,7 +255,13 @@ async function main() {
     // Titles are not globally unique (e.g. "Tabbouleh" appears both as a
     // Salad and as a Side) so items are matched within their own category.
     const existing = await prisma.menuItem.findFirst({
-      where: { organizationId: org.id, categoryId, title: item.title, subCategory: item.subCategory ?? null, deletedAt: null },
+      where: {
+        organizationId: org.id,
+        categoryId,
+        title: item.title,
+        subCategory: item.subCategory ?? null,
+        deletedAt: null,
+      },
     });
 
     const data = {
@@ -265,20 +292,25 @@ async function main() {
     }
   }
 
-  const finalCount = await prisma.menuItem.count({ where: { organizationId: org.id, deletedAt: null } });
+  const finalCount = await prisma.menuItem.count({
+    where: { organizationId: org.id, deletedAt: null },
+  });
   console.log(
     `Menu: ${SEED_CATEGORIES.length} categories, ${created} items created, ${updated} items updated ` +
-    `(${SEED_ITEMS.length} defined, canonical count ${CANONICAL_MENU_ITEM_COUNT}, ${finalCount} now in DB for this org).`,
+      `(${SEED_ITEMS.length} defined, canonical count ${CANONICAL_MENU_ITEM_COUNT}, ${finalCount} now in DB for this org).`,
   );
   if (finalCount !== CANONICAL_MENU_ITEM_COUNT) {
     console.warn(
       `WARNING: DB menu item count (${finalCount}) does not match the canonical count ` +
-      `(${CANONICAL_MENU_ITEM_COUNT}) — likely leftover items from a prior, non-canonical seed. ` +
-      `Investigate with a Category/MenuItem query before assuming the menu is correct.`,
+        `(${CANONICAL_MENU_ITEM_COUNT}) — likely leftover items from a prior, non-canonical seed. ` +
+        `Investigate with a Category/MenuItem query before assuming the menu is correct.`,
     );
   }
 }
 
 main()
-  .catch((e) => { console.error(e); process.exit(1); })
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
   .finally(() => prisma.$disconnect());
