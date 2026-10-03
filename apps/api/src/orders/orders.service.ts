@@ -32,6 +32,7 @@ import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
+import { AuditActor } from '../audit/audit-actor';
 import {
   LEGACY_EXTERNAL_POS_ORDER_INCLUDE,
   LegacyExternalPosHandoff,
@@ -871,7 +872,7 @@ export class OrdersService {
     id: string,
     organizationId: string,
     dto: UpdateOrderStatusDto,
-    actor: { id: string; email: string; role: StaffRole },
+    actor: AuditActor,
     venueId?: string,
   ): Promise<Order> {
     const order = await this.prisma.order.findFirst({
@@ -901,10 +902,15 @@ export class OrdersService {
     // dispatch-stop attempt silently skipped.
     let posDispatchStopped: boolean | null = null;
     if (newStatus === OrderStatus.cancelled && oldStatus !== OrderStatus.cancelled) {
+      // Only a named staff member cancels (the kitchen role and devices are
+      // refused by the controller); the connector cancel is attributed to them.
+      if (actor.actorType === 'device' || actor.actorType === 'system') {
+        throw new ForbiddenException('Only a staff member may cancel an order');
+      }
       posDispatchStopped = await this.legacyExternalPos.stopHandoffForCancelledOrder(
         order,
         organizationId,
-        actor,
+        { id: actor.actorId, email: actor.actorEmail, role: actor.actorRole },
       );
     }
 
@@ -927,13 +933,12 @@ export class OrdersService {
       include: { items: true, table: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
     });
 
-    // Audit log state transition
+    // Audit log state transition, attributed to the real actor (Story 12.15):
+    // a KDS screen is recorded as a device, never as a Staff row.
     await this.auditLogService.logAuthEvent({
       organizationId,
       venueId: order.venueId,
-      actorId: actor.id,
-      actorEmail: actor.email,
-      actorRole: actor.role,
+      ...actor,
       action: 'UPDATE_ORDER_STATUS',
       resource: 'order',
       resourceId: order.id,

@@ -1661,13 +1661,37 @@ model KdsDeliveryRecord {
   @@index([status, dispatchExhaustedAt, createdAt])
 }
 
+// Story 12.15: who performed an audited action. Actor identity (a named
+// staff member, an authenticated device, or a system process), device
+// identity and provenance are separate columns; a device is never recorded
+// as a Staff row. A CHECK constraint (migration
+// 20261010000000_audit_actor_types) enforces the shape of each actor type,
+// and a trigger rejects UPDATE: audit rows are immutable.
+enum AuditActorType {
+  staff // a named staff member (actorId, actorEmail, actorRole), possibly acting on a device
+  device // an authenticated device or service credential (deviceKind; deviceId when one exists)
+  system // a background process of the platform itself (systemActor)
+}
+
 model AuditLog {
-  id             String    @id @default(uuid())
+  id             String         @id @default(uuid())
   organizationId String
   venueId        String?
-  actorId        String
-  actorEmail     String
-  actorRole      StaffRole
+  actorType      AuditActorType @default(staff)
+  // Staff.id: set exactly when actorType = staff.
+  actorId        String?
+  actorEmail     String?
+  // The staff member's role, or the role a device credential grants.
+  actorRole      StaffRole?
+  // The kind of device or credential that acted, or that a staff member
+  // acted through: kds_device (a KDS screen signed in with the venue PIN;
+  // no device record exists), tablet_device, venue_connector.
+  deviceKind     String?
+  // The device's own record ID where one exists (TabletDevice.id,
+  // ConnectorInstallation.id). No foreign key: devices live in several tables.
+  deviceId       String?
+  // Name of the system process, set exactly when actorType = system.
+  systemActor    String?
   action         String
   resource       String
   resourceId     String?
@@ -1675,11 +1699,15 @@ model AuditLog {
   after          Json?
   ipAddress      String?
   userAgent      String?
-  timestamp      DateTime  @default(now())
+  timestamp      DateTime       @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id])
-  venue        Venue?       @relation(fields: [venueId], references: [id])
-  actor        Staff        @relation("ActorLogs", fields: [actorId], references: [id])
+  // Restrict (was SetNull): deleting a venue must not rewrite the venue
+  // context of its immutable audit history (Story 12.15).
+  venue        Venue?       @relation(fields: [venueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  // Restrict, as before: deleting a staff member must never erase or null
+  // the attribution of their audited actions.
+  actor        Staff?       @relation("ActorLogs", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 // ─── Story 2-9: Enterprise Venue Connector Identity ─────────────────────────

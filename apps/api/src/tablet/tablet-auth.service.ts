@@ -12,6 +12,7 @@ import { Staff, StaffRole, TabletDevice } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit.service';
+import { AUDIT_DEVICE_KINDS } from '../audit/audit-actor';
 import { safeCompare } from '../common/utils/safe-compare';
 import { assertPinNotInsecureDefault } from '../auth/utils/insecure-default-pin.util';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -355,16 +356,14 @@ export class TabletAuthService {
     extra?: Record<string, unknown>,
   ): Promise<void> {
     try {
-      const systemActor = await this.resolveDeviceSystemActor(
-        device.organizationId,
-        device.deviceId,
-      );
+      // Story 12.15: the tablet is recorded as the device it is, never as a
+      // synthetic Staff row.
       await this.auditLogService.logAuthEvent({
         organizationId: device.organizationId,
         venueId: device.venueId,
-        actorId: systemActor.id,
-        actorEmail: systemActor.email,
-        actorRole: StaffRole.viewer,
+        actorType: 'device',
+        deviceKind: AUDIT_DEVICE_KINDS.tablet,
+        deviceId: device.deviceId,
         action,
         resource,
         resourceId: device.deviceId,

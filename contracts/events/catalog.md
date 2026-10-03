@@ -11,7 +11,7 @@ Legacy tables: `OutboxEvent` (D3/D4) is no longer written; the kitchen projector
 
 Every fact is recorded **in the transaction of the change it announces**. A replayed request, a refused request or a no-op change records nothing, the same rule as for AuditLog.
 
-AuditLog is not a fact source: it is staff accountability, not an event bus.
+AuditLog is not a fact source: it is accountability for staff, device and system actors (Story 12.15), not an event bus.
 
 | Fact | Aggregate (`version`) | Recorded when | Payload | Streams |
 |---|---|---|---|---|

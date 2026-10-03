@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateVenueDto } from './dto/create-venue.dto';
 import { UpdateVenueDto } from './dto/update-venue.dto';
-import { Venue } from '@prisma/client';
+import { Prisma, Venue } from '@prisma/client';
 
 @Injectable()
 export class VenuesService {
@@ -127,8 +127,17 @@ export class VenuesService {
     // Check if venue exists
     await this.findOne(id, organizationId);
 
-    return this.prisma.venue.delete({
-      where: { id },
-    });
+    try {
+      return await this.prisma.venue.delete({
+        where: { id },
+      });
+    } catch (error) {
+      // A venue with history (orders, audit records, ...) is kept: every
+      // foreign key to Venue restricts deletion. Answer 409, not a 500.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new ConflictException('This venue has recorded history and cannot be deleted');
+      }
+      throw error;
+    }
   }
 }

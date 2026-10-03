@@ -532,8 +532,14 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         where: { action: 'CREATE_ORDER', resourceId: res.body.id as string, organizationId: orgId },
         orderBy: { timestamp: 'desc' },
       });
+      // The order itself still needs a Staff creator (Order.createdById), so
+      // device-originated orders keep this synthetic per-device actor; the
+      // audit model can now record devices directly (Story 12.15), and moving
+      // order creation off it is tracked separately (Story 12.16).
       expect(auditRow.actorEmail).toBe(`tablet-device+${deviceId}@verdura.internal`);
-      const actorStaff = await prisma.staff.findUniqueOrThrow({ where: { id: auditRow.actorId } });
+      const actorStaff = await prisma.staff.findUniqueOrThrow({
+        where: { id: auditRow.actorId ?? '' },
+      });
       expect(actorStaff.isActive).toBe(false);
     });
 

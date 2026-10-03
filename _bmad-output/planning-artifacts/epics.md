@@ -1295,8 +1295,24 @@ So that the kitchen can work without errors.
 **Then** a kitchen status change succeeds and is audited with an attributable actor, with an integration test.
 
 - Traceability: NFR-AUD, SEC-16.1; Story 2.7 finding.
-- Depends on: an audit-attribution and schema decision (precedent: a synthetic per-device staff actor for tablets).
-- Status: BLOCKED: needs the audit-attribution decision (Tier 2).
+- Decision (Tier 2, 2026-10-03): actor identity, device identity and provenance are separate. `AuditLog.actorType` is staff, device or system; the Staff foreign key stays for staff actors only, with a CHECK constraint per actor type and an UPDATE-rejecting trigger. No synthetic Staff row is created for a device. `AuditLog.venueId` restricts venue deletion instead of nulling history.
+- Status: DONE
+
+### Story 12.16: Device-originated orders without a synthetic staff creator
+
+As an owner,
+I want kiosk and unelevated-tablet orders attributed to the device or channel that created them,
+So that no order names a fabricated staff member as its creator.
+
+**Acceptance Criteria:**
+
+**Given** `Order.createdById` is a required foreign key to Staff, so kiosk orders use a synthetic `kiosk-system+<org>` Staff row and restricted tablet orders a synthetic `tablet-device+<deviceId>` Staff row (found in Story 12.15; their audit rows inherit that actor)
+**When** the order creator is modelled like the audit actor (staff, device or system)
+**Then** new kiosk and tablet orders name their real origin, existing rows are left unchanged, and no new synthetic Staff row is created.
+
+- Traceability: NFR-AUD; Story 12.15 finding.
+- Depends on: Story 12.15.
+- Status: READY
 
 ## Epic 13: Deferred and blocked product scope (placeholders)
 

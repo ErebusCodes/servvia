@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { VenuesService } from './venues.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
 const mockPrisma = {
   venue: {
@@ -200,6 +201,17 @@ describe('VenuesService', () => {
       const result = await service.remove('venue-1', 'org-1');
       expect(result).toEqual(venue);
       expect(mockPrisma.venue.delete).toHaveBeenCalledWith({ where: { id: 'venue-1' } });
+    });
+
+    it('answers 409 when the venue has history that restricts deletion (e.g. audit records)', async () => {
+      mockPrisma.venue.findFirst.mockResolvedValue({ id: 'venue-1', organizationId: 'org-1' });
+      mockPrisma.venue.delete.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Foreign key constraint failed', {
+          code: 'P2003',
+          clientVersion: 'test',
+        }),
+      );
+      await expect(service.remove('venue-1', 'org-1')).rejects.toThrow(ConflictException);
     });
   });
 });

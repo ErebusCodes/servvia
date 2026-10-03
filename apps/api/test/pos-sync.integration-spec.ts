@@ -259,6 +259,7 @@ describe('POS Sync (integration, real local Postgres)', () => {
         await prisma.orderItem.deleteMany({ where: { order: { venueId: apiVenue.id } } });
         await prisma.order.deleteMany({ where: { venueId: apiVenue.id } });
         await prisma.table.delete({ where: { id: table.id } });
+        await prisma.auditLog.deleteMany({ where: { venueId: apiVenue.id } });
         await prisma.venue.delete({ where: { id: apiVenue.id } });
       }
     });
@@ -397,6 +398,7 @@ describe('POS Sync (integration, real local Postgres)', () => {
           .set('Authorization', `Bearer ${accessToken}`)
           .expect(404);
       } finally {
+        await prisma.auditLog.deleteMany({ where: { venueId: otherVenue.id } });
         await prisma.venue.delete({ where: { id: otherVenue.id } });
         await prisma.organization.delete({ where: { id: otherOrg.id } });
       }
@@ -421,6 +423,7 @@ describe('POS Sync (integration, real local Postgres)', () => {
           .set('Authorization', `Bearer ${kdsToken}`)
           .expect(403);
       } finally {
+        await prisma.auditLog.deleteMany({ where: { venueId: secondVenue.id } });
         await prisma.venue.delete({ where: { id: secondVenue.id } });
       }
     });

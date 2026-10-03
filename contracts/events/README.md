@@ -31,7 +31,7 @@ The four tables share these patterns:
 - **Honest statuses:** no status claims more than the evidence supports. For example, `pushed` and `delivered` do not mean received, and `accepted` does not mean executed.
 - **Timers:** each dispatcher runs on a `setInterval` that is disabled under `NODE_ENV=test`.
 
-The audit log (`AuditLog`, `action` strings such as `CONNECTOR_COMMAND_*` and `UPDATE_ORDER_STATUS`) is the other durable record of state changes. It is written best-effort and has no dispatcher.
+The audit log (`AuditLog`, `action` strings such as `CONNECTOR_COMMAND_*` and `UPDATE_ORDER_STATUS`) is the other durable record of state changes. It is written best-effort and has no dispatcher. Each row names its actor truthfully (Story 12.15): `actorType` is `staff` (a named staff member, with the device they acted through if any), `device` (`deviceKind`, plus `deviceId` when a device record exists; a KDS venue-PIN screen has none) or `system` (`systemActor`). A database CHECK constraint enforces each shape, and rows are immutable (a trigger rejects UPDATE; foreign keys restrict deletion of the staff member, venue and organization they name).
 
 ## Servvia Core outbox (`OutboxEvent`, Phases D3 and D4) — legacy since D13
 

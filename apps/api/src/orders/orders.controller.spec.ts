@@ -101,7 +101,8 @@ describe('OrdersController venue scoping', () => {
         'order-1',
         'org-1',
         { status: 'preparing' },
-        { id: kdsUser.id, email: kdsUser.email, role: kdsUser.role },
+        // Story 12.15: a KDS screen is audited as a device, never as a Staff row.
+        { actorType: 'device', deviceKind: 'kds_device', actorRole: kdsUser.role },
         'venue-1',
       );
     });
@@ -112,7 +113,12 @@ describe('OrdersController venue scoping', () => {
         'order-1',
         'org-1',
         { status: 'preparing' },
-        { id: staffUser.id, email: staffUser.email, role: staffUser.role },
+        {
+          actorType: 'staff',
+          actorId: staffUser.id,
+          actorEmail: staffUser.email,
+          actorRole: staffUser.role,
+        },
         undefined,
       );
     });

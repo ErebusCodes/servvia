@@ -25,6 +25,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
+import { auditActorFromUser } from '../audit/audit-actor';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -121,13 +122,14 @@ export class OrdersController {
     if (req.user.role === StaffRole.kitchen && !KITCHEN_STATUS_TRANSITIONS.has(dto.status)) {
       throw new ForbiddenException('The kitchen role may only advance kitchen preparation');
     }
-    const actor = {
-      id: req.user.id,
-      email: req.user.email,
-      role: req.user.role,
-    };
     const scopedVenueId = resolveVenueScope(req.user, undefined);
-    return this.ordersService.updateStatus(id, req.user.organizationId, dto, actor, scopedVenueId);
+    return this.ordersService.updateStatus(
+      id,
+      req.user.organizationId,
+      dto,
+      auditActorFromUser(req.user),
+      scopedVenueId,
+    );
   }
 
   /**

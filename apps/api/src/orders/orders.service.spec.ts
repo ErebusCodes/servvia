@@ -12,6 +12,7 @@ import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
+import { staffAuditActor } from '../audit/audit-actor';
 import { ConnectorCommandService } from '../connector/connector-command.service';
 import { PosStrategyResolver } from '../pos-sync/pos-strategy-resolver';
 import { LegacyExternalPosHandoff } from '../legacy-external-pos/legacy-external-pos-handoff';
@@ -669,7 +670,11 @@ describe('OrdersService', () => {
       createdAt: new Date(),
     };
 
-    const staffActor = { id: 'staff-1', email: 'cook@verdura.co.nz', role: StaffRole.kitchen };
+    const staffActor = staffAuditActor({
+      id: 'staff-1',
+      email: 'cook@verdura.co.nz',
+      role: StaffRole.kitchen,
+    });
 
     it('successfully transitions from confirmed to preparing', async () => {
       mockPrisma.order.findFirst.mockResolvedValue(mockOrder);
@@ -758,9 +763,9 @@ describe('OrdersService', () => {
           'cmd-1',
           orgId,
           venueId,
-          staffActor.id,
-          staffActor.email,
-          staffActor.role,
+          staffActor.actorId,
+          staffActor.actorEmail,
+          staffActor.actorRole,
         );
         expect(mockPrisma.pOSSyncRecord.updateMany).toHaveBeenCalledWith({
           where: { id: 'sync-1', status: POSSyncStatus.queued_for_connector },

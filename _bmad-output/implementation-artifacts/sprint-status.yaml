@@ -125,7 +125,8 @@ development_status:
   12-12-real-device-lan-and-venue-validation-dry-run: backlog
   12-13-durable-ingestion-and-retention-of-security-and-operational: backlog
   12-14-isolated-queue-infrastructure-for-nest-integration-tests: backlog
-  12-15-kitchen-kds-device-status-changes-fail-on-the-audit-actor-fo: backlog
+  12-15-kitchen-kds-device-status-changes-fail-on-the-audit-actor-fo: done
+  12-16-device-originated-orders-without-a-synthetic-staff-creator: backlog
   epic-12-retrospective: optional
 
   epic-13: backlog

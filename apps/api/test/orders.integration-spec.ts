@@ -479,6 +479,7 @@ describe('Orders API (integration, real local Postgres)', () => {
       await prisma.printer.deleteMany({ where: { venueId: venue.id } });
       await prisma.menuItem.deleteMany({ where: { organizationId: org.id } });
       await prisma.category.deleteMany({ where: { organizationId: org.id } });
+      await prisma.auditLog.deleteMany({ where: { venueId: venue.id } });
       await prisma.venue.delete({ where: { id: venue.id } });
       const kioskSystemStaff = await prisma.staff.findMany({ where: { organizationId: org.id } });
       for (const s of kioskSystemStaff) {
@@ -574,6 +575,7 @@ describe('Orders API (integration, real local Postgres)', () => {
       await prisma.printer.deleteMany({ where: { venueId: venue.id } });
       await prisma.menuItem.deleteMany({ where: { organizationId: org.id } });
       await prisma.category.deleteMany({ where: { organizationId: org.id } });
+      await prisma.auditLog.deleteMany({ where: { venueId: venue.id } });
       await prisma.venue.delete({ where: { id: venue.id } });
       const kioskSystemStaff = await prisma.staff.findMany({ where: { organizationId: org.id } });
       for (const s of kioskSystemStaff) {
@@ -665,12 +667,57 @@ describe('Orders API (integration, real local Postgres)', () => {
       expect(
         (await prisma.order.findUniqueOrThrow({ where: { id: created.body.id } })).status,
       ).toBe(created.body.status);
+    } finally {
+      await cleanupOrder(created.body.id);
+    }
+  });
 
-      // The allowed kitchen transitions (preparing, ready, completed) are
-      // proven at the controller (orders.controller.spec.ts). Through Nest they
-      // currently fail with 500, a pre-existing defect: the status-change audit
-      // row uses the KDS device's synthetic actor ID, which is not a Staff row
-      // (AuditLog_actorId_fkey). That is tracked separately and not asserted here.
+  it('Story 12.15: a KDS status change succeeds and is audited as the device, not a Staff row', async () => {
+    const kdsToken = app.get(AuthService).signKdsDeviceToken(venueId, organizationId);
+    const table = await freeTable();
+    const created = await request(app.getHttpServer())
+      .post('/api/admin/orders')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        venueId,
+        tableId: table.id,
+        serviceMode: 'dine_in',
+        notes: noteTag('kds-audit'),
+        items: [{ menuItemId, quantity: 1 }],
+        idempotencyKey: `idem_integration_test_kds_audit_${Date.now()}`,
+      })
+      .expect(201);
+    try {
+      // Previously a 500: the audit row named "kds-device:<venue>" as a Staff
+      // actor and violated AuditLog_actorId_fkey.
+      for (const status of ['preparing', 'ready', 'completed']) {
+        const res = await request(app.getHttpServer())
+          .patch(`/api/admin/orders/${created.body.id}/status`)
+          .set('Authorization', `Bearer ${kdsToken}`)
+          .send({ status })
+          .expect(200);
+        expect(res.body.status).toBe(status);
+      }
+      const rows = await prisma.auditLog.findMany({
+        where: { action: 'UPDATE_ORDER_STATUS', resourceId: created.body.id as string },
+        orderBy: { timestamp: 'asc' },
+      });
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        expect(row).toMatchObject({
+          organizationId,
+          venueId,
+          actorType: 'device',
+          actorId: null,
+          actorEmail: null,
+          actorRole: 'kitchen',
+          deviceKind: 'kds_device',
+          deviceId: null,
+          systemActor: null,
+        });
+      }
+      // No Staff row was invented for the KDS screen.
+      expect(await prisma.staff.count({ where: { email: { startsWith: 'kds-device' } } })).toBe(0);
     } finally {
       await cleanupOrder(created.body.id);
     }
@@ -1074,7 +1121,10 @@ describe('Orders API (integration, real local Postgres)', () => {
         if (secondVenueMenuItem)
           await prisma.menuItem.delete({ where: { id: secondVenueMenuItem.id } });
         if (secondVenueTable) await prisma.table.delete({ where: { id: secondVenueTable.id } });
-        if (secondVenue) await prisma.venue.delete({ where: { id: secondVenue.id } });
+        if (secondVenue) {
+          await prisma.auditLog.deleteMany({ where: { venueId: secondVenue.id } });
+          await prisma.venue.delete({ where: { id: secondVenue.id } });
+        }
       }
     });
 
