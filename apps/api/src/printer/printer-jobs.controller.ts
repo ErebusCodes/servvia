@@ -18,6 +18,8 @@ import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { auditActorFromUser } from '../audit/audit-actor';
 import { PrinterJobsService, ReprintActor } from './printer-jobs.service';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -60,13 +62,14 @@ const PRINTER_JOB_ORDER_VIEW_ROLES = [...PRINTER_JOB_VIEW_ROLES, StaffRole.viewe
 // than a shared kitchen/KDS device PIN token.
 const PRINTER_JOB_REPRINT_ROLES = [StaffRole.admin, StaffRole.manager, StaffRole.cashier] as const;
 
-@UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, VenueAccessGuard)
 @Controller('admin')
 export class PrinterJobsController {
   constructor(private readonly printerJobsService: PrinterJobsService) {}
 
   @Roles(...PRINTER_JOB_VIEW_ROLES)
   @Get('printers/:id/jobs')
+  @VenueScope({ resource: 'printer' })
   listForPrinter(
     @Req() req: AuthedRequest,
     @Param('id') printerId: string,
@@ -83,6 +86,7 @@ export class PrinterJobsController {
 
   @Roles(...PRINTER_JOB_ORDER_VIEW_ROLES)
   @Get('orders/:id/print-jobs')
+  @VenueScope({ resource: 'order' })
   listForOrder(@Req() req: AuthedRequest, @Param('id') orderId: string) {
     const scopedVenueId = resolveVenueScope(req.user, undefined);
     return this.printerJobsService.listForOrder(orderId, req.user.organizationId, scopedVenueId);
@@ -90,6 +94,7 @@ export class PrinterJobsController {
 
   @Roles(...PRINTER_JOB_REPRINT_ROLES)
   @Post('printers/:printerId/jobs/:jobId/reprint')
+  @VenueScope({ resource: 'printer', idParam: 'printerId' })
   requestReprint(
     @Req() req: AuthedRequest,
     @Param('printerId') printerId: string,
@@ -112,6 +117,7 @@ export class PrinterJobsController {
   // status.
   @Roles(...PRINTER_JOB_REPRINT_ROLES)
   @Post('printers/:printerId/jobs/:jobId/retry-dispatch')
+  @VenueScope({ resource: 'printer', idParam: 'printerId' })
   retryDispatch(
     @Req() req: AuthedRequest,
     @Param('printerId') printerId: string,

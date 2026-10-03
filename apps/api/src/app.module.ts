@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import * as Joi from 'joi';
 import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { VenueAccessModule } from './auth/venue-access/venue-access.module';
 import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -168,6 +169,7 @@ export const configValidationSchema = Joi.object({
         validateEnvironment(configValidationSchema, config),
     }),
     PrismaModule,
+    VenueAccessModule,
     RedisModule,
     QueueModule,
     HealthModule,

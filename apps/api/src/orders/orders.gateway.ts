@@ -15,6 +15,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { StaffSessionVerifier } from '../auth/staff-session-verifier.service';
 import { isAllowedOrigin } from '../config/allowed-origins';
+import {
+  VenueAccessDecision,
+  decideVenueAccess,
+  isStaffPrincipal,
+} from '../auth/venue-access/venue-access';
+import { logSecurityEvent } from '../observability/security-events';
 
 /**
  * How often a connected socket's credential is checked again (Story 2.6):
@@ -32,6 +38,8 @@ const TABLET_KINDS = new Set(['tablet_device', 'tablet_staff', 'tablet_manager']
 interface SocketAuthData {
   user?: JwtPayload;
   timers?: NodeJS.Timeout[];
+  /** Venues whose rooms the socket joined, re-checked with the credential. */
+  venues?: Set<string>;
 }
 
 /**
@@ -146,6 +154,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       await this.staffSessions.assertLive(payload);
       await this.assertTabletDeviceActive(payload);
+      await this.leaveVenuesNoLongerGranted(client, payload);
       return true;
     } catch (err) {
       if (err instanceof UnauthorizedException) {
@@ -214,24 +223,61 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const kdsRoom = `venue:${data.venueId}:kds`;
     void client.join(ordersRoom);
     void client.join(kdsRoom);
+    const auth = client.data as SocketAuthData;
+    (auth.venues ??= new Set()).add(data.venueId);
     return { status: 'joined', rooms: [ordersRoom, kdsRoom] };
   }
 
   /**
-   * Mirrors REST authorization for the same data (org-scoped RBAC — see
-   * orders.controller.ts): a KDS device token may only join the single
-   * venue room baked into its token; a staff token may join any venue room
-   * within its own organization.
+   * Mirrors REST authorization for the same data (Story 2.10, and Core's
+   * realtime subscribe check): a device-scoped token (a KDS screen or a
+   * tablet, elevated or not) joins only the venue in its token; a staff
+   * principal joins only a venue of its organization it has been granted,
+   * and an elevated tablet needs both. A grant that cannot be checked
+   * refuses (fails closed).
    */
   private async isAuthorizedForVenue(user: JwtPayload, venueId: string): Promise<boolean> {
-    if (user.kind === 'kds_device') {
-      return user.venueId === venueId;
+    const deviceScoped = !!user.kind && user.kind !== 'staff';
+    if (deviceScoped && user.venueId !== venueId) return false;
+    // A KDS screen or an unelevated tablet: its token's venue is the rule.
+    if (!isStaffPrincipal(user)) return true;
+    try {
+      const decision = await decideVenueAccess(this.prisma, user.sub, user.organizationId, venueId);
+      if (decision === VenueAccessDecision.NotGranted) this.logVenueDenied(user, venueId);
+      return decision === VenueAccessDecision.Granted;
+    } catch (err) {
+      this.logger.error(`Venue access check failed: ${(err as Error).message}`);
+      return false;
     }
-    const venue = await this.prisma.venue.findUnique({
-      where: { id: venueId },
-      select: { organizationId: true },
+  }
+
+  /**
+   * A staff member whose grant for a joined venue was revoked stops
+   * receiving that venue's events at the next credential re-check.
+   */
+  private async leaveVenuesNoLongerGranted(client: Socket, user: JwtPayload): Promise<void> {
+    const venues = (client.data as SocketAuthData).venues;
+    if (!venues || !isStaffPrincipal(user)) return;
+    for (const venueId of [...venues]) {
+      const decision = await decideVenueAccess(this.prisma, user.sub, user.organizationId, venueId);
+      if (decision !== VenueAccessDecision.Granted) {
+        if (decision === VenueAccessDecision.NotGranted) this.logVenueDenied(user, venueId);
+        void client.leave(`venue:${venueId}:orders`);
+        void client.leave(`venue:${venueId}:kds`);
+        venues.delete(venueId);
+      }
+    }
+  }
+
+  private logVenueDenied(user: JwtPayload, venueId: string): void {
+    logSecurityEvent('venue_access_denied', 'staff venue access denied', {
+      staff_id: user.sub,
+      kind: user.kind ?? 'staff_session',
+      role: user.role,
+      organization_id: user.organizationId,
+      venue_id: venueId,
+      transport: 'realtime',
     });
-    return !!venue && venue.organizationId === user.organizationId;
   }
 
   sendOrderUpdate(venueId: string, order: any) {

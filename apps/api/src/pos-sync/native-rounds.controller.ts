@@ -92,6 +92,8 @@ import {
 import { auditActorFromUser } from '../audit/audit-actor';
 import { SubmitNativeRoundDto } from './dto/submit-native-round.dto';
 import { ResolveNativeRoundDto } from './dto/resolve-native-round.dto';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -266,7 +268,8 @@ export class NativeRoundsController {
     private readonly audit: AuditLogService,
   ) {}
 
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard, VenueAccessGuard)
+  @VenueScope({ resource: 'order' })
   @Roles(...STAFF_ORDER_ROLES)
   @RateLimit(SEND_RATE_LIMIT)
   @HttpCode(HttpStatus.ACCEPTED)
@@ -413,7 +416,8 @@ export class NativeRoundsController {
    * which matters more on a route staff can refresh at will than anywhere else
    * in this module.
    */
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard, VenueAccessGuard)
+  @VenueScope({ resource: 'order' })
   @Roles(...STAFF_ORDER_ROLES)
   @RateLimit(READ_RATE_LIMIT)
   @Get('admin/orders/:id/rounds')
@@ -461,7 +465,8 @@ export class NativeRoundsController {
    * DUPLICATE to a genuine round. The payload itself is never stored and never
    * returned.
    */
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard, VenueAccessGuard)
+  @VenueScope({ resource: 'order' })
   @Roles(...ROUND_RESOLUTION_ROLES)
   @RateLimit(SUPPORT_RATE_LIMIT)
   @Get('admin/orders/:id/rounds/:sequence/support')
@@ -526,7 +531,8 @@ export class NativeRoundsController {
    *
    * MANAGER AND ADMIN ONLY - see `ROUND_RESOLUTION_ROLES`.
    */
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, RateLimitGuard, VenueAccessGuard)
+  @VenueScope({ resource: 'order' })
   @Roles(...ROUND_RESOLUTION_ROLES)
   @RateLimit(RESOLVE_RATE_LIMIT)
   @HttpCode(HttpStatus.OK)

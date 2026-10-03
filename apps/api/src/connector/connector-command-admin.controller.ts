@@ -9,6 +9,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { ConnectorCommandService, ConnectorCommandStatusView } from './connector-command.service';
 import { CreateConnectorCommandDto } from './dto/create-connector-command.dto';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 /**
  * Admin-facing surface for Story 2-10: an authorised admin can trigger this
@@ -17,7 +19,8 @@ import { CreateConnectorCommandDto } from './dto/create-connector-command.dto';
  * EFTPOS, a printer, or a Windows host.
  */
 @Controller('venues/:venueId/connector/commands')
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard, VenueAccessGuard)
+@VenueScope({ param: 'venueId' })
 export class ConnectorCommandAdminController {
   constructor(private readonly commandService: ConnectorCommandService) {}
 

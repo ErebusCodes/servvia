@@ -154,6 +154,8 @@ export class ReservationsService {
       | string
       | {
           venueId?: string;
+          /** Story 2.10: the granted venues, when no venue was asked for. */
+          venueIds?: string[];
           date?: string;
           status?: ReservationStatus;
           search?: string;
@@ -168,6 +170,8 @@ export class ReservationsService {
     } else if (filtersOrVenueId && typeof filtersOrVenueId === 'object') {
       if (filtersOrVenueId.venueId) {
         where.venueId = filtersOrVenueId.venueId;
+      } else if (filtersOrVenueId.venueIds) {
+        where.venueId = { in: filtersOrVenueId.venueIds };
       }
       if (filtersOrVenueId.date) {
         where.reservationDate = filtersOrVenueId.date;

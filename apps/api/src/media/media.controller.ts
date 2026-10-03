@@ -16,6 +16,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { MediaService } from './media.service';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { OrganizationScope } from '../auth/venue-access/venue-scope.decorator';
 
 /**
  * @deprecated Legacy local-disk media upload — bypasses the MediaAsset
@@ -32,7 +34,8 @@ import { MediaService } from './media.service';
  * new callers. Route: POST /api/admin/media/:folder.
  */
 @Controller('admin/media')
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
+@OrganizationScope('the legacy media library is organization-level (folder paths, no venue)')
 @Roles(StaffRole.admin, StaffRole.manager)
 export class MediaController {
   constructor(private readonly mediaService: MediaService) {}

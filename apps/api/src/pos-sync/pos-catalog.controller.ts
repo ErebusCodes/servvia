@@ -12,6 +12,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { OrganizationScope } from '../auth/venue-access/venue-scope.decorator';
 
 /**
  * The POS Catalog Review workflow — the direct successor to running
@@ -22,7 +24,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
  * (`CategoriesController#update`/`#remove`).
  */
 @Controller('admin/pos-catalog')
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
+@OrganizationScope(
+  'POS product identities belong to the organization (PosProductIdentity has no venue)',
+)
 export class PosCatalogController {
   constructor(private readonly posCatalogService: PosCatalogService) {}
 

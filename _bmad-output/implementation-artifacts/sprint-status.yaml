@@ -54,6 +54,7 @@ development_status:
   2-7-kitchen-role-cannot-create-or-cancel-orders-reservation-emai: done
   2-8-durable-staff-sessions-in-postgresql: done
   2-9-device-credentials-reach-only-device-routes: done
+  2-10-nest-api-enforces-staff-venue-access: done
   epic-2-retrospective: optional
 
   epic-3: backlog

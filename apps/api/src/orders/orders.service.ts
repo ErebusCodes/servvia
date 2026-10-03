@@ -838,11 +838,20 @@ export class OrdersService {
     throw error;
   }
 
-  async findAll(organizationId: string, venueId?: string, activeOnly = false): Promise<Order[]> {
+  /**
+   * `venues` narrows the list: one venue, or (Story 2.10) the venues a staff
+   * member has been granted when no venue was asked for.
+   */
+  async findAll(
+    organizationId: string,
+    venues?: string | string[],
+    activeOnly = false,
+  ): Promise<Order[]> {
     return this.prisma.order.findMany({
       where: {
         venue: { organizationId },
-        ...(venueId ? { venueId } : {}),
+        ...(typeof venues === 'string' ? { venueId: venues } : {}),
+        ...(Array.isArray(venues) ? { venueId: { in: venues } } : {}),
         ...(activeOnly
           ? { status: { in: [OrderStatus.confirmed, OrderStatus.preparing, OrderStatus.ready] } }
           : {}),

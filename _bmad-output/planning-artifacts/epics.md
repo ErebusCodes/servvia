@@ -566,6 +566,28 @@ So that a 4-digit PIN on a shared device can never administer the venue.
 - Implementation (2026-10-04): StaffSessionOnlyGuard on the ten controllers and on the venue and table routes that are not used by tablets (the tablet keeps the table list and venue tax configuration, both with TabletTokenActiveGuard). The Order Tablet and KDS frontends call none of the closed routes. `token-scope.architecture.spec.ts` checks every route of every controller (46 routes were unscoped before; none now).
 - Status: DONE
 
+### Story 2.10: Staff venue access is enforced by the Nest API too
+
+As an owner,
+I want the API the venue's clients use today to refuse a staff request for a venue the staff member has not been granted, as Core does,
+So that venue scoping does not depend on which service serves the request.
+
+**Acceptance Criteria:**
+
+**Given** Core enforces `VenueAccess` (Story 2.2) but the Nest API, which production clients use, checked only the organization, so any staff member, owner included, reached every venue of their organization (found by the 2026-10-04 live parity run: Nest 200 where Core 403)
+**When** a staff principal (a staff session, or an elevated `tablet_staff`/`tablet_manager` token) requests a venue-scoped route or joins a venue's Socket.IO rooms
+**Then** an own-organization venue without a grant is refused with Core's 403 body before any domain work and logged as `venue_access_denied`; another organization's venue keeps the route's own 404; a lookup that fails is a 500, never access; lists across venues narrow to the granted venues; and a revoked grant applies on the next request of the same session.
+
+**And** device identities (KDS, an unelevated tablet) stay pinned to their token's venue, and an elevated tablet also needs its staff member's grant there
+**And** the rule applies to every staff role, owner and admin included, because the PRD records no exception
+**And** whoever creates a venue is granted it in the same transaction
+**And** an architecture test fails if any JWT route neither declares where its venue comes from nor states why it is organization-level, or checks venue access before the device re-check.
+
+- Traceability: SEC-16.3, NFR-SEC-3, PRD section 16 item 3; Story 2.2 (Core); 2026-10-04 parity finding.
+- Depends on: Story 2.2.
+- Implementation (2026-10-04): `VenueAccessGuard` with `@VenueScope` (path, query, body, a record's venue, the tablet token's venue, or a list) and `@OrganizationScope(reason)`, applying Core's decision (`internal/identity/venueaccess.go`); the Socket.IO `joinVenue` check and its periodic re-check; `venue-scope.architecture.spec.ts`; integration test `venue-access.integration-spec.ts`. Organization-level by declaration: the menu catalogue, the POS catalogue, the legacy media library, staff accounts (grants checked by the service), venue creation and tablet lock.
+- Status: DONE
+
 ## Epic 3: Recoverable production data
 
 Operators can bring the production database to a known migration baseline, and can recover it from tested backups. Audit P0-05 and P0-12.

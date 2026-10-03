@@ -25,6 +25,9 @@ export const SECURITY_EVENTS = {
   staff_session_check_failed: 'error',
   // Credentials (Story 8.1)
   credential_setup_refused: 'warn',
+  // Staff venue access (Story 2.10). Same name and fields as Core's event.
+  venue_access_denied: 'warn',
+  venue_access_check_failed: 'error',
   // Per-address request limiting (NFR-SEC-2)
   rate_limit_exceeded: 'warn',
   rate_limit_unavailable: 'error',

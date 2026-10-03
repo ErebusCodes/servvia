@@ -1,11 +1,13 @@
-import { readdirSync, statSync } from 'fs';
-import { join } from 'path';
-import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { basename } from 'path';
 import { StaffSessionOnlyGuard } from './guards/staff-session-only.guard';
 import { TabletTokenActiveGuard } from './guards/tablet-token-active.guard';
 import { TabletDeviceGuard } from '../tablet/guards/tablet-device.guard';
 import { ManagerStepUpGuard } from '../tablet/guards/manager-step-up.guard';
+import {
+  controllerSourceFiles,
+  filesUsingPassportGuardDirectly,
+  jwtRoutes,
+} from './route-inventory.testing-spec';
 
 /**
  * Story 2.9 (SEC-16.1, least privilege): every route that accepts a signed
@@ -20,49 +22,17 @@ import { ManagerStepUpGuard } from '../tablet/guards/manager-step-up.guard';
  */
 const DEVICE_SCOPE_GUARDS = [TabletTokenActiveGuard, TabletDeviceGuard, ManagerStepUpGuard];
 
-function controllerFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
-    const path = join(dir, name);
-    if (statSync(path).isDirectory()) return controllerFiles(path);
-    return name.endsWith('.controller.ts') ? [path] : [];
-  });
-}
-
-interface Route {
-  route: string;
-  guards: unknown[];
-}
-
-function jwtRoutes(): Route[] {
-  const routes: Route[] = [];
-  for (const file of controllerFiles(join(__dirname, '..'))) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const exported = require(file) as Record<string, unknown>;
-    for (const candidate of Object.values(exported)) {
-      if (typeof candidate !== 'function') continue;
-      const controller = candidate as new (...args: unknown[]) => unknown;
-      if (Reflect.getMetadata(PATH_METADATA, controller) === undefined) continue;
-      const classGuards = (Reflect.getMetadata(GUARDS_METADATA, controller) ?? []) as unknown[];
-      const prototype = controller.prototype as Record<string, unknown>;
-      for (const name of Object.getOwnPropertyNames(prototype)) {
-        const handler = prototype[name];
-        if (name === 'constructor' || typeof handler !== 'function') continue;
-        if (Reflect.getMetadata(METHOD_METADATA, handler) === undefined) continue;
-        const guards = [
-          ...classGuards,
-          ...((Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[]),
-        ];
-        if (guards.includes(JwtAuthGuard)) {
-          routes.push({ route: `${controller.name}.${name}`, guards });
-        }
-      }
-    }
-  }
-  return routes;
-}
-
 describe('token scope of every JWT route (Story 2.9)', () => {
   const routes = jwtRoutes();
+
+  it('sees every controller: each lives in a *.controller.ts file', () => {
+    const misnamed = controllerSourceFiles().filter((f) => !basename(f).endsWith('.controller.ts'));
+    expect(misnamed).toEqual([]);
+  });
+
+  it('every route authenticating a JWT does so through JwtAuthGuard', () => {
+    expect(filesUsingPassportGuardDirectly()).toEqual([]);
+  });
 
   it('finds the JWT routes it is meant to check', () => {
     expect(routes.length).toBeGreaterThan(50);

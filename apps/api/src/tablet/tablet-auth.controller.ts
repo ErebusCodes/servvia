@@ -11,6 +11,8 @@ import { EnrollTabletDeviceDto } from './dto/enroll-tablet-device.dto';
 import { TabletUnlockDto } from './dto/tablet-unlock.dto';
 import { TabletStaffElevateDto } from './dto/tablet-staff-elevate.dto';
 import { TabletManagerStepUpDto } from './dto/tablet-manager-step-up.dto';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope, OrganizationScope } from '../auth/venue-access/venue-scope.decorator';
 
 type TabletRequest = Request & { user: AuthenticatedUser };
 
@@ -36,7 +38,8 @@ export class TabletAuthController {
   }
 
   @Post('unlock')
-  @UseGuards(JwtAuthGuard, TabletDeviceGuard, RateLimitGuard)
+  @UseGuards(JwtAuthGuard, TabletDeviceGuard, RateLimitGuard, VenueAccessGuard)
+  @VenueScope({ token: true })
   @RateLimit({ limit: 10, windowSeconds: 900 })
   @HttpCode(200)
   async unlock(
@@ -56,7 +59,8 @@ export class TabletAuthController {
   }
 
   @Post('elevate')
-  @UseGuards(JwtAuthGuard, TabletDeviceGuard, RateLimitGuard)
+  @UseGuards(JwtAuthGuard, TabletDeviceGuard, RateLimitGuard, VenueAccessGuard)
+  @VenueScope({ token: true })
   @RateLimit({ limit: 8, windowSeconds: 900 })
   @HttpCode(200)
   async elevate(
@@ -75,7 +79,8 @@ export class TabletAuthController {
   }
 
   @Post('manager-step-up')
-  @UseGuards(JwtAuthGuard, TabletDeviceGuard, RateLimitGuard)
+  @UseGuards(JwtAuthGuard, TabletDeviceGuard, RateLimitGuard, VenueAccessGuard)
+  @VenueScope({ token: true })
   @RateLimit({ limit: 8, windowSeconds: 900 })
   @HttpCode(200)
   async managerStepUp(
@@ -99,7 +104,9 @@ export class TabletAuthController {
   }
 
   @Post('lock')
-  @UseGuards(JwtAuthGuard, TabletDeviceGuard)
+  @UseGuards(JwtAuthGuard, TabletDeviceGuard, VenueAccessGuard)
+  // Locking only drops privilege, so it stays possible after a grant is revoked.
+  @OrganizationScope('locking a tablet only drops privilege')
   @HttpCode(204)
   async lock(@Req() req: TabletRequest): Promise<void> {
     const staffId =

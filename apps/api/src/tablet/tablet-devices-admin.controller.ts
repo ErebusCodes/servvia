@@ -9,6 +9,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { TabletAuthService, TabletDeviceView } from './tablet-auth.service';
 import { CreateTabletEnrollmentDto } from './dto/create-tablet-enrollment.dto';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 /**
  * Admin-facing surface for story 15-1's Order Tablet device identity:
@@ -18,7 +20,8 @@ import { CreateTabletEnrollmentDto } from './dto/create-tablet-enrollment.dto';
  * cannot use itself as a back door into device administration.
  */
 @Controller('venues/:venueId/tablet-devices')
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard, VenueAccessGuard)
+@VenueScope({ param: 'venueId' })
 export class TabletDevicesAdminController {
   constructor(private readonly tabletAuthService: TabletAuthService) {}
 

@@ -11,6 +11,8 @@ import { TabletAuthService } from './tablet-auth.service';
 import { TabletDeviceGuard } from './guards/tablet-device.guard';
 import { ManagerStepUpGuard } from './guards/manager-step-up.guard';
 import { CreateTabletOrderDto } from './dto/create-tablet-order.dto';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type TabletRequest = Request & { user: AuthenticatedUser };
 
@@ -30,6 +32,7 @@ type TabletRequest = Request & { user: AuthenticatedUser };
  */
 @Controller('tablet')
 @UseGuards(JwtAuthGuard, RateLimitGuard)
+@VenueScope({ token: true })
 export class TabletOrdersController {
   constructor(
     private readonly ordersService: OrdersService,
@@ -49,7 +52,7 @@ export class TabletOrdersController {
    * sessions through the existing, unmodified `/api/admin/orders` instead.
    */
   @Get('orders')
-  @UseGuards(TabletDeviceGuard)
+  @UseGuards(TabletDeviceGuard, VenueAccessGuard)
   @RateLimit({ limit: 60, windowSeconds: 60 })
   async listRestrictedOrders(
     @Req() req: TabletRequest,
@@ -64,7 +67,7 @@ export class TabletOrdersController {
   }
 
   @Post('orders')
-  @UseGuards(TabletDeviceGuard)
+  @UseGuards(TabletDeviceGuard, VenueAccessGuard)
   @RateLimit({ limit: 30, windowSeconds: 60 })
   async createRestrictedOrder(
     @Req() req: TabletRequest,
@@ -99,7 +102,7 @@ export class TabletOrdersController {
    * a later story's guard usage can be modeled on directly.
    */
   @Post('manager-actions/test-hook')
-  @UseGuards(ManagerStepUpGuard)
+  @UseGuards(ManagerStepUpGuard, VenueAccessGuard)
   managerAuthorizationTestHook(@Req() req: TabletRequest): {
     authorized: true;
     managerId: string;

@@ -8,6 +8,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { PosSyncRecordsService } from './pos-sync-records.service';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -28,13 +30,14 @@ const POS_SYNC_VIEW_ROLES = [
 // identical fix for GET /venues/:id/tables and /venues/:id/tax-config.
 const POS_SYNC_ORDER_VIEW_ROLES = [...POS_SYNC_VIEW_ROLES, StaffRole.viewer] as const;
 
-@UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, VenueAccessGuard)
 @Controller('admin')
 export class PosSyncRecordsController {
   constructor(private readonly posSyncRecordsService: PosSyncRecordsService) {}
 
   @Roles(...POS_SYNC_VIEW_ROLES)
   @Get('venues/:id/pos-sync-records')
+  @VenueScope({ param: 'id' })
   listForVenue(
     @Req() req: AuthedRequest,
     @Param('id') venueId: string,
@@ -53,6 +56,7 @@ export class PosSyncRecordsController {
 
   @Roles(...POS_SYNC_ORDER_VIEW_ROLES)
   @Get('orders/:id/pos-sync')
+  @VenueScope({ resource: 'order' })
   getForOrder(@Req() req: AuthedRequest, @Param('id') orderId: string) {
     const scopedVenueId = resolveVenueScope(req.user, undefined);
     return this.posSyncRecordsService.getForOrder(orderId, req.user.organizationId, scopedVenueId);

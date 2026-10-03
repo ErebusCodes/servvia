@@ -22,6 +22,7 @@ import Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { REDIS_CLIENT } from '../src/redis/redis.constants';
+import { deleteVenueGrants, grantVenues } from './venue-grants';
 
 describe('Connector Identity (integration, real local Postgres)', () => {
   let app: INestApplication;
@@ -73,6 +74,7 @@ describe('Connector Identity (integration, real local Postgres)', () => {
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const loginRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password })
@@ -80,6 +82,7 @@ describe('Connector Identity (integration, real local Postgres)', () => {
     return {
       orgId: org.id,
       venueId: venue.id,
+      ownerId: owner.id,
       accessToken: loginRes.body.accessToken as string,
     };
   }
@@ -130,6 +133,7 @@ describe('Connector Identity (integration, real local Postgres)', () => {
       },
     });
     concurrencyVenueId = concurrencyVenue.id;
+    await grantVenues(prisma, primary.ownerId, [concurrencyVenueId]);
   });
 
   afterAll(async () => {
@@ -140,6 +144,7 @@ describe('Connector Identity (integration, real local Postgres)', () => {
       await prisma.connectorInstallation.deleteMany({ where: { organizationId: org } });
       await prisma.connectorEnrollment.deleteMany({ where: { organizationId: org } });
       await prisma.auditLog.deleteMany({ where: { organizationId: org } });
+      await deleteVenueGrants(prisma, org);
       await prisma.staff.deleteMany({ where: { organizationId: org } });
       await prisma.venue.deleteMany({ where: { organizationId: org } });
       await prisma.organization.delete({ where: { id: org } });

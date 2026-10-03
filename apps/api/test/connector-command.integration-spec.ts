@@ -27,6 +27,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { REDIS_CLIENT } from '../src/redis/redis.constants';
 import { ConnectorCommandService } from '../src/connector/connector-command.service';
 import { ConnectorIdentity } from '../src/connector/connector.service';
+import { deleteVenueGrants, grantVenues } from './venue-grants';
 
 describe('Connector Command Protocol (integration, real local Postgres)', () => {
   let app: INestApplication;
@@ -100,6 +101,7 @@ describe('Connector Command Protocol (integration, real local Postgres)', () => 
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const loginRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password })
@@ -185,6 +187,7 @@ describe('Connector Command Protocol (integration, real local Postgres)', () => 
       await prisma.connectorInstallation.deleteMany({ where: { organizationId: org } });
       await prisma.connectorEnrollment.deleteMany({ where: { organizationId: org } });
       await prisma.auditLog.deleteMany({ where: { organizationId: org } });
+      await deleteVenueGrants(prisma, org);
       await prisma.staff.deleteMany({ where: { organizationId: org } });
       await prisma.venue.deleteMany({ where: { organizationId: org } });
       await prisma.organization.delete({ where: { id: org } });
@@ -404,6 +407,7 @@ describe('Connector Command Protocol (integration, real local Postgres)', () => 
       await prisma.connectorInstallation.deleteMany({ where: { organizationId: revokeOrg.orgId } });
       await prisma.connectorEnrollment.deleteMany({ where: { organizationId: revokeOrg.orgId } });
       await prisma.auditLog.deleteMany({ where: { organizationId: revokeOrg.orgId } });
+      await deleteVenueGrants(prisma, revokeOrg.orgId);
       await prisma.staff.deleteMany({ where: { organizationId: revokeOrg.orgId } });
       await prisma.venue.deleteMany({ where: { organizationId: revokeOrg.orgId } });
       await prisma.organization.delete({ where: { id: revokeOrg.orgId } });
@@ -473,6 +477,7 @@ describe('Connector Command Protocol (integration, real local Postgres)', () => 
       });
       await prisma.connectorEnrollment.deleteMany({ where: { organizationId: rotationOrg.orgId } });
       await prisma.auditLog.deleteMany({ where: { organizationId: rotationOrg.orgId } });
+      await deleteVenueGrants(prisma, rotationOrg.orgId);
       await prisma.staff.deleteMany({ where: { organizationId: rotationOrg.orgId } });
       await prisma.venue.deleteMany({ where: { organizationId: rotationOrg.orgId } });
       await prisma.organization.delete({ where: { id: rotationOrg.orgId } });
@@ -527,6 +532,7 @@ describe('Connector Command Protocol (integration, real local Postgres)', () => 
         where: { organizationId: exhaustionOrg.orgId },
       });
       await prisma.auditLog.deleteMany({ where: { organizationId: exhaustionOrg.orgId } });
+      await deleteVenueGrants(prisma, exhaustionOrg.orgId);
       await prisma.staff.deleteMany({ where: { organizationId: exhaustionOrg.orgId } });
       await prisma.venue.deleteMany({ where: { organizationId: exhaustionOrg.orgId } });
       await prisma.organization.delete({ where: { id: exhaustionOrg.orgId } });
@@ -757,6 +763,7 @@ describe('Connector Command Protocol (integration, real local Postgres)', () => 
       });
       await prisma.connectorEnrollment.deleteMany({ where: { organizationId: boundedOrg.orgId } });
       await prisma.auditLog.deleteMany({ where: { organizationId: boundedOrg.orgId } });
+      await deleteVenueGrants(prisma, boundedOrg.orgId);
       await prisma.staff.deleteMany({ where: { organizationId: boundedOrg.orgId } });
       await prisma.venue.deleteMany({ where: { organizationId: boundedOrg.orgId } });
       await prisma.organization.delete({ where: { id: boundedOrg.orgId } });

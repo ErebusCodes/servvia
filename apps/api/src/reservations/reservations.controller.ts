@@ -23,20 +23,29 @@ import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { UpdateReservationDto } from './dto/update-reservation.dto';
 import { TransitionReservationDto } from './dto/transition-reservation.dto';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueAccessService } from '../auth/venue-access/venue-access.service';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
+@VenueScope({ resource: 'reservation' })
 @Roles(StaffRole.admin, StaffRole.manager)
 @Controller('admin/reservations')
 export class ReservationsController {
-  constructor(private readonly reservationsService: ReservationsService) {}
+  constructor(
+    private readonly reservationsService: ReservationsService,
+    private readonly venueAccess: VenueAccessService,
+  ) {}
 
   @Post()
+  @VenueScope({ body: 'venueId' })
   create(@Req() req: Request & { user: Staff }, @Body() dto: CreateReservationDto) {
     return this.reservationsService.create(req.user.organizationId, dto);
   }
 
   @Get()
-  findAll(
+  @VenueScope({ query: 'venueId', optional: true })
+  async findAll(
     @Req() req: Request & { user: Staff },
     @Query('venueId') venueId?: string,
     @Query('date') date?: string,
@@ -45,6 +54,7 @@ export class ReservationsController {
   ) {
     return this.reservationsService.findAll(req.user.organizationId, {
       venueId,
+      venueIds: venueId ? undefined : await this.venueAccess.listableVenueIds(req.user),
       date,
       status,
       search,

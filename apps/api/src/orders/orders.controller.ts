@@ -26,6 +26,9 @@ import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
 import { auditActorFromUser } from '../audit/audit-actor';
+import { VenueAccessService } from '../auth/venue-access/venue-access.service';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -48,7 +51,10 @@ export const KITCHEN_STATUS_TRANSITIONS: ReadonlySet<OrderStatus> = new Set<Orde
 
 @Controller()
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly venueAccess: VenueAccessService,
+  ) {}
 
   // 1. Kiosk public order creation
   @Post('kiosk/orders')
@@ -73,24 +79,27 @@ export class OrdersController {
   }
 
   // 2. Admin / staff-device endpoints (Jwt-protected)
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, VenueAccessGuard)
   @Roles(...STAFF_ORDER_ROLES)
   @Get('admin/orders')
-  findAll(
+  @VenueScope({ query: 'venueId', optional: true })
+  async findAll(
     @Req() req: AuthedRequest,
     @Query('venueId') venueId?: string,
     @Query('activeOnly') activeOnly?: string,
   ) {
     const isActiveOnly = activeOnly === 'true';
     const scopedVenueId = resolveVenueScope(req.user, venueId);
-    return this.ordersService.findAll(req.user.organizationId, scopedVenueId, isActiveOnly);
+    const venues = scopedVenueId ?? (await this.venueAccess.listableVenueIds(req.user));
+    return this.ordersService.findAll(req.user.organizationId, venues, isActiveOnly);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, VenueAccessGuard)
   @Roles(...STAFF_ORDER_ROLES)
   // Order ids are ORD-<sequence> strings (see OrdersService.persistOrder),
   // not UUIDs, so this deliberately takes a plain string param.
   @Get('admin/orders/:id')
+  @VenueScope({ resource: 'order' })
   findOne(@Req() req: AuthedRequest, @Param('id') id: string) {
     const scopedVenueId = resolveVenueScope(req.user, undefined);
     return this.ordersService.findOne(id, req.user.organizationId, scopedVenueId);
@@ -102,18 +111,20 @@ export class OrdersController {
    * payment-intent requirement, always dine-in against a real Table.
    * A kds_device token may only create orders for its own venue.
    */
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, VenueAccessGuard)
   @Roles(...ORDER_ENTRY_ROLES)
   @Post('admin/orders')
+  @VenueScope({ body: 'venueId' })
   createStaffOrder(@Req() req: AuthedRequest, @Body() dto: CreateStaffOrderDto) {
     resolveVenueScope(req.user, dto.venueId);
     const actor = { id: req.user.id, email: req.user.email, role: req.user.role };
     return this.ordersService.createStaffOrder(dto, req.user.organizationId, actor);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, VenueAccessGuard)
   @Roles(...STAFF_ORDER_ROLES)
   @Patch('admin/orders/:id/status')
+  @VenueScope({ resource: 'order' })
   updateStatus(
     @Req() req: AuthedRequest,
     @Param('id') id: string,
@@ -139,9 +150,10 @@ export class OrdersController {
    * Admin/manager only, same as every other operator-only action in this
    * controller family.
    */
-  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, TabletTokenActiveGuard, VenueAccessGuard)
   @Roles(StaffRole.admin, StaffRole.manager)
   @Post('admin/table19-validation/reset')
+  @VenueScope({ resource: 'table19ValidationVenue' })
   resetTable19Validation(@Req() req: AuthedRequest) {
     const scopedVenueId = resolveVenueScope(req.user, undefined);
     const actor = { id: req.user.id, email: req.user.email, role: req.user.role };

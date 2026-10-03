@@ -8,7 +8,12 @@ import { Prisma, Venue } from '@prisma/client';
 export class VenuesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(organizationId: string, dto: CreateVenueDto): Promise<Venue> {
+  /**
+   * Story 2.10: staff act only in venues they have been granted, so the
+   * creator is granted the new venue in the same transaction; otherwise
+   * nobody could administer it.
+   */
+  async create(organizationId: string, dto: CreateVenueDto, creatorId: string): Promise<Venue> {
     // Check if a venue with the same slug already exists in this organization
     const existing = await this.prisma.venue.findFirst({
       where: { organizationId, slug: dto.slug },
@@ -19,32 +24,39 @@ export class VenuesService {
       );
     }
 
-    return this.prisma.venue.create({
-      data: {
-        organizationId,
-        name: dto.name,
-        slug: dto.slug,
-        address: dto.address,
-        phone: dto.phone,
-        email: dto.email,
-        timezone: dto.timezone || 'Pacific/Auckland',
-        currency: dto.currency || 'NZD',
-        locale: dto.locale || 'en-NZ',
-        taxJurisdiction: dto.taxJurisdiction || 'NZ_GST',
-        pricesIncludeTax: dto.pricesIncludeTax ?? true,
-        operatingHours: dto.operatingHours,
-        seatingCapacity: dto.seatingCapacity,
-        coversPerSlot: dto.coversPerSlot ?? 20,
-        reservationSlotMinutes: dto.reservationSlotMinutes ?? 30,
-        posAdapterType: dto.posAdapterType || 'none',
-        posConfig: dto.posConfig || {},
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const venue = await tx.venue.create({
+        data: {
+          organizationId,
+          name: dto.name,
+          slug: dto.slug,
+          address: dto.address,
+          phone: dto.phone,
+          email: dto.email,
+          timezone: dto.timezone || 'Pacific/Auckland',
+          currency: dto.currency || 'NZD',
+          locale: dto.locale || 'en-NZ',
+          taxJurisdiction: dto.taxJurisdiction || 'NZ_GST',
+          pricesIncludeTax: dto.pricesIncludeTax ?? true,
+          operatingHours: dto.operatingHours,
+          seatingCapacity: dto.seatingCapacity,
+          coversPerSlot: dto.coversPerSlot ?? 20,
+          reservationSlotMinutes: dto.reservationSlotMinutes ?? 30,
+          posAdapterType: dto.posAdapterType || 'none',
+          posConfig: dto.posConfig || {},
+        },
+      });
+      await tx.venueAccess.create({
+        data: { staffId: creatorId, venueId: venue.id, grantedById: creatorId },
+      });
+      return venue;
     });
   }
 
-  async findAll(organizationId: string): Promise<Venue[]> {
+  /** `venueIds` narrows the list to a staff member's granted venues (Story 2.10). */
+  async findAll(organizationId: string, venueIds?: string[]): Promise<Venue[]> {
     return this.prisma.venue.findMany({
-      where: { organizationId },
+      where: { organizationId, ...(venueIds ? { id: { in: venueIds } } : {}) },
       orderBy: { createdAt: 'asc' },
     });
   }

@@ -16,6 +16,7 @@ import * as argon2 from 'argon2';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PAYMENT_OBSERVATION_SCHEMA_VERSION } from '../src/payment-observation/payment-observation.constants';
+import { deleteVenueGrants, grantVenues } from './venue-grants';
 
 describe('Payment Observation (integration, real local Postgres)', () => {
   let app: INestApplication;
@@ -77,6 +78,7 @@ describe('Payment Observation (integration, real local Postgres)', () => {
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const ownerLogin = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password: ownerPassword })
@@ -93,6 +95,7 @@ describe('Payment Observation (integration, real local Postgres)', () => {
         role: 'cashier',
       },
     });
+    await grantVenues(prisma, cashier.id, [venue.id]);
     const cashierLogin = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: cashier.email, password: cashierPassword })
@@ -109,6 +112,7 @@ describe('Payment Observation (integration, real local Postgres)', () => {
         role: 'kitchen',
       },
     });
+    await grantVenues(prisma, kitchen.id, [venue.id]);
     const kitchenLogin = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: kitchen.email, password: kitchenPassword })
@@ -124,6 +128,7 @@ describe('Payment Observation (integration, real local Postgres)', () => {
     await prisma.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
     await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
     await prisma.auditLog.deleteMany({ where: { organizationId } });
+    await deleteVenueGrants(prisma, organizationId);
     await prisma.staff.deleteMany({ where: { organizationId } });
     await prisma.venue.deleteMany({ where: { organizationId } });
     await prisma.organization.delete({ where: { id: organizationId } });

@@ -5,6 +5,8 @@ import { ReservationsController } from './reservations.controller';
 import { ReservationsService } from './reservations.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueAccessService } from '../auth/venue-access/venue-access.service';
 
 const mockService = {
   create: jest.fn(),
@@ -18,17 +20,25 @@ const mockService = {
 const mockStaff = { id: 'staff-uuid', organizationId: 'org-uuid', role: StaffRole.admin } as Staff;
 const mockReq = { user: mockStaff } as unknown as Request & { user: Staff };
 
+const venueAccess = { listableVenueIds: jest.fn() };
+
 describe('ReservationsController', () => {
   let controller: ReservationsController;
 
   beforeEach(async () => {
+    venueAccess.listableVenueIds.mockResolvedValue(['venue-granted']);
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ReservationsController],
-      providers: [{ provide: ReservationsService, useValue: mockService }],
+      providers: [
+        { provide: VenueAccessService, useValue: venueAccess },
+        { provide: ReservationsService, useValue: mockService },
+      ],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(VenueAccessGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

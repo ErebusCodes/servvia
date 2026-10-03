@@ -10,6 +10,8 @@ import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { PaymentObservationService } from './payment-observation.service';
 import { isProductionRuntime } from '../config/runtime-environment';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -32,7 +34,8 @@ type AuthedRequest = Request & { user: AuthenticatedUser };
  * even if it tried (the evidence tier is fixed at the call site below, not
  * caller-supplied).
  */
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
+@VenueScope({ resource: 'order', idParam: 'orderId' })
 @Controller('admin/payment-observation-fixtures')
 export class PaymentObservationFixtureInjectionController {
   constructor(

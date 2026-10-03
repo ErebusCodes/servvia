@@ -12,12 +12,15 @@ import (
 // section 16 item 3). The grants' foreign keys are ON DELETE RESTRICT, so a
 // fixture that deletes its venues must delete "VenueAccess" for them first
 // (each fixture's cleanup does). The cleanup registered here also removes
-// the grants, for callers whose venues outlive the test.
+// the grants, for callers whose venues outlive the test. Granting a venue
+// already granted is a no-op, so fixtures that build on each other (orders on
+// pricing) may both grant the same venue.
 func GrantVenueAccess(t *testing.T, ctx context.Context, db *pgxpool.Pool, grantedBy string, staffIDs, venueIDs []string) {
 	t.Helper()
 	for _, s := range staffIDs {
 		for _, v := range venueIDs {
-			if _, err := db.Exec(ctx, `INSERT INTO "VenueAccess"(id,"staffId","venueId","grantedById") VALUES($1,$2,$3,$4)`,
+			if _, err := db.Exec(ctx, `INSERT INTO "VenueAccess"(id,"staffId","venueId","grantedById") VALUES($1,$2,$3,$4)
+				ON CONFLICT ("staffId","venueId") DO NOTHING`,
 				UUID(), s, v, grantedBy); err != nil {
 				t.Fatalf("grant venue access: %v", err)
 			}

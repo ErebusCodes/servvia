@@ -9,6 +9,7 @@ import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { REDIS_CLIENT } from '../redis/redis.constants';
 import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { VenueAccessService } from '../auth/venue-access/venue-access.service';
 
 const mockOrdersService = {
   findAll: jest.fn(),
@@ -37,6 +38,8 @@ const kdsUser: AuthenticatedUser = {
   kind: 'kds_device',
 };
 
+const venueAccess = { listableVenueIds: jest.fn().mockResolvedValue(['venue-granted']) };
+
 describe('OrdersController venue scoping', () => {
   let controller: OrdersController;
 
@@ -46,6 +49,7 @@ describe('OrdersController venue scoping', () => {
       controllers: [OrdersController],
       providers: [
         { provide: OrdersService, useValue: mockOrdersService },
+        { provide: VenueAccessService, useValue: venueAccess },
         { provide: RateLimitGuard, useValue: { canActivate: () => true } },
         { provide: REDIS_CLIENT, useValue: { eval: jest.fn() } },
         // TabletTokenActiveGuard (story 15-1, DL-081) is now part of this
@@ -59,25 +63,32 @@ describe('OrdersController venue scoping', () => {
   });
 
   describe('findAll', () => {
-    it('lets a staff token query any venueId within its organization', () => {
-      void controller.findAll(reqWith(staffUser), 'venue-99', undefined);
+    // A staff token's venue filter was checked against its grants by
+    // VenueAccessGuard before the handler runs (Story 2.10).
+    it("passes a staff token's requested venueId through", async () => {
+      await controller.findAll(reqWith(staffUser), 'venue-99', undefined);
       expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', 'venue-99', false);
     });
 
-    it('forces a kds_device token onto its own venueId when none is requested', () => {
-      void controller.findAll(reqWith(kdsUser), undefined, 'true');
+    it('narrows a staff token without a venueId to its granted venues (Story 2.10)', async () => {
+      await controller.findAll(reqWith(staffUser), undefined, undefined);
+      expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', ['venue-granted'], false);
+    });
+
+    it('forces a kds_device token onto its own venueId when none is requested', async () => {
+      await controller.findAll(reqWith(kdsUser), undefined, 'true');
       expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', 'venue-1', true);
     });
 
-    it('allows a kds_device token to explicitly request its own venueId', () => {
-      void controller.findAll(reqWith(kdsUser), 'venue-1', undefined);
+    it('allows a kds_device token to explicitly request its own venueId', async () => {
+      await controller.findAll(reqWith(kdsUser), 'venue-1', undefined);
       expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', 'venue-1', false);
     });
 
-    it('rejects a kds_device token requesting a different venueId', () => {
-      expect(() => controller.findAll(reqWith(kdsUser), 'someone-elses-venue', undefined)).toThrow(
-        ForbiddenException,
-      );
+    it('rejects a kds_device token requesting a different venueId', async () => {
+      await expect(
+        controller.findAll(reqWith(kdsUser), 'someone-elses-venue', undefined),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockOrdersService.findAll).not.toHaveBeenCalled();
     });
   });
@@ -135,6 +146,7 @@ describe('OrdersController kitchen-role least privilege', () => {
       controllers: [OrdersController],
       providers: [
         { provide: OrdersService, useValue: mockOrdersService },
+        { provide: VenueAccessService, useValue: venueAccess },
         { provide: RateLimitGuard, useValue: { canActivate: () => true } },
         { provide: REDIS_CLIENT, useValue: { eval: jest.fn() } },
         { provide: PrismaService, useValue: { tabletDevice: { findUnique: jest.fn() } } },

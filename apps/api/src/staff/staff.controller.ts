@@ -30,6 +30,8 @@ import {
   StaffActor,
   StaffAdministrationService,
 } from './staff-administration.service';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { OrganizationScope } from '../auth/venue-access/venue-scope.decorator';
 
 type StaffRequest = Request & { user: AuthenticatedUser };
 
@@ -51,7 +53,12 @@ function actorOf(req: StaffRequest): StaffActor {
  * operations they had (story 15-1).
  */
 @Controller('admin/staff')
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, RateLimitGuard, VenueAccessGuard)
+// Staff accounts belong to the organization. Venue grants are checked in
+// StaffAdministrationService (an actor grants only venues they hold).
+@OrganizationScope(
+  'staff accounts belong to the organization; venue grants are checked by the service',
+)
 export class StaffController {
   constructor(
     private readonly staffService: StaffService,

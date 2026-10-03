@@ -4,7 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
-const mockPrisma = {
+const mockPrisma: Record<string, unknown> & {
+  venue: Record<string, jest.Mock>;
+  venueAccess: { create: jest.Mock };
+} = {
   venue: {
     create: jest.fn(),
     findFirst: jest.fn(),
@@ -12,6 +15,10 @@ const mockPrisma = {
     update: jest.fn(),
     delete: jest.fn(),
   },
+  venueAccess: { create: jest.fn() },
+  // Venue creation runs in a transaction (Story 2.10); the mock runs the
+  // callback against the same client.
+  $transaction: jest.fn((fn: (tx: unknown) => unknown): unknown => fn(mockPrisma as unknown)),
 };
 
 describe('VenuesService', () => {
@@ -43,22 +50,32 @@ describe('VenuesService', () => {
       mockPrisma.venue.findFirst.mockResolvedValue(null);
       mockPrisma.venue.create.mockResolvedValue({ id: 'venue-1', ...dto });
 
-      const result = await service.create('org-1', dto);
+      const result = await service.create('org-1', dto, 'staff-1');
       expect(result.id).toBe('venue-1');
       expect(mockPrisma.venue.create).toHaveBeenCalled();
+    });
+
+    it('grants the creator the new venue (Story 2.10)', async () => {
+      mockPrisma.venue.findFirst.mockResolvedValue(null);
+      mockPrisma.venue.create.mockResolvedValue({ id: 'venue-1', ...dto });
+
+      await service.create('org-1', dto, 'staff-1');
+      expect(mockPrisma.venueAccess.create).toHaveBeenCalledWith({
+        data: { staffId: 'staff-1', venueId: 'venue-1', grantedById: 'staff-1' },
+      });
     });
 
     it('should throw ConflictException if slug already exists in organization', async () => {
       mockPrisma.venue.findFirst.mockResolvedValue({ id: 'existing-1', slug: 'auckland' });
 
-      await expect(service.create('org-1', dto)).rejects.toThrow(ConflictException);
+      await expect(service.create('org-1', dto, 'staff-1')).rejects.toThrow(ConflictException);
     });
 
     it('should default NZ venue tax/locale metadata when not supplied', async () => {
       mockPrisma.venue.findFirst.mockResolvedValue(null);
       mockPrisma.venue.create.mockResolvedValue({ id: 'venue-1', ...dto });
 
-      await service.create('org-1', dto);
+      await service.create('org-1', dto, 'staff-1');
 
       expect(mockPrisma.venue.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -83,7 +100,7 @@ describe('VenuesService', () => {
       };
       mockPrisma.venue.create.mockResolvedValue({ id: 'venue-1', ...overrideDto });
 
-      await service.create('org-1', overrideDto);
+      await service.create('org-1', overrideDto, 'staff-1');
 
       expect(mockPrisma.venue.create).toHaveBeenCalledWith(
         expect.objectContaining({

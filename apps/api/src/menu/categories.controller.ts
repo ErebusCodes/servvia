@@ -8,9 +8,14 @@ import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { OrganizationScope } from '../auth/venue-access/venue-scope.decorator';
 
 @Controller('admin/menu/categories')
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
+@OrganizationScope(
+  'the menu catalogue belongs to the organization; venue overrides are read per venue by the channel menu',
+)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 

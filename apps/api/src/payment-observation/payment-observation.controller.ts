@@ -19,6 +19,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { PaymentObservationService } from './payment-observation.service';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -54,13 +56,14 @@ function assertNotTabletOrKdsIdentity(user: AuthenticatedUser): void {
   }
 }
 
-@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
 @Controller('admin')
 export class PaymentObservationController {
   constructor(private readonly paymentObservationService: PaymentObservationService) {}
 
   @Roles(...PAYMENT_OBSERVATION_VIEW_ROLES)
   @Get('venues/:id/payment-observations')
+  @VenueScope({ param: 'id' })
   async listForVenue(
     @Req() req: AuthedRequest,
     @Param('id') venueId: string,
@@ -77,6 +80,7 @@ export class PaymentObservationController {
 
   @Roles(...PAYMENT_OBSERVATION_VIEW_ROLES)
   @Get('orders/:id/payment-observation')
+  @VenueScope({ resource: 'order' })
   async getForOrder(@Req() req: AuthedRequest, @Param('id') orderId: string) {
     assertNotTabletOrKdsIdentity(req.user);
     const scopedVenueId = resolveVenueScope(req.user, undefined);
@@ -94,6 +98,7 @@ export class PaymentObservationController {
    */
   @Roles(...PAYMENT_OBSERVATION_ACKNOWLEDGE_ROLES)
   @Post('payment-observations/:id/acknowledge')
+  @VenueScope({ resource: 'paymentObservation' })
   async acknowledge(
     @Req() req: AuthedRequest,
     @Param('id') paymentObservationId: string,

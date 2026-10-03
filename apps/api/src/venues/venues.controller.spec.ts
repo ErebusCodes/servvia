@@ -8,6 +8,8 @@ import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { PrismaService } from '../prisma/prisma.service';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueAccessService } from '../auth/venue-access/venue-access.service';
 
 const mockPrisma = {
   tabletDevice: {
@@ -24,6 +26,8 @@ const mockVenuesService = {
   remove: jest.fn(),
 };
 
+const venueAccess = { listableVenueIds: jest.fn() };
+
 describe('VenuesController', () => {
   let controller: VenuesController;
 
@@ -39,9 +43,11 @@ describe('VenuesController', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    venueAccess.listableVenueIds.mockResolvedValue(['venue-granted']);
     const module: TestingModule = await Test.createTestingModule({
       controllers: [VenuesController],
       providers: [
+        { provide: VenueAccessService, useValue: venueAccess },
         { provide: VenuesService, useValue: mockVenuesService },
         // TabletTokenActiveGuard is now part of getTaxConfig's guard chain;
         // it only touches Prisma for tablet_* kind tokens, but still needs
@@ -53,6 +59,8 @@ describe('VenuesController', () => {
       .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
       .useValue({ canActivate: () => true })
+      .overrideGuard(VenueAccessGuard)
+      .useValue({ canActivate: () => true })
       .compile();
 
     controller = module.get<VenuesController>(VenuesController);
@@ -63,7 +71,7 @@ describe('VenuesController', () => {
   });
 
   describe('create', () => {
-    it('should delegate to VenuesService.create with organizationId', async () => {
+    it('should delegate to VenuesService.create with organizationId and the creator', async () => {
       const dto = {
         name: 'Verdura Auckland',
         slug: 'auckland',
@@ -75,18 +83,18 @@ describe('VenuesController', () => {
 
       const result = await controller.create(dto, mockReq);
       expect(result.id).toBe('venue-1');
-      expect(mockVenuesService.create).toHaveBeenCalledWith('org-1', dto);
+      expect(mockVenuesService.create).toHaveBeenCalledWith('org-1', dto, mockReq.user.id);
     });
   });
 
   describe('findAll', () => {
-    it('should delegate to VenuesService.findAll with organizationId', async () => {
+    it('lists only the venues the caller has been granted (Story 2.10)', async () => {
       const list = [{ id: '1' }, { id: '2' }];
       mockVenuesService.findAll.mockResolvedValue(list);
 
       const result = await controller.findAll(mockReq);
       expect(result).toEqual(list);
-      expect(mockVenuesService.findAll).toHaveBeenCalledWith('org-1');
+      expect(mockVenuesService.findAll).toHaveBeenCalledWith('org-1', ['venue-granted']);
     });
   });
 

@@ -19,6 +19,7 @@ import Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { REDIS_CLIENT } from '../src/redis/redis.constants';
+import { grantVenues } from './venue-grants';
 
 describe('Order Tablet device identity, elevation & manager step-up (integration, real local Postgres)', () => {
   let app: INestApplication;
@@ -76,6 +77,7 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const loginRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password })

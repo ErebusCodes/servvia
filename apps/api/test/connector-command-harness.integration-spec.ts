@@ -29,6 +29,7 @@ import { spawn } from 'child_process';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { REDIS_CLIENT } from '../src/redis/redis.constants';
+import { deleteVenueGrants, grantVenues } from './venue-grants';
 
 describe('Connector Command Harness (integration, real process + real local Postgres)', () => {
   let app: INestApplication;
@@ -91,6 +92,7 @@ describe('Connector Command Harness (integration, real process + real local Post
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const loginRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password })
@@ -197,6 +199,7 @@ describe('Connector Command Harness (integration, real process + real local Post
     await prisma.connectorInstallation.deleteMany({ where: { organizationId: orgId } });
     await prisma.connectorEnrollment.deleteMany({ where: { organizationId: orgId } });
     await prisma.auditLog.deleteMany({ where: { organizationId: orgId } });
+    await deleteVenueGrants(prisma, orgId);
     await prisma.staff.deleteMany({ where: { organizationId: orgId } });
     await prisma.venue.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
