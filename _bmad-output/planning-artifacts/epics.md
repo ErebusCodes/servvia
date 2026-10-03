@@ -474,7 +474,7 @@ So that every administrative action is attributable.
 
 - Traceability: NFR-SEC-1, NFR-AUD, QB-M; audit section 4.5.
 - Depends on: Story 8.1 (staff accounts can be created) or a governed onboarding script.
-- Status: READY after Story 8.1.
+- Status: BLOCKED until Story 8.1. Finding (2026-10-03): the Admin Console's only sign-in is the shared-PIN gate (`AdminPinGate`), and the API has no staff-creation endpoint; the existing provisioning scripts are not governed (hard-coded organization and venue, password from the environment, no audit). Disabling the PIN in production first would lock the Admin Console out. This story also needs an Admin Console named sign-in screen.
 
 ### Story 2.5: Token revocation and active-staff re-checks
 
@@ -1246,6 +1246,57 @@ So that venue-specific problems surface before cutover.
 - Traceability: PRD section 11; audit P0-17.
 - Depends on: Story 12.8.
 - Status: NEEDS AUTHORIZATION: venue access.
+
+### Story 12.13: Durable ingestion and retention of security and operational logs
+
+As an operator,
+I want security events and service logs shipped off the host and kept,
+So that refusals such as `venue_access_denied` and `staff_session_refused` can be investigated after the fact.
+
+**Acceptance Criteria:**
+
+**Given** Core writes structured JSON to stdout and the Nest API writes local files under NSSM, with no rotation and no shipping (finding, 2026-10-03)
+**When** a collector ingests both asynchronously, off the request path
+**Then** security events reach a durable store, local files rotate, and a test proves credentials and bearer tokens are redacted before shipping
+**And** no second transactional audit system is created and no request writes an AuditLog row for a refusal (AuditLog stays the business audit trail)
+**And** retention is at least 90 days.
+
+- Traceability: NFR-AUD, NFR-OBS; venue-access denial persistence (Tier 2, 2026-10-03 batch).
+- Depends on: Stories 4.1, 4.2 and 12.2.
+- Status: BLOCKED: retention beyond the 90-day floor and the sink's cost need owner decisions (Tier 3).
+
+### Story 12.14: Isolated queue infrastructure for Nest integration tests
+
+As an engineer,
+I want each integration-test run to use its own Redis (or its own BullMQ prefix),
+So that a stray process consuming the same queues cannot make a suite fail.
+
+**Acceptance Criteria:**
+
+**Given** `pos-sync-dispatcher.integration-spec.ts` failed once on 2026-10-03 because a leftover local API process (a BullMQ consumer on the shared Redis) took its jobs, and passed 20 of 20 runs in isolation
+**When** the integration harness starts
+**Then** it uses a dedicated Redis database or a unique queue prefix per run, and fails fast when another consumer is attached
+**And** no test is deleted or disabled to achieve this.
+
+- Traceability: TEST-21; 2026-10-03 failure classification (test infrastructure, not product behaviour).
+- Depends on: none. Applies until the legacy POS sync is retired (docs/migration/idealpos-retirement.md, step 5).
+- Status: READY
+
+### Story 12.15: Kitchen (KDS device) status changes fail on the audit actor foreign key
+
+As a kitchen user,
+I want to advance an order's preparation from the KDS,
+So that the kitchen can work without errors.
+
+**Acceptance Criteria:**
+
+**Given** `PATCH /api/admin/orders/:id/status` with a KDS venue-PIN token answers 500, because its audit row uses the synthetic actor `kds-device:<venueId>`, which violates `AuditLog_actorId_fkey` (found while implementing Story 2.7)
+**When** the audit attribution for device actors is decided
+**Then** a kitchen status change succeeds and is audited with an attributable actor, with an integration test.
+
+- Traceability: NFR-AUD, SEC-16.1; Story 2.7 finding.
+- Depends on: an audit-attribution and schema decision (precedent: a synthetic per-device staff actor for tablets).
+- Status: BLOCKED: needs the audit-attribution decision (Tier 2).
 
 ## Epic 13: Deferred and blocked product scope (placeholders)
 

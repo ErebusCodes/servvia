@@ -123,6 +123,9 @@ development_status:
   12-10-security-review-and-penetration-test: backlog
   12-11-performance-and-load-smoke-test: backlog
   12-12-real-device-lan-and-venue-validation-dry-run: backlog
+  12-13-durable-ingestion-and-retention-of-security-and-operational: backlog
+  12-14-isolated-queue-infrastructure-for-nest-integration-tests: backlog
+  12-15-kitchen-kds-device-status-changes-fail-on-the-audit-actor-fo: backlog
   epic-12-retrospective: optional
 
   epic-13: backlog
