@@ -52,6 +52,7 @@ development_status:
   2-5-token-revocation-and-active-staff-re-checks: done
   2-6-transitional-socket-io-authentication-and-cors-hardening: done
   2-7-kitchen-role-cannot-create-or-cancel-orders-reservation-emai: done
+  2-8-durable-staff-sessions-in-postgresql: done
   epic-2-retrospective: optional
 
   epic-3: backlog

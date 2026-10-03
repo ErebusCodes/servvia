@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { Staff, StaffRole } from '@prisma/client';
 import { Response } from 'express';
-import { randomUUID } from 'node:crypto';
 import ms from 'ms';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { StaffService } from '../staff/staff.service';
@@ -12,7 +11,7 @@ import { AuditLogService } from '../audit/audit.service';
 import { safeCompare } from '../common/utils/safe-compare';
 import { assertPinNotInsecureDefault } from './utils/insecure-default-pin.util';
 import { isProductionRuntime } from '../config/runtime-environment';
-import { SessionRevocationService } from './session-revocation.service';
+import { StaffSessionService } from './staff-session.service';
 import { isStaffSessionKind } from './staff-session';
 
 @Injectable()
@@ -27,7 +26,7 @@ export class AuthService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly staffService: StaffService,
     private readonly auditLogService: AuditLogService,
-    private readonly revocations: SessionRevocationService,
+    private readonly sessions: StaffSessionService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -119,11 +118,11 @@ export class AuthService implements OnModuleInit {
   }
 
   /**
-   * A new login session ID (Story 2.5). Every access and refresh token of
-   * the session carries it as `sid`; logout revokes it.
+   * Starts a login session (Stories 2.5 and 2.8): a StaffSession row whose id
+   * every access and refresh token of the session carries as `sid`.
    */
-  newSessionId(): string {
-    return randomUUID();
+  startSession(staff: Staff): Promise<string> {
+    return this.sessions.start(staff.id);
   }
 
   signAccessToken(staff: Staff, sessionId: string): string {
@@ -218,12 +217,11 @@ export class AuthService implements OnModuleInit {
   }
 
   /**
-   * Ends a login session (Story 2.5): its `sid` is revoked in Redis for the
-   * longest token lifetime of the session, so its refresh and access tokens
-   * are refused by Nest and by the Go Core. The session is named by the
-   * refresh cookie, or failing that by the caller's staff access token. A
-   * revocation that cannot be written fails (500) rather than reporting a
-   * logout that did not happen.
+   * Ends a login session (Stories 2.5 and 2.8): its StaffSession row is
+   * revoked, so its refresh and access tokens are refused by Nest and by the
+   * Go Core. Idempotent. The session is named by the refresh cookie, or
+   * failing that by the caller's staff access token. A revocation that cannot
+   * be written fails (500) rather than reporting a logout that did not happen.
    */
   async logout(
     refreshToken: string | undefined,
@@ -236,8 +234,7 @@ export class AuthService implements OnModuleInit {
       this.logger.warn('Anonymous logout: no valid refresh or access token provided');
       return;
     }
-    const refreshExpiry = this.config.get<string>('JWT_REFRESH_EXPIRY', '7d');
-    await this.revocations.revoke(session.sessionId, ms(refreshExpiry as ms.StringValue) / 1000);
+    await this.sessions.revoke(session.sessionId, session.staffId, 'logout');
     const staff = await this.staffService.findById(session.staffId);
     if (staff) {
       await this.auditLogService.logAuthEvent({

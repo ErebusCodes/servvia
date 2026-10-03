@@ -92,7 +92,7 @@ func NewHandler(hub *realtime.Hub, v *identity.Verifier, tablets identity.Tablet
 	if grants == nil {
 		panic("realtimeapi: VenueGrants is required (staff venue access is enforced on subscription)")
 	}
-	if staff.Staff == nil || staff.Revocations == nil {
+	if staff.Staff == nil || staff.Sessions == nil {
 		panic("realtimeapi: StaffSessions is required (staff tokens are re-checked on subscription)")
 	}
 	// The same origins as the HTTP API's CORS allow-list. A native client

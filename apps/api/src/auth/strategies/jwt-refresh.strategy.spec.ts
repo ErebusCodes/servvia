@@ -4,7 +4,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { StaffRole, Staff } from '@prisma/client';
 import { JwtRefreshStrategy } from './jwt-refresh.strategy';
 import { StaffService } from '../../staff/staff.service';
-import { SessionRevocationService } from '../session-revocation.service';
+import { StaffSessionService } from '../staff-session.service';
 
 const SID = '5e55104e-0000-4000-8000-000000000001';
 
@@ -35,8 +35,8 @@ const mockStaffService = {
   findById: jest.fn(),
 };
 
-const mockRevocations = {
-  isRevoked: jest.fn(),
+const mockSessions = {
+  isLive: jest.fn(),
 };
 
 describe('JwtRefreshStrategy', () => {
@@ -44,13 +44,13 @@ describe('JwtRefreshStrategy', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    mockRevocations.isRevoked.mockResolvedValue(false);
+    mockSessions.isLive.mockResolvedValue(true);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JwtRefreshStrategy,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: StaffService, useValue: mockStaffService },
-        { provide: SessionRevocationService, useValue: mockRevocations },
+        { provide: StaffSessionService, useValue: mockSessions },
       ],
     }).compile();
     strategy = module.get<JwtRefreshStrategy>(JwtRefreshStrategy);
@@ -61,12 +61,12 @@ describe('JwtRefreshStrategy', () => {
     const result = await strategy.validate({ sub: fakeStaff.id, sid: SID });
     expect(result).toEqual({ ...fakeStaff, sessionId: SID });
     expect(mockStaffService.findById).toHaveBeenCalledWith(fakeStaff.id);
-    expect(mockRevocations.isRevoked).toHaveBeenCalledWith(SID);
+    expect(mockSessions.isLive).toHaveBeenCalledWith(SID, fakeStaff.id);
   });
 
   it('validate() refuses a logged-out (revoked) session (Story 2.5)', async () => {
     mockStaffService.findById.mockResolvedValue(fakeStaff);
-    mockRevocations.isRevoked.mockResolvedValue(true);
+    mockSessions.isLive.mockResolvedValue(false);
     await expect(strategy.validate({ sub: fakeStaff.id, sid: SID })).rejects.toThrow(
       new UnauthorizedException('Session expired or account deactivated'),
     );
@@ -77,14 +77,14 @@ describe('JwtRefreshStrategy', () => {
     await expect(strategy.validate({ sub: fakeStaff.id })).rejects.toThrow(
       new UnauthorizedException('Session expired or account deactivated'),
     );
-    expect(mockRevocations.isRevoked).not.toHaveBeenCalled();
+    expect(mockSessions.isLive).not.toHaveBeenCalled();
   });
 
   it('validate() fails closed when the revocation cannot be checked', async () => {
     mockStaffService.findById.mockResolvedValue(fakeStaff);
-    mockRevocations.isRevoked.mockRejectedValue(new Error('Command timed out'));
+    mockSessions.isLive.mockRejectedValue(new Error('connection refused'));
     const result = strategy.validate({ sub: fakeStaff.id, sid: SID });
-    await expect(result).rejects.toThrow('Session revocation check failed');
+    await expect(result).rejects.toThrow('Session check failed');
     await expect(result).rejects.not.toBeInstanceOf(UnauthorizedException);
   });
 

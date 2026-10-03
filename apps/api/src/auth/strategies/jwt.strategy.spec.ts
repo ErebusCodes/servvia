@@ -4,7 +4,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { Staff, StaffRole } from '@prisma/client';
 import { JwtStrategy } from './jwt.strategy';
 import { StaffService } from '../../staff/staff.service';
-import { SessionRevocationService } from '../session-revocation.service';
+import { StaffSessionService } from '../staff-session.service';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
 import { StaffSessionVerifier } from '../staff-session-verifier.service';
 
@@ -12,14 +12,14 @@ const mockConfigService = {
   getOrThrow: jest.fn().mockReturnValue('test-access-secret'),
 };
 
-const activeStaff = { id: 'staff-uuid', isActive: true } as Staff;
+const activeStaff = { id: 'staff-uuid', isActive: true, role: StaffRole.owner } as Staff;
 
 const mockStaffService = {
   findById: jest.fn(),
 };
 
-const mockRevocations = {
-  isRevoked: jest.fn(),
+const mockSessions = {
+  isLive: jest.fn(),
 };
 
 const ENDED = new UnauthorizedException('Session expired or account deactivated');
@@ -31,14 +31,14 @@ describe('JwtStrategy', () => {
     jest.clearAllMocks();
     mockConfigService.getOrThrow.mockReturnValue('test-access-secret');
     mockStaffService.findById.mockResolvedValue(activeStaff);
-    mockRevocations.isRevoked.mockResolvedValue(false);
+    mockSessions.isLive.mockResolvedValue(true);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JwtStrategy,
         StaffSessionVerifier,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: StaffService, useValue: mockStaffService },
-        { provide: SessionRevocationService, useValue: mockRevocations },
+        { provide: StaffSessionService, useValue: mockSessions },
       ],
     }).compile();
     strategy = module.get<JwtStrategy>(JwtStrategy);
@@ -73,7 +73,7 @@ describe('JwtStrategy', () => {
       sessionId: 'session-uuid',
     });
     expect(mockStaffService.findById).toHaveBeenCalledWith('staff-uuid');
-    expect(mockRevocations.isRevoked).toHaveBeenCalledWith('session-uuid');
+    expect(mockSessions.isLive).toHaveBeenCalledWith('session-uuid', 'staff-uuid');
   });
 
   it('passes through venueId/kind for a KDS device payload without any staff check', async () => {
@@ -87,7 +87,7 @@ describe('JwtStrategy', () => {
     });
     expect(result).toMatchObject({ venueId: 'venue-1', kind: 'kds_device' });
     expect(mockStaffService.findById).not.toHaveBeenCalled();
-    expect(mockRevocations.isRevoked).not.toHaveBeenCalled();
+    expect(mockSessions.isLive).not.toHaveBeenCalled();
   });
 
   it('does not re-check an unelevated tablet device as staff', async () => {
@@ -114,17 +114,23 @@ describe('JwtStrategy', () => {
     it('refuses an elevated tablet token whose staff member is deactivated', async () => {
       mockStaffService.findById.mockResolvedValue({ ...activeStaff, isActive: false });
       await expect(strategy.validate(tabletStaffPayload)).rejects.toThrow(ENDED);
-      expect(mockRevocations.isRevoked).not.toHaveBeenCalled();
+      expect(mockSessions.isLive).not.toHaveBeenCalled();
     });
 
     it('admits an elevated tablet token of an active staff member', async () => {
+      mockStaffService.findById.mockResolvedValue({ ...activeStaff, role: StaffRole.cashier });
       await expect(strategy.validate(tabletStaffPayload)).resolves.toMatchObject({
         kind: 'tablet_staff',
       });
     });
 
-    it('refuses a logged-out (revoked) session', async () => {
-      mockRevocations.isRevoked.mockResolvedValue(true);
+    it('refuses a token minted before the staff member’s role changed (Story 2.8)', async () => {
+      mockStaffService.findById.mockResolvedValue({ ...activeStaff, role: StaffRole.manager });
+      await expect(strategy.validate(staffPayload)).rejects.toThrow(ENDED);
+    });
+
+    it('refuses a logged-out, revoked or expired session (no live session row)', async () => {
+      mockSessions.isLive.mockResolvedValue(false);
       await expect(strategy.validate(staffPayload)).rejects.toThrow(ENDED);
     });
 
@@ -136,7 +142,7 @@ describe('JwtStrategy', () => {
     });
 
     it('fails closed (not 401, not access) when the revocation cannot be checked', async () => {
-      mockRevocations.isRevoked.mockRejectedValue(new Error('Command timed out'));
+      mockSessions.isLive.mockRejectedValue(new Error('connection refused'));
       const result = strategy.validate(staffPayload);
       await expect(result).rejects.toThrow('Staff session check failed');
       await expect(result).rejects.not.toBeInstanceOf(UnauthorizedException);

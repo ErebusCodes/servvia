@@ -77,7 +77,7 @@ func Routes(d Deps) http.Handler {
 	if d.VenueGrants == nil {
 		panic("server: Deps.VenueGrants is required (staff venue access is enforced on every venue-scoped route)")
 	}
-	if d.StaffSessions.Staff == nil || d.StaffSessions.Revocations == nil {
+	if d.StaffSessions.Staff == nil || d.StaffSessions.Sessions == nil {
 		panic("server: Deps.StaffSessions is required (staff tokens are re-checked on every authenticated route)")
 	}
 	venueAccess := identity.RequireVenueAccess(d.VenueGrants, "venueId", d.Logger)

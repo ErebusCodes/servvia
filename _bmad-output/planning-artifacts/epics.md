@@ -529,6 +529,23 @@ So that a kitchen screen cannot alter orders and email cannot be injected.
 - Depends on: none.
 - Status: READY
 
+### Story 2.8: Durable staff sessions in PostgreSQL
+
+As an owner,
+I want a logout, credential reset or removal of authority to stay in force even if a cache is lost,
+So that a revoked session can never become valid again for the rest of its life.
+
+**Acceptance Criteria:**
+
+**Given** Story 2.5 kept logout revocations in Redis, so a Redis data loss would have resurrected revoked sessions until their tokens expired
+**When** sessions are recorded in the canonical database (a StaffSession row per sign-in, its id the tokens' `sid`)
+**Then** Nest and Go Core refuse a token whose session is revoked, expired, missing or another staff member's, and a token minted before the staff member's role changed, reading PostgreSQL only (no cache), failing closed
+**And** logout is idempotent, expired sessions are deleted after a fixed margin, and restart and cache-loss behaviour is tested.
+
+- Traceability: SEC-16.4, SEC-16.5, PRD section 16 items 4 and 5; Story 2.5 known limit.
+- Depends on: Story 2.5.
+- Status: DONE
+
 ## Epic 3: Recoverable production data
 
 Operators can bring the production database to a known migration baseline, and can recover it from tested backups. Audit P0-05 and P0-12.

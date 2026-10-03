@@ -6,7 +6,7 @@ import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { StaffService } from '../staff/staff.service';
 import { AuditLogService } from '../audit/audit.service';
-import { SessionRevocationService } from './session-revocation.service';
+import { StaffSessionService } from './staff-session.service';
 import { StaffRole, Staff } from '@prisma/client';
 
 const mockJwtService = {
@@ -29,9 +29,9 @@ const mockAuditLogService = {
   logAuthEvent: jest.fn(),
 };
 
-const mockRevocations = {
+const mockSessions = {
+  start: jest.fn(),
   revoke: jest.fn(),
-  isRevoked: jest.fn(),
 };
 
 const fakeStaff: Staff = {
@@ -66,7 +66,7 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: StaffService, useValue: mockStaffService },
         { provide: AuditLogService, useValue: mockAuditLogService },
-        { provide: SessionRevocationService, useValue: mockRevocations },
+        { provide: StaffSessionService, useValue: mockSessions },
       ],
     }).compile();
     service = module.get<AuthService>(AuthService);
@@ -136,10 +136,10 @@ describe('AuthService', () => {
     );
   });
 
-  it('newSessionId returns a fresh UUID each time', () => {
-    const a = service.newSessionId();
-    expect(a).toMatch(/^[0-9a-f-]{36}$/);
-    expect(service.newSessionId()).not.toBe(a);
+  it('startSession records a StaffSession row and returns its id as the sid', async () => {
+    mockSessions.start.mockResolvedValue('session-uuid');
+    await expect(service.startSession(fakeStaff)).resolves.toBe('session-uuid');
+    expect(mockSessions.start).toHaveBeenCalledWith(fakeStaff.id);
   });
 
   it('setRefreshCookie sets httpOnly cookie', () => {
@@ -369,10 +369,10 @@ describe('AuthService', () => {
       });
       await service.logout('invalid-token-val', 'invalid-access-val', '1.2.3.4', 'Mozilla');
       expect(mockAuditLogService.logAuthEvent).not.toHaveBeenCalled();
-      expect(mockRevocations.revoke).not.toHaveBeenCalled();
+      expect(mockSessions.revoke).not.toHaveBeenCalled();
     });
 
-    it('logout revokes the refresh token session for the refresh lifetime (Story 2.5)', async () => {
+    it('logout revokes the refresh token’s session row (Stories 2.5, 2.8)', async () => {
       mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
       mockStaffService.findById.mockResolvedValue(fakeStaff);
       await service.logout('refresh-token-val', undefined);
@@ -380,7 +380,7 @@ describe('AuthService', () => {
         secret: 'test-JWT_REFRESH_SECRET',
         algorithms: ['HS256'],
       });
-      expect(mockRevocations.revoke).toHaveBeenCalledWith('session-uuid', 7 * 24 * 60 * 60);
+      expect(mockSessions.revoke).toHaveBeenCalledWith('session-uuid', 'staff-uuid', 'logout');
     });
 
     it('logout falls back to the staff access token when there is no refresh cookie', async () => {
@@ -396,7 +396,7 @@ describe('AuthService', () => {
         secret: 'test-JWT_ACCESS_SECRET',
         algorithms: ['HS256'],
       });
-      expect(mockRevocations.revoke).toHaveBeenCalledWith('session-uuid', 7 * 24 * 60 * 60);
+      expect(mockSessions.revoke).toHaveBeenCalledWith('session-uuid', 'staff-uuid', 'logout');
     });
 
     it('logout does not treat a device token as a staff session', async () => {
@@ -408,20 +408,20 @@ describe('AuthService', () => {
         sid: 'session-uuid',
       });
       await service.logout(undefined, 'kds-token-val');
-      expect(mockRevocations.revoke).not.toHaveBeenCalled();
+      expect(mockSessions.revoke).not.toHaveBeenCalled();
     });
 
     it('logout without a session id (a token from before session ids) revokes nothing', async () => {
       mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid' });
       await service.logout('legacy-refresh-token', undefined);
-      expect(mockRevocations.revoke).not.toHaveBeenCalled();
+      expect(mockSessions.revoke).not.toHaveBeenCalled();
     });
 
     it('logout fails, without auditing, when the revocation cannot be written', async () => {
       mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
-      mockRevocations.revoke.mockRejectedValueOnce(new Error('Command timed out'));
+      mockSessions.revoke.mockRejectedValueOnce(new Error('connection refused'));
       await expect(service.logout('refresh-token-val', undefined)).rejects.toThrow(
-        'Command timed out',
+        'connection refused',
       );
       expect(mockAuditLogService.logAuthEvent).not.toHaveBeenCalled();
     });

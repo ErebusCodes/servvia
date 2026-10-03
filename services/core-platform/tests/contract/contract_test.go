@@ -172,14 +172,16 @@ type staffSessionStub struct {
 	err             error
 }
 
-func (s staffSessionStub) StaffActive(context.Context, string) (bool, error) { return s.active, s.err }
+func (s staffSessionStub) StaffActive(context.Context, string, string) (bool, error) {
+	return s.active, s.err
+}
 
-func (s staffSessionStub) SessionRevoked(context.Context, string) (bool, error) {
-	return s.revoked, s.err
+func (s staffSessionStub) SessionLive(context.Context, string, string) (bool, error) {
+	return !s.revoked, s.err
 }
 
 func staffSessionsOf(s staffSessionStub) identity.StaffSessions {
-	return identity.StaffSessions{Staff: s, Revocations: s}
+	return identity.StaffSessions{Staff: s, Sessions: s}
 }
 
 var activeStaff = staffSessionsOf(staffSessionStub{active: true})

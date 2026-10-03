@@ -121,16 +121,16 @@ type fakeStaff struct {
 	err     error
 }
 
-func (f *fakeStaff) StaffActive(context.Context, string) (bool, error) {
+func (f *fakeStaff) StaffActive(context.Context, string, string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.active, f.err
 }
 
-func (f *fakeStaff) SessionRevoked(context.Context, string) (bool, error) {
+func (f *fakeStaff) SessionLive(context.Context, string, string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.revoked, f.err
+	return !f.revoked, f.err
 }
 
 func (f *fakeStaff) set(active, revoked bool, err error) {
@@ -186,7 +186,7 @@ func newHarness(t *testing.T) *harness {
 	hub := realtime.NewHub(16)
 	logger := slog.New(slog.NewJSONHandler(h.logs, nil))
 	handler := NewHandler(hub, identity.NewVerifier(testSecret), h.tablets, h.devices, fakeVenues{}, h.grants,
-		identity.StaffSessions{Staff: h.staff, Revocations: h.staff}, logger, testConfig)
+		identity.StaffSessions{Staff: h.staff, Sessions: h.staff}, logger, testConfig)
 	// The production chain for the realtime route (server.go): request IDs first.
 	srv := httptest.NewServer(httpx.Chain(handler, httpx.RequestIDs))
 	t.Cleanup(func() {

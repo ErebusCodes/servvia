@@ -497,6 +497,7 @@ model Staff {
   venueAccess                   VenueAccess[]           @relation("StaffAccess")
   grantsGiven                   VenueAccess[]           @relation("GrantedBy")
   auditLogs                     AuditLog[]              @relation("ActorLogs")
+  sessions                      StaffSession[]
   categoriesCreated             Category[]
   menuItemsCreated              MenuItem[]
   mediaAssetsCreated            MediaAsset[]
@@ -510,6 +511,29 @@ model Staff {
   paymentObservationsReviewed   PaymentObservation[]
   promotionsCreated             Promotion[]             @relation("PromotionCreatedBy")
   promotionsUpdated             Promotion[]             @relation("PromotionUpdatedBy")
+}
+
+// A staff login session (Story 2.8). Its id is the `sid` claim carried by
+// the session's access and refresh tokens. This row, in the canonical
+// database, is the source of truth for whether the session is live: logout,
+// credential reset and removal of authority revoke it, and Nest and Go Core
+// both refuse a token whose session is revoked, expired or missing. No cache
+// can resurrect it. Rows are deleted once they can no longer authorize
+// anything (expiresAt passed); see StaffSessionCleanupService.
+model StaffSession {
+  id            String    @id @default(uuid())
+  staffId       String
+  createdAt     DateTime  @default(now())
+  // The refresh-token lifetime from login: no token of the session outlives it.
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  // logout | credential_reset | credential_setup | role_changed | deactivated | removed
+  revokedReason String?
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@index([expiresAt])
 }
 
 model VenueAccess {

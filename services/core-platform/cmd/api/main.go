@@ -155,10 +155,10 @@ func run() error {
 	bg.Add(1)
 	go func() { defer bg.Done(); dispatcher.Run(workerCtx) }()
 	venueGrants := identity.NewPostgresVenueGrants(pool)
-	// Staff tokens are re-checked on every request and subscription: the
-	// staff row in PostgreSQL, and logout revocations in the shared Redis.
+	// Staff tokens are re-checked on every request and subscription against
+	// PostgreSQL: the staff row and the login session (Story 2.8).
 	staffSessions := identity.StaffSessions{
-		Staff: identity.NewPostgresStaffStatus(pool), Revocations: identity.NewRedisSessionRevocations(rdb),
+		Staff: identity.NewPostgresStaffStatus(pool), Sessions: identity.NewPostgresSessions(pool),
 	}
 	realtimeHandler := realtimeapi.NewHandler(hub, identity.NewVerifier(cfg.JWTAccessSecret), identity.NewPostgresTabletDevices(pool),
 		deviceService, venueStore, venueGrants, staffSessions, logger, realtimeapi.DefaultConfig)

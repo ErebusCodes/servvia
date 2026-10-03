@@ -32,7 +32,7 @@ const mockAuthService = {
   validateAdminPin: jest.fn(),
   signAccessToken: jest.fn().mockReturnValue('access-token'),
   signRefreshToken: jest.fn().mockReturnValue('refresh-token'),
-  newSessionId: jest.fn().mockReturnValue('session-uuid'),
+  startSession: jest.fn().mockResolvedValue('session-uuid'),
   setRefreshCookie: jest.fn(),
   clearRefreshCookie: jest.fn(),
   logLoginSuccess: jest.fn(),
@@ -51,7 +51,7 @@ describe('AuthController', () => {
     jest.clearAllMocks();
     mockAuthService.signAccessToken.mockReturnValue('access-token');
     mockAuthService.signRefreshToken.mockReturnValue('refresh-token');
-    mockAuthService.newSessionId.mockReturnValue('session-uuid');
+    mockAuthService.startSession.mockResolvedValue('session-uuid');
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: mockAuthService }],

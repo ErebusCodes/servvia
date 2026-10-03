@@ -27,13 +27,13 @@ import (
 
 // admitStaff admits every staff token that carries a session ID. The
 // PostgreSQL and Redis stores are tested in staff_session_test.go.
-var admitStaff = identity.StaffSessions{Staff: activeStaffStore{}, Revocations: activeStaffStore{}}
+var admitStaff = identity.StaffSessions{Staff: activeStaffStore{}, Sessions: activeStaffStore{}}
 
 type activeStaffStore struct{}
 
-func (activeStaffStore) StaffActive(context.Context, string) (bool, error) { return true, nil }
+func (activeStaffStore) StaffActive(context.Context, string, string) (bool, error) { return true, nil }
 
-func (activeStaffStore) SessionRevoked(context.Context, string) (bool, error) { return false, nil }
+func (activeStaffStore) SessionLive(context.Context, string, string) (bool, error) { return true, nil }
 
 type admitAll struct{}
 

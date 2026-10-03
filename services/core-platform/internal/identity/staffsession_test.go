@@ -15,18 +15,21 @@ type fakeStaffSessions struct {
 	active, revoked     bool
 	staffErr, revokeErr error
 	staffID, sessionID  string
+	sessionStaffID      string
+	role                string
 	staffCalls          int
 }
 
-func (f *fakeStaffSessions) StaffActive(_ context.Context, staffID string) (bool, error) {
+func (f *fakeStaffSessions) StaffActive(_ context.Context, staffID, role string) (bool, error) {
+	f.role = role
 	f.staffCalls++
 	f.staffID = staffID
 	return f.active, f.staffErr
 }
 
-func (f *fakeStaffSessions) SessionRevoked(_ context.Context, sessionID string) (bool, error) {
-	f.sessionID = sessionID
-	return f.revoked, f.revokeErr
+func (f *fakeStaffSessions) SessionLive(_ context.Context, sessionID, staffID string) (bool, error) {
+	f.sessionID, f.sessionStaffID = sessionID, staffID
+	return !f.revoked, f.revokeErr
 }
 
 func serveActiveStaff(t *testing.T, f *fakeStaffSessions, p Principal) (*httptest.ResponseRecorder, bool, string) {
@@ -34,7 +37,7 @@ func serveActiveStaff(t *testing.T, f *fakeStaffSessions, p Principal) (*httptes
 	var logs bytes.Buffer
 	reached := false
 	mux := http.NewServeMux()
-	mux.Handle("GET /api/things", RequireActiveStaff(StaffSessions{Staff: f, Revocations: f}, slog.New(slog.NewJSONHandler(&logs, nil)))(
+	mux.Handle("GET /api/things", RequireActiveStaff(StaffSessions{Staff: f, Sessions: f}, slog.New(slog.NewJSONHandler(&logs, nil)))(
 		http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true })))
 	req := httptest.NewRequest(http.MethodGet, "/api/things", nil)
 	req = req.WithContext(context.WithValue(req.Context(), principalKey{}, p))
@@ -54,6 +57,10 @@ func TestRequireActiveStaffAdmitsActiveStaff(t *testing.T) {
 		}
 		if f.staffID != p.ID {
 			t.Errorf("%s: checked staff %q, want %q", p.Kind, f.staffID, p.ID)
+		}
+		// Story 2.8: the token's role is checked against the staff row.
+		if f.role != p.Role {
+			t.Errorf("%s: checked role %q, want %q", p.Kind, f.role, p.Role)
 		}
 	}
 }
@@ -78,8 +85,8 @@ func TestRequireActiveStaffRefusesLoggedOutSession(t *testing.T) {
 	if reached || rec.Code != http.StatusUnauthorized {
 		t.Errorf("revoked session: reached %v, %d", reached, rec.Code)
 	}
-	if f.sessionID != loginSession.SessionID {
-		t.Errorf("checked session %q, want %q", f.sessionID, loginSession.SessionID)
+	if f.sessionID != loginSession.SessionID || f.sessionStaffID != loginSession.ID {
+		t.Errorf("checked session %q of %q, want %q of %q", f.sessionID, f.sessionStaffID, loginSession.SessionID, loginSession.ID)
 	}
 }
 
@@ -122,7 +129,7 @@ func TestRequireActiveStaffLeavesDevicesAlone(t *testing.T) {
 
 func TestRequireActiveStaffWithoutPrincipalIsUnauthorized(t *testing.T) {
 	reached := false
-	h := RequireActiveStaff(StaffSessions{Staff: &fakeStaffSessions{}, Revocations: &fakeStaffSessions{}}, slog.Default())(
+	h := RequireActiveStaff(StaffSessions{Staff: &fakeStaffSessions{}, Sessions: &fakeStaffSessions{}}, slog.Default())(
 		http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))

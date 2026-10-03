@@ -35,7 +35,7 @@ export class AuthController {
       ipAddress,
       userAgent,
     );
-    const sessionId = this.authService.newSessionId();
+    const sessionId = await this.authService.startSession(staff);
     const accessToken = this.authService.signAccessToken(staff, sessionId);
     const refreshToken = this.authService.signRefreshToken(staff, sessionId);
     this.authService.setRefreshCookie(res, refreshToken);
@@ -64,7 +64,7 @@ export class AuthController {
       : undefined;
     const userAgent = req ? (req.headers['user-agent'] as string) : undefined;
     const staff = await this.authService.validateAdminPin(dto.pin, ipAddress, userAgent);
-    const sessionId = this.authService.newSessionId();
+    const sessionId = await this.authService.startSession(staff);
     const accessToken = this.authService.signAccessToken(staff, sessionId);
     const refreshToken = this.authService.signRefreshToken(staff, sessionId);
     this.authService.setRefreshCookie(res, refreshToken);

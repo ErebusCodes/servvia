@@ -28,7 +28,7 @@
   "x-expiry-format": "Expiry env values are passed to jsonwebtoken `expiresIn`. A string is parsed with the `ms` library ('15m', '12h', '30d'); a number is seconds. Note: a bare numeric STRING such as '900' is parsed by `ms` as milliseconds.",
   "x-known-issues": [
     "Story 2.6: the socket.io gateway verifies tokens via AuthService.verifyAccessToken, pinned to HS256 like JwtStrategy, accepts handshakes only from the API's CORS allow-list (or without an Origin), applies the Story 2.5 staff re-checks and the tablet device check at connection, and disconnects on expiry and at a 60 s re-check after logout, deactivation, revocation or a failed check.",
-    "Story 2.5: every token whose subject is a staff member (staff session, tablet_staff, tablet_manager) is re-checked on use, in Nest (JwtStrategy) and Go (identity.RequireActiveStaff and realtime): the Staff row must be active, not deleted, in an active organization, and a staff session's `sid` must not be revoked (Redis key `auth:revoked-session:<sid>`, written on logout). A check that cannot be made fails closed. Tablet kinds are additionally revoked with their device on routes that add TabletDeviceGuard/TabletTokenActiveGuard.",
+    "Stories 2.5 and 2.8: every token whose subject is a staff member (staff session, tablet_staff, tablet_manager) is re-checked on use, in Nest (JwtStrategy, the socket.io gateway) and Go (identity.RequireActiveStaff and realtime), against PostgreSQL: the Staff row must be active, not deleted, in an active organization and still hold the token's `role`, and a staff session's `sid` must name a live StaffSession row of that staff member (not revoked, not expired). No cache is consulted. A check that cannot be made fails closed. Tablet kinds are additionally revoked with their device on routes that add TabletDeviceGuard/TabletTokenActiveGuard.",
     "`kind: 'staff'` is declared in the TypeScript union but no code path ever issues it; staff tokens omit `kind`. Both forms are treated as a staff session by StaffSessionOnlyGuard and resolveVenueScope. Source: apps/api/src/auth/interfaces/jwt-payload.interface.ts:22",
     "Device token `email` claims use the literal domain `@verdura.internal` (a real value, not a mailbox). Source: apps/api/src/auth/auth.service.ts:137, apps/api/src/tablet/tablet-auth.service.ts:129",
     "A kind value outside the enum (only mintable with the secret) would be treated as unrestricted staff by resolveVenueScope but rejected by StaffSessionOnlyGuard. Source: apps/api/src/auth/utils/resolve-venue-scope.ts:30, apps/api/src/auth/guards/staff-session-only.guard.ts:21"
@@ -67,7 +67,7 @@
       "required": ["sub", "email", "role", "organizationId", "sid", "iat", "exp"],
       "properties": {
         "sub": { "$ref": "#/$defs/uuid", "description": "Staff.id." },
-        "sid": { "$ref": "#/$defs/uuid", "description": "Login session ID, created at login and kept on refresh. Logout revokes it for every token of the session." },
+        "sid": { "$ref": "#/$defs/uuid", "description": "Login session ID: the StaffSession row created at sign-in and kept on refresh. Revoking that row (logout, credential reset, removal of authority) ends every token of the session." },
         "email": { "type": "string", "description": "Staff.email." },
         "role": { "$ref": "#/$defs/staffRole" },
         "organizationId": { "$ref": "#/$defs/uuid" },
@@ -167,7 +167,7 @@
     },
     "refreshToken": {
       "title": "Staff refresh token (cookie)",
-      "description": "Separate JWT carried only in the `refresh_token` cookie and accepted only by Passport strategy `jwt-refresh` on POST /api/auth/refresh. Signed HS256 with JWT_REFRESH_SECRET (distinct from JWT_ACCESS_SECRET). Custom claims are `sub` and `sid` (the login session). Not rotated on refresh. Revocable: logout writes the Redis key `auth:revoked-session:<sid>` for the refresh token's remaining lifetime (Story 2.5). On use, sub must be a UUID of an existing Staff row with isActive=true and `sid` must be present and not revoked, else 401 'Session expired or account deactivated'; a revocation check that cannot be made fails closed (500).",
+      "description": "Separate JWT carried only in the `refresh_token` cookie and accepted only by Passport strategy `jwt-refresh` on POST /api/auth/refresh. Signed HS256 with JWT_REFRESH_SECRET (distinct from JWT_ACCESS_SECRET). Custom claims are `sub` and `sid` (the login session: a StaffSession row created at sign-in, expiring with this token). Not rotated on refresh. Revocable: logout, credential reset and removal of authority revoke the StaffSession row (Story 2.8). On use, sub must be a UUID of an existing Staff row with isActive=true and `sid` must name a live StaffSession of that staff member, else 401 'Session expired or account deactivated'; a check that cannot be made fails closed (500).",
       "x-source": [
         "apps/api/src/auth/auth.service.ts:165",
         "apps/api/src/auth/auth.service.ts:175",
@@ -186,8 +186,7 @@
         "x-source": "apps/api/src/auth/auth.service.ts:32"
       },
       "x-known-issues": [
-        "Refresh does not rotate the refresh token; a copied refresh token remains valid until exp, logout or deactivation. Source: apps/api/src/auth/auth.controller.ts",
-        "Revocations live in Redis. A Redis data loss forgets logouts (not deactivations, which are read from PostgreSQL) until the tokens expire; Redis persistence in production is not verified."
+        "Refresh does not rotate the refresh token; a copied refresh token remains valid until exp, logout or deactivation. Source: apps/api/src/auth/auth.controller.ts"
       ],
       "type": "object",
       "required": ["sub", "sid", "iat", "exp"],

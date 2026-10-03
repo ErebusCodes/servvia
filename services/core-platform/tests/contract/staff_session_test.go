@@ -80,20 +80,20 @@ func TestAuthenticatedRoutesFailClosedWhenStaffCannotBeChecked(t *testing.T) {
 // unexpectedStaffCheck fails the test when a staff store is consulted.
 type unexpectedStaffCheck struct{ t *testing.T }
 
-func (u unexpectedStaffCheck) StaffActive(context.Context, string) (bool, error) {
+func (u unexpectedStaffCheck) StaffActive(context.Context, string, string) (bool, error) {
 	u.t.Error("staff status checked for a device")
 	return false, nil
 }
 
-func (u unexpectedStaffCheck) SessionRevoked(context.Context, string) (bool, error) {
-	u.t.Error("session revocation checked for a device")
-	return true, nil
+func (u unexpectedStaffCheck) SessionLive(context.Context, string, string) (bool, error) {
+	u.t.Error("session checked for a device")
+	return false, nil
 }
 
 // A KDS device is not staff: no staff check consults the stores.
 func TestStaffSessionCheckLeavesDevicesAlone(t *testing.T) {
 	u := unexpectedStaffCheck{t}
-	h := staffSessionRoutes(identity.StaffSessions{Staff: u, Revocations: u})
+	h := staffSessionRoutes(identity.StaffSessions{Staff: u, Sessions: u})
 	kds := signed(t, nestShapedClaims()["kds_device"])
 	got := do(t, h, http.MethodGet, "/api/venues/"+venueID+"/kitchen-tickets", kds, nil)
 	if got.status == http.StatusUnauthorized {

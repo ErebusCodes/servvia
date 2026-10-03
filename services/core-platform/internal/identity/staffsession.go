@@ -7,42 +7,39 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	"servvia/services/core-platform/internal/platform/httpx"
 )
 
-// Active staff and session revocation (Story 2.5; SEC-16.4, SEC-16.5). A
-// valid signature is not enough: the staff member a token names must still
-// be active (not deactivated, not deleted, in an active organization), and a
-// staff login session must not have been ended by logout. Both are checked
-// again on every request and fail closed: a check that cannot be made is a
-// 500, never access. Device identities (KDS, an unelevated tablet) are not
-// staff and are not checked here; tablet tokens keep their device re-check.
+// Active staff and live sessions (Stories 2.5 and 2.8; SEC-16.4, SEC-16.5).
+// A valid signature is not enough: the staff member a token names must still
+// be active (not deactivated, not deleted, in an active organization) and
+// still hold the role the token carries, and a staff login session must still
+// be live in "StaffSession" (not logged out, reset or revoked, not expired).
+// Both are read from PostgreSQL, the source of truth, on every request and
+// fail closed: a check that cannot be made is a 500, never access. No cache
+// is consulted, so no cache loss can resurrect a revoked session. Device
+// identities (KDS, an unelevated tablet) are not staff and are not checked
+// here; tablet tokens keep their device re-check.
 
 // StaffSessionEndedMessage is the 401 message for a deactivated staff member
 // or a revoked session; it is the message Nest's refresh strategy uses.
 const StaffSessionEndedMessage = "Session expired or account deactivated"
 
-// RevokedSessionKeyPrefix is the Redis key prefix of a revoked staff login
-// session, shared with the NestJS API (apps/api/src/auth/session-revocation.service.ts),
-// which writes the key on logout.
-const RevokedSessionKeyPrefix = "auth:revoked-session:"
-
-// StaffStatus reports whether a staff member may still act.
+// StaffStatus reports whether a staff member may still act with a role.
 type StaffStatus interface {
-	StaffActive(ctx context.Context, staffID string) (bool, error)
+	StaffActive(ctx context.Context, staffID, role string) (bool, error)
 }
 
-// SessionRevocations reports whether a staff login session was revoked.
-type SessionRevocations interface {
-	SessionRevoked(ctx context.Context, sessionID string) (bool, error)
+// Sessions reports whether a staff login session is live for its staff member.
+type Sessions interface {
+	SessionLive(ctx context.Context, sessionID, staffID string) (bool, error)
 }
 
-// StaffSessions checks staff principals against both stores.
+// StaffSessions checks staff principals against both.
 type StaffSessions struct {
-	Staff       StaffStatus
-	Revocations SessionRevocations
+	Staff    StaffStatus
+	Sessions Sessions
 }
 
 // Admit reports whether the principal may still act. Device identities are
@@ -57,15 +54,16 @@ func (s StaffSessions) Admit(ctx context.Context, p Principal) (bool, error) {
 		if p.SessionID == "" {
 			return false, nil
 		}
-		revoked, err := s.Revocations.SessionRevoked(ctx, p.SessionID)
+		live, err := s.Sessions.SessionLive(ctx, p.SessionID, p.ID)
 		if err != nil {
-			return false, fmt.Errorf("check session revocation: %w", err)
+			return false, fmt.Errorf("check session: %w", err)
 		}
-		if revoked {
+		if !live {
 			return false, nil
 		}
 	}
-	active, err := s.Staff.StaffActive(ctx, p.ID)
+	// A role change ends tokens minted under the old role (Story 2.8).
+	active, err := s.Staff.StaffActive(ctx, p.ID, p.Role)
 	if err != nil {
 		return false, fmt.Errorf("check staff status: %w", err)
 	}
@@ -109,36 +107,43 @@ func LogStaffSessionRefused(ctx context.Context, logger *slog.Logger, p Principa
 }
 
 // PostgresStaffStatus reads "Staff" and its "Organization", as Nest's
-// StaffService.findById: active, not deleted, in an active organization.
+// StaffService.findById: active, not deleted, in an active organization,
+// and still holding the token's role.
 type PostgresStaffStatus struct{ pool *pgxpool.Pool }
 
 func NewPostgresStaffStatus(pool *pgxpool.Pool) *PostgresStaffStatus {
 	return &PostgresStaffStatus{pool: pool}
 }
 
-func (s *PostgresStaffStatus) StaffActive(ctx context.Context, staffID string) (bool, error) {
+func (s *PostgresStaffStatus) StaffActive(ctx context.Context, staffID, role string) (bool, error) {
 	var active bool
 	if err := s.pool.QueryRow(ctx, `SELECT EXISTS (
 		  SELECT 1 FROM "Staff" s JOIN "Organization" o ON o.id = s."organizationId"
-		  WHERE s.id = $1 AND s."isActive" AND s."deletedAt" IS NULL AND o."isActive")`,
-		staffID).Scan(&active); err != nil {
+		  WHERE s.id = $1 AND s.role::text = $2 AND s."isActive" AND s."deletedAt" IS NULL AND o."isActive")`,
+		staffID, role).Scan(&active); err != nil {
 		return false, fmt.Errorf("load staff status: %w", err)
 	}
 	return active, nil
 }
 
-// RedisSessionRevocations reads the revoked-session keys Nest writes on
-// logout. Each key expires with the longest-lived token of its session.
-type RedisSessionRevocations struct{ rdb redis.Cmdable }
+// PostgresSessions reads "StaffSession" (Prisma model StaffSession), which the
+// NestJS API writes at sign-in and revokes at logout, credential reset and
+// removal of authority.
+type PostgresSessions struct{ pool *pgxpool.Pool }
 
-func NewRedisSessionRevocations(rdb redis.Cmdable) *RedisSessionRevocations {
-	return &RedisSessionRevocations{rdb: rdb}
+func NewPostgresSessions(pool *pgxpool.Pool) *PostgresSessions {
+	return &PostgresSessions{pool: pool}
 }
 
-func (s *RedisSessionRevocations) SessionRevoked(ctx context.Context, sessionID string) (bool, error) {
-	n, err := s.rdb.Exists(ctx, RevokedSessionKeyPrefix+sessionID).Result()
-	if err != nil {
-		return false, fmt.Errorf("load session revocation: %w", err)
+func (s *PostgresSessions) SessionLive(ctx context.Context, sessionID, staffID string) (bool, error) {
+	var live bool
+	// expiresAt is a Prisma DateTime: a UTC timestamp without time zone.
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS (
+		  SELECT 1 FROM "StaffSession"
+		  WHERE id = $1 AND "staffId" = $2 AND "revokedAt" IS NULL
+		    AND "expiresAt" > (now() AT TIME ZONE 'UTC'))`,
+		sessionID, staffID).Scan(&live); err != nil {
+		return false, fmt.Errorf("load staff session: %w", err)
 	}
-	return n > 0, nil
+	return live, nil
 }

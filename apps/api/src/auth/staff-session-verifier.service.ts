@@ -1,7 +1,7 @@
 import { HttpException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { StaffService } from '../staff/staff.service';
-import { SessionRevocationService } from './session-revocation.service';
+import { StaffSessionService } from './staff-session.service';
 import {
   STAFF_SESSION_ENDED_MESSAGE,
   isStaffSessionKind,
@@ -16,11 +16,12 @@ export class StaffSessionCheckError extends Error {
 }
 
 /**
- * Story 2.5: a valid signature is not enough. For a token whose subject is
- * a staff member, the staff member must still be active (not deactivated,
- * not deleted, in an active organization), and a login session must carry a
- * `sid` that logout has not revoked. Used by the HTTP strategy and by the
- * socket.io gateway, so both apply the same rules.
+ * Stories 2.5 and 2.8: a valid signature is not enough. For a token whose
+ * subject is a staff member, the staff member must still be active (not
+ * deactivated, not deleted, in an active organization) and still hold the
+ * role the token carries; a login session must carry a `sid` whose session
+ * row is live (not logged out, reset or revoked, not expired). Used by the
+ * HTTP strategy and by the socket.io gateway, so both apply the same rules.
  */
 @Injectable()
 export class StaffSessionVerifier {
@@ -28,26 +29,26 @@ export class StaffSessionVerifier {
 
   constructor(
     private readonly staffService: StaffService,
-    private readonly revocations: SessionRevocationService,
+    private readonly sessions: StaffSessionService,
   ) {}
 
   /**
    * Resolves when the token may still be used. Rejects with
-   * UnauthorizedException when the staff member is deactivated or the
-   * session revoked, and with StaffSessionCheckError when the check cannot
-   * be made. Device kinds (KDS, an unelevated tablet) are not staff and
-   * always resolve.
+   * UnauthorizedException when it may not, and with StaffSessionCheckError
+   * when the check cannot be made. Device kinds (KDS, an unelevated tablet)
+   * are not staff and always resolve.
    */
   async assertLive(payload: JwtPayload): Promise<void> {
     if (!isStaffSubjectKind(payload.kind)) return;
     try {
       if (isStaffSessionKind(payload.kind)) {
-        if (!payload.sid || (await this.revocations.isRevoked(payload.sid))) {
+        if (!payload.sid || !(await this.sessions.isLive(payload.sid, payload.sub))) {
           throw new UnauthorizedException(STAFF_SESSION_ENDED_MESSAGE);
         }
       }
       const staff = await this.staffService.findById(payload.sub);
-      if (!staff || !staff.isActive) {
+      // A role change ends tokens minted under the old role (Story 2.8).
+      if (!staff || !staff.isActive || staff.role !== payload.role) {
         throw new UnauthorizedException(STAFF_SESSION_ENDED_MESSAGE);
       }
     } catch (err) {

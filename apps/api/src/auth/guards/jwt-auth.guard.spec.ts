@@ -11,7 +11,7 @@ import { JwtStrategy } from '../strategies/jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { StaffService } from '../../staff/staff.service';
-import { SessionRevocationService } from '../session-revocation.service';
+import { StaffSessionService } from '../staff-session.service';
 import { StaffSessionVerifier } from '../staff-session-verifier.service';
 
 const SECRET = 'integration-test-jwt-access-secret-32chars!!';
@@ -39,21 +39,26 @@ const validStaffPayload = {
 };
 
 // The staff row and the session revocation store, as the strategy sees them.
-const staffState: { isActive: boolean | null; error?: Error } = { isActive: true };
+const staffState: { isActive: boolean | null; role: StaffRole; error?: Error } = {
+  isActive: true,
+  role: StaffRole.admin,
+};
 const revocationState: { revoked: boolean; error?: Error } = { revoked: false };
 const fakeStaffService = {
   findById: jest.fn((id: string) => {
     if (staffState.error) return Promise.reject(staffState.error);
     return Promise.resolve(
-      staffState.isActive === null ? null : { id, isActive: staffState.isActive },
+      staffState.isActive === null
+        ? null
+        : { id, isActive: staffState.isActive, role: staffState.role },
     );
   }),
 };
-const fakeRevocations = {
-  isRevoked: jest.fn(() =>
+const fakeSessions = {
+  isLive: jest.fn(() =>
     revocationState.error
       ? Promise.reject(revocationState.error)
-      : Promise.resolve(revocationState.revoked),
+      : Promise.resolve(!revocationState.revoked),
   ),
 };
 
@@ -79,7 +84,7 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
         JwtAuthGuard,
         RolesGuard,
         { provide: StaffService, useValue: fakeStaffService },
-        { provide: SessionRevocationService, useValue: fakeRevocations },
+        { provide: StaffSessionService, useValue: fakeSessions },
       ],
     }).compile();
 
@@ -93,6 +98,7 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
 
   beforeEach(() => {
     staffState.isActive = true;
+    staffState.role = StaffRole.admin;
     staffState.error = undefined;
     revocationState.revoked = false;
     revocationState.error = undefined;
@@ -168,6 +174,7 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
   });
 
   it('rejects a valid JWT whose role RolesGuard does not permit', async () => {
+    staffState.role = StaffRole.cashier;
     const token = sign({ ...validStaffPayload, role: StaffRole.cashier });
     await request(app.getHttpServer())
       .get('/test/protected')
@@ -198,6 +205,14 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
         .expect(401, ended);
     });
 
+    it('refuses a token minted before the staff member’s role changed (Story 2.8)', async () => {
+      staffState.role = StaffRole.manager;
+      await request(app.getHttpServer())
+        .get('/test/protected')
+        .set('Authorization', `Bearer ${sign(validStaffPayload)}`)
+        .expect(401, ended);
+    });
+
     it('refuses a staff token after logout revoked its session', async () => {
       revocationState.revoked = true;
       await request(app.getHttpServer())
@@ -215,8 +230,8 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
         .expect(401, ended);
     });
 
-    it('fails closed with 500 when the revocation store cannot be reached', async () => {
-      revocationState.error = new Error('Command timed out');
+    it('fails closed with 500 when the session store cannot be reached', async () => {
+      revocationState.error = new Error('connection refused');
       await request(app.getHttpServer())
         .get('/test/protected')
         .set('Authorization', `Bearer ${sign(validStaffPayload)}`)

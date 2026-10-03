@@ -157,7 +157,7 @@ func goServerWith(t *testing.T, dbURL, secret string, writable bool) *httptest.S
 		Verifier:      identity.NewVerifier(secret),
 		TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
 		StaffSessions: identity.StaffSessions{
-			Staff: identity.NewPostgresStaffStatus(pool), Revocations: identity.NewRedisSessionRevocations(rdb),
+			Staff: identity.NewPostgresStaffStatus(pool), Sessions: identity.NewPostgresSessions(pool),
 		},
 		RateLimiter: ratelimit.New(rdb, 0, logger),
 	}))
