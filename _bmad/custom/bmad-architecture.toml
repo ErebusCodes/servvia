@@ -1,0 +1,16 @@
+# Servvia team customization for bmad-architecture: input isolation (approved 2026-10-03).
+[workflow]
+persistent_facts = [
+  "file:PRD/README.md",
+  "file:PRD/product-requirements.md",
+  "file:fileRestructure.md",
+  "file:docs/adr/0001-servvia-is-the-operational-pos.md",
+  "file:docs/adr/0002-reduced-first-pilot.md",
+  "file:docs/audits/production-readiness-2026-12.md",
+  "Source precedence for Servvia (highest first): (1) actual repository and verified tests; (2) fileRestructure.md for architecture and repository ownership; (3) PRD/README.md + PRD/product-requirements.md (approved 2026-10-03) for requirements; (4) accepted ADRs and decision records (docs/adr/0001, docs/adr/0002, committed entries of docs/decisions-log.md); (5) the adopted production-readiness audit, as evidence and backlog input only; (6) BMAD output, as planning; (7) historical documents, as evidence only.",
+  "The ONLY requirements source is PRD/README.md + PRD/product-requirements.md. When a step asks for 'the PRD document', use PRD/product-requirements.md. When a step asks for 'the Architecture document', use fileRestructure.md together with ADR 0001 and ADR 0002. The production-readiness audit is never a requirements source; PRD/ prevails on conflict.",
+  "Never author or regenerate a competing canonical PRD (do not run bmad-prd to replace PRD/) or a competing architecture authority over fileRestructure.md (do not author an architecture spine).",
+  "Unresolved items stay unresolved and BLOCKED: every OWNER TARGET REQUIRED and OWNER DECISION REQUIRED item, open decisions in PRD section 14 (including O-3 provider selection, O-5, O-6, O-13, O-19, O-20, O-21), R-3, and PENDING USER POS ANALYSIS REPORT. Never invent values, targets, provider behaviour, payment trust models or Windows POS behaviour.",
+  "The DL-117 entry in docs/decisions-log.md (11 October 2026 milestone) and the matching ADR 0001 annotations are an UNCOMMITTED, UNAPPROVED draft pending owner approval. They are not authority and nothing may depend on them.",
+  "Historical evidence only, never requirements or planning authority: docs/prd.md, docs/epics.md, docs/sprints.md, docs/mvp.md, docs/ux.md, docs/offline.md, docs/printers.md, docs/product-requirements.md (bannered [P2] snapshot), docs/target-operating-model.md, docs/planning/, docs/archive/, docs/integrations/, docs/discovery/, and any BMAD output that predates this installation.",
+]

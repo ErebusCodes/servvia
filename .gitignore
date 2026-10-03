@@ -91,3 +91,7 @@ scratchpad/toolchains/
 /scratchpad/d*-smoke.sh
 /scratchpad/d*-smoke/
 /scratchpad/bmad-*.txt
+
+# BMAD: per-user install answers and installer backups (not committed)
+/_bmad/config.user.toml
+/_bmad/**/*.bak
