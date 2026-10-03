@@ -1,6 +1,6 @@
 # Servvia: consolidated product requirements
 
-> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. Further changes 2026-10-03: source provenance reconciled (README "Provenance status"); production cutover rule; kitchen printing at the pilot made conditional on venue requirement; O-2 decided (transitional credential issuance); ORD-4 and ORD-5 reworded to canonical Core semantics; PRT-1 source repaired. **Awaiting owner review.**
+> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. Further changes 2026-10-03: source provenance reconciled (README "Provenance status"); production cutover rule; kitchen printing at the pilot made conditional on venue requirement; O-2 decided (transitional credential issuance); ORD-4 and ORD-5 reworded to canonical Core semantics; PRT-1 source repaired. **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; meaning and limits in [README.md](README.md) "Approval").
 > **Architecture authority:** [`fileRestructure.md`](../fileRestructure.md).
 > **Sources and conflicts:** [README.md](README.md). Each requirement carries its source tag:
 > - `[FR]`: `fileRestructure.md`

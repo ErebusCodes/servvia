@@ -1,6 +1,6 @@
 # PRD: Servvia requirements source
 
-> **Status:** Baseline draft, created 2026-10-01 under change record CC-1 of [`fileRestructure.md`](../fileRestructure.md). **Awaiting owner review.**
+> **Status:** **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; see "Approval" below). Created 2026-10-01 under change record CC-1 of [`fileRestructure.md`](../fileRestructure.md).
 > **Purpose:** `PRD/` is the authoritative product and requirements source material from which the fresh official BMAD planning is generated. It is documentation and planning infrastructure, not runtime or product code.
 > **Architecture authority:** [`fileRestructure.md`](../fileRestructure.md). Where a source document conflicts with it, `fileRestructure.md` wins and the requirement is carried forward in technology-neutral form.
 
@@ -99,3 +99,15 @@ Source citations were reconciled against the accepted baseline (`54dcfc0`, plus 
 **Production-cutover rule (section 11):** sourced to `[DECISION-2026-10-03]` and the owner's approval of this baseline. It does **not** depend on the separate, still unapproved decision about the 11 October 2026 milestone (draft DL-117), which is not a source of this PRD.
 
 **O-2:** decided 2026-10-03 (transitional credential issuance under PR-7). See the O-2 row in `product-requirements.md` section 14.
+
+## Approval (2026-10-03)
+
+**Decision:** APPROVE PRD BASELINE (owner gate A). The owner delegated this decision to engineering judgment, and it was recorded through the project's decision orchestration on 2026-10-03.
+
+What the approval means:
+1. `PRD/README.md` and `PRD/product-requirements.md` are the **normative requirements authority** for Servvia planning and implementation.
+2. **Every open item stays unresolved.** That covers each OWNER DECISION REQUIRED and OWNER TARGET REQUIRED item, the open decisions in section 14 of `product-requirements.md`, R-3, and the PENDING USER POS ANALYSIS REPORT freeze. This approval decides none of them.
+3. **Any story that depends on an unresolved item is BLOCKED** until that item is decided through controlled change.
+4. **Architecture authority remains `fileRestructure.md`.** Accepted ADRs and decisions-log entries may amend or supersede specific requirements, but only through recorded, cross-referenced controlled change.
+5. **Historical documents are evidence only**, never requirements authority. This includes the `[P2]` snapshot and the legacy `docs/` planning material.
+6. This approval does not itself accept ADR 0002 or adopt the production-readiness audit. Those are separate decisions.
