@@ -213,6 +213,45 @@ corrected, and Window Display has exactly one managed launch path (§4).
 The underlying rule — "no second editable production clone" — is in
 [`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md#2-the-rule).
 
+## 5a. Cutover actions for the October 2026 security batch — NOT YET APPLIED
+
+The commits from `32e2aa9` onward (Stories 2.10, 2.11, 8.3 and follow-ups,
+2026-10-04) change what this host must be configured with. None of this has
+been done on the host; nothing has been deployed. In order:
+
+1. **Database.** Apply the new migrations (`20261014000000_tablet_pin_venue_enrollment`
+   and any earlier pending ones) only through
+   [`runbooks/migration-baseline.md`](./runbooks/migration-baseline.md), never a
+   bare `prisma migrate deploy`.
+2. **Staff venue grants (Story 2.10).** The API now refuses a staff member,
+   owner included, in a venue they have not been granted. Before deploying, list
+   active staff without a grant (read-only) and grant what is missing from the
+   Staff page afterwards, or the affected people lose access:
+   `SELECT s.email, s.role FROM "Staff" s WHERE s."deletedAt" IS NULL AND s."isActive"
+   AND NOT EXISTS (SELECT 1 FROM "VenueAccess" a WHERE a."staffId" = s.id);`
+3. **Admin sign-in (Story 2.4).** Confirm an owner or admin can sign in by name
+   (or issue one a code with `npm run staff:issue-setup-code`; with no owner at
+   all, `npm run staff:bootstrap-owner`, Story 2.11). Then remove
+   `ADMIN_CONSOLE_PIN` and `ADMIN_CONSOLE_EMAIL` from the API's environment: a
+   production API with either set refuses to start.
+4. **Client IP.** Redeploy `windows-deploy/static-proxy-server.mjs` (restart the
+   five frontend services) **first**: it now writes `X-Forwarded-For` itself and
+   drops whatever a client sent. **Then** set `TRUST_PROXY_HOPS=1` for
+   `VerduraAPI` and restart it. Until then every LAN client shares one rate-limit
+   bucket (127.0.0.1). The API believes a forwarded address only from a loopback
+   peer, so a client reaching port 3000 directly cannot forge one; still confirm
+   that no inbound firewall rule opens 3000 to the LAN.
+5. **PostgreSQL TimeZone.** Record `SHOW TimeZone;` on this host's PostgreSQL 18
+   (read-only). The API and Core now pin their sessions to UTC, so a non-UTC
+   server setting no longer skews them; record it for anything else that
+   connects.
+6. **Security events (Story 12.13).** The API writes them to stdout, which NSSM
+   captures to the `VerduraAPI` service's stdout file (its path is set in that
+   service's NSSM `AppStdout`; this document does not record it). Configure NSSM
+   log rotation for that file, and keep at least 90 days (the established minimum,
+   [`runbooks/security-events.md`](./runbooks/security-events.md)). A durable,
+   centralized sink is not chosen and does not exist yet.
+
 ## 6. Related documents
 
 - [`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md) —
