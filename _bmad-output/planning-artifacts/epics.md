@@ -300,6 +300,7 @@ So that Core regressions are caught before merge.
 
 - Traceability: TEST-21, QB-I, QB-K; audit P0-02.
 - Depends on: none.
+- Finding resolved (2026-10-04): the API integration job now also runs on PostgreSQL 18, the production major version (18.6). Every Nest integration suite in this batch ran locally on PostgreSQL 18.4.
 - Status: READY. Validating on GitHub needs a push (NEEDS AUTHORIZATION: push). Local validation runs with the same commands against disposable containers.
 
 ### Story 1.3: Venue Connector CI job made truthful
