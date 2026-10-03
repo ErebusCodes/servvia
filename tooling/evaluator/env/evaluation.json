@@ -1,0 +1,14 @@
+{
+  "description": "The evaluation environment, owned by the evaluator and frozen with each objective. Values are test-only and never real credentials (the same values as .github/workflows/ci.yml). Nothing is inherited from the operator's shell and no .env file is read; the evaluator adds PATH, HOME, TZ, toolchain and service variables (DATABASE_URL, REDIS_HOST/PORT and the Core test URLs) for the disposable services it starts.",
+  "variables": {
+    "NODE_ENV": "test",
+    "JWT_ACCESS_SECRET": "ci-only-access-secret-at-least-32-characters",
+    "JWT_REFRESH_SECRET": "ci-only-refresh-secret-at-least-32-characters",
+    "INTERNAL_SERVICE_TOKEN": "ci-only-internal-service-token-32-chars-min",
+    "MEDIA_STORAGE_PROVIDER": "local",
+    "SEED_OWNER_EMAIL": "owner@verdura.co.nz",
+    "SEED_OWNER_PASSWORD": "ci-only-seed-password-not-a-real-secret",
+    "SEED_BILLING_EMAIL": "admin@verdura.co.nz",
+    "VITE_VENUE_ID": "10000000-0000-4000-8000-000000000001"
+  }
+}
