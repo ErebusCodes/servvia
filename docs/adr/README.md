@@ -5,3 +5,4 @@ An ADR records one architectural decision: its context, the decision and its con
 | ADR | Title | Status |
 |---|---|---|
 | [0001](0001-servvia-is-the-operational-pos.md) | Servvia is the operational POS | Accepted, 2026-09-28 |
+| [0002](0002-reduced-first-pilot.md) | Reduced first pilot | **Proposed (draft, not accepted)**, 2026-10-03. No decisions-log entry until accepted |
