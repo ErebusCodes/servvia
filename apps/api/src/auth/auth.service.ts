@@ -70,16 +70,31 @@ export class AuthService implements OnModuleInit {
           reason: valid ? 'inactive' : 'wrong_password',
           client_ip: ipAddress,
         });
-        await this.auditLogService.logAuthEvent({
-          organizationId: staff.organizationId,
-          actorId: staff.id,
-          actorEmail: staff.email,
-          actorRole: staff.role,
-          action: 'login_failed',
-          resource: 'auth',
-          ipAddress,
-          userAgent,
-        });
+        // Not awaited: an unknown address writes no audit row, so waiting for
+        // this one would make a known account's refusal measurably slower
+        // (about 1 ms, locally) and reveal that the account exists. The row
+        // is still written; a failure to write it is itself reported, and
+        // the security event above already records the refusal.
+        void Promise.resolve()
+          .then(() =>
+            this.auditLogService.logAuthEvent({
+              organizationId: staff.organizationId,
+              actorId: staff.id,
+              actorEmail: staff.email,
+              actorRole: staff.role,
+              action: 'login_failed',
+              resource: 'auth',
+              ipAddress,
+              userAgent,
+            }),
+          )
+          .catch((err: unknown) =>
+            logSecurityEvent('audit_write_failed', 'audit record could not be written', {
+              action: 'login_failed',
+              staff_id: staff.id,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
       } else {
         // Never the address itself: it is user input, and personal data.
         logSecurityEvent('login_failed_unknown_account', 'sign-in for no account', {

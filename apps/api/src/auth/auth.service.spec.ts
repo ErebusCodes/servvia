@@ -279,6 +279,57 @@ describe('AuthService', () => {
       expect(mockLoginThrottle.clear).toHaveBeenCalledWith('owner@verdura.co.nz');
     });
 
+    describe('enumeration resistance: a known and an unknown account look alike', () => {
+      it('does the same work for both: one lookup and one password verification', async () => {
+        for (const found of [fakeStaff, null]) {
+          jest.clearAllMocks();
+          mockStaffService.findByEmail.mockResolvedValue(found);
+          mockStaffService.verifyPassword.mockResolvedValue(false);
+          await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+            'Invalid credentials',
+          );
+          expect(mockStaffService.findByEmail).toHaveBeenCalledTimes(1);
+          expect(mockStaffService.verifyPassword).toHaveBeenCalledTimes(1);
+        }
+        // The unknown account is verified against a real Argon2id hash.
+        const [hash] = mockStaffService.verifyPassword.mock.calls[0] as [string, string];
+        expect(hash).toMatch(/^\$argon2id\$/);
+      });
+
+      it('answers a known account without waiting for its audit row (an unknown one writes none)', async () => {
+        mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
+        mockStaffService.verifyPassword.mockResolvedValue(false);
+        // If the refusal waited for this write, it would never settle.
+        mockAuditLogService.logAuthEvent.mockReturnValueOnce(new Promise(() => undefined));
+        await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+          'Invalid credentials',
+        );
+        expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
+          expect.objectContaining({ action: 'login_failed', actorId: fakeStaff.id }),
+        );
+      });
+
+      it('reports an audit row it could not write', async () => {
+        const lines: string[] = [];
+        const previous = setSecurityEventSink((line) => lines.push(line));
+        try {
+          mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
+          mockStaffService.verifyPassword.mockResolvedValue(false);
+          mockAuditLogService.logAuthEvent.mockRejectedValueOnce(new Error('database unavailable'));
+          await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+            UnauthorizedException,
+          );
+          await new Promise((resolve) => setImmediate(resolve));
+        } finally {
+          setSecurityEventSink(previous);
+        }
+        expect(lines.map((l) => JSON.parse(l) as { event: string }).map((e) => e.event)).toEqual([
+          'login_failed',
+          'audit_write_failed',
+        ]);
+      });
+    });
+
     it('never logs the submitted address of an unknown account', async () => {
       const lines: string[] = [];
       const previous = setSecurityEventSink((line) => lines.push(line));

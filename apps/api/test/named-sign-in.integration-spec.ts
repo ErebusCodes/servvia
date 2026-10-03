@@ -154,6 +154,21 @@ describe('Named staff sign-in (integration, real Postgres and Redis)', () => {
     }
   });
 
+  it('still writes the audit row of a refused known account, off the response path', async () => {
+    const staff = await staffMember('audited-refusal');
+    expect((await login(staff.email, 'not the password at all')).status).toBe(401);
+    // The response does not wait for it (enumeration resistance); the row
+    // follows within moments.
+    let row = null;
+    for (let i = 0; i < 50 && !row; i += 1) {
+      row = await prisma.auditLog.findFirst({
+        where: { actorId: staff.id, action: 'login_failed' },
+      });
+      if (!row) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(row).toMatchObject({ actorType: 'staff', actorId: staff.id, resource: 'auth' });
+  });
+
   it('throttles each account, known or not, without affecting other accounts', async () => {
     const target = await staffMember('throttled', { role: 'cashier' });
     const bystander = await staffMember('bystander', { role: 'cashier' });

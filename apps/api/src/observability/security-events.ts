@@ -31,6 +31,8 @@ export const SECURITY_EVENTS = {
   // Per-address request limiting (NFR-SEC-2)
   rate_limit_exceeded: 'warn',
   rate_limit_unavailable: 'error',
+  // An AuditLog row written off the response path could not be written.
+  audit_write_failed: 'error',
 } as const;
 
 export type SecurityEventName = keyof typeof SECURITY_EVENTS;
