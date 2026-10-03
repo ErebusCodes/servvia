@@ -246,7 +246,7 @@ Every workspace has a tracked `.env.example`. Real `.env` files are per machine 
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection (Prisma) |
 | `REDIS_HOST`, `REDIS_PORT` | Redis for queues and the rate limiter |
-| `PORT`, `NODE_ENV`, `TRUST_PROXY_HOPS` | HTTP port, environment, trusted proxy hops |
+| `PORT`, `NODE_ENV`, `TRUST_PROXY_HOPS` | HTTP port, environment, and how many loopback proxies' `X-Forwarded-For` the API believes (0: none; 1 behind the venue's static proxy) |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_*_EXPIRY` | Token signing (**secret**). The access secret is shared with Go Core. |
 | `INTERNAL_SERVICE_TOKEN` | Service-to-service authentication (**secret**) |
 | `KDS_VENUE_PINS` | KDS device access (**secret** in production; the development default is refused in production) |

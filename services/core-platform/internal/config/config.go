@@ -53,8 +53,9 @@ type Config struct {
 	RedisHost string
 	RedisPort int
 
-	// TrustProxyHops is TRUST_PROXY_HOPS, Express's `trust proxy` hop count in
-	// the NestJS API. It decides the client IP in rate-limit keys.
+	// TrustProxyHops is TRUST_PROXY_HOPS: how many loopback proxies' forwarded
+	// addresses are believed, as in the NestJS API (config/client-ip.ts). It
+	// decides the client IP in rate-limit keys.
 	TrustProxyHops int
 
 	// KitchenPollInterval is how often the kitchen projector looks for new

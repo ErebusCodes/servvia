@@ -54,13 +54,41 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
 };
 
+// This proxy is the edge every venue device reaches the API through: the
+// API trusts the forwarding headers of a loopback peer only (TRUST_PROXY_HOPS,
+// apps/api/src/config/client-ip.ts), and this is that peer. So whatever
+// forwarding headers a client sent are dropped, never passed on, and the
+// client's real socket address is the only X-Forwarded-For the API sees: a
+// client cannot choose the address its rate limits and audit records name.
+const CLIENT_FORWARDING_HEADERS = new Set([
+  'x-forwarded-for',
+  'x-forwarded-proto',
+  'x-forwarded-host',
+  'x-real-ip',
+  'forwarded',
+]);
+
+function edgeForwardingHeaders(req) {
+  return {
+    'x-forwarded-for': req.socket.remoteAddress ?? '',
+    'x-forwarded-proto': 'http',
+    'x-forwarded-host': req.headers.host ?? '',
+  };
+}
+
 function proxyRequest(req, res) {
   const target = {
     hostname: apiOrigin.hostname,
     port: apiOrigin.port,
     path: req.url,
     method: req.method,
-    headers: { ...req.headers, host: apiOrigin.host },
+    headers: {
+      ...Object.fromEntries(
+        Object.entries(req.headers).filter(([name]) => !CLIENT_FORWARDING_HEADERS.has(name)),
+      ),
+      ...edgeForwardingHeaders(req),
+      host: apiOrigin.host,
+    },
   };
   const proxyReq = http.request(target, (proxyRes) => {
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
@@ -131,7 +159,11 @@ server.on('upgrade', (req, clientSocket, head) => {
     const headerLines = [`${req.method} ${req.url} HTTP/1.1`];
     for (let i = 0; i < req.rawHeaders.length; i += 2) {
       const name = req.rawHeaders[i];
+      if (CLIENT_FORWARDING_HEADERS.has(name.toLowerCase())) continue;
       const value = name.toLowerCase() === 'host' ? apiOrigin.host : req.rawHeaders[i + 1];
+      headerLines.push(`${name}: ${value}`);
+    }
+    for (const [name, value] of Object.entries(edgeForwardingHeaders(req))) {
       headerLines.push(`${name}: ${value}`);
     }
     upstreamSocket.write(headerLines.join('\r\n') + '\r\n\r\n');

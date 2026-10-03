@@ -287,9 +287,10 @@ components:
       by a Lua script.
       * Key: `rate-limit:<ip>:<METHOD>:<path>` where `<ip>` is
         `request.ip ?? socket.remoteAddress ?? '127.0.0.1'` and `<path>` is
-        the concrete request path (path parameters included). `trust proxy`
-        is `Number(TRUST_PROXY_HOPS ?? 0)`, so behind an unconfigured proxy
-        every client shares the proxy's IP.
+        the concrete request path (path parameters included). X-Forwarded-For
+        is believed only from loopback proxies, at most
+        `Number(TRUST_PROXY_HOPS ?? 0)` of them (apps/api/src/config/client-ip.ts),
+        so behind an unconfigured proxy every client shares the proxy's IP.
       * A request is admitted if fewer than `limit` entries exist in the
         last `windowSeconds`; admitted requests are recorded.
       * Rejection: HTTP 429, header `Retry-After: <seconds>` where seconds =

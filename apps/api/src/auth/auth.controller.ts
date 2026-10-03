@@ -28,9 +28,9 @@ export class AuthController {
     accessToken: string;
     user: { id: string; email: string; name: string; role: string };
   }> {
-    const ipAddress = req
-      ? (req.headers['x-real-ip'] as string) || (req.headers['x-forwarded-for'] as string) || req.ip
-      : undefined;
+    // The address the rate limiter counts against: never a raw header a
+    // client can write (config/client-ip.ts).
+    const ipAddress = req?.ip;
     const userAgent = req ? (req.headers['user-agent'] as string) : undefined;
 
     const staff = await this.authService.validateLogin(
@@ -72,9 +72,9 @@ export class AuthController {
   @RateLimit({ limit: 10, windowSeconds: 900 })
   @HttpCode(204)
   async setupCredential(@Body() dto: CredentialSetupDto, @Req() req?: Request): Promise<void> {
-    const ipAddress = req
-      ? (req.headers['x-real-ip'] as string) || (req.headers['x-forwarded-for'] as string) || req.ip
-      : undefined;
+    // The address the rate limiter counts against: never a raw header a
+    // client can write (config/client-ip.ts).
+    const ipAddress = req?.ip;
     const userAgent = req ? (req.headers['user-agent'] as string) : undefined;
     await this.credentialSetup.redeem(dto.code, dto.password, ipAddress, userAgent);
   }
@@ -85,9 +85,9 @@ export class AuthController {
   async logout(@Res({ passthrough: true }) res: Response, @Req() req?: Request): Promise<void> {
     const cookies = req?.cookies as Record<string, string> | undefined;
     const token = cookies?.['refresh_token'];
-    const ipAddress = req
-      ? (req.headers['x-real-ip'] as string) || (req.headers['x-forwarded-for'] as string) || req.ip
-      : undefined;
+    // The address the rate limiter counts against: never a raw header a
+    // client can write (config/client-ip.ts).
+    const ipAddress = req?.ip;
     const userAgent = req ? (req.headers['user-agent'] as string) : undefined;
 
     const authorization = req?.headers.authorization;

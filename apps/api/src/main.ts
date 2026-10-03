@@ -11,6 +11,7 @@ import { resolveMediaStoragePath } from './media/media-storage.util';
 import { assertSecretNotInsecureDefault } from './auth/utils/insecure-default-secret.util';
 import { productionDataViolations } from './config/production-data.guard';
 import { isAllowedOrigin } from './config/allowed-origins';
+import { configureTrustProxy } from './config/client-ip';
 
 interface CorsRequest {
   headers: { origin?: string };
@@ -108,15 +109,12 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  // Local-host mode exposes the API directly, so do not trust caller-supplied
-  // forwarding headers by default. Deployments behind a known reverse proxy
-  // can explicitly opt in with TRUST_PROXY_HOPS.
-  const expressApp = app.getHttpAdapter().getInstance() as unknown as {
-    set?: (name: string, value: number) => void;
-  };
-  if (typeof expressApp.set === 'function') {
-    expressApp.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
-  }
+  // Forwarding headers are believed only from loopback proxies, at most
+  // TRUST_PROXY_HOPS of them (default 0: none). See config/client-ip.ts.
+  configureTrustProxy(
+    app.getHttpAdapter().getInstance() as { set?: (name: string, value: unknown) => void },
+    Number(process.env.TRUST_PROXY_HOPS ?? 0),
+  );
 
   app.use(cookieParser());
   app.enableCors(

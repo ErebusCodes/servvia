@@ -12,6 +12,9 @@ info:
 
     Cross-cutting behaviour (applies to every operation below):
     - Global prefix `/api`. Source: apps/api/src/main.ts:151
+    - Audit `ipAddress` and security-event `client_ip` (sign-in, logout, credential setup)
+      are `req.ip`, the address the rate limiter counts, never a raw X-Real-IP or
+      X-Forwarded-For header. Source: apps/api/src/auth/auth.controller.ts
     - Global ValidationPipe `{ whitelist: true, transform: true }`: unknown body
       properties are silently stripped, not rejected. Validation failures return
       400 `{ statusCode: 400, message: string[], error: "Bad Request" }`. Pipes
@@ -31,7 +34,9 @@ info:
       403 `Invalid or missing CSRF token`. Source: apps/api/src/common/middleware/csrf.middleware.ts:7-83
     - RateLimitGuard (Redis sliding window) keys on `rate-limit:${req.ip}:${METHOD}:${req.path}`,
       so the bucket is per client IP and per concrete path (path params included). `req.ip`
-      honours `trust proxy = TRUST_PROXY_HOPS` (default 0). When the guard is applied
+      believes X-Forwarded-For only from loopback proxies, at most TRUST_PROXY_HOPS of them
+      (default 0: none); a client that connects directly is its socket address.
+      Source: apps/api/src/config/client-ip.ts. When the guard is applied
       without `@RateLimit` metadata it defaults to 10 requests per 900 s. Over the limit it
       returns 429 with a `Retry-After` header (seconds). If Redis faults twice it returns
       503 `Authentication is temporarily unavailable.` (fail closed).
@@ -49,7 +54,6 @@ info:
   x-known-issues:
     - "A mutating request to a staff-only endpoint sent WITHOUT an Authorization header fails with 403 `Invalid or missing CSRF token` (middleware) rather than 401, unless the browser also sends a matching x-csrf-token. Source: apps/api/src/common/middleware/csrf.middleware.ts:76"
     - "The CSRF bypass matches any path containing `/auth/` anywhere, not only /api/auth/*. Source: apps/api/src/common/middleware/csrf.middleware.ts:48"
-    - "Audit ipAddress for login/logout is taken from the raw x-real-ip / x-forwarded-for headers (client-spoofable), independent of TRUST_PROXY_HOPS. The rate-limit key uses req.ip instead. Source: apps/api/src/auth/auth.controller.ts:27"
 
 servers:
   - url: /api

@@ -82,7 +82,7 @@ tests/parity/            the running Nest API compared with Go, request by reque
 | `SERVVIA_CORE_EVENT_RETENTION` | `168h` (7 days) | How long a `DomainEvent` is kept. It is pruned only when every delivery succeeded, and only when writes are enabled. |
 | `SERVVIA_CORE_KITCHEN_POLL_INTERVAL` | `1s` | How often the `kitchen_projector` worker claims due deliveries, and the legacy projector drains pre-D13 `OutboxEvent` rows (writes enabled only) |
 | `REDIS_HOST` / `REDIS_PORT` | `127.0.0.1` / `6379` | Same variables as the Nest API. Must be the **same** Redis, or clients get two rate-limit budgets. |
-| `TRUST_PROXY_HOPS` | `0` | Same as the Nest API (Express `trust proxy`). Decides the client IP in rate-limit keys, so it must match Nest's. A non-integer is refused at startup. |
+| `TRUST_PROXY_HOPS` | `0` | Same as the Nest API: how many proxies' X-Forwarded-For entries are believed, and only from loopback proxies (a direct client is named by its socket address). Decides the client IP in rate-limit keys, so it must match Nest's. A non-integer is refused at startup. |
 
 On SIGINT or SIGTERM the service marks `/ready` as draining, refuses new realtime upgrades and closes open realtime connections with 1001, stops accepting connections and waits for in-flight requests up to the shutdown timeout. Then it stops the workers and the realtime dispatcher. A delivery being handled at that moment rolls back and its lease is released, so it is delivered again later (at least once).
 
