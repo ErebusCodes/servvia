@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { resolveMediaStoragePath } from './media/media-storage.util';
 import { assertSecretNotInsecureDefault } from './auth/utils/insecure-default-secret.util';
+import { productionDataViolations } from './config/production-data.guard';
 
 interface CorsRequest {
   headers: { origin?: string };
@@ -89,6 +90,18 @@ async function bootstrap() {
     console.error(
       '\nStart it with `npm run db:local:start` (local dev), then retry — or verify DATABASE_URL.',
     );
+    console.error('========================================================================');
+    await app.close();
+    process.exit(1);
+  }
+
+  // Production refuses to start with development-only data still active
+  // (Story 1.5); configuration is already checked by ConfigModule validation.
+  const dataViolations = await productionDataViolations(app.get(PrismaService));
+  if (dataViolations.length > 0) {
+    console.error('========================================================================');
+    console.error('FATAL ERROR: Unsafe production data — refusing to start:');
+    dataViolations.forEach((v) => console.error(`  - ${v}`));
     console.error('========================================================================');
     await app.close();
     process.exit(1);

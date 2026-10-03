@@ -1,6 +1,9 @@
 {
   "name": "api",
   "version": "0.0.1",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "description": "",
   "author": "",
   "private": true,

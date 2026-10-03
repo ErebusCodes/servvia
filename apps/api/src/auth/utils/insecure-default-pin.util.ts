@@ -1,4 +1,5 @@
 import { InternalServerErrorException } from '@nestjs/common';
+import { isProductionRuntime } from '../../config/runtime-environment';
 
 /**
  * The single value checked into `.env.example`/`docker-compose.yml` as the
@@ -15,7 +16,8 @@ import { InternalServerErrorException } from '@nestjs/common';
 export const INSECURE_DEFAULT_PIN = '108';
 
 export function assertPinNotInsecureDefault(configuredPin: string, surface: string): void {
-  if (process.env.NODE_ENV === 'production' && configuredPin === INSECURE_DEFAULT_PIN) {
+  // Fail closed: only an explicit development/test environment may use it.
+  if (isProductionRuntime() && configuredPin === INSECURE_DEFAULT_PIN) {
     throw new InternalServerErrorException(
       `${surface} is still configured with the checked-in default PIN — refusing to serve production auth requests until this is changed.`,
     );

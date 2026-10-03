@@ -8,6 +8,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { PaymentObservationService } from './payment-observation.service';
+import { isProductionRuntime } from '../config/runtime-environment';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -39,7 +40,8 @@ export class PaymentObservationFixtureInjectionController {
   ) {}
 
   private assertNonProduction(): void {
-    if (this.config.get<string>('NODE_ENV') === 'production') {
+    // Fail closed: fixture injection only in an explicit development/test environment.
+    if (isProductionRuntime(this.config.get<string>('NODE_ENV'))) {
       throw new ForbiddenException(
         'Payment-observation fixture injection is not available in production',
       );

@@ -25,9 +25,12 @@ import { EmailModule } from './email/email.module';
 import { TabletModule } from './tablet/tablet.module';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
+import { validateEnvironment } from './config/environment.validation';
 
 export const configValidationSchema = Joi.object({
-  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+  // Required, no default: an unset environment refuses to start rather than
+  // silently opening every development-only path (Story 1.5).
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').required(),
   PORT: Joi.number().default(3000),
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(10).default(0),
   DATABASE_URL: Joi.string().required(),
@@ -163,7 +166,8 @@ export const configValidationSchema = Joi.object({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      validationSchema: configValidationSchema,
+      validate: (config: Record<string, unknown>) =>
+        validateEnvironment(configValidationSchema, config),
     }),
     PrismaModule,
     RedisModule,

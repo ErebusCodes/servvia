@@ -40,7 +40,7 @@ development_status:
   1-2-go-core-ci-job-with-real-postgresql-and-redis: backlog
   1-3-venue-connector-ci-job-made-truthful: backlog
   1-4-nest-production-start-runs-the-built-entry-point: done
-  1-5-production-configuration-fails-closed: backlog
+  1-5-production-configuration-fails-closed: done
   1-6-protect-the-main-branch: backlog
   epic-1-retrospective: optional
 

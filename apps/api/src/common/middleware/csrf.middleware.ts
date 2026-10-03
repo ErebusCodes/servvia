@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware, ForbiddenException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
+import { isProductionRuntime } from '../../config/runtime-environment';
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
@@ -15,7 +16,7 @@ export class CsrfMiddleware implements NestMiddleware {
       csrfToken = crypto.randomBytes(32).toString('hex');
       res.cookie('csrf_token', csrfToken, {
         httpOnly: false, // Must be readable by client JS to send in custom header
-        secure: process.env.NODE_ENV === 'production',
+        secure: isProductionRuntime(),
         sameSite: 'strict',
         path: '/',
       });

@@ -10,6 +10,7 @@ import { StaffService } from '../staff/staff.service';
 import { AuditLogService } from '../audit/audit.service';
 import { safeCompare } from '../common/utils/safe-compare';
 import { assertPinNotInsecureDefault } from './utils/insecure-default-pin.util';
+import { isProductionRuntime } from '../config/runtime-environment';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -32,7 +33,7 @@ export class AuthService implements OnModuleInit {
   private getCookieOptions() {
     return {
       httpOnly: true,
-      secure: this.config.get<string>('NODE_ENV') === 'production',
+      secure: isProductionRuntime(this.config.get<string>('NODE_ENV')),
       sameSite: 'strict' as const,
       path: '/api/auth/refresh',
     };

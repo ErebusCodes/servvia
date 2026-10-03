@@ -9,6 +9,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { isProductionRuntime } from '../config/runtime-environment';
 import * as argon2 from 'argon2';
 import Stripe from 'stripe';
 import {
@@ -1486,7 +1487,7 @@ export class OrdersService {
    * see the call site's own comment for why a replay must never re-run it.
    */
   private isTable19ValidationModeActiveForVenue(venue: Venue): boolean {
-    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || process.env.NODE_ENV === 'production') {
+    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || isProductionRuntime()) {
       return false;
     }
     return venue.id === process.env.TABLE19_LIVE_TEST_VENUE_ID;
@@ -1496,7 +1497,7 @@ export class OrdersService {
     venue: Venue,
     resolvedTableNumber: string | null,
   ): Promise<void> {
-    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || process.env.NODE_ENV === 'production') {
+    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || isProductionRuntime()) {
       return;
     }
     const configuredVenueId = process.env.TABLE19_LIVE_TEST_VENUE_ID;

@@ -19,7 +19,8 @@ const jsonLine = output.split('\n').find((line) => line.trim().startsWith('{'));
 if (!jsonLine) throw new Error('Could not read database initialization status.');
 const counts = JSON.parse(jsonLine);
 if (counts.venues === 0 && counts.categories === 0 && counts.menuItems === 0) {
-  if (process.env.NODE_ENV === 'production') {
+  // Fail closed: the dev seed runs only in an explicit development environment.
+  if (process.env.NODE_ENV !== 'development') {
     // Never auto-run the dev seed (fixed 'Verdura Auckland' venue/org/menu
     // fixtures, shared/local-dev.mjs's LOCAL_VENUE_ID) against a real
     // production database. An empty production DB needs a real venue and
@@ -27,7 +28,7 @@ if (counts.venues === 0 && counts.categories === 0 && counts.menuItems === 0) {
     // IdealPOS catalog importer) — never fabricated fixture data as a
     // silent side effect of the API happening to boot against an empty DB.
     console.log(
-      '[host] Database is empty and NODE_ENV=production — skipping the dev seed. ' +
+      `[host] Database is empty and NODE_ENV=${process.env.NODE_ENV ?? '(unset)'} is not development — skipping the dev seed. ` +
         'Create the real venue/organization and import the real menu explicitly before serving traffic.',
     );
   } else {

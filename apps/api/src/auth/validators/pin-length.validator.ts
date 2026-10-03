@@ -1,4 +1,5 @@
 import { registerDecorator, ValidationOptions } from 'class-validator';
+import { isProductionRuntime } from '../../config/runtime-environment';
 
 /**
  * PIN length floor for venue-scoped device PINs (KDS terminal auth, Order
@@ -22,7 +23,8 @@ export function IsPinLength(validationOptions?: ValidationOptions) {
       validator: {
         validate(value: unknown) {
           if (typeof value !== 'string') return false;
-          const minLength = process.env.NODE_ENV === 'production' ? 4 : 3;
+          // 3-character PINs only in an explicit development/test environment.
+          const minLength = isProductionRuntime() ? 4 : 3;
           return value.length >= minLength && value.length <= 16;
         },
         defaultMessage() {
