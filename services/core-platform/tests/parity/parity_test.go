@@ -442,3 +442,36 @@ func fetchNestTokens(t *testing.T, e env) tokens {
 	return tokens{staff: staffToken, kds: kdsToken, device: deviceToken, tabletStaff: tabletStaffToken,
 		manager: managerToken, ownerID: loginBody.User.ID}
 }
+
+// staffSessionToken creates a staff member of organization org with role,
+// a live StaffSession and VenueAccess grants for venues (granted by
+// grantedBy), and returns the access token a sign-in would give them: the
+// claims Nest's login signs, with the session's ID as `sid`.
+func staffSessionToken(t *testing.T, db *pgxpool.Pool, secret, org, role, grantedBy string, venues ...string) string {
+	t.Helper()
+	ctx := context.Background()
+	id, sid := testsupport.UUID(), testsupport.UUID()
+	if _, err := db.Exec(ctx, `INSERT INTO "Staff"(id,"organizationId",email,name,"passwordHash",role,"updatedAt")
+		VALUES($1,$2,$1||'@example.test','Parity '||$3,'not-a-password-hash',$3::"StaffRole",now())`, id, org, role); err != nil {
+		t.Fatalf("staff %s: %v", role, err)
+	}
+	t.Cleanup(func() {
+		for _, sql := range []string{`DELETE FROM "StaffSession" WHERE "staffId" = $1`, `DELETE FROM "Staff" WHERE id = $1`} {
+			if _, err := db.Exec(context.Background(), sql, id); err != nil {
+				t.Errorf("cleanup staff %s: %v", role, err)
+			}
+		}
+	})
+	// The pool's session is UTC (testsupport.DisposableDatabaseURL), so
+	// now() lands in the column's UTC convention.
+	if _, err := db.Exec(ctx, `INSERT INTO "StaffSession"(id,"staffId","expiresAt") VALUES($1,$2,now() + interval '1 hour')`,
+		sid, id); err != nil {
+		t.Fatalf("session %s: %v", role, err)
+	}
+	testsupport.GrantVenueAccess(t, ctx, db, grantedBy, []string{id}, venues)
+	now := time.Now()
+	return mint(t, secret, jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": id, "email": id + "@example.test", "role": role, "organizationId": org, "sid": sid,
+		"iat": now.Unix(), "exp": now.Add(10 * time.Minute).Unix(),
+	})
+}
