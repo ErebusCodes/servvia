@@ -1,12 +1,13 @@
 # Servvia: consolidated product requirements
 
-> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. Further changes 2026-10-03: source provenance reconciled (README "Provenance status"); production cutover rule; kitchen printing at the pilot made conditional on venue requirement; O-2 decided (transitional credential issuance); ORD-4 and ORD-5 reworded to canonical Core semantics; PRT-1 source repaired. **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; meaning and limits in [README.md](README.md) "Approval").
+> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. Further changes 2026-10-03: source provenance reconciled (README "Provenance status"); production cutover rule; kitchen printing at the pilot made conditional on venue requirement; O-2 decided (transitional credential issuance); ORD-4 and ORD-5 reworded to canonical Core semantics; PRT-1 source repaired. **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; meaning and limits in [README.md](README.md) "Approval"). Amended the same day through controlled change by accepted ADR 0002 (sections 8 and 11).
 > **Architecture authority:** [`fileRestructure.md`](../fileRestructure.md).
 > **Sources and conflicts:** [README.md](README.md). Each requirement carries its source tag:
 > - `[FR]`: `fileRestructure.md`
 > - `[P2]`: `docs/product-requirements.md`, the 2026-10-01 Step 2 draft, kept as a bannered evidence snapshot (not authority)
 > - `[TOM]`: `docs/target-operating-model.md`, as in the accepted baseline (2026-08-15, superseded in part by ADR 0001). Its §1–3 do not govern. Only its retained truthful-state and durable-outbox principles, and its non-IdealPOS rules, are cited
 > - `[ADR]`: `docs/adr/0001-servvia-is-the-operational-pos.md`, with its Decision item number where given (for example `[ADR 7]`)
+> - `[ADR2]`: `docs/adr/0002-reduced-first-pilot.md` (accepted 2026-10-03), with its Decision item number
 > - `[DL]`: `docs/decisions-log.md`, with its entry number where given (for example `[DL-115]`)
 > - `[MIG]`: `docs/migration/README.md`, "Decisions recorded 2026-09-29" (A, B)
 > - `[OLD]`: `docs/prd.md`, with its original ID
@@ -167,6 +168,8 @@
 | Surface "Waiter Tablet: staff-operated mobile POS (predecessor: web staff Order Tablet)" `[FR]` | **Waiter Tablet → Staff Mode** (section 4, WT-2). The web Order Tablet is now the predecessor of both modes |
 | O-1 "Is the Waiter Tablet required for the pilot venue?" | Unchanged; it now covers both modes |
 
+**Reduced first pilot (ADR 0002).** Guest Mode is excluded from the first pilot and retained in the product architecture; WT-1 to WT-6, O-20 and O-21 are unchanged. For the reduced first pilot, the web Order Tablet's Staff Mode is the temporary settlement surface, within the minimum settlement boundary and retirement rule of ADR 0002 item 8. Guest Mode never receives settlement capability. `[ADR2 4, 8]`
+
 **Kiosk, window display and public web.**
 
 | ID | Requirement | Priority | Source |
@@ -223,7 +226,7 @@
   - refund.
 
   `[P2 §10]`
-- **FIRST INDEPENDENT SERVVIA PILOT:** a real venue runs its service days on Servvia, with no external POS, in production, with venue hardware: card terminal, receipt printing, kitchen printing **if the venue requires it**, cash drawer. `[P2 §11]` Whether the pilot venue requires kitchen printing is not yet established; hardware and protocol detail stay with O-4.
+- **FIRST INDEPENDENT SERVVIA PILOT:** a real venue runs its service days on Servvia, with no external POS, in production, with venue hardware: an **integrated card terminal through Venue Edge** (card success only from the trusted payment adapter), receipt printing, and kitchen printing **if the venue requires it**. `[P2 §11]` `[ADR2 2]` Whether the pilot venue requires kitchen printing is not yet established; hardware and protocol detail stay with O-4. **Reduced first pilot** (ADR 0002, accepted 2026-10-03): cash-drawer hardware, Guest Mode and the Windows POS are not part of the first pilot, and settlement is performed through the transitional web Order Tablet in Staff Mode. `[ADR2 1, 3, 4, 8]`
 - **Release acceptance (no venue go-live without these):**
   - correct pricing and tax;
   - no duplicate charges;
