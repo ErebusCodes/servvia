@@ -457,7 +457,8 @@ export class TabletAuthService {
    */
   /**
    * The one active staff member, granted this tablet's venue (Story 2.2:
-   * venue access applies to every role), whose PIN this is. Every candidate
+   * venue access applies to every role) with their PIN enrolled there
+   * (Story 8.3), whose PIN this is. Every candidate
    * is checked, so timing does not depend on which one matches. If the PIN
    * matches more than one staff member, nobody is elevated (Story 8.1 keeps
    * PINs unique per venue; this is the fail-closed backstop).
@@ -473,7 +474,8 @@ export class TabletAuthService {
         isActive: true,
         pinHash: { not: null },
         deletedAt: null,
-        venueAccess: { some: { venueId: device.venueId } },
+        // Story 8.3: only a PIN checked unique in this venue elevates here.
+        venueAccess: { some: { venueId: device.venueId, pinEnrolledAt: { not: null } } },
         ...(roles ? { role: { in: roles } } : {}),
       },
     });

@@ -856,6 +856,26 @@ So that every person signs in as themselves with only their access.
 - Implementation (2026-10-03): owners and admins administer staff through `/api/admin/staff` and the Admin Console Staff page (admins only below admin; nobody acts on themselves; the last active owner is kept; venues only those the actor holds). Credentials are set by the staff member with a single-use, hashed, 24-hour setup code issued at creation or reset; no administrator sees a password. Role change, deactivation, removal and reset revoke all sessions (Story 2.8); each change, its session revocation and its audit record commit in one transaction, and the last-owner guard is serialized per organization so concurrent changes cannot leave no active owner. Tablet PINs are unique per venue and only staff granted the tablet's venue can elevate; a manager can no longer set a superior's PIN.
 - Status: DONE
 
+### Story 8.3: Staff integrity under concurrency
+
+As an owner,
+I want a tablet PIN to identify at most one person in each venue, and every staff change to be decided on current state,
+So that concurrent administration can neither make a PIN ambiguous nor act on authority that has just been removed.
+
+**Acceptance Criteria:**
+
+**Given** PIN uniqueness was a check-then-write outside any transaction, a later venue grant could make two people's PINs equal in a venue unchecked (PINs are salted hashes, so a grant cannot compare them), and staff changes read the staff member before their transaction (2026-10-04 review)
+**When** these changes run concurrently
+**Then** within every venue where a PIN elevates a tablet it identifies at most one staff member: a PIN is enrolled per venue (`VenueAccess.pinEnrolledAt`) only where it was checked unique, under per-venue locks, inactive staff included; a new grant starts unenrolled; elevation considers enrolled PINs only; someone else's PIN is enrolled only in venues the actor holds; and every staff change locks the actor's and the staff member's rows and decides from their current role, status and grants.
+
+**And** concurrent same-PIN assignments in a venue leave exactly one holder; concurrent grants and PIN changes keep the invariant; the last-owner guard still holds
+**And** a refusal names nobody.
+
+- Traceability: STF-1, NFR-SEC-1, NFR-AUD; Stories 2.2, 8.1 and 2.10; 2026-10-04 review findings.
+- Depends on: Story 8.1.
+- Implementation (2026-10-04): migration `20261014000000_tablet_pin_venue_enrollment` (backfills existing PIN holders' grants as enrolled); `src/staff/staff-locks.ts`; `StaffService.setTabletPin`; `StaffAdministrationService` (lockForChange); `TabletAuthService` match; integration test `staff-integrity.integration-spec.ts` (each race fails without its lock). The direct-write staff script `prisma/scripts/create-venue-staff-account.ts` is retired.
+- Status: DONE
+
 ### Story 8.2: Venue, tax and table settings from real data
 
 As an owner,

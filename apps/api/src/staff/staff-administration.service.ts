@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit.service';
 import { StaffSessionService } from '../auth/staff-session.service';
 import { CredentialSetupService, unusablePasswordHash } from './credential-setup.service';
+import { liveActor, lockStaffRows } from './staff-locks';
 import {
   assertMayAdministerStaff,
   assertMayAssign,
@@ -32,6 +33,8 @@ export interface StaffAccountView {
   role: StaffRole;
   isActive: boolean;
   hasTabletPin: boolean;
+  /** Venues where the tablet PIN elevates a tablet (Story 8.3). */
+  tabletPinVenueIds: string[];
   venueIds: string[];
   pendingCredentialSetup: boolean;
   lastLoginAt: Date | null;
@@ -53,7 +56,7 @@ const NOT_SYSTEM_ACCOUNT = {
 } satisfies Prisma.StaffWhereInput;
 
 const staffWithAccess = {
-  venueAccess: { select: { venueId: true } },
+  venueAccess: { select: { venueId: true, pinEnrolledAt: true } },
   credentialTokens: {
     where: { usedAt: null, revokedAt: null },
     select: { expiresAt: true },
@@ -70,6 +73,12 @@ function view(staff: StaffWithAccess, now = new Date()): StaffAccountView {
     role: staff.role,
     isActive: staff.isActive,
     hasTabletPin: !!staff.pinHash,
+    tabletPinVenueIds: staff.pinHash
+      ? staff.venueAccess
+          .filter((a) => a.pinEnrolledAt)
+          .map((a) => a.venueId)
+          .sort()
+      : [],
     venueIds: staff.venueAccess.map((a) => a.venueId).sort(),
     pendingCredentialSetup: staff.credentialTokens.some((t) => t.expiresAt > now),
     lastLoginAt: staff.lastLoginAt,
@@ -84,6 +93,12 @@ function view(staff: StaffWithAccess, now = new Date()): StaffAccountView {
  * audited, and, where it removes authority, revokes the staff member's
  * sessions (Story 2.8). The change, the revocation and the audit record
  * commit in one transaction: none of them can happen without the others.
+ *
+ * Story 8.3: every decision is made inside that transaction, from the state
+ * it protects: the actor's and the staff member's rows are locked and read
+ * again (lockForChange), so a request authenticated before the actor was
+ * demoted, deactivated or lost a venue, or a concurrent change to the same
+ * staff member, cannot act on a stale picture.
  */
 @Injectable()
 export class StaffAdministrationService {
@@ -107,15 +122,19 @@ export class StaffAdministrationService {
     actor: StaffActor,
     input: { name: string; email: string; role: StaffRole; venueIds: string[] },
   ): Promise<{ staff: StaffAccountView; credentialSetup: IssuedCredentialSetup }> {
+    assertMayAdministerStaff(actor.role);
     assertMayAssign(actor.role, input.role);
     const venueIds = [...new Set(input.venueIds)];
-    await this.assertActorHoldsVenues(actor, venueIds);
     const passwordHash = await unusablePasswordHash();
     try {
       const { staff, setup } = await this.prisma.$transaction(async (tx) => {
+        await lockStaffRows(tx, [actor.id]);
+        const live = await this.liveAdministrator(tx, actor);
+        assertMayAssign(live.role, input.role);
+        await this.assertActorHoldsVenues(tx, live, venueIds);
         const created = await tx.staff.create({
           data: {
-            organizationId: actor.organizationId,
+            organizationId: live.organizationId,
             email: input.email.trim().toLowerCase(),
             name: input.name.trim(),
             role: input.role,
@@ -127,19 +146,19 @@ export class StaffAdministrationService {
             data: venueIds.map((venueId) => ({
               staffId: created.id,
               venueId,
-              grantedById: actor.id,
+              grantedById: live.id,
             })),
           });
         }
-        const issued = await this.credentials.issue(created.id, { staffId: actor.id }, tx);
-        const loaded = await this.load(actor.organizationId, created.id, tx);
-        await this.log(tx, actor, 'STAFF_CREATED', created.id, undefined, {
+        const issued = await this.credentials.issue(created.id, { staffId: live.id }, tx);
+        const loaded = await this.load(live.organizationId, created.id, tx);
+        await this.log(tx, live, 'STAFF_CREATED', created.id, undefined, {
           name: loaded.name,
           email: loaded.email,
           role: loaded.role,
           venueIds,
         });
-        await this.log(tx, actor, 'STAFF_CREDENTIAL_SETUP_ISSUED', created.id, undefined, {
+        await this.log(tx, live, 'STAFF_CREDENTIAL_SETUP_ISSUED', created.id, undefined, {
           expiresAt: issued.expiresAt,
         });
         return { staff: loaded, setup: issued };
@@ -158,26 +177,27 @@ export class StaffAdministrationService {
     staffId: string,
     input: { name?: string; role?: StaffRole },
   ): Promise<StaffAccountView> {
-    const target = await this.loadManageable(actor, staffId);
-    const roleChanges = input.role !== undefined && input.role !== target.role;
-    if (roleChanges) {
-      assertNotSelf(actor.id, target.id, 'change the role of');
-      assertMayAssign(actor.role, input.role!);
-    }
-    const data: Prisma.StaffUpdateInput = {};
-    if (input.name !== undefined) data.name = input.name.trim();
-    if (roleChanges) data.role = input.role;
-    if (Object.keys(data).length === 0) return view(target);
+    assertMayAdministerStaff(actor.role);
     const updated = await this.prisma.$transaction(async (tx) => {
+      const { live, target } = await this.lockForChange(tx, actor, staffId);
+      const roleChanges = input.role !== undefined && input.role !== target.role;
+      if (roleChanges) {
+        assertNotSelf(live.id, target.id, 'change the role of');
+        assertMayAssign(live.role, input.role!);
+      }
+      const data: Prisma.StaffUpdateInput = {};
+      if (input.name !== undefined) data.name = input.name.trim();
+      if (roleChanges) data.role = input.role;
+      if (Object.keys(data).length === 0) return target;
       if (roleChanges && target.role === StaffRole.owner) {
         await this.assertAnotherActiveOwner(tx, target);
       }
       await tx.staff.update({ where: { id: target.id }, data });
       if (roleChanges) await this.sessions.revokeAllForStaff(target.id, 'role_changed', tx);
-      const after = await this.load(actor.organizationId, target.id, tx);
+      const after = await this.load(live.organizationId, target.id, tx);
       await this.log(
         tx,
-        actor,
+        live,
         'STAFF_UPDATED',
         target.id,
         { name: target.name, role: target.role },
@@ -189,10 +209,11 @@ export class StaffAdministrationService {
   }
 
   async setActive(actor: StaffActor, staffId: string, active: boolean): Promise<StaffAccountView> {
-    const target = await this.loadManageable(actor, staffId);
-    if (!active) assertNotSelf(actor.id, target.id, 'deactivate');
-    if (target.isActive === active) return view(target);
+    assertMayAdministerStaff(actor.role);
     const updated = await this.prisma.$transaction(async (tx) => {
+      const { live, target } = await this.lockForChange(tx, actor, staffId);
+      if (!active) assertNotSelf(live.id, target.id, 'deactivate');
+      if (target.isActive === active) return target;
       if (!active && target.role === StaffRole.owner) {
         await this.assertAnotherActiveOwner(tx, target);
       }
@@ -200,13 +221,13 @@ export class StaffAdministrationService {
       if (!active) await this.sessions.revokeAllForStaff(target.id, 'deactivated', tx);
       await this.log(
         tx,
-        actor,
+        live,
         active ? 'STAFF_ACTIVATED' : 'STAFF_DEACTIVATED',
         target.id,
         { isActive: target.isActive },
         { isActive: active },
       );
-      return this.load(actor.organizationId, target.id, tx);
+      return this.load(live.organizationId, target.id, tx);
     });
     return view(updated);
   }
@@ -217,10 +238,11 @@ export class StaffAdministrationService {
    * usable setup code, and every session revoked.
    */
   async remove(actor: StaffActor, staffId: string): Promise<void> {
-    const target = await this.loadManageable(actor, staffId);
-    assertNotSelf(actor.id, target.id, 'remove');
+    assertMayAdministerStaff(actor.role);
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
+      const { live, target } = await this.lockForChange(tx, actor, staffId);
+      assertNotSelf(live.id, target.id, 'remove');
       if (target.role === StaffRole.owner) await this.assertAnotherActiveOwner(tx, target);
       await tx.staff.update({
         where: { id: target.id },
@@ -234,7 +256,7 @@ export class StaffAdministrationService {
       await this.sessions.revokeAllForStaff(target.id, 'removed', tx);
       await this.log(
         tx,
-        actor,
+        live,
         'STAFF_REMOVED',
         target.id,
         { role: target.role, venueIds: target.venueAccess.map((a) => a.venueId) },
@@ -243,28 +265,26 @@ export class StaffAdministrationService {
     });
   }
 
+  /**
+   * A new grant does not enrol the staff member's tablet PIN in the venue
+   * (Story 8.3): the PIN was checked unique only where it was set, so it
+   * elevates a tablet here once it is set again.
+   */
   async grantVenue(actor: StaffActor, staffId: string, venueId: string): Promise<StaffAccountView> {
-    const target = await this.loadManageable(actor, staffId);
-    await this.assertActorHoldsVenues(actor, [venueId]);
-    if (target.venueAccess.some((a) => a.venueId === venueId)) return view(target);
+    assertMayAdministerStaff(actor.role);
     const updated = await this.prisma.$transaction(async (tx) => {
+      const { live, target } = await this.lockForChange(tx, actor, staffId);
+      await this.assertActorHoldsVenues(tx, live, [venueId]);
+      if (target.venueAccess.some((a) => a.venueId === venueId)) return target;
       // A concurrent grant of the same venue is not an error: the grant exists.
       const created = await tx.venueAccess.createMany({
-        data: [{ staffId: target.id, venueId, grantedById: actor.id }],
+        data: [{ staffId: target.id, venueId, grantedById: live.id }],
         skipDuplicates: true,
       });
       if (created.count > 0) {
-        await this.log(
-          tx,
-          actor,
-          'STAFF_VENUE_GRANTED',
-          target.id,
-          undefined,
-          { venueId },
-          venueId,
-        );
+        await this.log(tx, live, 'STAFF_VENUE_GRANTED', target.id, undefined, { venueId }, venueId);
       }
-      return this.load(actor.organizationId, target.id, tx);
+      return this.load(live.organizationId, target.id, tx);
     });
     return view(updated);
   }
@@ -274,26 +294,20 @@ export class StaffAdministrationService {
     staffId: string,
     venueId: string,
   ): Promise<StaffAccountView> {
-    const target = await this.loadManageable(actor, staffId);
-    await this.assertActorHoldsVenues(actor, [venueId]);
+    assertMayAdministerStaff(actor.role);
     const updated = await this.prisma.$transaction(async (tx) => {
+      const { live, target } = await this.lockForChange(tx, actor, staffId);
+      await this.assertActorHoldsVenues(tx, live, [venueId]);
       const removed = await tx.venueAccess.deleteMany({
         where: { staffId: target.id, venueId },
       });
       if (removed.count > 0) {
-        // Venue access is checked live on every request (Core), so no session
-        // needs revoking: the next request at that venue is refused.
-        await this.log(
-          tx,
-          actor,
-          'STAFF_VENUE_REVOKED',
-          target.id,
-          { venueId },
-          undefined,
-          venueId,
-        );
+        // Venue access is checked live on every request (Core, and the Nest
+        // API since Story 2.10), so no session needs revoking: the next
+        // request at that venue is refused.
+        await this.log(tx, live, 'STAFF_VENUE_REVOKED', target.id, { venueId }, undefined, venueId);
       }
-      return this.load(actor.organizationId, target.id, tx);
+      return this.load(live.organizationId, target.id, tx);
     });
     return view(updated);
   }
@@ -303,14 +317,15 @@ export class StaffAdministrationService {
    * once, every session is revoked, and a new setup code is issued.
    */
   async resetCredential(actor: StaffActor, staffId: string): Promise<IssuedCredentialSetup> {
-    const target = await this.loadManageable(actor, staffId);
-    assertNotSelf(actor.id, target.id, 'reset the credential of');
+    assertMayAdministerStaff(actor.role);
     const passwordHash = await unusablePasswordHash();
     return this.prisma.$transaction(async (tx) => {
+      const { live, target } = await this.lockForChange(tx, actor, staffId);
+      assertNotSelf(live.id, target.id, 'reset the credential of');
       await tx.staff.update({ where: { id: target.id }, data: { passwordHash } });
-      const setup = await this.credentials.issue(target.id, { staffId: actor.id }, tx);
+      const setup = await this.credentials.issue(target.id, { staffId: live.id }, tx);
       await this.sessions.revokeAllForStaff(target.id, 'credential_reset', tx);
-      await this.log(tx, actor, 'STAFF_CREDENTIAL_RESET', target.id, undefined, {
+      await this.log(tx, live, 'STAFF_CREDENTIAL_RESET', target.id, undefined, {
         expiresAt: setup.expiresAt,
       });
       return setup;
@@ -332,21 +347,45 @@ export class StaffAdministrationService {
     return staff;
   }
 
-  private async loadManageable(actor: StaffActor, staffId: string): Promise<StaffWithAccess> {
-    assertMayAdministerStaff(actor.role);
-    const target = await this.load(actor.organizationId, staffId);
-    assertMayManage(actor.role, target.role);
-    return target;
+  /** The actor, re-read under its row lock, as an administrator of staff. */
+  private async liveAdministrator(
+    tx: Prisma.TransactionClient,
+    actor: StaffActor,
+  ): Promise<StaffActor> {
+    const live = await liveActor(tx, actor);
+    assertMayAdministerStaff(live.role);
+    return { id: live.id, email: live.email, role: live.role, organizationId: live.organizationId };
+  }
+
+  /**
+   * Locks the actor's and the staff member's rows, then reads both again:
+   * every decision of the change is made from this state (Story 8.3).
+   */
+  private async lockForChange(
+    tx: Prisma.TransactionClient,
+    actor: StaffActor,
+    staffId: string,
+  ): Promise<{ live: StaffActor; target: StaffWithAccess }> {
+    await lockStaffRows(tx, [actor.id, staffId]);
+    const live = await this.liveAdministrator(tx, actor);
+    const target = await this.load(live.organizationId, staffId, tx);
+    assertMayManage(live.role, target.role);
+    return { live, target };
   }
 
   /**
    * Venue access applies to every role, owner included (Story 2.2): an actor
    * grants, revokes or assigns only venues of their organization that they
-   * hold themselves.
+   * hold themselves. Read inside the change's transaction, under the actor's
+   * row lock, which a change to the actor's own grants also takes.
    */
-  private async assertActorHoldsVenues(actor: StaffActor, venueIds: string[]): Promise<void> {
+  private async assertActorHoldsVenues(
+    tx: Prisma.TransactionClient,
+    actor: StaffActor,
+    venueIds: string[],
+  ): Promise<void> {
     if (venueIds.length === 0) return;
-    const held = await this.prisma.venueAccess.findMany({
+    const held = await tx.venueAccess.findMany({
       where: {
         staffId: actor.id,
         venueId: { in: venueIds },

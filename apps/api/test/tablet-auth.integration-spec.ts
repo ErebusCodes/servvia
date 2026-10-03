@@ -214,7 +214,14 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
     cashierId = cashier.id;
     await prisma.venueAccess.create({
-      data: { staffId: cashierId, venueId, grantedById: primary.ownerId },
+      // The fixture writes the PIN directly; the grant carries the enrolment
+      // setTabletPin would record (Story 8.3).
+      data: {
+        staffId: cashierId,
+        venueId,
+        grantedById: primary.ownerId,
+        pinEnrolledAt: new Date(),
+      },
     });
 
     const manager = await prisma.staff.create({
@@ -230,7 +237,14 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
     managerId = manager.id;
     await prisma.venueAccess.create({
-      data: { staffId: managerId, venueId, grantedById: primary.ownerId },
+      // The fixture writes the PIN directly; the grant carries the enrolment
+      // setTabletPin would record (Story 8.3).
+      data: {
+        staffId: managerId,
+        venueId,
+        grantedById: primary.ownerId,
+        pinEnrolledAt: new Date(),
+      },
     });
 
     const inactive = await prisma.staff.create({
@@ -247,7 +261,14 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
     inactiveStaffId = inactive.id;
     await prisma.venueAccess.create({
-      data: { staffId: inactiveStaffId, venueId, grantedById: primary.ownerId },
+      // The fixture writes the PIN directly; the grant carries the enrolment
+      // setTabletPin would record (Story 8.3).
+      data: {
+        staffId: inactiveStaffId,
+        venueId,
+        grantedById: primary.ownerId,
+        pinEnrolledAt: new Date(),
+      },
     });
 
     // Same organization, deliberately given no VenueAccess row: staff venue
@@ -728,7 +749,7 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         .expect(401);
     });
 
-    it('staff elevation refuses a same-organization staff member without a grant for the tablet’s venue, and admits them once granted (Stories 2.2, 8.1)', async () => {
+    it('staff elevation refuses a same-organization staff member without a grant for the tablet’s venue, and admits them once granted with the PIN enrolled there (Stories 2.2, 8.1, 8.3)', async () => {
       await request(app.getHttpServer())
         .post('/api/tablet/elevate')
         .set('Authorization', `Bearer ${deviceToken}`)
@@ -738,6 +759,16 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         data: { staffId: crossVenueStaffId, venueId, grantedById: managerId },
       });
       try {
+        // The grant alone does not enrol a PIN set before it (Story 8.3).
+        await request(app.getHttpServer())
+          .post('/api/tablet/elevate')
+          .set('Authorization', `Bearer ${deviceToken}`)
+          .send({ staffPin: CROSS_VENUE_PIN })
+          .expect(401);
+        await prisma.venueAccess.update({
+          where: { id: grant.id },
+          data: { pinEnrolledAt: new Date() },
+        });
         await request(app.getHttpServer())
           .post('/api/tablet/elevate')
           .set('Authorization', `Bearer ${deviceToken}`)

@@ -12,13 +12,22 @@ function firstCallArg(mockFn: jest.Mock): Record<string, unknown> {
   return mockFn.mock.calls[0][0];
 }
 
-const mockPrisma = {
+const mockPrisma: Record<string, unknown> & {
+  staff: Record<string, jest.Mock>;
+  venueAccess: Record<string, jest.Mock>;
+} = {
   staff: {
     create: jest.fn(),
     findFirst: jest.fn(),
     findMany: jest.fn(),
     update: jest.fn(),
   },
+  venueAccess: { findMany: jest.fn(), updateMany: jest.fn() },
+  // setTabletPin runs in one transaction (Story 8.3): the mock runs the
+  // callback against the same client, and the row and venue locks are no-ops.
+  $transaction: jest.fn((fn: (tx: unknown) => unknown): unknown => fn(mockPrisma as unknown)),
+  $queryRaw: jest.fn(),
+  $executeRaw: jest.fn(),
 };
 
 const mockAuditLogService = {
@@ -211,15 +220,35 @@ describe('StaffService', () => {
       role: StaffRole.admin,
     } as Staff;
 
+    /**
+     * The actor and the staff member are read again inside the transaction;
+     * each read is answered by the id it asks for. The actor holds the
+     * venues in `actorVenues`.
+     */
+    function given(
+      target: Record<string, unknown> | null,
+      who: Record<string, unknown> = actor,
+      actorVenues = ['venue-1'],
+    ) {
+      mockPrisma.staff.findFirst.mockImplementation(({ where }: { where: { id: string } }) =>
+        Promise.resolve(
+          where.id === who.id ? (target && target.id === who.id ? target : who) : target,
+        ),
+      );
+      mockPrisma.venueAccess.findMany.mockResolvedValue(
+        actorVenues.map((venueId) => ({ venueId })),
+      );
+    }
+
     it('throws NotFoundException for a staff member outside the caller organization', async () => {
-      mockPrisma.staff.findFirst.mockResolvedValue(null);
+      given(null);
       await expect(service.setTabletPin('staff-1', 'org-1', '4242', actor)).rejects.toThrow(
         'Staff member not found',
       );
     });
 
     it('rejects a PIN identical to the staff member’s login password', async () => {
-      mockPrisma.staff.findFirst.mockResolvedValue(staff);
+      given(staff);
       jest.spyOn(service, 'verifyPassword').mockResolvedValue(true);
       await expect(
         service.setTabletPin('staff-1', 'org-1', 'their-password', actor),
@@ -227,8 +256,8 @@ describe('StaffService', () => {
       expect(mockPrisma.staff.update).not.toHaveBeenCalled();
     });
 
-    it('hashes and stores a valid PIN, and logs an audit event without ever including the plaintext', async () => {
-      mockPrisma.staff.findFirst.mockResolvedValue(staff);
+    it('hashes and stores a valid PIN, enrols it, and audits without ever including the plaintext', async () => {
+      given(staff);
       jest.spyOn(service, 'verifyPassword').mockResolvedValue(false);
       mockPrisma.staff.update.mockResolvedValue({ ...staff, pinHash: 'hashed' });
       mockPrisma.staff.findMany.mockResolvedValue([]);
@@ -239,13 +268,22 @@ describe('StaffService', () => {
       expect(data.pinHash).not.toBe('4242');
       expect(await argon2.verify(data.pinHash as string, '4242')).toBe(true);
       expect(data.pinSetAt).toBeInstanceOf(Date);
+      // Earlier enrolments are cleared, then the checked venues enrolled.
+      expect(mockPrisma.venueAccess.updateMany.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+        { where: { staffId: 'staff-1' }, data: { pinEnrolledAt: null } },
+        {
+          where: { staffId: 'staff-1', venueId: { in: ['venue-1'] } },
+          data: { pinEnrolledAt: data.pinSetAt },
+        },
+      ]);
 
       const auditCall = firstCallArg(mockAuditLogService.logAuthEvent);
       expect(JSON.stringify(auditCall)).not.toContain('4242');
       expect(auditCall.action).toBe('TABLET_STAFF_PIN_SET');
+      expect(auditCall.after).toEqual({ venueIds: ['venue-1'] });
     });
 
-    describe('Story 8.1: who may set a PIN, and uniqueness per venue', () => {
+    describe('Stories 8.1 and 8.3: who may set a PIN, and uniqueness per venue', () => {
       beforeEach(() => {
         jest.spyOn(service, 'verifyPassword').mockResolvedValue(false);
         mockPrisma.staff.findMany.mockResolvedValue([]);
@@ -254,7 +292,7 @@ describe('StaffService', () => {
       it('refuses a manager setting an owner’s or admin’s PIN (no elevation as a superior)', async () => {
         const manager = { ...actor, id: 'mgr-1', role: StaffRole.manager };
         for (const role of [StaffRole.owner, StaffRole.admin, StaffRole.manager]) {
-          mockPrisma.staff.findFirst.mockResolvedValue({ ...staff, role });
+          given({ ...staff, role }, manager);
           await expect(service.setTabletPin('staff-1', 'org-1', '4242', manager)).rejects.toThrow(
             ForbiddenException,
           );
@@ -263,27 +301,45 @@ describe('StaffService', () => {
       });
 
       it('refuses an admin setting an owner’s PIN, but lets anyone set their own', async () => {
-        mockPrisma.staff.findFirst.mockResolvedValue({ ...staff, role: StaffRole.owner });
+        given({ ...staff, role: StaffRole.owner });
         await expect(service.setTabletPin('staff-1', 'org-1', '4242', actor)).rejects.toThrow(
           ForbiddenException,
         );
         const self = { ...staff, id: 'admin-1', role: StaffRole.admin };
-        mockPrisma.staff.findFirst.mockResolvedValue(self);
+        given(self, self);
         await service.setTabletPin('admin-1', 'org-1', '4242', actor);
         expect(mockPrisma.staff.update).toHaveBeenCalled();
       });
 
-      it('refuses a PIN already held by a colleague at one of the staff member’s venues', async () => {
-        mockPrisma.staff.findFirst.mockResolvedValue(staff);
+      it('decides with the actor’s current role, not the token’s', async () => {
+        // The token says admin; the actor has since been made a viewer.
+        given(staff, { ...actor, role: StaffRole.viewer });
+        await expect(service.setTabletPin('staff-1', 'org-1', '4242', actor)).rejects.toThrow(
+          ForbiddenException,
+        );
+      });
+
+      it('refuses an actor who holds none of the staff member’s venues', async () => {
+        given(staff, actor, []);
+        await expect(service.setTabletPin('staff-1', 'org-1', '4242', actor)).rejects.toThrow(
+          'venues you have been granted',
+        );
+        expect(mockPrisma.staff.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses a PIN already enrolled for a colleague at one of the venues, naming nobody', async () => {
+        given(staff);
         mockPrisma.staff.findMany.mockResolvedValue([
           { pinHash: await argon2.hash('4242', { type: argon2.argon2id }) },
         ]);
-        await expect(service.setTabletPin('staff-1', 'org-1', '4242', actor)).rejects.toThrow(
-          ConflictException,
+        const refusal = service.setTabletPin('staff-1', 'org-1', '4242', actor);
+        await expect(refusal).rejects.toThrow(ConflictException);
+        await expect(refusal).rejects.toThrow(
+          'This PIN is not available at this staff member’s venues',
         );
         expect(firstCallArg(mockPrisma.staff.findMany).where).toMatchObject({
           id: { not: 'staff-1' },
-          venueAccess: { some: { venueId: { in: ['venue-1'] } } },
+          venueAccess: { some: { venueId: { in: ['venue-1'] }, pinEnrolledAt: { not: null } } },
         });
         expect(mockPrisma.staff.update).not.toHaveBeenCalled();
       });

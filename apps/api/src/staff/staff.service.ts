@@ -13,6 +13,7 @@ import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdatePasswordDto } from './dto/update-password.dto';
 import { AuditLogService } from '../audit/audit.service';
 import { manageableRoles } from './staff-admin.policy';
+import { liveActor, lockStaffRows, lockTabletPinVenues } from './staff-locks';
 
 /** Roles whose tablet PIN the actor may set (besides their own). */
 function pinSettableRoles(actorRole: StaffRole): readonly StaffRole[] {
@@ -143,8 +144,23 @@ export class StaffService {
    * Story 8.1: the actor may set the PIN only of someone they may
    * administer (or their own): a PIN is a credential, and setting a more
    * senior colleague's PIN would let the actor elevate a tablet as them.
-   * A PIN is unique among the staff of each venue the staff member is
-   * granted, so tablet elevation can never match two people.
+   *
+   * Story 8.3: within every venue where a PIN elevates a tablet, it
+   * identifies at most one staff member. PINs are salted hashes, so
+   * uniqueness can be checked only here, while the plain PIN is known:
+   * - the PIN is enrolled (VenueAccess.pinEnrolledAt) in the staff member's
+   *   venues that the actor also holds (all of them for their own PIN), and
+   *   elevation considers enrolled PINs only (TabletAuthService);
+   * - a change locks each of those venues, then checks the PIN against every
+   *   PIN enrolled there, inactive staff included (so reactivating someone
+   *   cannot collide), and enrols it, in one transaction; two concurrent
+   *   changes in a venue are therefore serialized and the second sees the
+   *   first;
+   * - the earlier enrolments vouched for the old PIN and are cleared;
+   * - a venue granted later is not enrolled until the PIN is set again, so
+   *   a grant can never create a collision.
+   * The actor and the staff member are re-read under row locks, so the
+   * decision uses their current roles and grants. A refusal names nobody.
    */
   async setTabletPin(
     staffId: string,
@@ -152,60 +168,94 @@ export class StaffService {
     plainPin: string,
     actor: { id: string; email: string; role: StaffRole; organizationId: string },
   ): Promise<void> {
-    const staff = await this.prisma.staff.findFirst({
-      where: { id: staffId, organizationId, deletedAt: null },
-      include: { venueAccess: { select: { venueId: true } } },
-    });
-    if (!staff) {
-      throw new NotFoundException('Staff member not found in your organization');
-    }
-    if (staff.id !== actor.id && !pinSettableRoles(actor.role).includes(staff.role)) {
-      throw new ForbiddenException('You may not set the PIN of a staff member with this role');
-    }
-
-    const matchesPassword = await this.verifyPassword(staff.passwordHash, plainPin).catch(
-      () => false,
-    );
-    if (matchesPassword) {
-      throw new BadRequestException(
-        'The tablet PIN must not be the same as this staff member’s login password',
-      );
-    }
-
-    const venueIds = staff.venueAccess.map((a) => a.venueId);
-    if (venueIds.length > 0) {
-      const colleagues = await this.prisma.staff.findMany({
-        where: {
-          id: { not: staff.id },
-          deletedAt: null,
-          pinHash: { not: null },
-          venueAccess: { some: { venueId: { in: venueIds } } },
-        },
-        select: { pinHash: true },
-      });
-      for (const colleague of colleagues) {
-        const taken = await argon2.verify(colleague.pinHash!, plainPin).catch(() => false);
-        if (taken) {
-          throw new ConflictException('This PIN is not available at this staff member’s venues');
-        }
-      }
-    }
-
+    // Argon2 is deliberately slow; hash before taking any lock.
     const pinHash = await argon2.hash(plainPin, { type: argon2.argon2id });
-    await this.prisma.staff.update({
-      where: { id: staffId },
-      data: { pinHash, pinSetAt: new Date() },
-    });
+    await this.prisma.$transaction(
+      async (tx) => {
+        await lockStaffRows(tx, [actor.id, staffId]);
+        const live = await liveActor(tx, actor);
+        const staff = await tx.staff.findFirst({
+          where: { id: staffId, organizationId, deletedAt: null },
+          include: { venueAccess: { select: { venueId: true } } },
+        });
+        if (!staff) {
+          throw new NotFoundException('Staff member not found in your organization');
+        }
+        const self = staff.id === live.id;
+        if (!self && !pinSettableRoles(live.role).includes(staff.role)) {
+          throw new ForbiddenException('You may not set the PIN of a staff member with this role');
+        }
+        if (await this.verifyPassword(staff.passwordHash, plainPin).catch(() => false)) {
+          throw new BadRequestException(
+            'The tablet PIN must not be the same as this staff member’s login password',
+          );
+        }
 
-    await this.auditLogService.logAuthEvent({
-      organizationId: actor.organizationId,
-      actorId: actor.id,
-      actorEmail: actor.email,
-      actorRole: actor.role,
-      action: 'TABLET_STAFF_PIN_SET',
-      resource: 'staff',
-      resourceId: staffId,
-    });
+        const granted = staff.venueAccess.map((a) => a.venueId);
+        const venueIds = self
+          ? granted
+          : (
+              await tx.venueAccess.findMany({
+                where: { staffId: live.id, venueId: { in: granted } },
+                select: { venueId: true },
+              })
+            ).map((a) => a.venueId);
+        if (granted.length > 0 && venueIds.length === 0) {
+          throw new ForbiddenException(
+            'You may set a PIN only for staff in venues you have been granted',
+          );
+        }
+
+        await lockTabletPinVenues(tx, venueIds);
+        if (venueIds.length > 0) {
+          const enrolled = await tx.staff.findMany({
+            where: {
+              id: { not: staff.id },
+              deletedAt: null,
+              pinHash: { not: null },
+              venueAccess: { some: { venueId: { in: venueIds }, pinEnrolledAt: { not: null } } },
+            },
+            select: { pinHash: true },
+          });
+          for (const colleague of enrolled) {
+            if (await argon2.verify(colleague.pinHash!, plainPin).catch(() => false)) {
+              throw new ConflictException(
+                'This PIN is not available at this staff member’s venues',
+              );
+            }
+          }
+        }
+
+        const now = new Date();
+        await tx.staff.update({ where: { id: staff.id }, data: { pinHash, pinSetAt: now } });
+        await tx.venueAccess.updateMany({
+          where: { staffId: staff.id },
+          data: { pinEnrolledAt: null },
+        });
+        if (venueIds.length > 0) {
+          await tx.venueAccess.updateMany({
+            where: { staffId: staff.id, venueId: { in: venueIds } },
+            data: { pinEnrolledAt: now },
+          });
+        }
+        await this.auditLogService.logAuthEvent(
+          {
+            organizationId: actor.organizationId,
+            actorId: live.id,
+            actorEmail: live.email,
+            actorRole: live.role,
+            action: 'TABLET_STAFF_PIN_SET',
+            resource: 'staff',
+            resourceId: staff.id,
+            after: { venueIds: [...venueIds].sort() },
+          },
+          tx,
+        );
+      },
+      // Verifying the PIN against each enrolled colleague takes a few
+      // Argon2 verifications; allow for them beyond Prisma's 5 s default.
+      { timeout: 30_000 },
+    );
   }
 
   /** Metadata-only listing for the tablet-PIN management UI — never returns pinHash/passwordHash. */

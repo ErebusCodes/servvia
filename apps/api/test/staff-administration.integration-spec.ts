@@ -408,7 +408,10 @@ describe('Staff administration (integration, real Postgres and Redis)', () => {
         http().post(`/api/admin/staff/${b.id}/deactivate`).set(as(tokenA)),
         http().post(`/api/admin/staff/${a.id}/deactivate`).set(as(tokenB)),
       ]);
-      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      // The changes are serialized on the two owners' rows (Story 8.3): the
+      // second sees the first. Its owner was just deactivated, so it is
+      // refused as an actor (403); it can never also succeed.
+      expect(results.map((r) => r.status).sort()).toEqual([200, 403]);
       expect(
         await prisma.staff.count({
           where: { id: { in: [a.id, b.id] }, role: 'owner', isActive: true },

@@ -570,6 +570,11 @@ model VenueAccess {
   venueId     String
   grantedAt   DateTime @default(now())
   grantedById String
+  /// Story 8.3: when this staff member's tablet PIN was checked unique among
+  /// the venue's PIN holders and enrolled here. Null: the PIN does not
+  /// elevate a tablet in this venue (a grant made after the PIN was set, or
+  /// no PIN). Set and cleared only by StaffService.setTabletPin.
+  pinEnrolledAt DateTime?
 
   staff     Staff @relation("StaffAccess", fields: [staffId], references: [id])
   venue     Venue @relation(fields: [venueId], references: [id])
