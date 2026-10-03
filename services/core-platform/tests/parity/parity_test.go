@@ -155,8 +155,8 @@ func goServerWith(t *testing.T, dbURL, secret string, writable bool) *httptest.S
 		Orders: ordersapi.NewHandler(orders.NewService(orderstore.New(pool, nil), pgcatalog.New(pool), writable),
 			venueStore, logger),
 		Verifier:      identity.NewVerifier(secret),
-		TabletDevices: identity.NewPostgresTabletDevices(pool),
-		RateLimiter:   ratelimit.New(rdb, 0, logger),
+		TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
+		RateLimiter: ratelimit.New(rdb, 0, logger),
 	}))
 	t.Cleanup(srv.Close)
 	return srv

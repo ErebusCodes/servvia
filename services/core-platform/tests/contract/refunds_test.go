@@ -52,7 +52,7 @@ func refundRoutes(writable bool) http.Handler {
 		Logger: logger, Health: health.New(okPinger{}, time.Second),
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Refunds:  refundsapi.NewHandler(refunds.NewService(noRefunds{}, writable), adapterVenues{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{},
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{},
 		RateLimiter: ratelimit.New(admit, 0, logger), DeviceAuth: contractDevices.service(),
 	})
 }

@@ -49,7 +49,10 @@ type Deps struct {
 	DeviceAuth    *devices.Service
 	Verifier      *identity.Verifier
 	TabletDevices identity.TabletDevices
-	RateLimiter   *ratelimit.Limiter
+	// VenueGrants is the staff VenueAccess store. Required: every
+	// venue-scoped staff route refuses staff without a grant.
+	VenueGrants identity.VenueGrants
+	RateLimiter *ratelimit.Limiter
 	// SecureCookies is NODE_ENV=production: the csrf_token cookie gets Secure.
 	SecureCookies bool
 }
@@ -67,6 +70,10 @@ func Routes(d Deps) http.Handler {
 	nestMiddleware := func(h http.Handler) http.Handler {
 		return httpx.Chain(h, httpx.SecurityHeaders, httpx.CSRF(d.SecureCookies))
 	}
+	if d.VenueGrants == nil {
+		panic("server: Deps.VenueGrants is required (staff venue access is enforced on every venue-scoped route)")
+	}
+	venueAccess := identity.RequireVenueAccess(d.VenueGrants, "venueId", d.Logger)
 	rt := httpx.NewRouter(nestMiddleware)
 	rt.Handle("/health", httpx.SecurityHeaders(http.HandlerFunc(d.Health.Live)))
 	rt.Handle("/ready", httpx.SecurityHeaders(http.HandlerFunc(d.Health.Ready)))
@@ -84,6 +91,7 @@ func Routes(d Deps) http.Handler {
 		identity.Authenticate(d.Verifier),
 		identity.RequireRoles(venues.TaxConfigRoles...),
 		identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+		identity.RequireVenueAccess(d.VenueGrants, "id", d.Logger),
 	))
 
 	// Table sessions (Phase D2): new Servvia-native API, no Nest equivalent
@@ -95,6 +103,7 @@ func Routes(d Deps) http.Handler {
 			identity.RequireStaff,
 			identity.RequireRoles(tablesapi.Roles...),
 			identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+			venueAccess,
 		)
 	}
 	ts := d.TableSessions
@@ -123,6 +132,7 @@ func Routes(d Deps) http.Handler {
 			identity.RequireStaffOrKDS,
 			identity.RequireRoles(kitchenapi.Roles...),
 			identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+			venueAccess,
 		)
 	}
 	kt := d.Kitchen
@@ -139,6 +149,7 @@ func Routes(d Deps) http.Handler {
 			identity.RequireStaff,
 			identity.RequireRoles(roles...),
 			identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+			venueAccess,
 		)
 	}
 	ck := d.Checks
@@ -192,6 +203,7 @@ func Routes(d Deps) http.Handler {
 			identity.Authenticate(d.Verifier),
 			identity.RequireStaffSession,
 			identity.RequireRoles(devicesapi.AdminRoles...),
+			venueAccess,
 		)
 	}
 	dv := d.Devices
@@ -217,6 +229,7 @@ func Routes(d Deps) http.Handler {
 			identity.Authenticate(d.Verifier),
 			identity.RequireStaffSession,
 			identity.RequireRoles(promotionsapi.AdminRoles...),
+			venueAccess,
 		)
 	}
 	pr := d.Promotions

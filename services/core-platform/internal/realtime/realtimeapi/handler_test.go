@@ -91,6 +91,27 @@ func (f *fakeDevices) callCount() int {
 	return f.calls
 }
 
+type fakeGrants struct {
+	mu      sync.Mutex
+	granted bool
+	err     error
+}
+
+func (f *fakeGrants) VenueAccess(context.Context, string, string, string) (identity.VenueAccessDecision, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.granted {
+		return identity.VenueAccessGranted, f.err
+	}
+	return identity.VenueAccessNotGranted, f.err
+}
+
+func (f *fakeGrants) set(granted bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.granted, f.err = granted, err
+}
+
 type fakeVenues struct{}
 
 func (fakeVenues) Venue(_ context.Context, id string) (venues.Venue, bool, error) {
@@ -122,6 +143,7 @@ func (b *syncBuffer) String() string {
 type harness struct {
 	tablets *fakeTablets
 	devices *fakeDevices
+	grants  *fakeGrants
 	logs    *syncBuffer
 	wsURL   string
 }
@@ -131,10 +153,10 @@ var testConfig = Config{AuthTimeout: 2 * time.Second, PingInterval: time.Minute,
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	h := &harness{tablets: &fakeTablets{active: true}, devices: &fakeDevices{}, logs: &syncBuffer{}}
+	h := &harness{tablets: &fakeTablets{active: true}, devices: &fakeDevices{}, grants: &fakeGrants{granted: true}, logs: &syncBuffer{}}
 	hub := realtime.NewHub(16)
 	logger := slog.New(slog.NewJSONHandler(h.logs, nil))
-	handler := NewHandler(hub, identity.NewVerifier(testSecret), h.tablets, h.devices, fakeVenues{}, logger, testConfig)
+	handler := NewHandler(hub, identity.NewVerifier(testSecret), h.tablets, h.devices, fakeVenues{}, h.grants, logger, testConfig)
 	// The production chain for the realtime route (server.go): request IDs first.
 	srv := httptest.NewServer(httpx.Chain(handler, httpx.RequestIDs))
 	t.Cleanup(func() {
@@ -404,4 +426,63 @@ func TestKDSRecheck(t *testing.T) {
 			}
 		})
 	}
+}
+
+func staffSessionToken(t *testing.T) string {
+	t.Helper()
+	raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": "staff-2", "role": "owner", "organizationId": testOrg, "exp": time.Now().Add(time.Hour).Unix(),
+	}).SignedString([]byte(testSecret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// Staff act only in venues they have been granted, every role included
+// (PRD section 16 item 3; MVP 9.6).
+func TestStaffVenueAccessOnSubscription(t *testing.T) {
+	cases := map[string]struct {
+		token   func(*testing.T) string
+		granted bool
+		err     error
+		status  websocket.StatusCode
+		code    string
+	}{
+		"owner session without a grant is refused with 4403": {token: staffSessionToken, status: CloseForbidden, code: "FORBIDDEN"},
+		"elevated tablet without the staff grant is refused": {token: tabletStaffToken, status: CloseForbidden, code: "FORBIDDEN"},
+		"grant lookup failure fails closed with 1011":        {token: staffSessionToken, err: errLookup, status: websocket.StatusInternalError, code: "INTERNAL"},
+		"tablet grant lookup failure fails closed with 1011": {token: tabletStaffToken, err: errLookup, status: websocket.StatusInternalError, code: "INTERNAL"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.grants.set(tc.granted, tc.err)
+			got := h.dial(t, tc.token(t)).waitClosed(t)
+			if got.subscribed {
+				t.Fatal("subscription was admitted")
+			}
+			assertClosed(t, got, tc.status, tc.code)
+			if tc.err == nil && !strings.Contains(h.logs.String(), `"event":"venue_access_denied"`) {
+				t.Errorf("the refusal was not recorded as a security event: %s", h.logs.String())
+			}
+		})
+	}
+}
+
+func TestStaffWithGrantSubscribes(t *testing.T) {
+	for name, token := range map[string]func(*testing.T) string{"staff session": staffSessionToken, "elevated tablet": tabletStaffToken} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			h.dial(t, token(t)).waitSubscribed(t)
+		})
+	}
+}
+
+// A device credential is not a staff identity: its venue is pinned by the
+// credential, and no staff grant is consulted.
+func TestKDSDeviceNeedsNoStaffGrant(t *testing.T) {
+	h := newHarness(t)
+	h.grants.set(false, nil)
+	h.dial(t, kdsCredential).waitSubscribed(t)
 }

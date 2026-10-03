@@ -583,7 +583,7 @@ func TestOrderAPIAgainstPostgres(t *testing.T) {
 		Venues:        venues.NewHandler(venueStore, logger),
 		TableSessions: tablesapi.NewHandler(tables.NewService(tablestore.New(pool), true), venueStore, logger),
 		Orders:        ordersapi.NewHandler(h.orders, venueStore, logger),
-		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{

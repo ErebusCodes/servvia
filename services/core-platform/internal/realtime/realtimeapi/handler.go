@@ -77,6 +77,7 @@ type Handler struct {
 	verifier *identity.Verifier
 	tablets  identity.TabletDevices
 	devices  DeviceAuth
+	grants   identity.VenueGrants
 	venues   VenueResolver
 	logger   *slog.Logger
 	cfg      Config
@@ -86,7 +87,10 @@ type Handler struct {
 }
 
 func NewHandler(hub *realtime.Hub, v *identity.Verifier, tablets identity.TabletDevices, dev DeviceAuth, venueStore VenueResolver,
-	logger *slog.Logger, cfg Config) *Handler {
+	grants identity.VenueGrants, logger *slog.Logger, cfg Config) *Handler {
+	if grants == nil {
+		panic("realtimeapi: VenueGrants is required (staff venue access is enforced on subscription)")
+	}
 	// The same origins as the HTTP API's CORS allow-list. A native client
 	// (Kotlin, C#) sends no Origin and is not affected.
 	var origins []string
@@ -95,7 +99,8 @@ func NewHandler(hub *realtime.Hub, v *identity.Verifier, tablets identity.Tablet
 			origins = append(origins, u.Host)
 		}
 	}
-	return &Handler{hub: hub, verifier: v, tablets: tablets, devices: dev, venues: venueStore, logger: logger, cfg: cfg, origins: origins}
+	return &Handler{hub: hub, verifier: v, tablets: tablets, devices: dev, grants: grants, venues: venueStore, logger: logger, cfg: cfg,
+		origins: origins}
 }
 
 // Drain refuses new connections, ends every subscription (clients receive
@@ -365,6 +370,18 @@ func (h *Handler) tokenSubscriber(ctx context.Context, token, requestedVenue str
 	}
 	if !found {
 		return subscriber{}, refuse(CloseVenueNotFound, "VENUE_NOT_FOUND", "Venue not found")
+	}
+	// Staff act only in venues they have been granted (PRD section 16 item 3).
+	// A grant that cannot be checked fails closed (1011), never access.
+	if p.IsStaff() {
+		decision, err := h.grants.VenueAccess(ctx, p.ID, p.OrganizationID, v.ID)
+		if err != nil {
+			return subscriber{}, err
+		}
+		if decision != identity.VenueAccessGranted {
+			identity.LogVenueAccessDenied(ctx, h.logger, p, v.ID, "transport", "realtime")
+			return subscriber{}, refuse(CloseForbidden, "FORBIDDEN", identity.VenueAccessDeniedMessage)
+		}
 	}
 	sub := subscriber{organizationID: v.OrganizationID, venueID: v.ID, granted: granted, expiresAt: p.ExpiresAt}
 	if p.DeviceID != "" && (p.Kind == identity.KindTabletStaff || p.Kind == identity.KindTabletManager ||

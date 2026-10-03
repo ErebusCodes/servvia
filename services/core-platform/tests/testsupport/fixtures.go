@@ -110,6 +110,7 @@ func SeedMenuFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) MenuFi
 	must(db, override, UUID(), f.Price, f.Venue, 1500, nil)
 	must(db, override, UUID(), f.ReEnabled, f.Venue, nil, true)
 	must(db, override, UUID(), f.DisabledByOverride, f.Venue, nil, false)
+	GrantVenueAccess(t, ctx, db, staff, []string{staff}, []string{f.Venue, f.InactiveVenue})
 
 	t.Cleanup(func() {
 		ctx := context.Background()
@@ -121,6 +122,7 @@ func SeedMenuFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) MenuFi
 			{`DELETE FROM "MenuItemVenueOverride" WHERE "venueId" = ANY($1)`, venues},
 			{`DELETE FROM "MenuItem" WHERE "organizationId" = ANY($1)`, orgs},
 			{`DELETE FROM "Category" WHERE "organizationId" = ANY($1)`, orgs},
+			{`DELETE FROM "VenueAccess" WHERE "venueId" = ANY($1)`, venues},
 			{`DELETE FROM "Venue" WHERE id = ANY($1)`, venues},
 			{`DELETE FROM "Staff" WHERE "organizationId" = ANY($1)`, orgs},
 			{`DELETE FROM "Organization" WHERE id = ANY($1)`, orgs},

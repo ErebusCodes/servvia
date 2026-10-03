@@ -66,7 +66,7 @@ func paymentRoutes(writable bool) http.Handler {
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Venues:   venues.NewHandler(venueStore{}, logger),
 		Payments: paymentsapi.NewHandler(payments.NewService(noPayments{}, writable), adapterVenues{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{},
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{},
 		RateLimiter: ratelimit.New(admit, 0, logger), DeviceAuth: contractDevices.service(),
 	})
 }

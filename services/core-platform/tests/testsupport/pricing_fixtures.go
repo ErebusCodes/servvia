@@ -69,6 +69,9 @@ func SeedPricingFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool, org
 		VALUES($1,$2,'Pricing Fixture',$1,'{}','{}',40,$3,now())`
 	must(venue, f.Venue, f.Org, true)
 	must(venue, f.TaxlessVenue, f.Org, false)
+	if ownOrg {
+		GrantVenueAccess(t, ctx, db, staffID, []string{staffID}, []string{f.Venue, f.TaxlessVenue})
+	}
 
 	cat, otherCat := UUID(), UUID()
 	category := `INSERT INTO "Category"(id,"organizationId",name,"isActive","visibleChannels","createdById","updatedAt")
@@ -144,6 +147,7 @@ func SeedPricingFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool, org
 			{`DELETE FROM "MenuItemVenueOverride" WHERE "venueId" = ANY($1)`, []any{venues}},
 			{`DELETE FROM "MenuItem" WHERE "categoryId" = ANY($1)`, []any{[]string{cat, otherCat}}},
 			{`DELETE FROM "Category" WHERE id = ANY($1)`, []any{[]string{cat, otherCat}}},
+			{`DELETE FROM "VenueAccess" WHERE "venueId" = ANY($1)`, []any{venues}},
 			{`DELETE FROM "Venue" WHERE id = ANY($1)`, []any{venues}},
 			{`DELETE FROM "Staff" WHERE id = $1`, []any{otherStaff}},
 			{`DELETE FROM "Organization" WHERE id = $1`, []any{f.OtherOrg}},

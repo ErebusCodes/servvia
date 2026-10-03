@@ -105,7 +105,7 @@ func deviceRoutes() http.Handler {
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Venues:   venues.NewHandler(venueStore{}, logger),
 		Devices:  devicesapi.NewHandler(svc, venueStore{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{},
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{},
 		RateLimiter: ratelimit.New(admit, 0, logger), DeviceAuth: svc,
 	})
 }

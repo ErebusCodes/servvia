@@ -640,7 +640,7 @@ func TestRefundAPIAndTrustBoundary(t *testing.T) {
 		Venues:   venues.NewHandler(venueStore, logger),
 		Refunds:  refundsapi.NewHandler(h.refunds, venueStore, logger),
 		Devices:  devicesapi.NewHandler(h.devices, venueStore, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices,
 	})
 	token := func(role, sub string, extra jwt.MapClaims) string {

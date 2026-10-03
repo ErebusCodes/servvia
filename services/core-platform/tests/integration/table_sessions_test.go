@@ -434,7 +434,7 @@ func TestTableSessionAPIAgainstPostgres(t *testing.T) {
 		Menu:          menu.NewHandler(menu.NewPostgresStore(h.pool), logger),
 		Venues:        venues.NewHandler(venueStore, logger),
 		TableSessions: tablesapi.NewHandler(h.svc, venueStore, logger),
-		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(h.pool),
+		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(h.pool), VenueGrants: identity.NewPostgresVenueGrants(h.pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{

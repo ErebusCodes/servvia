@@ -556,7 +556,7 @@ func TestShiftAPIAgainstPostgres(t *testing.T) {
 		Venues:   venues.NewHandler(venueStore, logger),
 		Payments: paymentsapi.NewHandler(h.payments, venueStore, logger),
 		Shifts:   shiftsapi.NewHandler(h.shifts, venueStore, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices,
 	})
 	token := func(c jwt.MapClaims) string {

@@ -661,7 +661,7 @@ func TestVisitCloseAPI(t *testing.T) {
 		Menu:          menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:        venues.NewHandler(venueStore, logger),
 		TableSessions: tablesapi.NewHandler(tables.NewService(tablestore.New(pool), true), venueStore, logger),
-		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices,
 	})
 	token := func(role, sub, org string, extra jwt.MapClaims) string {

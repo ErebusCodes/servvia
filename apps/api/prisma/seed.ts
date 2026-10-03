@@ -29,7 +29,7 @@ async function main() {
 
   const passwordHash = await argon2.hash(seedPassword, { type: argon2.argon2id });
 
-  await prisma.staff.upsert({
+  const seededOwner = await prisma.staff.upsert({
     where: { email: ownerEmail },
     create: {
       organizationId: org.id,
@@ -108,6 +108,15 @@ async function main() {
         `Fix: npm run db:local:reset`,
     );
   }
+
+  // Servvia Core refuses staff requests for venues they have not been
+  // explicitly granted (PRD section 16 item 3), owners included. The seeded
+  // owner is granted the seeded venue.
+  await prisma.venueAccess.upsert({
+    where: { staffId_venueId: { staffId: seededOwner.id, venueId: venue.id } },
+    create: { staffId: seededOwner.id, venueId: venue.id, grantedById: seededOwner.id },
+    update: {},
+  });
 
   const tablesData = tableConfig;
 

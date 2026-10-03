@@ -789,7 +789,7 @@ func TestPromotionHTTP(t *testing.T) {
 		Venues:     venues.NewHandler(venueStore, logger),
 		Orders:     ordersapi.NewHandler(h.porders, venueStore, logger),
 		Promotions: promotionsapi.NewHandler(h.promos, venueStore, logger),
-		Verifier:   identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier:   identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	sign := func(c jwt.MapClaims) string {

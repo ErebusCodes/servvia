@@ -99,7 +99,7 @@ func kitchenRoutes(writable bool) http.Handler {
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Venues:   venues.NewHandler(venueStore{}, logger),
 		Kitchen:  kitchenapi.NewHandler(kitchen.NewService(newMemoryTickets(), writable), venueStore{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{},
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{},
 		RateLimiter: ratelimit.New(admit, 0, logger),
 	})
 }

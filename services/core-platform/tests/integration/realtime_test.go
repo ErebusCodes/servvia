@@ -78,12 +78,13 @@ func realtimeSetup(t *testing.T, cfg realtimeapi.Config, buffer int) *realtimeHa
 	go func() { defer close(done); dispatcher.Run(runCtx) }()
 	venueStore := venues.NewPostgresStore(pool)
 	handler := realtimeapi.NewHandler(hub, identity.NewVerifier(rtSecret), identity.NewPostgresTabletDevices(pool), h.devices,
-		venueStore, logger, cfg)
+		venueStore, identity.NewPostgresVenueGrants(pool), logger, cfg)
 	routes := server.Routes(server.Deps{
 		Logger: logger, Health: health.New(pool, time.Second),
 		Menu:     menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:   venues.NewHandler(venueStore, logger),
 		Verifier: identity.NewVerifier(rtSecret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		VenueGrants: identity.NewPostgresVenueGrants(pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices, Realtime: handler,
 	})
 	srv := httptest.NewUnstartedServer(routes)

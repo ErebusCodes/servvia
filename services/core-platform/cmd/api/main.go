@@ -154,8 +154,9 @@ func run() error {
 	}
 	bg.Add(1)
 	go func() { defer bg.Done(); dispatcher.Run(workerCtx) }()
+	venueGrants := identity.NewPostgresVenueGrants(pool)
 	realtimeHandler := realtimeapi.NewHandler(hub, identity.NewVerifier(cfg.JWTAccessSecret), identity.NewPostgresTabletDevices(pool),
-		deviceService, venueStore, logger, realtimeapi.DefaultConfig)
+		deviceService, venueStore, venueGrants, logger, realtimeapi.DefaultConfig)
 
 	probes := health.New(pool, cfg.ReadinessTimeout)
 	srv := &http.Server{
@@ -179,6 +180,7 @@ func run() error {
 			DeviceAuth:    deviceService,
 			Verifier:      identity.NewVerifier(cfg.JWTAccessSecret),
 			TabletDevices: identity.NewPostgresTabletDevices(pool),
+			VenueGrants:   venueGrants,
 			RateLimiter:   ratelimit.New(rdb, cfg.TrustProxyHops, logger),
 			SecureCookies: cfg.IsProduction(),
 		}),

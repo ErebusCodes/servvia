@@ -66,7 +66,7 @@ func orderRoutes(t *testing.T, writable bool) http.Handler {
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Venues:   venues.NewHandler(venueStore{}, logger),
 		Orders:   ordersapi.NewHandler(orders.NewService(unreachable{t}, noCatalog{}, writable), venueStore{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{},
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{},
 		RateLimiter: ratelimit.New(admit, 0, logger),
 	})
 }

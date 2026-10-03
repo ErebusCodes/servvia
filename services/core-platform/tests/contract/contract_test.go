@@ -153,6 +153,15 @@ type activeDevices struct{}
 
 func (activeDevices) TabletDeviceActive(context.Context, string) (bool, error) { return true, nil }
 
+// grantAll grants every staff member every venue. Contract tests check
+// response shapes; staff venue access is tested in venue_access_test.go and
+// against PostgreSQL in the integration suite.
+type grantAll struct{}
+
+func (grantAll) VenueAccess(context.Context, string, string, string) (identity.VenueAccessDecision, error) {
+	return identity.VenueAccessGranted, nil
+}
+
 func routesWith(store menu.Store, limiter ratelimit.Evaluator) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return server.Routes(server.Deps{
@@ -161,8 +170,8 @@ func routesWith(store menu.Store, limiter ratelimit.Evaluator) http.Handler {
 		Menu:          menu.NewHandler(store, logger),
 		Venues:        venues.NewHandler(venueStore{}, logger),
 		Verifier:      identity.NewVerifier(secret),
-		TabletDevices: activeDevices{},
-		RateLimiter:   ratelimit.New(limiter, 0, logger),
+		TabletDevices: activeDevices{}, VenueGrants: grantAll{},
+		RateLimiter: ratelimit.New(limiter, 0, logger),
 	})
 }
 

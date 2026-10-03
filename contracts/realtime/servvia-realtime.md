@@ -42,11 +42,13 @@ Streams are granted by identity. The client never chooses them.
 **Venue and organization isolation** is server-side and total:
 - The venue must belong to the credential's organization. Otherwise the connection closes with 4404 (the same answer as an unknown or malformed id).
 - A venue-pinned token (KDS or tablet) or device may subscribe only to its own venue. Naming another venue gives 4403; the server never silently corrects it.
+- A staff identity (a staff login, or a tablet elevated by a staff or manager PIN) may subscribe only to a venue of its organization for which the staff member holds a `VenueAccess` grant. Every role is covered, owner and admin included. Without a grant the connection closes with 4403 `FORBIDDEN`. If the grant cannot be checked, the connection closes with 1011 `INTERNAL` and is never admitted.
 - An event is delivered only when its `venueId` **and** `organizationId` match the subscription and its type is in a granted stream.
 
 **Credential lifetime:**
 - The connection closes (4401 `TOKEN_EXPIRED`) when its access token expires.
 - Tablet and device credentials are re-checked every 60 s, and revocation closes the connection (4401).
+- A re-check that cannot be completed (the credential cannot be verified) closes the connection with 1011 `INTERNAL`, never 4401. Reconnect; a revoked credential is then refused with 4401.
 - Reconnect with a fresh credential.
 
 ## Envelope

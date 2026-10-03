@@ -565,7 +565,7 @@ func TestWorkerBacklogEndpoint(t *testing.T) {
 
 	routes := server.Routes(server.Deps{Logger: quiet, Health: health.New(h.kpool, time.Second),
 		Menu: menu.NewHandler(menu.NewPostgresStore(h.kpool), quiet), Venues: venues.NewHandler(venues.NewPostgresStore(h.kpool), quiet),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(h.kpool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(h.kpool), VenueGrants: identity.NewPostgresVenueGrants(h.kpool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, quiet), Workers: workersapi.NewHandler(h.kpool, quiet)})
 	sign := func(c jwt.MapClaims) string {
 		c["exp"] = time.Now().Add(time.Minute).Unix()

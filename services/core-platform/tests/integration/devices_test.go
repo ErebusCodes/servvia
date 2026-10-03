@@ -369,7 +369,7 @@ func TestPaymentAdapterDeviceRoute(t *testing.T) {
 		Venues:   venues.NewHandler(venueStore, logger),
 		Payments: paymentsapi.NewHandler(h.payments, venueStore, logger),
 		Devices:  devicesapi.NewHandler(h.devices, venueStore, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool),
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices,
 	})
 	owner, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"sub": h.f.Owner, "email": "o@example.test", "role": "owner",
