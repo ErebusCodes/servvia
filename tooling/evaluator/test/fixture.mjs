@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { EVALUATOR_ROOT, evaluate } from '../lib/evaluate.mjs';
+import { advance } from '../lib/controller.mjs';
 
 export const OBJECTIVE_PATH = '_bmad-output/implementation-artifacts/objectives/demo/v1.objective.json';
 
@@ -93,8 +94,21 @@ export function makeFixture(objectiveOverrides = {}) {
   const anchorCommit = commit(repo, { [OBJECTIVE_PATH]: bytes }, 'freeze objective');
   const anchor = { commit: anchorCommit, objectivePath: OBJECTIVE_PATH, objectiveSha256: createHash('sha256').update(bytes).digest('hex') };
   const evidenceRoot = mkdtempSync(join(tmpdir(), 'servvia-eval-evidence-'));
+  const stateRoot = mkdtempSync(join(tmpdir(), 'servvia-eval-state-'));
   return {
-    repo, baseline, anchor, evidenceRoot,
+    repo, baseline, anchor, evidenceRoot, stateRoot,
+    /** Freezes another objective (e.g. version 2) in a new anchor on `parent`. */
+    freeze(objectiveOverrides, parent, path = OBJECTIVE_PATH.replace('v1', `v${objectiveOverrides.version ?? 1}`)) {
+      git(repo, 'checkout', '-q', '--detach', parent);
+      const o = objectiveFor(parent, objectiveOverrides);
+      const text = `${JSON.stringify(o, null, 2)}\n`;
+      const commitId = commit(repo, { [path]: text }, `freeze ${path}`);
+      return { commit: commitId, objectivePath: path, objectiveSha256: createHash('sha256').update(text).digest('hex') };
+    },
+    /** The bounded correction controller on this repository. */
+    advance(candidate, extra = {}) {
+      return advance({ repo, anchor: extra.anchor ?? anchor, candidate, evidenceRoot, stateRoot, ...extra });
+    },
     /** A candidate branch from the anchor with the given changes. */
     candidate(files, from = anchorCommit) {
       git(repo, 'checkout', '-q', '--detach', from);
@@ -106,6 +120,7 @@ export function makeFixture(objectiveOverrides = {}) {
     cleanup() {
       rmSync(repo, { recursive: true, force: true });
       rmSync(evidenceRoot, { recursive: true, force: true });
+      rmSync(stateRoot, { recursive: true, force: true });
     },
   };
 }

@@ -55,5 +55,9 @@
     "//\\s*nolint",
     "#\\s*type:\\s*ignore",
     "istanbul ignore"
-  ]
+  ],
+  "loop": {
+    "maxCorrections": 2,
+    "description": "Phase 2: an objective version accepts an initial candidate and at most this many corrections, each evaluated independently."
+  }
 }

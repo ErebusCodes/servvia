@@ -8,13 +8,19 @@ acceptance criteria in `_bmad-output/planning-artifacts/epics.md`, or a
 needs: the checks to run, the tests that must exist and pass, the approved
 expectation changes and the allowed surfaces.
 
-- Path: `objectives/<objectiveId>/v<version>.objective.json`
+- Drafts: `objective-drafts/<objectiveId>/v<version>.objective.json`, written
+  and validated by `bmad-build-auto` (`loop.mjs validate`, which reports
+  `OBJECTIVE READY FOR FREEZE` and the SHA-256). A draft has no authority.
+- Frozen: `objectives/<objectiveId>/v<version>.objective.json`
   (schema `servvia.objective/v1`, documented in `tooling/evaluator/README.md`).
 - **Approved and frozen by the orchestrator, never by the implementer**: the
-  orchestrator commits it on the story's baseline (that commit is the
-  anchor) and records the anchor commit and the file's SHA-256 in its
-  approval. The evaluator reads the objective from the anchor and refuses one
-  that does not match that hash.
+  orchestrator approves a specific draft by its SHA-256. The draft is then
+  committed unchanged on the story's baseline, only on the orchestrator's
+  explicit instruction naming that SHA-256 (that commit is the anchor), and
+  the orchestrator records the anchor commit with the hash. The evaluator
+  reads the objective from the anchor and refuses one that does not match the
+  approved hash, so an objective the implementer wrote or changed itself never
+  matches the orchestrator's record.
 - Never edited after freezing. A change is a new version, frozen in a new
   anchor, and restarts the evaluation of the story.
 - Candidates must not touch this directory: any change here is an integrity

@@ -1,12 +1,13 @@
-# Servvia evaluator (Phase 1)
+# Servvia evaluator (Phases 1 and 2)
 
 Judges one **candidate commit** against a **frozen objective**, without trusting
 the implementer's account of its own work. Deterministic: git, the test
 runners and this code produce the evidence; `lib/verdict.mjs` computes the
 verdict. No language model takes part in it.
 
-Phase 1 is evaluation only: there is no automatic correction, retry loop,
-revert, rule promotion or CI wiring.
+Phase 1 is the evaluator. Phase 2 adds a bounded correction loop around it
+(`bin/loop.mjs`, below). There is no automatic revert, rule promotion, lesson
+learning or CI wiring.
 
 ## Trust model
 
@@ -92,6 +93,55 @@ Strongest first; the strongest present wins.
 There is no "pass with flake": a flaky mandatory check is `NEEDS_REVIEW`
 unless the frozen objective approved retries for it.
 
+## The bounded correction loop (Phase 2)
+
+`bin/loop.mjs` (`lib/controller.mjs`) evaluates successive candidates of one
+frozen objective version and decides what happens next. It never corrects
+anything itself.
+
+| Evaluator verdict | Decision |
+| --- | --- |
+| `PASS` | `CANDIDATE_READY_FOR_ACCEPTANCE`: technically eligible; the orchestrator accepts (or not); nothing is merged or pushed |
+| `FAIL` | `CORRECT` with a failure packet, unless the same failure signature occurred before (`STOP REPEATED_FAILURE_SIGNATURE`) or this was the last allowed candidate (`STOP CORRECTION_LIMIT_REACHED`) |
+| `NEEDS_REVIEW`, `INTEGRITY_VIOLATION`, `HARNESS_ERROR` | `STOP`: back to the orchestrator, never corrected |
+
+- **Limit**: an initial candidate and at most `policy.loop.maxCorrections`
+  (2) corrections: C1, C2, C3.
+- **History**: each correction is a new commit descending from the previous
+  candidate (an amended or rebased candidate stops the loop:
+  `CANDIDATE_HISTORY_VIOLATION`); failed candidates stay in git and in the
+  ledger.
+- **Objective versions**: one loop per version. A newer frozen version
+  supersedes the open loop (its candidates are kept, marked superseded) and
+  restarts the count; an older version or a second freeze of the same
+  version is refused (`OBJECTIVE_SUPERSEDED`, `OBJECTIVE_VERSION_CONFLICT`).
+- **Failure signature** (`lib/signature.mjs`): per failing check and test,
+  the normalized test name and error class (first meaningful line), with
+  paths, ports, ids, hex, timestamps and numbers removed; sorted and hashed.
+  Equal failures in different runs share a signature.
+- **Failure packet** (`servvia.failure-packet/v1`, `lib/packet.mjs`): objective
+  identity and hash, iteration, candidate, signature, each failing check and
+  test with its error class, a redacted excerpt (at most 1500 characters)
+  and a source location when one can be read deterministically; the
+  objective's required tests and surfaces; fixed correction rules. No raw
+  logs, environment or evaluator policy.
+- **Ledger** (`servvia.iteration-ledger/v1`): outside the repository
+  (`~/.servvia/evaluator-state/<objectiveId>/ledger.json` by default), one
+  entry per candidate (candidate, parent candidate, verdict, decision,
+  signature, packet and record SHA-256s), hash-chained and sealed on every
+  write; a ledger edited by hand stops the loop (`LEDGER_TAMPERED`).
+  Repeated signatures are recorded as unreviewed `LESSON CANDIDATE` entries;
+  nothing is promoted.
+- **Objective freeze**: `loop.mjs validate` checks a draft and prints
+  `OBJECTIVE READY FOR FREEZE` with its SHA-256; it never freezes or approves.
+  `loop.mjs gate` is open only for an anchored objective matching the
+  approved hash, whose loop is open.
+
+BMAD: `_bmad/custom/bmad-build-auto.toml` runs the gate before planning and
+`loop.mjs advance` after a run ends `done` (which means "candidate
+produced"); corrections are new `bmad-build-auto` runs given the
+`failure_packet`.
+
 ## Evidence (provisional)
 
 Each evaluation writes, by default under `~/.servvia/evaluator-evidence/`
@@ -100,8 +150,10 @@ output of each setup step and check. Everything is redacted before it is
 written (JWTs, Bearer/Basic values, setup codes, connection-string passwords,
 cookies, key/value secrets, email addresses, and the value of every
 secret-named variable of the evaluation environment). The record lists each
-file's SHA-256. Retention is not automated in Phase 1; delete evidence
-manually. Nothing is written to `PRD/` or committed.
+file's SHA-256. Cleanup is deterministic and manual:
+`loop.mjs cleanup --older-than-days <n>` removes evaluations older than n
+days; `--purge-objective <id>` removes one objective's ledger and evidence.
+This is not the final retention architecture. Nothing is written to `PRD/` or committed.
 
 ## Limitations
 
