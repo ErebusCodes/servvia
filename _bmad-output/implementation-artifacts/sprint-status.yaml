@@ -1,0 +1,136 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 10-03-2026 13:11
+last_updated: 10-03-2026 13:11
+project: servvia
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-api-lint-passes-so-the-api-ci-job-runs-to-completion: backlog
+  1-2-go-core-ci-job-with-real-postgresql-and-redis: backlog
+  1-3-venue-connector-ci-job-made-truthful: backlog
+  1-4-nest-production-start-runs-the-built-entry-point: backlog
+  1-5-production-configuration-fails-closed: backlog
+  1-6-protect-the-main-branch: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-realtime-credential-revocation-fails-closed: backlog
+  2-2-staff-venue-access-is-enforced-by-core: backlog
+  2-3-remove-the-unauthenticated-local-file-write-endpoint-from-pr: backlog
+  2-4-named-staff-sign-in-replaces-the-shared-admin-pin: backlog
+  2-5-token-revocation-and-active-staff-re-checks: backlog
+  2-6-transitional-socket-io-authentication-and-cors-hardening: backlog
+  2-7-kitchen-role-cannot-create-or-cancel-orders-reservation-emai: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-rehearse-the-production-migration-baseline-on-a-copy: backlog
+  3-2-off-host-backups-with-a-scripted-rehearsed-restore: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-core-runs-as-a-managed-windows-service-with-explicit-configu: backlog
+  4-2-staging-environment-mirroring-the-venue-topology: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-guest-mode-is-off-for-the-first-pilot-and-staff-mode-require: backlog
+  5-2-order-tablet-staff-mode-submits-sessions-orders-and-rounds-t: backlog
+  5-3-order-tablet-consumes-core-realtime-and-resynchronises: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-kds-reads-and-advances-core-kitchen-tickets-with-an-authenti: backlog
+  6-2-kds-surfaces-delivery-failures-and-survives-backend-outages: backlog
+  6-3-ready-alert-and-age-colour-coding: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-manager-authorised-order-cancel-and-void-in-core: backlog
+  7-2-order-completion-and-pending-payment-resolution: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-staff-management-with-roles-and-venue-grants: backlog
+  8-2-venue-tax-and-table-settings-from-real-data: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-staff-open-and-close-their-own-cash-shift-from-staff-mode: backlog
+  9-2-bill-the-visit-and-view-the-payable-check: backlog
+  9-3-record-a-cash-tender-and-observe-settlement: backlog
+  9-4-void-an-unpaid-check: backlog
+  9-5-cash-refund-under-the-manager-s-shift: backlog
+  9-6-close-the-visit-when-it-is-financially-complete: backlog
+  epic-9-retrospective: optional
+
+  epic-10: backlog
+  10-1-provider-neutral-payment-adapter-contract: backlog
+  10-2-trusted-adapter-identity-and-result-ingestion-hardening: backlog
+  10-3-uncertain-outcomes-reconciliation-and-no-duplicate-charge: backlog
+  10-4-card-refunds-and-reversals-through-the-adapter: backlog
+  10-5-venue-edge-service-foundation-identity-durable-queue-diagnos: backlog
+  10-6-provider-specific-terminal-adapter-and-certification: backlog
+  epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-customer-receipt: backlog
+  11-2-minimum-service-day-close-report: backlog
+  11-3-receipt-and-conditional-kitchen-printing-through-venue-edge: backlog
+  epic-11-retrospective: optional
+
+  epic-12: backlog
+  12-1-monitoring-and-alerting-for-outages-backups-dead-letters-and: backlog
+  12-2-request-ids-structured-logs-and-core-metrics: backlog
+  12-3-core-database-timeouts-device-route-rate-limits-and-dead-let: backlog
+  12-4-legacy-decoupling-for-servvia-native-venues: backlog
+  12-5-kiosk-off-in-production-until-fixed: backlog
+  12-6-hide-or-relabel-mock-admin-pages: backlog
+  12-7-data-driven-station-routing: backlog
+  12-8-end-to-end-acceptance-and-failure-drills: backlog
+  12-9-runbooks-and-operational-rehearsal: backlog
+  12-10-security-review-and-penetration-test: backlog
+  12-11-performance-and-load-smoke-test: backlog
+  12-12-real-device-lan-and-venue-validation-dry-run: backlog
+  epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-windows-pos-terminal: backlog
+  13-2-guest-mode-on-core-and-the-native-waiter-tablet: backlog
+  13-3-menu-availability-and-admin-capabilities-move-to-their-decid: backlog
+  13-4-reservations-hardening-and-ownership: backlog
+  13-5-sales-and-reservation-reporting: backlog
+  13-6-public-web-and-online-ordering-scope: backlog
+  13-7-native-kiosk-and-window-display: backlog
+  epic-13-retrospective: optional
