@@ -248,10 +248,10 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
       data: { staffId: inactiveStaffId, venueId, grantedById: primary.ownerId },
     });
 
-    // Same organization, deliberately given no VenueAccess row at all —
-    // proves elevation is organization-scoped (matching how every other
-    // staff-kind endpoint in this app treats staff/venue access), not
-    // gated on the unpopulated VenueAccess model.
+    // Same organization, deliberately given no VenueAccess row: staff venue
+    // access applies to every staff-kind credential (Story 2.2, PRD section
+    // 16 item 3), so this staff member's PIN must not elevate a tablet at
+    // this venue until they are granted it (Story 8.1).
     const crossVenue = await prisma.staff.create({
       data: {
         organizationId: orgId,
@@ -761,15 +761,30 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         .expect(401);
     });
 
-    it('staff elevation succeeds for a same-organization staff member with no VenueAccess row (VenueAccess is an unpopulated, unused-elsewhere schema model — real staff-venue scoping in this app is organization-wide, matching every other staff-kind endpoint)', async () => {
+    it('staff elevation refuses a same-organization staff member without a grant for the tablet’s venue, and admits them once granted (Stories 2.2, 8.1)', async () => {
       await request(app.getHttpServer())
         .post('/api/tablet/elevate')
         .set('Authorization', `Bearer ${deviceToken}`)
         .send({ staffPin: CROSS_VENUE_PIN })
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.staff).toMatchObject({ id: crossVenueStaffId, name: 'Cross Venue Cody' });
-        });
+        .expect(401);
+      const grant = await prisma.venueAccess.create({
+        data: { staffId: crossVenueStaffId, venueId, grantedById: managerId },
+      });
+      try {
+        await request(app.getHttpServer())
+          .post('/api/tablet/elevate')
+          .set('Authorization', `Bearer ${deviceToken}`)
+          .send({ staffPin: CROSS_VENUE_PIN })
+          .expect(200)
+          .expect((res) => {
+            expect(res.body.staff).toMatchObject({
+              id: crossVenueStaffId,
+              name: 'Cross Venue Cody',
+            });
+          });
+      } finally {
+        await prisma.venueAccess.delete({ where: { id: grant.id } });
+      }
     });
 
     it('staff elevation rejects a wrong PIN', async () => {

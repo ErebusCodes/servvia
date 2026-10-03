@@ -4,6 +4,7 @@ import { StaffService } from './staff.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit.service';
 import { StaffRole, Staff } from '@prisma/client';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 
 /** Isolates the one genuinely-untyped `jest.Mock` access this file needs to
  * a single well-justified spot rather than scattering `as` casts. */
@@ -201,6 +202,7 @@ describe('StaffService', () => {
       email: 'server@test.com',
       passwordHash: 'irrelevant-hash-placeholder',
       role: StaffRole.cashier,
+      venueAccess: [{ venueId: 'venue-1' }],
     };
     const actor = {
       id: 'admin-1',
@@ -229,6 +231,7 @@ describe('StaffService', () => {
       mockPrisma.staff.findFirst.mockResolvedValue(staff);
       jest.spyOn(service, 'verifyPassword').mockResolvedValue(false);
       mockPrisma.staff.update.mockResolvedValue({ ...staff, pinHash: 'hashed' });
+      mockPrisma.staff.findMany.mockResolvedValue([]);
 
       await service.setTabletPin('staff-1', 'org-1', '4242', actor);
 
@@ -240,6 +243,50 @@ describe('StaffService', () => {
       const auditCall = firstCallArg(mockAuditLogService.logAuthEvent);
       expect(JSON.stringify(auditCall)).not.toContain('4242');
       expect(auditCall.action).toBe('TABLET_STAFF_PIN_SET');
+    });
+
+    describe('Story 8.1: who may set a PIN, and uniqueness per venue', () => {
+      beforeEach(() => {
+        jest.spyOn(service, 'verifyPassword').mockResolvedValue(false);
+        mockPrisma.staff.findMany.mockResolvedValue([]);
+      });
+
+      it('refuses a manager setting an owner’s or admin’s PIN (no elevation as a superior)', async () => {
+        const manager = { ...actor, id: 'mgr-1', role: StaffRole.manager };
+        for (const role of [StaffRole.owner, StaffRole.admin, StaffRole.manager]) {
+          mockPrisma.staff.findFirst.mockResolvedValue({ ...staff, role });
+          await expect(service.setTabletPin('staff-1', 'org-1', '4242', manager)).rejects.toThrow(
+            ForbiddenException,
+          );
+        }
+        expect(mockPrisma.staff.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses an admin setting an owner’s PIN, but lets anyone set their own', async () => {
+        mockPrisma.staff.findFirst.mockResolvedValue({ ...staff, role: StaffRole.owner });
+        await expect(service.setTabletPin('staff-1', 'org-1', '4242', actor)).rejects.toThrow(
+          ForbiddenException,
+        );
+        const self = { ...staff, id: 'admin-1', role: StaffRole.admin };
+        mockPrisma.staff.findFirst.mockResolvedValue(self);
+        await service.setTabletPin('admin-1', 'org-1', '4242', actor);
+        expect(mockPrisma.staff.update).toHaveBeenCalled();
+      });
+
+      it('refuses a PIN already held by a colleague at one of the staff member’s venues', async () => {
+        mockPrisma.staff.findFirst.mockResolvedValue(staff);
+        mockPrisma.staff.findMany.mockResolvedValue([
+          { pinHash: await argon2.hash('4242', { type: argon2.argon2id }) },
+        ]);
+        await expect(service.setTabletPin('staff-1', 'org-1', '4242', actor)).rejects.toThrow(
+          ConflictException,
+        );
+        expect(firstCallArg(mockPrisma.staff.findMany).where).toMatchObject({
+          id: { not: 'staff-1' },
+          venueAccess: { some: { venueId: { in: ['venue-1'] } } },
+        });
+        expect(mockPrisma.staff.update).not.toHaveBeenCalled();
+      });
     });
   });
 

@@ -23,6 +23,7 @@ import { OrderTabletPage } from './pages/order-tablet/OrderTabletPage';
 import { ReportsPage } from './pages/reports/ReportsPage';
 import { InventoryPage } from './pages/inventory/InventoryPage';
 import { StaffPage } from './pages/staff/StaffPage';
+import { CredentialSetupPage } from './pages/staff/CredentialSetupPage';
 import { AuditLogsPage } from './pages/audit/AuditLogsPage';
 import { TableManagementPage as LiveTableManagementPage } from './pages/table-management/TableManagementPage';
 import { TabletDevicesPage } from './pages/tablet-devices/TabletDevicesPage';
@@ -77,6 +78,8 @@ function AdminPortalApp() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Story 8.1: public — a staff member sets their own password with a setup code. */}
+        <Route path="/setup-credential" element={<CredentialSetupPage />} />
         <Route element={<ProtectedRoute />}>
           <Route element={<AdminLayout />}>
             <Route path="/login" element={<Navigate to="/dashboard" replace />} />

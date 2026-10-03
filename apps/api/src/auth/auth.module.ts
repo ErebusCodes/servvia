@@ -5,8 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { StaffModule } from '../staff/staff.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthService } from './auth.service';
-import { StaffSessionService } from './staff-session.service';
-import { StaffSessionCleanupService } from './staff-session-cleanup.service';
+import { SessionsModule } from './sessions.module';
 import { StaffSessionVerifier } from './staff-session-verifier.service';
 import { AuthController } from './auth.controller';
 import { KdsAuthController } from './kds-auth.controller';
@@ -22,6 +21,7 @@ import { ServiceTokenGuard } from './guards/service-token.guard';
 @Module({
   imports: [
     StaffModule,
+    SessionsModule,
     AuditModule,
     PassportModule,
     JwtModule.registerAsync({
@@ -37,8 +37,6 @@ import { ServiceTokenGuard } from './guards/service-token.guard';
   controllers: [AuthController, KdsAuthController],
   providers: [
     AuthService,
-    StaffSessionService,
-    StaffSessionCleanupService,
     StaffSessionVerifier,
     KdsAuthService,
     JwtStrategy,
@@ -51,7 +49,7 @@ import { ServiceTokenGuard } from './guards/service-token.guard';
   ],
   exports: [
     AuthService,
-    StaffSessionService,
+    SessionsModule,
     StaffSessionVerifier,
     JwtAuthGuard,
     RolesGuard,

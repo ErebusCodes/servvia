@@ -7,8 +7,15 @@ import { AuditLog, Prisma } from '@prisma/client';
 export class AuditLogService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async logAuthEvent(dto: LogAuthEventDto): Promise<AuditLog> {
-    return this.prisma.auditLog.create({
+  /**
+   * Writes one audit record. Pass the caller's transaction so the record
+   * commits, or fails, together with the change it describes.
+   */
+  async logAuthEvent(
+    dto: LogAuthEventDto,
+    tx: Prisma.TransactionClient = this.prisma,
+  ): Promise<AuditLog> {
+    return tx.auditLog.create({
       data: {
         organizationId: dto.organizationId,
         venueId: dto.venueId || null,

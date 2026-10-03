@@ -4,6 +4,9 @@ import { Response, Request } from 'express';
 import { StaffRole, Staff } from '@prisma/client';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { CredentialSetupService } from '../staff/credential-setup.service';
+
+const mockCredentialSetup = { redeem: jest.fn() };
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { StaffWithSession } from './strategies/jwt-refresh.strategy';
@@ -54,7 +57,10 @@ describe('AuthController', () => {
     mockAuthService.startSession.mockResolvedValue('session-uuid');
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: mockAuthService }],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: CredentialSetupService, useValue: mockCredentialSetup },
+      ],
     })
       .overrideGuard(RateLimitGuard)
       .useValue({ canActivate: () => true })
@@ -173,6 +179,22 @@ describe('AuthController', () => {
       expect(mockAuthService.logout).toHaveBeenCalledWith(
         'refresh-token-val',
         'access-token-val',
+        '1.2.3.4',
+        'Mozilla',
+      );
+    });
+  });
+
+  describe('credential setup (Story 8.1)', () => {
+    it('passes the code, the new password and the request context to the service', async () => {
+      const req = {
+        headers: { 'user-agent': 'Mozilla' },
+        ip: '1.2.3.4',
+      } as unknown as Request;
+      await controller.setupCredential({ code: 'id.secret', password: 'a long new password' }, req);
+      expect(mockCredentialSetup.redeem).toHaveBeenCalledWith(
+        'id.secret',
+        'a long new password',
         '1.2.3.4',
         'Mozilla',
       );

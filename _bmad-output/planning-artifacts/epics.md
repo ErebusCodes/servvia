@@ -791,7 +791,8 @@ So that every person signs in as themselves with only their access.
 
 - Traceability: STF-1, NFR-AUD; audit P0-11, P1-04.
 - Depends on: Story 2.2.
-- Status: READY
+- Implementation (2026-10-03): owners and admins administer staff through `/api/admin/staff` and the Admin Console Staff page (admins only below admin; nobody acts on themselves; the last active owner is kept; venues only those the actor holds). Credentials are set by the staff member with a single-use, hashed, 24-hour setup code issued at creation or reset; no administrator sees a password. Role change, deactivation, removal and reset revoke all sessions (Story 2.8); each change, its session revocation and its audit record commit in one transaction, and the last-owner guard is serialized per organization so concurrent changes cannot leave no active owner. Tablet PINs are unique per venue and only staff granted the tablet's venue can elevate; a manager can no longer set a superior's PIN.
+- Status: DONE
 
 ### Story 8.2: Venue, tax and table settings from real data
 

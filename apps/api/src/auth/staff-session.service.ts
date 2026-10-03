@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import ms from 'ms';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Why a staff session ended (StaffSession.revokedReason). */
@@ -62,9 +63,17 @@ export class StaffSessionService {
     });
   }
 
-  /** Revokes every live session of a staff member; returns how many. */
-  async revokeAllForStaff(staffId: string, reason: StaffSessionRevocationReason): Promise<number> {
-    const result = await this.prisma.staffSession.updateMany({
+  /**
+   * Revokes every live session of a staff member; returns how many. Pass the
+   * caller's transaction so the revocation commits, or fails, together with
+   * the change that removed the staff member's authority.
+   */
+  async revokeAllForStaff(
+    staffId: string,
+    reason: StaffSessionRevocationReason,
+    tx: Prisma.TransactionClient = this.prisma,
+  ): Promise<number> {
+    const result = await tx.staffSession.updateMany({
       where: { staffId, revokedAt: null },
       data: { revokedAt: new Date(), revokedReason: reason },
     });

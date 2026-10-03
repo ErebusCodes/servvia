@@ -1,11 +1,26 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { Staff } from '@prisma/client';
+import { Staff, StaffRole } from '@prisma/client';
 import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
 import { UpdatePasswordDto } from './dto/update-password.dto';
 import { AuditLogService } from '../audit/audit.service';
+import { manageableRoles } from './staff-admin.policy';
+
+/** Roles whose tablet PIN the actor may set (besides their own). */
+function pinSettableRoles(actorRole: StaffRole): readonly StaffRole[] {
+  if (actorRole === StaffRole.manager) {
+    return [StaffRole.cashier, StaffRole.kitchen, StaffRole.viewer];
+  }
+  return manageableRoles(actorRole);
+}
 
 @Injectable()
 export class StaffService {
@@ -122,21 +137,30 @@ export class StaffService {
    * Sets or resets a staff member's tablet-elevation PIN (story 15-1,
    * DL-081) — always Argon2id-hashed, never the plaintext password reused
    * as a PIN (rejected explicitly below), never logged or returned.
-   * Scoped to the caller's own organization by the controller, which also
-   * enforces who may call this (admin/manager, genuine staff session
-   * only — see StaffSessionOnlyGuard).
+   * Scoped to the caller's own organization; only a genuine staff session
+   * reaches it (StaffSessionOnlyGuard).
+   *
+   * Story 8.1: the actor may set the PIN only of someone they may
+   * administer (or their own): a PIN is a credential, and setting a more
+   * senior colleague's PIN would let the actor elevate a tablet as them.
+   * A PIN is unique among the staff of each venue the staff member is
+   * granted, so tablet elevation can never match two people.
    */
   async setTabletPin(
     staffId: string,
     organizationId: string,
     plainPin: string,
-    actor: Staff,
+    actor: { id: string; email: string; role: StaffRole; organizationId: string },
   ): Promise<void> {
     const staff = await this.prisma.staff.findFirst({
       where: { id: staffId, organizationId, deletedAt: null },
+      include: { venueAccess: { select: { venueId: true } } },
     });
     if (!staff) {
       throw new NotFoundException('Staff member not found in your organization');
+    }
+    if (staff.id !== actor.id && !pinSettableRoles(actor.role).includes(staff.role)) {
+      throw new ForbiddenException('You may not set the PIN of a staff member with this role');
     }
 
     const matchesPassword = await this.verifyPassword(staff.passwordHash, plainPin).catch(
@@ -146,6 +170,25 @@ export class StaffService {
       throw new BadRequestException(
         'The tablet PIN must not be the same as this staff member’s login password',
       );
+    }
+
+    const venueIds = staff.venueAccess.map((a) => a.venueId);
+    if (venueIds.length > 0) {
+      const colleagues = await this.prisma.staff.findMany({
+        where: {
+          id: { not: staff.id },
+          deletedAt: null,
+          pinHash: { not: null },
+          venueAccess: { some: { venueId: { in: venueIds } } },
+        },
+        select: { pinHash: true },
+      });
+      for (const colleague of colleagues) {
+        const taken = await argon2.verify(colleague.pinHash!, plainPin).catch(() => false);
+        if (taken) {
+          throw new ConflictException('This PIN is not available at this staff member’s venues');
+        }
+      }
     }
 
     const pinHash = await argon2.hash(plainPin, { type: argon2.argon2id });
