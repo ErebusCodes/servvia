@@ -47,7 +47,7 @@ development_status:
   epic-2: backlog
   2-1-realtime-credential-revocation-fails-closed: done
   2-2-staff-venue-access-is-enforced-by-core: done
-  2-3-remove-the-unauthenticated-local-file-write-endpoint-from-pr: backlog
+  2-3-remove-the-unauthenticated-local-file-write-endpoint-from-pr: done
   2-4-named-staff-sign-in-replaces-the-shared-admin-pin: backlog
   2-5-token-revocation-and-active-staff-re-checks: backlog
   2-6-transitional-socket-io-authentication-and-cors-hardening: backlog

@@ -30,6 +30,28 @@ import {
 // at the HTTP layer, not automatically to strings built here.
 const API_PREFIX = '/api';
 
+/** An object key that would resolve outside its media root. */
+export class ObjectKeyOutsideRootError extends Error {
+  constructor() {
+    super('Refusing to resolve object key outside local media root');
+    this.name = 'ObjectKeyOutsideRootError';
+  }
+}
+
+/**
+ * Resolves `objectKey` strictly inside `root`. The containment check is
+ * separator-terminated: a bare `startsWith(root)` would accept a sibling
+ * such as `<root>-public/…` (Story 2.3). The root itself is not a valid object.
+ */
+export function resolveWithinRoot(root: string, objectKey: string): string {
+  const rootResolved = path.resolve(root);
+  const resolved = path.resolve(rootResolved, objectKey);
+  if (!resolved.startsWith(rootResolved + path.sep)) {
+    throw new ObjectKeyOutsideRootError();
+  }
+  return resolved;
+}
+
 @Injectable()
 export class LocalStorageProvider implements StorageProviderPort {
   private readonly logger = new Logger(LocalStorageProvider.name);
@@ -45,25 +67,14 @@ export class LocalStorageProvider implements StorageProviderPort {
     this.publicBucketName = publicBucketName;
   }
 
+  // Object keys are server-generated (MediaAssetsService), but the upload
+  // route takes them from the URL, so containment is enforced here.
   private resolvePath(objectKey: string): string {
-    // objectKey is always server-generated (see MediaAssetsService) —
-    // never client input — so this join is safe. Defense-in-depth: reject
-    // anything that would escape root regardless.
-    const resolved = path.resolve(this.root, objectKey);
-    if (!resolved.startsWith(path.resolve(this.root))) {
-      throw new Error(`Refusing to resolve object key outside local media root: ${objectKey}`);
-    }
-    return resolved;
+    return resolveWithinRoot(this.root, objectKey);
   }
 
   private resolvePublicPath(objectKey: string): string {
-    const resolved = path.resolve(this.publicRoot, objectKey);
-    if (!resolved.startsWith(path.resolve(this.publicRoot))) {
-      throw new Error(
-        `Refusing to resolve object key outside local public media root: ${objectKey}`,
-      );
-    }
-    return resolved;
+    return resolveWithinRoot(this.publicRoot, objectKey);
   }
 
   generateSignedUploadUrl(params: {

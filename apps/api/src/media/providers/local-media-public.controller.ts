@@ -2,7 +2,8 @@ import { Controller, Get, NotFoundException, Param, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
-import { LocalStorageProvider } from './local-storage.provider';
+import { LocalStorageProvider, ObjectKeyOutsideRootError } from './local-storage.provider';
+import { localMediaRoutesAvailable } from './local-media-availability';
 import { mimeTypeForExtension } from '../media-assets.constants';
 
 // Dev/test-only emulation of anonymous GET on the real public-delivery
@@ -20,11 +21,22 @@ export class LocalMediaPublicController {
 
   @Get(':encodedObjectKey')
   async get(@Param('encodedObjectKey') encodedObjectKey: string, @Res() res: Response) {
-    if (this.config.get<string>('NODE_ENV') === 'production') {
+    if (!localMediaRoutesAvailable(this.config)) {
       throw new NotFoundException();
     }
-    const objectKey = decodeURIComponent(encodedObjectKey);
-    const buf = await this.localStorage.readPublic(objectKey);
+    let objectKey: string;
+    try {
+      objectKey = decodeURIComponent(encodedObjectKey);
+    } catch {
+      throw new NotFoundException();
+    }
+    let buf: Buffer | null;
+    try {
+      buf = await this.localStorage.readPublic(objectKey);
+    } catch (error) {
+      if (error instanceof ObjectKeyOutsideRootError) throw new NotFoundException();
+      throw error;
+    }
     if (!buf) {
       throw new NotFoundException('Object not found');
     }
