@@ -474,7 +474,7 @@ describe('OrdersService', () => {
               idempotencyKey: 'occupancy-bridge-key-0001',
             } as never,
             mockVenue.organizationId,
-            { id: 'staff-1', email: 'staff@example.test', role: 'manager' as never },
+            { id: 'staff-1', email: 'staff@example.test', role: 'manager' },
           ),
         ).rejects.toThrow(ConflictException);
         expect(mockPrisma.tableSession.findFirst).toHaveBeenCalledTimes(2);
@@ -494,7 +494,7 @@ describe('OrdersService', () => {
               idempotencyKey: 'occupancy-bridge-key-0002',
             } as never,
             mockVenue.organizationId,
-            { id: 'staff-1', email: 'staff@example.test', role: 'manager' as never },
+            { id: 'staff-1', email: 'staff@example.test', role: 'manager' },
           )
           .catch(() => undefined);
         expect(mockPrisma.order.create).toHaveBeenCalled();
