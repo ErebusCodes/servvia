@@ -73,6 +73,11 @@ describe('validateEnvironment', () => {
         /ADMIN_CONSOLE_PIN is no longer used/,
       ],
       [
+        'a leftover admin console account name',
+        { ADMIN_CONSOLE_EMAIL: 'owner@example.test' },
+        /ADMIN_CONSOLE_EMAIL is no longer used/,
+      ],
+      [
         'KDS PIN 108',
         { KDS_VENUE_PINS: JSON.stringify({ v1: '108' }) },
         /KDS_VENUE_PINS\[v1\] is the checked-in default PIN/,

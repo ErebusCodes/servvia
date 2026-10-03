@@ -34,6 +34,8 @@ export function filesUsingPassportGuardDirectly(): string[] {
 
 export interface Route {
   route: string;
+  /** The HTTP path below the global prefix, e.g. `auth/login`. */
+  path: string;
   guards: unknown[];
   /** Metadata by key, the handler's own taking precedence over its class's. */
   meta: (key: string) => unknown;
@@ -65,10 +67,16 @@ export function allRoutes(): Route[] {
       const controller = candidate as new (...args: unknown[]) => unknown;
       if (Reflect.getMetadata(PATH_METADATA, controller) === undefined) continue;
       const classGuards = (Reflect.getMetadata(GUARDS_METADATA, controller) ?? []) as unknown[];
+      const base = Reflect.getMetadata(PATH_METADATA, controller) as string | string[];
       for (const [name, handler] of handlerNames(controller)) {
         if (Reflect.getMetadata(METHOD_METADATA, handler as object) === undefined) continue;
+        const own = Reflect.getMetadata(PATH_METADATA, handler as object) as string | string[];
         routes.push({
           route: `${controller.name}.${name}`,
+          path: [base, own]
+            .map((part) => (Array.isArray(part) ? part.join('|') : part))
+            .filter((part) => part && part !== '/')
+            .join('/'),
           guards: [
             ...classGuards,
             ...((Reflect.getMetadata(GUARDS_METADATA, handler as object) ?? []) as unknown[]),

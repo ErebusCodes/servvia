@@ -59,9 +59,9 @@
     },
     "staffAccessToken": {
       "title": "Staff access token (Admin Console login session)",
-      "description": "Issued by POST /api/auth/login, POST /api/auth/admin-pin and POST /api/auth/refresh. Organization-wide: no venueId, so resolveVenueScope does not restrict it. `kind` is absent in every issued token. `sid` names the login session shared with its refresh token; a staff session without `sid` is refused (Story 2.5).",
+      "description": "Issued by POST /api/auth/login and POST /api/auth/refresh (named staff sign-in; the shared admin PIN was removed by Story 2.4). Organization-wide: no venueId, so resolveVenueScope does not restrict it. `kind` is absent in every issued token. `sid` names the login session shared with its refresh token; a staff session without `sid` is refused (Story 2.5).",
       "x-source": "apps/api/src/auth/auth.service.ts:114",
-      "x-issued-by": ["POST /api/auth/login", "POST /api/auth/admin-pin", "POST /api/auth/refresh"],
+      "x-issued-by": ["POST /api/auth/login", "POST /api/auth/refresh"],
       "x-signing": { "algorithm": "HS256", "secretEnvVar": "JWT_ACCESS_SECRET", "expiryEnvVar": "JWT_ACCESS_EXPIRY", "expiryDefault": "15m", "x-source": "apps/api/src/auth/auth.service.ts:122" },
       "type": "object",
       "required": ["sub", "email", "role", "organizationId", "sid", "iat", "exp"],

@@ -249,7 +249,8 @@ Every workspace has a tracked `.env.example`. Real `.env` files are per machine 
 | `PORT`, `NODE_ENV`, `TRUST_PROXY_HOPS` | HTTP port, environment, trusted proxy hops |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_*_EXPIRY` | Token signing (**secret**). The access secret is shared with Go Core. |
 | `INTERNAL_SERVICE_TOKEN` | Service-to-service authentication (**secret**) |
-| `KDS_VENUE_PINS`, `ADMIN_CONSOLE_PIN`, `ADMIN_CONSOLE_EMAIL` | Device and console access (**secret** in production; the development defaults are refused in production) |
+| `KDS_VENUE_PINS` | KDS device access (**secret** in production; the development default is refused in production) |
+| `ADMIN_CONSOLE_PIN`, `ADMIN_CONSOLE_EMAIL` | **Removed** (Story 2.4): administrators sign in by name. A production API that still has either set refuses to start. |
 | `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_BILLING_EMAIL` | Seed data (**secret** password) |
 | `STRIPE_SECRET_KEY` | Stripe (**secret**; optional; payment endpoints fail closed without it) |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_BOOKINGS_BCC` | Email (optional) |

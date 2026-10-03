@@ -58,10 +58,11 @@ export function productionConfigurationViolations(config: Record<string, unknown
   // Story 2.4: the shared Admin Console PIN is gone; administrators sign in
   // by name. A host that still carries the old secret is refused, so nobody
   // relies on, or keeps, a PIN that no longer opens anything.
-  if (asString(config.ADMIN_CONSOLE_PIN)) {
-    violations.push(
-      'ADMIN_CONSOLE_PIN is no longer used (administrators sign in by name); remove it',
-    );
+  // ADMIN_CONSOLE_EMAIL named the account that PIN signed in as.
+  for (const name of ['ADMIN_CONSOLE_PIN', 'ADMIN_CONSOLE_EMAIL']) {
+    if (asString(config[name])) {
+      violations.push(`${name} is no longer used (administrators sign in by name); remove it`);
+    }
   }
 
   const kdsPins = asString(config.KDS_VENUE_PINS);

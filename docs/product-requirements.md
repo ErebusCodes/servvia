@@ -166,7 +166,7 @@ Owned by Go Core. Names follow the implemented code and `contracts/`.
 - **D13 is prepared but uncommitted** (Checkpoint A).
 
 **TRANSITIONAL capability that works today on NestJS and the React apps:**
-- **Authentication:** staff login, admin PIN, refresh, KDS PIN, tablet device enrolment and tokens.
+- **Authentication:** named staff sign-in (email and password, set by the staff member with a single-use setup code; the shared admin PIN is removed, Story 2.4), refresh, logout, KDS PIN, tablet device enrolment and tokens.
 - **Administration:** venue, menu (categories and items), tables, staff list and tablet PIN, media upload to Google Cloud Storage.
 - **Reservations:** public availability and booking; admin management.
 - **Order paths:** kiosk ordering with card-present payment (Stripe Terminal), staff tablet ordering, admin orders, a Socket.IO order gateway, and the KDS dispatcher.
