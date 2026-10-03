@@ -172,6 +172,9 @@ export class AuthService implements OnModuleInit {
     try {
       return this.jwt.verify<JwtPayload>(token, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        // Pinned as in JwtStrategy (Story 2.6): jsonwebtoken would otherwise
+        // accept HS384/HS512 for a string secret.
+        algorithms: ['HS256'],
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

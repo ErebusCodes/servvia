@@ -6,6 +6,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { StaffService } from '../../staff/staff.service';
 import { SessionRevocationService } from '../session-revocation.service';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { StaffSessionVerifier } from '../staff-session-verifier.service';
 
 const mockConfigService = {
   getOrThrow: jest.fn().mockReturnValue('test-access-secret'),
@@ -34,6 +35,7 @@ describe('JwtStrategy', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JwtStrategy,
+        StaffSessionVerifier,
         { provide: ConfigService, useValue: mockConfigService },
         { provide: StaffService, useValue: mockStaffService },
         { provide: SessionRevocationService, useValue: mockRevocations },

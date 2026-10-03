@@ -6,6 +6,7 @@ import { StaffModule } from '../staff/staff.module';
 import { AuditModule } from '../audit/audit.module';
 import { AuthService } from './auth.service';
 import { SessionRevocationService } from './session-revocation.service';
+import { StaffSessionVerifier } from './staff-session-verifier.service';
 import { AuthController } from './auth.controller';
 import { KdsAuthController } from './kds-auth.controller';
 import { KdsAuthService } from './kds-auth.service';
@@ -36,6 +37,7 @@ import { ServiceTokenGuard } from './guards/service-token.guard';
   providers: [
     AuthService,
     SessionRevocationService,
+    StaffSessionVerifier,
     KdsAuthService,
     JwtStrategy,
     JwtRefreshStrategy,
@@ -45,6 +47,13 @@ import { ServiceTokenGuard } from './guards/service-token.guard';
     RateLimitGuard,
     ServiceTokenGuard,
   ],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, RateLimitGuard, ServiceTokenGuard],
+  exports: [
+    AuthService,
+    StaffSessionVerifier,
+    JwtAuthGuard,
+    RolesGuard,
+    RateLimitGuard,
+    ServiceTokenGuard,
+  ],
 })
 export class AuthModule {}

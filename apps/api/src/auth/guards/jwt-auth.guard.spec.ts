@@ -12,6 +12,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { RolesGuard } from './roles.guard';
 import { StaffService } from '../../staff/staff.service';
 import { SessionRevocationService } from '../session-revocation.service';
+import { StaffSessionVerifier } from '../staff-session-verifier.service';
 
 const SECRET = 'integration-test-jwt-access-secret-32chars!!';
 
@@ -74,6 +75,7 @@ describe('JwtAuthGuard + RolesGuard (integration)', () => {
       controllers: [ProtectedTestController],
       providers: [
         JwtStrategy,
+        StaffSessionVerifier,
         JwtAuthGuard,
         RolesGuard,
         { provide: StaffService, useValue: fakeStaffService },
