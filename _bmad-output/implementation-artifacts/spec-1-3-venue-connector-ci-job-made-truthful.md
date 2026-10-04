@@ -2,7 +2,8 @@
 title: 'Story 1.3: Venue Connector CI job made truthful (fix path)'
 type: 'bugfix'
 created: '2026-10-04'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: '1b2000d794885f2f3e25bd141fa21c26f01f7b05'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -70,9 +71,58 @@ Windows treats both `\` and `/` as path separators. The analyser should produce 
 **Commands:** (run in a `git archive` export outside the clone, with `DOTNET_CLI_HOME` and `NUGET_PACKAGES` scratch directories, from `apps/venue-connector`)
 - `dotnet test VerduraIdealposTracer.slnx -c Release --disable-build-servers` -- expected: 0 failed, 0 skipped, at least 503 passed.
 
+## Review Triage Log
+
+### 2026-10-04 — Review pass
+- verdicts: 17 findings — high 0, medium 0, low 6, false 11, maybe-false 0
+- findings:
+  - `[false]` `[reject]` (blind-hunter) A null `ExecutablePath` now crashes `FileNameOf` — `Summarize` filters `string.IsNullOrWhiteSpace(w.ExecutablePath)` before `FileNameOf` is called, and the unchanged test `Vb6WindowsWhoseExecutableCannotBeRead_AreReportedAsInconclusive_NotAsAbsent` passes a null path and passes.
+  - `[false]` `[reject]` (blind-hunter) A path ending in a separator, or a bare drive `C:`, yields an empty file name — this is exactly what Windows `Path.GetFileName` returns for those inputs, so it is the intended Windows-equivalent result; an executable path from a process never ends in a separator.
+  - `[low]` `[reject]` (blind-hunter) Forward-slash, mixed, drive-relative, UNC and device-path forms are untested, so the `rootLength` branch could be deleted unnoticed — process executable paths are full drive or UNC paths, which split correctly on the last separator; drive-relative paths do not occur in inventories, and the fix is extra tests beyond the frozen matrix.
+  - `[false]` `[reject]` (blind-hunter) Executable name case could flip the verdict — the expected-executable comparison is `StringComparison.OrdinalIgnoreCase` (NativeTerminalBindingEvidence.cs line 112), unchanged by this story.
+  - `[low]` `[reject]` (blind-hunter) The portability test helper hard-codes `ProcessName = "IPSClient"`, including for the bare `IPS.exe` window — the analyser never reads `ProcessName`, so no assertion depends on it; the fix adds a helper parameter for cosmetic data consistency.
+  - `[false]` `[reject]` (blind-hunter) No CI workflow change, so the job is not made truthful — the intent forbids CI changes; the job is red because 3 tests fail, and the analyser fix makes them pass, which is the truthful-green path the intent prescribes.
+  - `[false]` `[reject]` (blind-hunter) The "on every host" claim is never checked on Windows — for executable paths the new split equals Windows `GetFileName` (slice after max(last `\`/`/` + 1, root length); a UNC root always ends in a separator before a file name), so Windows results do not change; the only divergence, a bare `\\server\share` with no file, cannot be an executable path.
+  - `[false]` `[reject]` (blind-hunter) `char.IsAsciiLetter` and dropping the `ArgumentException` fallback need a stated .NET target; static field placement — Core and Tests target `net8.0` (csproj line 14 / line 4), where both are safe; the field placement names no harm.
+  - `[false]` `[reject]` (edge-case-hunter) Trailing whitespace or separator gives `IPS.exe ` or empty and a false CONTRADICTION — Windows `GetFileName` returns the same values, so this is pre-existing Windows behaviour; trimming would change Windows results, which the intent forbids.
+  - `[low]` `[reject]` (edge-case-hunter) Two `[Fact]`s were added where Tasks name one — the second fact covers matrix row "Bare file name", which step-03's Matrix Test Audit requires to be covered; removing it fails that audit, and the only other fix is editing this build's spec.
+  - `[low]` `[reject]` (verification-gap, other) `## Auto Run Result` still showed the planning run's `ready-for-dev` text — the fix is an edit of this build's spec; Finalize rewrites that section.
+  - `[low]` `[patch]` (intent-alignment) The contradiction verdict text was not asserted to name the owner by its bare file name (the existing `Contains("IPSClient.exe")` is satisfied by the full path) — patched: the portability test now asserts the verdict contains `IPSClient.exe (2 window(s)` and does not contain the full owner path.
+  - `[false]` `[reject]` (intent-alignment) "Windows results unchanged" is argued, not shown — same as the blind-hunter cross-host row: equivalence holds for every executable path.
+  - `[false]` `[reject]` (intent-alignment) The tests are host-agnostic rather than non-Windows-specific — they fail on the non-Windows baseline (the new fact failed with the 3 originals before the fix) and pass after, which is the protection the intent asks for.
+  - `[low]` `[reject]` (intent-alignment) Test count is two new facts, not one — same root cause and reasoning as the edge-case-hunter row.
+  - `[false]` `[reject]` (intent-alignment) The diff edits a `_bmad-output` spec file — the workflow requires the status and baseline frontmatter, and an objective's own story spec is an allowed surface; it is not a governance path.
+  - `[false]` `[reject]` (intent-alignment) Matrix rows 1 and 3 are not shown to pass — the orchestrator's full run shows all 14 NativeTerminalBindingEvidence tests passed, including `WhenTheExpectedExecutableOwnsTheVb6Windows_TheEvidenceIsConsistent` and both portability facts.
+
 ## Auto Run Result
 
-Status: ready-for-dev
-Blocking condition: waiting-for-objective-approval: draft _bmad-output/implementation-artifacts/objective-drafts/story-1-3-venue-connector-ci-job-made-truthful/v1.objective.json sha256 d7a67148d6a358d68d5a68a9882f1559e8635983657ee0db59ee795d0a991c63
+Status: done (CANDIDATE PRODUCED; technical completion is the evaluator's decision only)
 
-Planning run without an objective_anchor: nothing was implemented or committed. The objective draft was validated with `loop.mjs validate`, which reported OBJECTIVE READY FOR FREEZE. Freezing it is the orchestrator's decision alone.
+Earlier planning run: halted at ready-for-dev waiting for objective approval; the objective was frozen at anchor 1b2000d794885f2f3e25bd141fa21c26f01f7b05 (sha256 d7a67148d6a358d68d5a68a9882f1559e8635983657ee0db59ee795d0a991c63).
+
+**Summary.** `FileNameOf` in the native-terminal binding analyser no longer uses the host's `Path.GetFileName`. It derives the file name from a Windows executable path the way Windows does on every host: it splits on both `\` and `/`, and treats a drive prefix as part of the root. `ExecutablePath` is unchanged. The 3 baseline-failing tests pass unchanged.
+
+**Files changed**
+- `apps/venue-connector/src/VerduraIdealposTracer.Core/Discovery/NativeTerminalBindingEvidence.cs`: host-independent Windows file-name derivation.
+- `apps/venue-connector/tests/VerduraIdealposTracer.Tests/NativeTerminalBindingEvidencePortabilityTests.cs` (new):
+  - `WhenADifferentExecutableOwnsTheNativeUi_TheOwnerIsNamedByItsFileNameOnEveryHost` (the regression test);
+  - `WhenTheOwnerPathIsABareFileName_TheFileNameIsThePathItself` (covers the matrix's bare-file-name row).
+- This spec: status, baseline, triage log, result.
+
+**Review findings:** 17 findings.
+- 1 patch applied (low): the regression test now asserts that the verdict names the owner by its bare file name.
+- 0 deferred.
+- 16 rejected; each reason is recorded in the Review Triage Log.
+
+**Follow-up review recommended:** false. Patched entries by verdict: high 0, medium 0, low 1.
+
+**Verification.** Command: `dotnet test VerduraIdealposTracer.slnx -c Release --disable-build-servers` (macOS, net8.0, run on a working-tree copy under the scratchpad).
+- Baseline as given (implementer's run): 3 failed, 499 passed, 0 skipped, 502 total. The 3 failures are the named tests.
+- Baseline plus the new regression test: 4 failed.
+- Candidate: 0 failed, 504 passed, 0 skipped, 504 total. All 14 NativeTerminalBindingEvidence tests passed.
+
+The matrix audit covered all 4 rows, with tests that ran and passed.
+
+**Residual risks**
+- Not run on Windows or in GitHub CI. Windows equivalence is reasoned from how Windows splits paths.
+- That CI shows the same 3 failures is still an inference.
