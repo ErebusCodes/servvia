@@ -1,0 +1,215 @@
+{
+  "schema": "servvia.objective/v2",
+  "objectiveId": "story-12-3a-core-database-timeouts",
+  "storyId": "12.3a",
+  "version": 1,
+  "title": "Core database statement timeout and lock timeout (operator-configured; unset leaves Core's behaviour unchanged)",
+  "baseline": "00e64adf9bd9c40501a817bf9831225a389c7725",
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-12-3a-core-database-timeouts.md",
+      "intentContractSha256": "64d26e00726e2e58a75b35466cff7399c049059e3a5a5c9b461483b9ef1de78f"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-12-context.md",
+      "sha256": "6c26f1c661214f7007108e6ac361e503fea44f8fe1827fbadfaf92a344f683a4"
+    }
+  },
+  "requirementRefs": [
+    "_bmad-output/planning-artifacts/epics.md Story 12.3 (traceability RES-18.x, QB-F; audit P1-03), orchestrator-approved slice 12.3a: statement timeout and lock timeout only",
+    "PRD/product-requirements.md section 15 row F (resilience and graceful degradation: dependency failures degrade explicitly, nothing fails silently)",
+    "PRD/product-requirements.md section 15 row R (one documented configuration contract per service)",
+    "PRD/product-requirements.md section 18 items 2 and 8 (dependency failure handling; no corruption after interrupted operations)",
+    "PRD/product-requirements.md PR-10 and section 19 (no requirement or target value is invented; database query behaviour targets are OWNER TARGET REQUIRED)",
+    "_bmad-output/implementation-artifacts/epic-12-context.md Requirements & Constraints, Reliability: timeout values come from configuration and are never invented",
+    "docs/audits/production-readiness-2026-12.md section 5 (no statement or lock timeout in Core) and P1-03, as evidence only"
+  ],
+  "architectureConstraints": [
+    "fileRestructure.md: Go Core (services/core-platform) stays the only owner of canonical state; configuration stays in internal/config and the pool in internal/platform/postgres (MOVE/REFACTOR LATER, not moved by this story)",
+    "fileRestructure.md rules 9-10 and section 4.1: Prisma (apps/api/prisma) stays the only migration authority; no schema change and no migration",
+    "ADR 0001 item 2: PostgreSQL is authoritative and is reached only through Core's pool",
+    "No production timeout value is chosen: the target is an open owner decision (PRD section 19, OWNER TARGET REQUIRED)"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "given": "neither SERVVIA_CORE_DB_STATEMENT_TIMEOUT nor SERVVIA_CORE_DB_LOCK_TIMEOUT is set (missing or blank)",
+      "when": "Core starts and opens database sessions",
+      "then": "startup succeeds and every session's statement_timeout and lock_timeout are exactly what they were before this change (the server or role default, or a value already given in DATABASE_URL)"
+    },
+    {
+      "id": "AC-2",
+      "given": "an operator sets either or both variables to a valid value (a whole number of milliseconds from 1ms to 2147483647ms, written as a duration such as 200ms or 5s)",
+      "when": "Core opens any database session (requests, workers, realtime, readiness)",
+      "then": "the session reports the configured value for each set variable, overriding the same parameter in DATABASE_URL, and each variable is applied independently of the other"
+    },
+    {
+      "id": "AC-3",
+      "given": "a configured statement timeout or lock timeout",
+      "when": "a statement in a Core session runs longer than the statement bound (SQLSTATE 57014) or waits for a lock held by another transaction longer than the lock bound (SQLSTATE 55P03)",
+      "then": "that statement fails instead of waiting and its transaction commits nothing"
+    },
+    {
+      "id": "AC-4",
+      "given": "an operator sets either variable to an invalid value (unparseable, zero, negative, below 1ms, not a whole number of milliseconds, or above 2147483647ms)",
+      "when": "Core starts",
+      "then": "Core refuses to start, in every environment, with an error naming that variable"
+    },
+    {
+      "id": "AC-5",
+      "given": "services/core-platform/README.md",
+      "when": "an operator reads its Configuration table",
+      "then": "both variables are documented with no default, unset meaning no bound, the accepted range, and the value being the operator's decision"
+    },
+    {
+      "id": "AC-6",
+      "given": "the existing Core unit, contract, architecture and PostgreSQL/Redis integration suites",
+      "when": "they run against the change with neither variable set",
+      "then": "every existing test passes unchanged and none is skipped, removed or weakened; Prisma schema and migrations, contracts/, Nest and every other Story 12.3 surface (rate limits, dead-letter replay, metrics) are untouched"
+    }
+  ],
+  "completionCriteria": [
+    "Every mandatory check passes on the candidate with at least its minimum test count and no skip.",
+    "Each required test runs and passes; those marked expectBaselineFailure fail or do not run on the baseline with their sources placed on it.",
+    "No change outside the allowed surfaces other than new test files and the story spec's own status and logs; no forbidden or governance surface changed.",
+    "No default or production timeout value exists in code, configuration or documentation.",
+    "Acceptance remains the orchestrator's decision; device-route rate limits, dead-letter replay and metrics remain in the Story 12.3 backlog."
+  ],
+  "environment": {
+    "services": [
+      "postgres",
+      "redis"
+    ]
+  },
+  "setup": [
+    {
+      "id": "prisma-migrate-deploy",
+      "run": [
+        "node",
+        "node_modules/prisma/build/index.js",
+        "migrate",
+        "deploy",
+        "--schema",
+        "apps/api/prisma/schema.prisma"
+      ],
+      "failure": "harness",
+      "timeoutSeconds": 600
+    }
+  ],
+  "checks": [
+    {
+      "id": "core-gofmt",
+      "category": "lint",
+      "runner": "command",
+      "args": [
+        "sh",
+        "-c",
+        "test -z \"$(gofmt -l .)\""
+      ],
+      "cwd": "services/core-platform",
+      "mandatory": true,
+      "configFiles": []
+    },
+    {
+      "id": "core-vet",
+      "category": "lint",
+      "runner": "command",
+      "args": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "cwd": "services/core-platform",
+      "mandatory": true,
+      "configFiles": [
+        "services/core-platform/go.mod",
+        "services/core-platform/go.sum"
+      ]
+    },
+    {
+      "id": "core-tests",
+      "category": "integration",
+      "runner": "go-test",
+      "args": [
+        "-race",
+        "-count=1",
+        "./cmd/...",
+        "./internal/...",
+        "./tests/architecture/...",
+        "./tests/contract/...",
+        "./tests/integration/..."
+      ],
+      "cwd": "services/core-platform",
+      "mandatory": true,
+      "minTests": 304,
+      "timeoutSeconds": 1800,
+      "configFiles": [
+        "services/core-platform/go.mod",
+        "services/core-platform/go.sum"
+      ]
+    }
+  ],
+  "requiredTests": [
+    {
+      "id": "RT-1",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/internal/config TestLoadDatabaseTimeouts",
+      "files": [
+        "services/core-platform/internal/config/database_timeouts_test.go"
+      ],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-2",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/internal/config TestLoadRejectsInvalidDatabaseTimeouts",
+      "files": [
+        "services/core-platform/internal/config/database_timeouts_test.go"
+      ],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-3",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/tests/integration TestDatabaseTimeoutsBoundCoreSessions",
+      "files": [
+        "services/core-platform/tests/integration/database_timeouts_test.go"
+      ],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-4",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/tests/integration TestDatabaseTimeoutsUnsetLeaveSessionsUnbounded",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    }
+  ],
+  "surfaces": {
+    "allowed": [
+      "services/core-platform/internal/config/**",
+      "services/core-platform/internal/platform/postgres/**",
+      "services/core-platform/cmd/api/**",
+      "services/core-platform/README.md",
+      "services/core-platform/tests/integration/database_timeouts_test.go"
+    ],
+    "forbidden": [
+      "apps/**",
+      "contracts/**",
+      "services/venue-edge/**",
+      "services/core-platform/go.mod",
+      "services/core-platform/go.sum",
+      "services/core-platform/internal/ratelimit/**",
+      "services/core-platform/internal/workers/**",
+      "services/core-platform/internal/events/**",
+      "services/core-platform/internal/server/**",
+      "services/core-platform/tests/testsupport/**",
+      "services/core-platform/tests/parity/**",
+      ".github/**",
+      "docs/decisions-log.md"
+    ]
+  },
+  "expectationChanges": [],
+  "allowedSkips": [],
+  "allowedSuppressions": []
+}

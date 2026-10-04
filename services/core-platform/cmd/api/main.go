@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"servvia/services/core-platform/internal/checks"
 	"servvia/services/core-platform/internal/checks/checksapi"
 	checkstore "servvia/services/core-platform/internal/checks/pgstore"
@@ -63,6 +65,12 @@ func main() {
 	}
 }
 
+// newPool builds the single pool every store, worker, the realtime
+// dispatcher and the readiness probe use, from Core's configuration.
+func newPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
+	return postgres.NewPool(ctx, postgres.OptionsFromConfig(cfg))
+}
+
 func run() error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -75,9 +83,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := postgres.NewPool(ctx, postgres.Options{
-		URL: cfg.DatabaseURL, MaxConns: cfg.DBMaxConns, ReadOnly: cfg.DBReadOnly,
-	})
+	pool, err := newPool(ctx, cfg)
 	if err != nil {
 		return err
 	}

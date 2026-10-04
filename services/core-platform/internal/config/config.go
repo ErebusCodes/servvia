@@ -29,6 +29,10 @@ var insecureDefaultSecrets = map[string]struct{}{
 // minSecretLength matches the NestJS Joi rule `JWT_ACCESS_SECRET: Joi.string().min(32)`.
 const minSecretLength = 32
 
+// maxSessionTimeoutMillis is the largest statement_timeout or lock_timeout
+// PostgreSQL accepts (INT_MAX milliseconds).
+const maxSessionTimeoutMillis = 2147483647
+
 type Config struct {
 	// Environment is NODE_ENV, shared with the NestJS API ("production" enables
 	// the insecure-secret refusal).
@@ -45,6 +49,14 @@ type Config struct {
 	DBMaxConns       int32
 	DBReadOnly       bool
 	ReadinessTimeout time.Duration
+
+	// DBStatementTimeout and DBLockTimeout are SERVVIA_CORE_DB_STATEMENT_TIMEOUT
+	// and SERVVIA_CORE_DB_LOCK_TIMEOUT: operator-chosen bounds applied to every
+	// session of Core's pool. Zero means unset: Core sets nothing for that
+	// bound and the session keeps the server, role or DATABASE_URL value.
+	// There is deliberately no default.
+	DBStatementTimeout time.Duration
+	DBLockTimeout      time.Duration
 
 	JWTAccessSecret string
 
@@ -97,6 +109,25 @@ func load(getenv func(string) string) (Config, error) {
 		return d
 	}
 
+	// sessionTimeout reads an optional PostgreSQL session bound. Unset (missing
+	// or blank) returns zero. A set value must be a whole number of
+	// milliseconds within PostgreSQL's range for statement_timeout and
+	// lock_timeout; anything else is a configuration error.
+	sessionTimeout := func(key string) time.Duration {
+		raw := get(key, "")
+		if raw == "" {
+			return 0
+		}
+		d, err := time.ParseDuration(raw)
+		if err != nil || d < time.Millisecond || d%time.Millisecond != 0 || d/time.Millisecond > maxSessionTimeoutMillis {
+			errs = append(errs, fmt.Errorf(
+				"%s must be a whole number of milliseconds between 1ms and %dms, such as 5s or 750ms, got %q",
+				key, maxSessionTimeoutMillis, raw))
+			return 0
+		}
+		return d
+	}
+
 	cfg := Config{
 		Environment:          get("NODE_ENV", "development"),
 		HTTPAddr:             get("SERVVIA_CORE_HTTP_ADDR", "127.0.0.1:3100"),
@@ -125,6 +156,9 @@ func load(getenv func(string) string) (Config, error) {
 		}
 		return n
 	}
+	cfg.DBStatementTimeout = sessionTimeout("SERVVIA_CORE_DB_STATEMENT_TIMEOUT")
+	cfg.DBLockTimeout = sessionTimeout("SERVVIA_CORE_DB_LOCK_TIMEOUT")
+
 	cfg.RedisPort = integer("REDIS_PORT", "6379", 0, 65535)
 	// Nest passes Number(TRUST_PROXY_HOPS ?? 0) to Express. A value that is
 	// not a whole number is refused here rather than silently trusting no proxy.
