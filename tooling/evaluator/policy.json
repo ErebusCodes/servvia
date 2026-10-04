@@ -8,7 +8,8 @@
     "fileRestructure.md",
     "docs/adr/**",
     "_bmad/**",
-    ".claude/skills/**"
+    ".claude/skills/**",
+    "_bmad-output/implementation-artifacts/epic-*-context.md"
   ],
   "testFiles": [
     "**/*.spec.ts",

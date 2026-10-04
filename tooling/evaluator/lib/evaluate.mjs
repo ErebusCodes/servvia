@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import {
   diffBytes, gitVersion, hashObject, isAncestor, lsTree, resolveCommit, shortStat, showFile, treeId,
 } from './git.mjs';
-import { checkBaseline, loadFrozenObjective, sha256 } from './objective.mjs';
+import { checkBaseline, checkInputs, intentContractSha256, loadFrozenObjective, sha256 } from './objective.mjs';
 import { staticIntegrity } from './integrity.mjs';
 import { createWorkspace } from './workspace.mjs';
 import { startPostgres, startRedis } from './services.mjs';
@@ -177,6 +177,9 @@ export async function evaluate(opts) {
 
     const wrongBaseline = checkBaseline(repo, anchorCommit, objective);
     if (wrongBaseline) add('INTEGRITY_VIOLATION', 'wrong-baseline', wrongBaseline);
+    for (const problem of checkInputs(objective, (path) => showFile(repo, anchorCommit, path))) {
+      add('INTEGRITY_VIOLATION', 'anchor-inputs-mismatch', `the anchor does not hold the inputs the objective was planned from: ${problem}`);
+    }
     const descends = isAncestor(repo, anchorCommit, candidate);
     record.ancestry = { anchorIsAncestorOfCandidate: descends };
     if (!descends) add('INTEGRITY_VIOLATION', 'candidate-not-descendant', 'the candidate does not descend from the anchor commit');
@@ -185,6 +188,11 @@ export async function evaluate(opts) {
     record.diff = { shortStat: shortStat(repo, anchorCommit, candidate), sha256: sha256(diffBytes(repo, anchorCommit, candidate)) };
     const policy = JSON.parse(showFile(repo, anchorCommit, `${EVALUATOR_PATH}/policy.json`).toString('utf8'));
     const integrity = staticIntegrity({ repo, anchorCommit, candidateCommit: candidate, objective, objectivePath: anchor.objectivePath, policy });
+    // The story spec stays editable (status, logs), but never its intent contract.
+    const spec = objective.inputs?.storySpec;
+    if (spec && intentContractSha256(showFile(repo, candidate, spec.path)?.toString('utf8')) !== spec.intentContractSha256) {
+      integrity.push({ severity: 'INTEGRITY_VIOLATION', code: 'intent-contract-modified', path: spec.path, detail: 'the story spec\'s intent contract differs from the one the objective was planned from' });
+    }
     record.integrityFindings = integrity;
     findings.push(...integrity);
     if (integrity.some((f) => f.severity === 'INTEGRITY_VIOLATION')) return finish();

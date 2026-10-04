@@ -1,8 +1,45 @@
 import { createHash } from 'node:crypto';
 import { showFile, parents } from './git.mjs';
 
-export const OBJECTIVE_SCHEMA = 'servvia.objective/v1';
+/**
+ * v2 (current): an objective carries no approval of its own (its authority is
+ * the orchestrator's record of its SHA-256 and anchor), follows the story id
+ * convention, and binds the inputs it was planned from. v1 objectives already
+ * frozen stay loadable; new drafts are v2.
+ */
+export const OBJECTIVE_SCHEMA = 'servvia.objective/v2';
+export const LEGACY_OBJECTIVE_SCHEMA = 'servvia.objective/v1';
 export const OBJECTIVE_DIR = '_bmad-output/implementation-artifacts/objectives';
+export const EPIC_CONTEXT = /^_bmad-output\/implementation-artifacts\/epic-\d+-context\.md$/;
+
+/** Story 12.3a -> story-12-3a-<slug>: the one id used for the objective, its ledger, evidence and cleanup. */
+export function objectiveIdPrefix(storyId) {
+  return /^\d+\.\d+[a-z]?$/.test(storyId ?? '') ? `story-${storyId.replace('.', '-')}-` : null;
+}
+
+/** The read-only intent contract of a BMAD story spec, hashed: what the frozen objective was planned from. */
+export function intentContractSha256(text) {
+  const block = String(text ?? '').match(/<intent-contract>[\s\S]*?<\/intent-contract>/);
+  return block ? sha256(Buffer.from(block[0])) : null;
+}
+
+/**
+ * The inputs of a v2 objective, read through `read(path)` (a working tree or
+ * a commit): the story spec with the same intent contract, the epic context
+ * with the same bytes. Returns the problems found.
+ */
+export function checkInputs(objective, read) {
+  if (objective.schema !== OBJECTIVE_SCHEMA) return [];
+  const problems = [];
+  const { storySpec, epicContext } = objective.inputs;
+  const spec = read(storySpec.path);
+  if (!spec) problems.push(`story spec ${storySpec.path} is missing`);
+  else if (intentContractSha256(spec.toString('utf8')) !== storySpec.intentContractSha256) problems.push(`story spec ${storySpec.path} has a different intent contract`);
+  const context = read(epicContext.path);
+  if (!context) problems.push(`epic context ${epicContext.path} is missing`);
+  else if (sha256(context) !== epicContext.sha256) problems.push(`epic context ${epicContext.path} differs from the one the objective was planned from`);
+  return problems;
+}
 
 export function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -51,7 +88,7 @@ export function validateObjective(o) {
   const need = (cond, msg) => { if (!cond) e.push(msg); };
   need(o && typeof o === 'object', 'objective must be an object');
   if (!o || typeof o !== 'object') return e;
-  need(o.schema === OBJECTIVE_SCHEMA, `schema must be ${OBJECTIVE_SCHEMA}`);
+  need([OBJECTIVE_SCHEMA, LEGACY_OBJECTIVE_SCHEMA].includes(o.schema), `schema must be ${OBJECTIVE_SCHEMA}`);
   need(/^[a-z0-9][a-z0-9.-]*$/.test(o.objectiveId ?? ''), 'objectiveId must be kebab-case');
   need(isStr(o.storyId), 'storyId is required');
   need(Number.isInteger(o.version) && o.version >= 1, 'version must be an integer >= 1');
@@ -63,7 +100,17 @@ export function validateObjective(o) {
   for (const ac of o.acceptanceCriteria ?? []) {
     need(isStr(ac.id) && isStr(ac.given) && isStr(ac.when) && isStr(ac.then), `acceptance criterion ${ac.id ?? '?'} needs id, given, when and then`);
   }
-  need(o.approval && isStr(o.approval.approvedBy) && isStr(o.approval.reference), 'approval.approvedBy and approval.reference are required');
+  if (o.schema === LEGACY_OBJECTIVE_SCHEMA) {
+    need(o.approval && isStr(o.approval.approvedBy) && isStr(o.approval.reference), 'approval.approvedBy and approval.reference are required');
+  } else {
+    need(o.approval === undefined, 'a v2 objective has no approval field: its authority is the orchestrator\'s record of its SHA-256 and anchor, never text in the file');
+    const prefix = objectiveIdPrefix(o.storyId);
+    need(prefix !== null, 'storyId must be an epic story number such as 12.5 or 12.3a');
+    need(prefix === null || (o.objectiveId ?? '').startsWith(prefix), `objectiveId must start with ${prefix} (story-<epic>-<story>-<slug>)`);
+    const hex = (v) => /^[0-9a-f]{64}$/.test(v ?? '');
+    need(isStr(o.inputs?.storySpec?.path) && hex(o.inputs?.storySpec?.intentContractSha256), 'inputs.storySpec needs path and intentContractSha256');
+    need(EPIC_CONTEXT.test(o.inputs?.epicContext?.path ?? '') && hex(o.inputs?.epicContext?.sha256), 'inputs.epicContext needs the epic context path and its sha256');
+  }
   need(isStrArray(o.completionCriteria) && o.completionCriteria.length > 0, 'completionCriteria must not be empty');
   const services = o.environment?.services ?? [];
   need(Array.isArray(services) && services.every((s) => ['postgres', 'redis'].includes(s)), 'environment.services may list postgres and redis only');

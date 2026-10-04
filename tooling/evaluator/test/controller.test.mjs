@@ -311,17 +311,12 @@ describe('the loop command line', () => {
   after(() => fx.cleanup());
   const cli = (...args) => spawnSync(process.execPath, [join(EVALUATOR_ROOT, 'bin', 'loop.mjs'), ...args, '--state-dir', fx.stateRoot, '--evidence-dir', fx.evidenceRoot], { encoding: 'utf8' });
 
-  test('validate reports a draft ready for freeze, with its hash, and rejects an invalid draft', () => {
+  test('validate refuses a legacy v1 draft: new drafts carry no approval text and bind their inputs (lifecycle.test.mjs)', () => {
     const draft = join(fx.stateRoot, 'draft.json');
-    const text = `${JSON.stringify(objectiveFor(fx.baseline), null, 2)}\n`;
-    writeFileSync(draft, text);
-    const ok = cli('validate', '--objective-file', draft, '--repo', fx.repo);
-    assert.equal(ok.status, 0);
-    const out = JSON.parse(ok.stdout);
-    assert.equal(out.status, 'OBJECTIVE READY FOR FREEZE');
-    assert.equal(out.sha256, createHash('sha256').update(text).digest('hex'));
-    writeFileSync(draft, JSON.stringify({ ...objectiveFor(fx.baseline), acceptanceCriteria: [] }));
-    assert.equal(cli('validate', '--objective-file', draft).status, 20);
+    writeFileSync(draft, `${JSON.stringify(objectiveFor(fx.baseline), null, 2)}\n`);
+    const r = cli('validate', '--objective-file', draft, '--repo', fx.repo);
+    assert.equal(r.status, 20);
+    assert.match(JSON.parse(r.stdout).errors.join(' '), /servvia\.objective\/v2/);
   });
 
   test('the gate opens only for the approved anchor, and closes once the loop ends', () => {

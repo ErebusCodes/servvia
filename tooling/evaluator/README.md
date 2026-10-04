@@ -50,13 +50,22 @@ Tests of the evaluator itself: `node --test 'tooling/evaluator/test/*.test.mjs'`
 
 A JSON file, frozen by the orchestrator in its own commit (the anchor) whose
 parent is `baseline`. Validated by `validateObjective` in `lib/objective.mjs`.
+Schema `servvia.objective/v2` for every new draft; `v1` (which carried an
+`approval` field) stays loadable for objectives already frozen.
+
+A file is a **draft** or **frozen** by where it is, never by what it says: a
+draft in `objective-drafts/` has no authority; a frozen objective is the same
+bytes committed under `objectives/` at an anchor the orchestrator recorded
+with its SHA-256. A v2 objective therefore has no `approval` field (placeholder
+approval text could only imply an authorization that does not exist).
 
 | Field | Meaning |
 | --- | --- |
-| `objectiveId`, `storyId`, `version`, `title` | identity; a changed objective is a new `version` in a new anchor |
+| `objectiveId`, `storyId`, `version`, `title` | identity; `storyId` is the epic story (`12.5`, `12.3a`), `objectiveId` is `story-<epic>-<story>-<slug>` (`story-12-3a-core-database-timeouts`), the one key of its ledger, evidence and cleanup; a changed objective is a new `version` in a new anchor |
+| `inputs` (v2) | `storySpec`: the BMAD spec's `path` and the SHA-256 of its `<intent-contract>` block; `epicContext`: the committed epic context's `path` and SHA-256. `validate` requires them on disk (the epic context committed and unmodified, the baseline the repository's HEAD); `gate` and every evaluation require them at the anchor; a candidate changing the intent contract or the epic context is an `INTEGRITY_VIOLATION` |
 | `baseline` | the commit the work starts from: the anchor commit's parent |
 | `requirementRefs`, `architectureConstraints`, `acceptanceCriteria` | traceability (PRD, `fileRestructure.md`, ADRs, the BMAD story); ACs as Given/When/Then |
-| `approval` | `approvedBy`, `reference` (where the orchestrator approved it) |
+| `approval` (v1 only) | `approvedBy`, `reference`; not allowed in v2 |
 | `environment.services` | `postgres`, `redis`: started disposable, loopback only |
 | `setup` | commands run before the checks (code generation, migrations, seed) |
 | `checks` | `id`, `category`, `runner` (`jest`, `go-test`, `node-test`, `dotnet-test`, `command`), `args`, `cwd`, `mandatory`, `minTests`, `configFiles` (configuration the check depends on: protected), optional `flakePolicy.approvedRetries` |
@@ -136,7 +145,8 @@ anything itself.
   changed during an evaluation is never overwritten. Repeated signatures are recorded as unreviewed `LESSON CANDIDATE` entries;
   nothing is promoted.
 - **Objective freeze**: `loop.mjs validate` checks a draft and prints
-  `OBJECTIVE READY FOR FREEZE` with its SHA-256; it never freezes or approves.
+  `OBJECTIVE READY FOR FREEZE` with its SHA-256, marked as a draft with no
+  authority; it never freezes or approves.
   `loop.mjs gate` is open only for an anchored objective matching the
   approved hash, whose loop is open.
 
