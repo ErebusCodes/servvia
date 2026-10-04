@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { StaffRole } from '@prisma/client';
 import { Request } from 'express';
@@ -52,6 +53,8 @@ describe('OrdersController venue scoping', () => {
         { provide: VenueAccessService, useValue: venueAccess },
         { provide: RateLimitGuard, useValue: { canActivate: () => true } },
         { provide: REDIS_CLIENT, useValue: { eval: jest.fn() } },
+        // KioskProductionAvailabilityGuard (Story 12.5) reads NODE_ENV from config.
+        { provide: ConfigService, useValue: { get: () => 'test' } },
         // TabletTokenActiveGuard (story 15-1, DL-081) is now part of this
         // controller's guard chain; it only touches Prisma for tablet_*
         // kind tokens (none of this file's fixtures are), but still needs
@@ -149,6 +152,8 @@ describe('OrdersController kitchen-role least privilege', () => {
         { provide: VenueAccessService, useValue: venueAccess },
         { provide: RateLimitGuard, useValue: { canActivate: () => true } },
         { provide: REDIS_CLIENT, useValue: { eval: jest.fn() } },
+        // KioskProductionAvailabilityGuard (Story 12.5) reads NODE_ENV from config.
+        { provide: ConfigService, useValue: { get: () => 'test' } },
         { provide: PrismaService, useValue: { tabletDevice: { findUnique: jest.fn() } } },
       ],
     }).compile();
