@@ -387,3 +387,18 @@ describe('the evaluated checkout stays the candidate', () => {
     assert.equal(readLedger(f.stateRoot, 'demo-multiply').versions[0].status, 'stopped');
   });
 });
+
+describe('the failure packet a correction receives', () => {
+  test('carries the failed assertion whole: actual and expected values, with workspace paths removed', async (t) => {
+    const f = fixture(t);
+    const { packet } = await failedC1(f);
+    const p = JSON.parse(readFileSync(packet, 'utf8'));
+    const failure = p.failures.find((x) => x.test === 'multiplies numbers');
+    assert.equal(failure.error, 'expected values to be strictly equal:');
+    assert.equal(failure.location, 'sample/multiply.test.mjs:4');
+    assert.match(failure.excerpt, /actual: 5/);
+    assert.match(failure.excerpt, /expected: 6/);
+    assert.doesNotMatch(failure.excerpt, /servvia-eval-|\/private\/|\/var\/folders|\/candidate\//);
+    assert.deepEqual(Object.keys(p).sort(), ['candidate', 'failures', 'iteration', 'objective', 'remainingCorrections', 'requiredTests', 'rules', 'schema', 'signature', 'surfaces', 'verdict']);
+  });
+});

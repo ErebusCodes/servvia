@@ -157,8 +157,14 @@ function nodeTest(check, ctx) {
     const yamlType = lines.slice(i + 1, i + 8).join('\n').match(/type: '(suite|test)'/);
     if (yamlType && yamlType[1] === 'suite') continue;
     const status = m[4] ? 'skipped' : m[2] === 'ok' ? 'passed' : 'failed';
+    // The result's YAML block: indented lines from `---` to its `...`, blank and diff lines included.
     const detail = [];
-    for (let j = i + 1; j < lines.length && /^\s+(---|\.\.\.|\w|'|")/.test(lines[j]) && !/^\s*(?:not ok|ok) \d+/.test(lines[j]); j += 1) detail.push(lines[j]);
+    if (/^\s+---$/.test(lines[i + 1] ?? '')) {
+      for (let j = i + 1; j < lines.length && (lines[j] === '' || /^\s/.test(lines[j])); j += 1) {
+        detail.push(lines[j]);
+        if (j > i + 1 && /^\s+\.\.\.$/.test(lines[j])) break;
+      }
+    }
     const name = m[3].trim();
     // A test file that failed as a whole (it did not load, or exited) is reported under its own path,
     // after the diagnostics node printed for it as TAP comments.
