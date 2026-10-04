@@ -2,7 +2,8 @@
 title: 'Story 12.5: Kiosk off in production until fixed'
 type: 'bugfix'
 created: '2026-10-04'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'a4a4190f8ff27864386485a76405c6a00125a680'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -103,9 +104,65 @@ The only counter-example is the older 403 `assertNonProduction` in `payment-obse
 - `npm test --workspace=apps/api` -- expected: the full unit suite passes.
 - `npm run lint --workspace=apps/api && npm run typecheck --workspace=apps/api` -- expected: exit 0.
 
+## Review Triage Log
+
+### 2026-10-04 — Review pass
+- verdicts: 19 findings — high 0, medium 0, low 9, false 10, maybe-false 0
+- findings:
+  - `low` `reject` (blind-hunter) The production 404 body `{statusCode:404,message:'Not Found'}` differs from Nest's unknown-route 404 (`Cannot POST /api/kiosk/orders`), so the route can be told apart — real, but the intent requires a body that "names no kiosk ... detail", which the router's body would break; the bare `NotFoundException` follows the Story 2.3 precedent the spec names. Excluded by the intent.
+  - `low` `patch` (blind-hunter) "Never 400 ... whatever the body" is wrong for malformed JSON: the body parser answers 400 before any guard — verified in a scratch run (malformed JSON gets 400 on the kiosk routes and equally on an unknown `/api/kiosk` path, so it matches a missing route and reaches no service). Patched: the three OpenAPI 404 descriptions now cover well-formed bodies and say a malformed or oversized body is refused by the shared body parser, as for any path.
+  - `false` `reject` (blind-hunter) Global guards, interceptors or middleware could run first — `main.ts` and `app.module.ts` register no `APP_GUARD`/`APP_INTERCEPTOR`; the only global middleware is RequestContext, SecurityHeaders and CSRF, and CSRF ordering was confirmed in a scratch run (403 without a CSRF pair or Bearer header, 404 after it, Redis and the service untouched).
+  - `low` `patch` (blind-hunter) `x-source` line ranges for the three paths are stale, and the guard references have no range. Patched: the handler, rate-limit and guard `x-source` lines now point at the current lines.
+  - `false` `reject` (blind-hunter) Staging loses kiosk — this is intended: the intent says any `NODE_ENV` other than exactly `development` or `test` counts as production.
+  - `low` `reject` (blind-hunter) The kiosk client is not given an "unavailable" state — the intent forbids changing any client ("Do not change any client"). Excluded by the intent.
+  - `false` `reject` (blind-hunter) The `ConfigService` stub `{ get: () => 'test' }` in `orders.controller.spec.ts` is too broad — no other guard on `OrdersController` (JwtAuth, Roles, TabletTokenActive, VenueAccess, RateLimit) reads `ConfigService`, so nothing else receives `'test'`; the stub is the objective's approved expectation change.
+  - `false` `reject` (blind-hunter) The production example breaks `NestError` — `NestError` requires only `statusCode` and `message`; `error` is optional, so both examples are valid.
+  - `false` `reject` (blind-hunter) `NODE_ENV` may not be validated and the helper has no unit test — `environment.validation.ts:11` makes `NODE_ENV` required in the Joi schema; the helper is the shared `isNonProductionRuntime`, already covered by its own tests, and the guard is proved over HTTP.
+  - `false` `reject` (blind-hunter) The story record is half updated — the workflow finalisation writes the run result and status; the frontmatter state at review time is the expected in-review state.
+  - `false` `reject` (blind-hunter) Other entry points reach the same service methods — verification-gap and edge-case layers both searched: no other caller of `create`, `createPaymentIntent` or `createConnectionToken`; other HTTP methods on these paths still get the router's own 404.
+  - `low` `reject` (edge-case-hunter) The 404 body differs from a truly missing route — same claim and same reasoning as the first row; excluded by the intent's no-kiosk-detail clause.
+  - `low` `patch` (edge-case-hunter) `x-source` points at the wrong lines — same as the stale-range row; patched with it.
+  - `low` `patch` (intent-alignment) Body parsing runs before the guard, so malformed or oversized JSON gets 400/413 in production — grouped with the malformed-JSON row; the behaviour equals a missing route and is kept, and the contract wording was patched.
+  - `false` `reject` (intent-alignment) CSRF ordering is asserted, not exercised — the CSRF middleware is unchanged and applies to every route before guards; a scratch run through the real `CsrfMiddleware` showed 403 without a CSRF pair or Bearer header and 404 with either, on all three routes.
+  - `false` `reject` (intent-alignment) The tests stub `ConfigService` instead of the validated pipeline — the guard reads `ConfigService` per request, `ConfigModule` is global (`app.module.ts`), and `NODE_ENV` is Joi-required; the stub only injects the value under test.
+  - `low` `reject` (intent-alignment) The disabled route can be told apart by body shape (reading R3b) — same as the first row; the auditor itself notes R3b conflicts with the intent's body rule.
+  - `low` `patch` (intent-alignment) The OpenAPI "never 400" promise is stronger than the code — grouped with the malformed-JSON row; patched.
+  - `false` `reject` (intent-alignment) `apps/api/test/orders.integration-spec.ts` could break if its `NODE_ENV` is not development or test — Jest sets `NODE_ENV=test` when it is unset, and `integration-setup.ts` only fills absent keys; any other value would be a production-like environment where the intent requires 404.
+
 ## Auto Run Result
 
 Status: ready-for-dev
 Blocking condition: waiting-for-objective-approval: draft _bmad-output/implementation-artifacts/objective-drafts/story-12-5-kiosk-off-in-production/v1.objective.json sha256 9c981ca56d0b9b34fd70eecbfc35150157052b7229f92e588b9974dc0f62daa0
 
 This planning run had no objective_anchor, so nothing was implemented or committed. `loop.mjs validate` reported OBJECTIVE READY FOR FREEZE for baseline 00e64adf9bd9c40501a817bf9831225a389c7725. Freezing the objective is the orchestrator's decision.
+
+### Build run 2026-10-04 (objective_anchor a4a4190f8ff27864386485a76405c6a00125a680)
+
+Status: done (candidate produced; acceptance is decided by the evaluator and the orchestrator)
+
+**Summary:** A new `KioskProductionAvailabilityGuard` runs before `RateLimitGuard` on `POST /api/kiosk/orders`, `POST /api/kiosk/stripe/connection-token` and `POST /api/kiosk/stripe/create-payment-intent`. On every request it reads `NODE_ENV` from `ConfigService` through `isNonProductionRuntime`, and anywhere other than exactly development or test it throws a bare `NotFoundException` (404 `{statusCode:404,message:'Not Found'}`). This happens before Redis, the ValidationPipe, `OrdersService`, Prisma and Stripe. Development and test, the kiosk reads and the KDS PIN exchange are unchanged.
+
+**Files changed:**
+- `apps/api/src/orders/kiosk-production-availability.guard.ts` (new): the per-request, fail-closed production guard.
+- `apps/api/src/orders/orders.controller.ts`: the guard is listed first on the three kiosk mutation routes.
+- `apps/api/src/orders/kiosk-production-availability.spec.ts` (new): HTTP-level tests RT-1 to RT-8 covering every matrix row.
+- `apps/api/src/orders/orders.controller.spec.ts`: the approved expectation change only (a `ConfigService` provider in both TestingModules).
+- `contracts/openapi/orders.yaml`: a production note and a production 404 on the three paths; current `x-source` lines.
+
+**Review findings:** 19 findings (0 high, 0 medium, 9 low, 10 false).
+- Patches applied (2 low entries): the OpenAPI wording for malformed or oversized bodies, and stale `x-source` ranges.
+- Deferred: none.
+- Rejected: the 404 body differing from the router's own 404 (the intent forbids a body that names the kiosk path); no kiosk client change (the intent forbids client changes); and 10 false findings, each with its refutation in the triage log.
+
+**Follow-up review recommended:** false. Patched: high 0, medium 0, low 2.
+
+**Verification:** run in a scratch copy of the tree with the lockfile-exact dependencies and the evaluator's test-only environment.
+- Targeted (`kiosk-production-availability orders.controller kiosk.controller`): 4 suites, 37 tests passed.
+- Full unit suite: 136 suites, 2120 tests passed, 0 failed, 0 skipped.
+- eslint: exit 0. `tsc --noEmit`: exit 0.
+- Scratch-only check (not committed) through the real `CsrfMiddleware` in production: no CSRF pair and no Bearer header gives 403; a Bearer header or a CSRF pair gives 404; Redis and the service are untouched.
+- Matrix test audit: every row is covered by a test that ran and passed.
+
+**Residual risks:**
+- A malformed or oversized JSON body still gets the shared body parser's 400/413, as on any path, including a path that does not exist.
+- RT-1 to RT-6 failing on the baseline was reasoned, not observed in this run. The evaluator checks it.

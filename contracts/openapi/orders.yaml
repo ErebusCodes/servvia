@@ -108,12 +108,19 @@ paths:
             legacy POS outbox row, printer jobs, KDS delivery row). P2002
             conflicts are recovered (see x-idempotency).
         13. Audit `CREATE_ORDER`, WebSocket broadcast, return 201.
-      x-source: apps/api/src/orders/orders.controller.ts:32-37
+
+        **Production (Story 12.5):** this route is off whenever `NODE_ENV`
+        is anything other than exactly `development` or `test` (including
+        unset). A request that gets past CSRF gets a plain `404 Not Found`,
+        as for a route that does not exist, before rate limiting, body
+        validation and any service, database or Stripe work. There is no
+        setting that re-enables it in production.
+      x-source: apps/api/src/orders/orders.controller.ts:63-68
       x-implementation: apps/api/src/orders/orders.service.ts:102-238
       x-rate-limit:
         limit: 30
         windowSeconds: 60
-        x-source: apps/api/src/orders/orders.controller.ts:33-34
+        x-source: apps/api/src/orders/orders.controller.ts:64-65
       security: []
       parameters:
         - $ref: '#/components/parameters/CsrfHeader'
@@ -151,7 +158,25 @@ paths:
         '403':
           $ref: '#/components/responses/CsrfRejected'
         '404':
-          $ref: '#/components/responses/VenueNotFound'
+          description: |
+            Development and test: `Venue not found` (venue id unknown,
+            orders.service.ts:1038-1044).
+            Production (Story 12.5): the route does not exist. Returned for
+            every request that gets past CSRF with a well-formed JSON body
+            (or none), empty or invalid, before rate limiting and body
+            validation, so never 429 or 503 and never a validation 400. A
+            malformed or oversized body is refused (400/413) by the shared
+            body parser before routing, as for any path. The body carries no
+            route, provider or configuration detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+              examples:
+                venueNotFound:
+                  value: { statusCode: 404, message: Venue not found, error: Not Found }
+                production:
+                  value: { statusCode: 404, message: Not Found }
+          x-source: apps/api/src/orders/kiosk-production-availability.guard.ts:18-32 (production), apps/api/src/orders/orders.service.ts:1038-1044 (venue)
         '409':
           $ref: '#/components/responses/OrderConflict'
         '422':
@@ -182,12 +207,19 @@ paths:
       description: |
         Creates a Stripe Terminal connection token with Stripe API version
         `2024-06-20`. No request body is read.
-      x-source: apps/api/src/orders/orders.controller.ts:39-44
+
+        **Production (Story 12.5):** this route is off whenever `NODE_ENV`
+        is anything other than exactly `development` or `test` (including
+        unset). A request that gets past CSRF gets a plain `404 Not Found`,
+        as for a route that does not exist, before rate limiting, body
+        validation and any service, database or Stripe work. There is no
+        setting that re-enables it in production.
+      x-source: apps/api/src/orders/orders.controller.ts:70-75
       x-implementation: apps/api/src/orders/orders.service.ts:951-962
       x-rate-limit:
         limit: 20
         windowSeconds: 60
-        x-source: apps/api/src/orders/orders.controller.ts:41
+        x-source: apps/api/src/orders/orders.controller.ts:71-72
       security: []
       parameters:
         - $ref: '#/components/parameters/CsrfHeader'
@@ -204,6 +236,20 @@ paths:
                   secret: { type: string }
         '403':
           $ref: '#/components/responses/CsrfRejected'
+        '404':
+          description: |
+            Production (Story 12.5): the route does not exist. Returned for
+            every request that gets past CSRF with a well-formed JSON body
+            (or none), empty or invalid, before rate limiting and body
+            validation, so never 429 or 503 and never a validation 400. A
+            malformed or oversized body is refused (400/413) by the shared
+            body parser before routing, as for any path. The body carries no
+            route, provider or configuration detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+              example: { statusCode: 404, message: Not Found }
+          x-source: apps/api/src/orders/kiosk-production-availability.guard.ts:18-32
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':
@@ -227,12 +273,19 @@ paths:
         Calls `stripe.paymentIntents.create({ amount: amountCents, currency:
         'nzd', payment_method_types: ['card_present'] })` (API version
         `2024-06-20`). No capture_method is passed (Stripe default applies).
-      x-source: apps/api/src/orders/orders.controller.ts:46-51
+
+        **Production (Story 12.5):** this route is off whenever `NODE_ENV`
+        is anything other than exactly `development` or `test` (including
+        unset). A request that gets past CSRF gets a plain `404 Not Found`,
+        as for a route that does not exist, before rate limiting, body
+        validation and any service, database or Stripe work. There is no
+        setting that re-enables it in production.
+      x-source: apps/api/src/orders/orders.controller.ts:77-82
       x-implementation: apps/api/src/orders/orders.service.ts:964-979
       x-rate-limit:
         limit: 20
         windowSeconds: 60
-        x-source: apps/api/src/orders/orders.controller.ts:48
+        x-source: apps/api/src/orders/orders.controller.ts:78-79
       security: []
       parameters:
         - $ref: '#/components/parameters/CsrfHeader'
@@ -257,6 +310,20 @@ paths:
           $ref: '#/components/responses/ValidationFailed'
         '403':
           $ref: '#/components/responses/CsrfRejected'
+        '404':
+          description: |
+            Production (Story 12.5): the route does not exist. Returned for
+            every request that gets past CSRF with a well-formed JSON body
+            (or none), empty or invalid, before rate limiting and body
+            validation, so never 429 or 503 and never a validation 400. A
+            malformed or oversized body is refused (400/413) by the shared
+            body parser before routing, as for any path. The body carries no
+            route, provider or configuration detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NestError' }
+              example: { statusCode: 404, message: Not Found }
+          x-source: apps/api/src/orders/kiosk-production-availability.guard.ts:18-32
         '429':
           $ref: '#/components/responses/RateLimited'
         '503':

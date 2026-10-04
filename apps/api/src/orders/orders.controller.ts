@@ -25,6 +25,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { RateLimit } from '../auth/decorators/rate-limit.decorator';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
+import { KioskProductionAvailabilityGuard } from './kiosk-production-availability.guard';
 import { auditActorFromUser } from '../audit/audit-actor';
 import { VenueAccessService } from '../auth/venue-access/venue-access.service';
 import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
@@ -56,23 +57,25 @@ export class OrdersController {
     private readonly venueAccess: VenueAccessService,
   ) {}
 
-  // 1. Kiosk public order creation
+  // 1. Kiosk public order creation and payment. Off in production (Story
+  // 12.5): KioskProductionAvailabilityGuard runs first and answers 404 before
+  // rate limiting, body validation and the service.
   @Post('kiosk/orders')
-  @UseGuards(RateLimitGuard)
+  @UseGuards(KioskProductionAvailabilityGuard, RateLimitGuard)
   @RateLimit({ limit: 30, windowSeconds: 60 })
   create(@Body() dto: CreateOrderDto) {
     return this.ordersService.create(dto);
   }
 
   @Post('kiosk/stripe/connection-token')
-  @UseGuards(RateLimitGuard)
+  @UseGuards(KioskProductionAvailabilityGuard, RateLimitGuard)
   @RateLimit({ limit: 20, windowSeconds: 60 })
   createConnectionToken() {
     return this.ordersService.createConnectionToken();
   }
 
   @Post('kiosk/stripe/create-payment-intent')
-  @UseGuards(RateLimitGuard)
+  @UseGuards(KioskProductionAvailabilityGuard, RateLimitGuard)
   @RateLimit({ limit: 20, windowSeconds: 60 })
   createPaymentIntent(@Body() body: CreatePaymentIntentDto) {
     return this.ordersService.createPaymentIntent(body.amountCents);
