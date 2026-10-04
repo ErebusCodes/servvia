@@ -34,6 +34,9 @@
  * integration-setup.ts has applied `INTEGRATION_DATABASE_URL`):
  *
  *   * the host is `localhost` or `127.0.0.1`;
+ *   * no query parameter is named `host` (in any letter case, with any value,
+ *     empty or repeated): the query engine prefers a `host` query parameter
+ *     over the URL's host, so the host above would not be the one connected to;
  *   * the database name does not look like production;
  *   * `NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE` is set and equals that
  *     database's exact name. The opt-in vouches for ONE named database, never
@@ -71,13 +74,22 @@ const OPT_IN_KEY = 'NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE';
 // private to that file. That refusal is a second layer, not this guard.
 const PRODUCTION_LIKE_NAME = /(^|[_-])(prod|production|live)([_-]|$)|production/i;
 
-/** Host and database name of a connection URL, or null if it cannot be read. */
-function targetOf(raw: string | undefined): { host: string; name: string } | null {
+/**
+ * Host, database name and whether a `host` query parameter is present, for a
+ * connection URL; or null if it cannot be read. `searchParams` yields decoded
+ * names (`%68ost` arrives as `host`), one entry per occurrence, empty included.
+ */
+function targetOf(
+  raw: string | undefined,
+): { host: string; name: string; hasHostParameter: boolean } | null {
   if (!raw) return null;
   try {
     const parsed = new URL(raw);
     const name = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
-    return name === '' ? null : { host: parsed.hostname, name };
+    const hasHostParameter = [...parsed.searchParams.keys()].some(
+      (key) => key.toLowerCase() === 'host',
+    );
+    return name === '' ? null : { host: parsed.hostname, name, hasHostParameter };
   } catch {
     return null;
   }
@@ -88,6 +100,7 @@ const vouchedFor = process.env[OPT_IN_KEY] ?? '';
 const optedIn =
   target !== null &&
   (target.host === 'localhost' || target.host === '127.0.0.1') &&
+  !target.hasHostParameter &&
   !PRODUCTION_LIKE_NAME.test(target.name) &&
   vouchedFor !== '' &&
   vouchedFor === target.name;
@@ -101,7 +114,8 @@ if (!optedIn) {
   console.warn(
     '\n[native-round-recovery.integration-spec] SKIPPED. NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE ' +
       'must equal the name of the local, non-production database DATABASE_URL points at, ' +
-      'and this spec truncates tables. Point DATABASE_URL at a throwaway PostgreSQL and set ' +
+      'and this spec truncates tables. DATABASE_URL must also carry no `host` query parameter. ' +
+      'Point DATABASE_URL at a throwaway PostgreSQL and set ' +
       'the opt-in to its name (see the header) to run it.\n',
   );
 }

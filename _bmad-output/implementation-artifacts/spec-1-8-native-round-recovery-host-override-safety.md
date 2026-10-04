@@ -2,12 +2,34 @@
 title: 'Story 1.8: Native-round-recovery tests refuse a DATABASE_URL host query override'
 type: 'bugfix'
 created: '2026-10-04'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: '18034fb7eca030cae4212910518a82002f7b5dc1'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The host-parameter refusal has no lasting regression protection: only the frozen objective's native-round-recovery-fail-safe check exercises it, and CI api-integration only runs the safe configuration.
+    evidence: |-
+      Verification-gap layer (pre-verified) and Blind Hunter: no repo test or CI job runs the guard with a host query parameter; deleting `!target.hasHostParameter` would keep every repo check green. The intent forbids adding tests and touching .github/**, so this belongs with the already-recorded CI-hardening follow-up (promote the fail-safe cases into a repo-owned check run by api-integration).
+    location: >-
+      apps/api/test/native-round-recovery.integration-spec.ts (optedIn guard); .github/workflows/ci.yml api-integration
+    severity: medium
+  - summary: >-
+      integration-setup.ts, the second guard layer, enforces no host locality and does not refuse a host query parameter.
+    evidence: |-
+      Pre-existing, recorded in the spec as Recorded-not-in-scope (a) and in the frozen objective's architecture constraints; the intent forbids changing integration-setup.ts.
+    location: >-
+      apps/api/test/integration-setup.ts
+    severity: medium
+  - summary: >-
+      Query parameters other than host (notably libpq `service`, also `port`/`user`) were not measured as connection redirectors in this stack.
+    evidence: |-
+      The orchestrator measured hostaddr, dbname and database as NOT honoured by Prisma 5.22's Rust engine (database always from the path), which refutes the Blind Hunter claim for those. `service` (libpq service file) was not measured; settle by testing `?service=` against the Prisma 5.22 engine without a reachable server, as was done for host.
+    location: >-
+      apps/api/test/native-round-recovery.integration-spec.ts (targetOf)
+    severity: medium (unverified)
 ---
 
 <intent-contract>
@@ -84,6 +106,22 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-04 — Review pass
+- verdicts: 12 findings — high 0, medium 3, low 1, false 7, maybe-false 1
+- findings:
+  - `[maybe-false]` `[defer]` (Blind Hunter) Other redirecting query parameters (hostaddr, service, dbname/database, port, user) are not refused. — Measured evidence in the objective refutes hostaddr/dbname/database for Prisma 5.22's engine (database always from the path, opt-in reads the path); `service` was not measured; settle by testing `?service=` against the engine without a reachable server. Deferred as medium (unverified).
+  - `[medium]` `[defer]` (Blind Hunter) No test covers the new refusal; a regression would show only as a quiet skip. — Grouped with the verification-gap finding below (same root cause: no repo-owned check of the refusal). For this candidate the rows are exercised by the objective's 14-case fail-safe check, and a local scratch run of all 14 cases plus an admission control passed; lasting protection needs the CI-hardening follow-up because the intent forbids adding tests.
+  - `[medium]` `[defer]` (Blind Hunter) integration-setup.ts, the second layer, was not updated for the host parameter. — Real but pre-existing and excluded by the intent (Never change integration-setup.ts); recorded in the spec as (a).
+  - `[false]` `[reject]` (Blind Hunter) The header's engine claim has no source. — The comment states the measured behaviour accurately; its provenance (Prisma 5.22 Rust engine, orchestrator measurement 2026-10-04) is in this spec's Intent and the frozen objective, so no reader is misled.
+  - `[low]` `[reject]` (Blind Hunter) The skip warning does not say which condition failed; wording slightly awkward. — Cosmetic; the warning names the host-parameter rule explicitly; per-reason reporting would add branches to the guard, and the intent fixes the warning's tag/opt-in shape.
+  - `[false]` `[reject]` (Blind Hunter) Unsafe URLs only skip, never fail hard. — The intent mandates exactly this refusal: the existing conditional skip alias with the console.warn.
+  - `[false]` `[reject]` (Blind Hunter) Spec moved to in-review with no record of work. — Workflow bookkeeping: the Auto Run Result is written at Finalize; any fix would edit this build's spec.
+  - `[false]` `[reject]` (Blind Hunter) Unix-socket `?host=/path` URLs are now always refused, undocumented. — Intended (any value is refused) and documented: the header says "with any value" and the warning says DATABASE_URL must carry no `host` query parameter.
+  - `[false]` `[reject]` (Intent Alignment) The diff acts on the predicate surface while the intent lives at the runtime surface, which nothing in the change exercises. — The runtime surface was exercised: a scratch jest run of all 14 refusal configurations (0 tests executed, guard/refusal evidence, no connection attempt) plus a safe-configuration control (16 executed against an unreachable port) passed; the 16-pass row is the evaluator's api-integration. Diff implements reading R1, no divergence.
+  - `[medium]` `[defer]` (Verification Gap) The host-parameter refusal is checked only by the one-off objective, not by any repo test or CI. — Pre-verified gap with disposition defer; grouped with the Blind Hunter no-test finding; intent forbids tests and .github changes; belongs to the CI-hardening follow-up.
+  - `[false]` `[reject]` (Verification Gap, other) withUtcSession re-serialization keeps the check consistent; no defect found. — Not a defect claim.
+  - `[false]` `[reject]` (Edge Case Hunter) Diff vs 0b89494 also lists the frozen v1.objective.json, and baseline_revision is 18034fb. — The objective file comes from the orchestrator's freeze commit 18034fb (the anchor), not the candidate; the diff from the anchor lists only the guard file and this spec; baseline_revision is the run's start commit as step-03 requires.
+
 ## Design Notes
 
 **Why refuse every `host` parameter.** The engine accepts only the exact decoded name `host` and uses the LAST value when it is repeated, while `URLSearchParams.get` returns the first. An empty `host=` still overrides. Copying that algorithm would tie the guard to one engine version's parsing. Refusing any parameter whose decoded name lower-cases to `host` is a strict superset of the engine's behaviour. It also fails closed if a future driver matches the name case-insensitively. A legitimate local run never needs the parameter.
@@ -116,5 +154,22 @@ const hasHostParameter = [...parsed.searchParams.keys()].some((k) => k.toLowerCa
 
 ## Auto Run Result
 
-Status: ready-for-dev
-Blocking condition: waiting-for-objective-approval: draft _bmad-output/implementation-artifacts/objective-drafts/story-1-8-native-round-recovery-host-override-safety/v1.objective.json sha256 f1cc2e9c54b988b2a64cb4e448267545a5db0ccc565e2b7f35e878e5dfefa966
+Status: done (CANDIDATE PRODUCED; technical completion is the evaluator's decision only)
+
+**Summary.** The native-round-recovery guard now also refuses when DATABASE_URL (as seen after integration-setup.ts) carries any query parameter whose decoded name lower-cases to `host`, whatever its value (empty and repeated included): `targetOf` returns `hasHostParameter` from `[...parsed.searchParams.keys()].some((key) => key.toLowerCase() === 'host')`, and `optedIn` requires `!target.hasHostParameter`. The engine's effective-host choice is not modelled.
+
+**Files changed.**
+- `apps/api/test/native-round-recovery.integration-spec.ts` — guard (`targetOf`, `optedIn`), its header-comment refusal list, and one added sentence in the warning after the unchanged tag and opt-in name.
+- `_bmad-output/implementation-artifacts/spec-1-8-native-round-recovery-host-override-safety.md` — workflow bookkeeping outside the intent contract.
+
+**Review.** 12 findings: 0 patches applied (patched counts: high 0, medium 0, low 0); 3 deferred (no lasting CI regression check for the refusal; integration-setup.ts host locality, pre-existing; unmeasured `service` parameter, unverified); 9 rejected with reasons in the Review Triage Log.
+
+**Follow-up review recommendation:** false (no patched entries).
+
+**Verification.**
+- Lint (`eslint "{src,apps,libs,test}/**/*.ts"`) and typecheck (`tsc --noEmit`) from apps/api in a scratch export: exit 0.
+- `git diff --name-only` from the anchor 18034fb: only the guard file and this spec. From 0b89494 it also lists the frozen objective, which the anchor commit itself added.
+- Recovery suite from the `describeOrSkip` marker to EOF: SHA-256 `f99f78cc8974a7315ee848ef02044a34e81968d34faec76fbe4f68926f9008f0`, marker once; 16 `it(` calls; no call-form skip/focus or suppression in added lines.
+- Scratch jest runs (DATABASE_URL on 127.0.0.1:1, nothing listening; Redis pointed at port 1): all 14 fail-safe configurations discovered the file, executed 0 recovery tests and showed the guard warning or integration-setup refusal with no connection attempt; a safe-configuration control executed all 16 (the guard admits). The 16-pass row needs PostgreSQL and is the evaluator's api-integration check; API unit tests were not run locally (evaluator).
+
+**Residual risks.** The deferred items above; and the CI DRIFT COULD FALSE-GREEN follow-up recorded in Design Notes.
