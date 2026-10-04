@@ -85,7 +85,11 @@ approval text could only imply an authorization that does not exist).
   objective's `expectationChanges` authorizes the path. Otherwise: removing or
   disabling tests (a deleted test file, fewer tests in a file, an added skip
   or focus) or changing a check's own `configFiles` is an
-  `INTEGRITY_VIOLATION`; any other change is `NEEDS_REVIEW`.
+  `INTEGRITY_VIOLATION`; any other change is `NEEDS_REVIEW`. A **new** test
+  or expectation-surface file is evidence the checks may pick up: outside the
+  objective's `surfaces.allowed` (and not an approved `expectationChanges`
+  path) it is an `INTEGRITY_VIOLATION` (`unauthorized-surface-added`), never
+  exempt for being new.
 
 ## Verdicts
 
