@@ -19,7 +19,9 @@ export function evaluateCheck(check, run, objective) {
   const floor = check.minTests ?? (check.runner === 'command' ? 0 : 1);
   const executed = run.counts.passed + run.counts.failed;
 
-  if (mandatory && executed < floor) {
+  // A check that did not build has no meaningful count: it fails below, and
+  // removed or disabled tests are judged statically from the commits.
+  if (mandatory && executed < floor && !run.buildFailed) {
     reasons.push({ severity: 'INTEGRITY_VIOLATION', code: 'too-few-tests', check: check.id, detail: `executed ${executed} tests, the objective requires at least ${floor}` });
   }
   const failed = run.counts.failed > 0 || (run.exitCode !== 0 && run.exitCode !== null) || run.timedOut;

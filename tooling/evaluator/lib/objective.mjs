@@ -39,7 +39,7 @@ export function checkBaseline(repo, anchorCommit, objective) {
 }
 
 const SHA = /^[0-9a-f]{40}$/;
-const RUNNERS = ['jest', 'go-test', 'node-test', 'command'];
+const RUNNERS = ['jest', 'go-test', 'node-test', 'dotnet-test', 'command'];
 const CATEGORIES = ['unit', 'integration', 'architecture', 'contract', 'parity', 'race', 'lint', 'typecheck', 'build', 'migration', 'other'];
 const BASELINE_EXCEPTIONS = ['regression-characterization', 'architecture-completeness', 'refactoring-invariant', 'coverage'];
 

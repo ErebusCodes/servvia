@@ -20,7 +20,7 @@ never taken from the candidate:
 | The evaluator's code and policy | the anchor commit: the running evaluator refuses to work (`HARNESS_ERROR`) unless every one of its files is identical to the anchor's `tooling/evaluator/` |
 | The environment | `env/evaluation.json` at the anchor, plus the disposable services the evaluator starts; nothing is inherited from the shell and no `.env` is read |
 | The code under test | `git archive` of the candidate commit into a fresh directory, never a working tree |
-| The verdict | computed from runner output (Jest JSON, `go test -json`, Node TAP, exit codes) |
+| The verdict | computed from runner output (Jest JSON, `go test -json`, Node TAP, .NET TRX, exit codes) |
 
 The guarantee is **detection by reconstruction**, not prevention: under one
 Unix account an implementer can write anywhere, but anything it changes in
@@ -39,7 +39,7 @@ node /tmp/eval-anchor/tooling/evaluator/bin/evaluate.mjs \
   --objective-sha256 <hash recorded at approval> \
   --candidate <sha> \
   --node-modules <a node_modules root>   # dependencies (linked, never written)
-  # optional: --go-root, --go-modcache, --pg-bin, --redis-bin, --evidence-dir
+  # optional: --go-root, --go-modcache, --dotnet-root, --nuget-packages, --pg-bin, --redis-bin, --evidence-dir
 ```
 
 Exit code: 0 `PASS`, 1 `FAIL`, 2 `NEEDS_REVIEW`, 3 `INTEGRITY_VIOLATION`, 4 `HARNESS_ERROR`.
@@ -59,7 +59,7 @@ parent is `baseline`. Validated by `validateObjective` in `lib/objective.mjs`.
 | `approval` | `approvedBy`, `reference` (where the orchestrator approved it) |
 | `environment.services` | `postgres`, `redis`: started disposable, loopback only |
 | `setup` | commands run before the checks (code generation, migrations, seed) |
-| `checks` | `id`, `category`, `runner` (`jest`, `go-test`, `node-test`, `command`), `args`, `cwd`, `mandatory`, `minTests`, `configFiles` (configuration the check depends on: protected), optional `flakePolicy.approvedRetries` |
+| `checks` | `id`, `category`, `runner` (`jest`, `go-test`, `node-test`, `dotnet-test`, `command`), `args`, `cwd`, `mandatory`, `minTests`, `configFiles` (configuration the check depends on: protected), optional `flakePolicy.approvedRetries` |
 | `requiredTests` | tests that must run and pass; `expectBaselineFailure: true` (with `files`) means the evaluator also runs them on the baseline and expects them to fail there; `false` needs a `baselineException`: `regression-characterization`, `architecture-completeness`, `refactoring-invariant` or `coverage` |
 | `surfaces.allowed`, `surfaces.forbidden` | where the implementation may and may not change code |
 | `expectationChanges` | existing tests, fixtures, snapshots, manifests or build configuration the story is approved to change, each with a reason; authorizing a test file never authorizes removing its tests: each removed test must be named in `retiresTests` |
@@ -84,7 +84,7 @@ Strongest first; the strongest present wins.
 
 | Verdict | Meaning |
 | --- | --- |
-| `INTEGRITY_VIOLATION` | the candidate changed what judges it, removed or disabled tests, does not descend from the anchor, the objective does not match its approved hash, or a mandatory check executed fewer tests than its floor |
+| `INTEGRITY_VIOLATION` | the candidate changed what judges it, removed or disabled tests, does not descend from the anchor, the objective does not match its approved hash, or a mandatory check that built executed fewer tests than its floor (a check that did not build is a FAIL: its count means nothing, and removed tests are judged statically) |
 | `HARNESS_ERROR` | the evaluation could not be carried out (unknown commit, an evaluator that is not the frozen one, invalid objective, a tool that would not start) |
 | `FAIL` | a mandatory check or a required test failed, or a required test is missing |
 | `NEEDS_REVIEW` | possibly legitimate, not authorized: an unapproved change to an existing test or surface, a new suppression, a skip at run time, a required test that already passes on the baseline, a check that failed and then passed on retry (a flake) without an approved flake policy |
@@ -168,3 +168,37 @@ This is not the final retention architecture. Nothing is written to `PRD/` or co
   modification of an existing test (`NEEDS_REVIEW`).
 - The baseline-failure proof places only the listed test `files` on the
   baseline; tests that need new fixtures elsewhere must list them too.
+
+## .NET (`dotnet-test`)
+
+A `dotnet-test` check names only what to test (`args`: a solution, project
+and options such as `-c Release`; `cwd`). The evaluator adds the TRX logger,
+its own results directory, `--disable-build-servers` and
+`UseSharedCompilation=false`, and reads every TRX file the run writes (one
+per test assembly).
+
+- `dotnet` is the one in `--dotnet-root <dir>` (the SDK directory holding the
+  `dotnet` executable, e.g. Homebrew's `/opt/homebrew/opt/dotnet/libexec`),
+  placed on the evaluator's own `PATH`; there is no fallback to the
+  operator's `PATH`. The environment sets `DOTNET_ROOT`, a scratch
+  `DOTNET_CLI_HOME` (so no user-level NuGet configuration or credentials are
+  read), `NUGET_PACKAGES` (`--nuget-packages <dir>` for a primed cache, else a
+  scratch one restored from the default source), and turns off telemetry,
+  node reuse and the MSBuild server, so no process outlives the check.
+- Results: every `UnitTestResult` by its fully qualified `testName`
+  (theories have one result per data row); `Passed` passes, `NotExecuted`,
+  `Inconclusive`, `Pending`, `NotRunnable` and `Disconnected` are skipped,
+  anything else fails. A file whose own counter disagrees with the results
+  read is a harness error.
+- A compile error (`error CS…`, `MSB…`, `NETSDK…`) is a failed result named
+  `dotnet build (failed)`; a restore failure (`error NU…`), a dotnet that
+  cannot be started or a run with no results is a harness error.
+- Stack-trace locations (`File.cs:line N`) are made repository-relative, so
+  failure packets carry them.
+- C# test identity: `*Tests.cs` / `*Test.cs` are test files; xUnit `[Fact]`,
+  `[Theory]` and the `Skippable` variants are counted and named by method, so
+  a removed test needs `retiresTests`; `Skip =`, `Skip.If…` and `Assert.Skip…`
+  are skips; `#pragma warning disable` and `[SuppressMessage]` are
+  suppressions; project, solution, runsettings, `Directory.Build.*`,
+  `global.json` and NuGet configuration files are expectation surfaces.
+

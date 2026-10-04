@@ -19,7 +19,9 @@
     "**/*.test.tsx",
     "**/*.test.js",
     "**/*.test.mjs",
-    "**/*_test.go"
+    "**/*_test.go",
+    "**/*Tests.cs",
+    "**/*Test.cs"
   ],
   "expectationSurfaces": [
     "**/__snapshots__/**",
@@ -38,14 +40,29 @@
     "**/vite.config.*",
     "**/vitest.config.*",
     "**/test-setup.ts",
-    ".github/**"
+    ".github/**",
+    "**/*.csproj",
+    "**/*.sln",
+    "**/*.slnx",
+    "**/*.runsettings",
+    "**/Directory.Build.props",
+    "**/Directory.Build.targets",
+    "**/Directory.Packages.props",
+    "**/global.json",
+    "**/NuGet.Config",
+    "**/NuGet.config",
+    "**/nuget.config",
+    "**/xunit.runner.json"
   ],
   "skipPatterns": [
     "\\b(?:describe|it|test|context|suite)\\.(?:skip|only|todo)\\s*\\(",
     "\\b(?:xit|xtest|xdescribe|fit|fdescribe)\\s*\\(",
     "\\bt\\.(?:Skip|SkipNow|Skipf)\\s*\\(",
     "\\{\\s*(?:skip|only|todo)\\s*:\\s*(?:true|['\"`])",
-    "\\bt\\.(?:skip|todo)\\s*\\("
+    "\\bt\\.(?:skip|todo)\\s*\\(",
+    "\\[\\s*(?:Xunit\\.)?(?:Fact|Theory|SkippableFact|SkippableTheory)(?:Attribute)?\\s*\\([^\\]]*\\bSkip\\s*=",
+    "\\bSkip\\.(?:If|IfNot|When|Unless)\\s*\\(",
+    "\\bAssert\\.Skip(?:When|Unless)?\\s*\\("
   ],
   "suppressionPatterns": [
     "eslint-disable",
@@ -54,7 +71,9 @@
     "@ts-nocheck",
     "//\\s*nolint",
     "#\\s*type:\\s*ignore",
-    "istanbul ignore"
+    "istanbul ignore",
+    "#\\s*pragma\\s+warning\\s+disable",
+    "\\[\\s*(?:assembly\\s*:\\s*)?SuppressMessage\\b"
   ],
   "loop": {
     "maxCorrections": 2,

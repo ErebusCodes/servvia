@@ -77,7 +77,7 @@ export function objectiveFor(baseline, overrides = {}) {
  * A repository at baseline B (evaluator + project), with the objective frozen
  * at anchor A (child of B). Returns helpers to build candidates on A.
  */
-export function makeFixture(objectiveOverrides = {}) {
+export function makeFixture(objectiveOverrides = {}, { baselineFiles = {} } = {}) {
   const repo = mkdtempSync(join(tmpdir(), 'servvia-eval-fixture-'));
   git(repo, 'init', '-q', '-b', 'main');
   git(repo, 'config', 'user.email', 'fixture@invalid');
@@ -88,6 +88,7 @@ export function makeFixture(objectiveOverrides = {}) {
     'sample/math.mjs': 'export const add = (a, b) => a + b;\n',
     'sample/math.test.mjs': ADD_TESTS,
     'sample/check.config.json': '{ "note": "configuration an objective check depends on" }\n',
+    ...baselineFiles,
   }, 'baseline');
   const objective = objectiveFor(baseline, objectiveOverrides);
   const bytes = `${JSON.stringify(objective, null, 2)}\n`;

@@ -8,7 +8,7 @@
 //   loop.mjs gate     --repo <path> --anchor-commit <sha> --objective <path> --objective-sha256 <hex>
 //       GATE OPEN only for a frozen, approved objective whose loop is open.
 //   loop.mjs advance  --repo ... --anchor-commit ... --objective ... --objective-sha256 ... --candidate <sha>
-//       [--node-modules ... --go-root ... --go-modcache ... --pg-bin ... --redis-bin ...]
+//       [--node-modules ... --go-root ... --go-modcache ... --dotnet-root ... --nuget-packages ... --pg-bin ... --redis-bin ...]
 //       evaluates the next candidate and prints the decision.
 //   loop.mjs status   --objective-id <id>
 //   loop.mjs cleanup  --older-than-days <n>  |  --purge-objective <id>
@@ -70,6 +70,8 @@ if (command === 'advance') {
       nodeModules: args['node-modules'] && resolve(args['node-modules']),
       goRoot: args['go-root'] && resolve(args['go-root']),
       goModCache: args['go-modcache'] && resolve(args['go-modcache']),
+      dotnetRoot: args['dotnet-root'] && resolve(args['dotnet-root']),
+      nugetPackages: args['nuget-packages'] && resolve(args['nuget-packages']),
       pgBin: args['pg-bin'] ?? '/opt/homebrew/opt/postgresql@18/bin',
       redisBin: args['redis-bin'] ?? '/opt/homebrew/bin',
     },

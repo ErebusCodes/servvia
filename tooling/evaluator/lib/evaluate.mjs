@@ -50,13 +50,21 @@ function toolVersion(argv) {
 }
 
 function buildEnv({ base, tools, home, goCache, services }) {
-  const path = [dirname(process.execPath), tools.goRoot && join(tools.goRoot, 'bin'), '/usr/bin', '/bin', '/usr/sbin', '/sbin']
+  const path = [dirname(process.execPath), tools.goRoot && join(tools.goRoot, 'bin'), tools.dotnetRoot, '/usr/bin', '/bin', '/usr/sbin', '/sbin']
     .filter(Boolean).join(':');
   const env = { ...base, PATH: path, HOME: home, TZ: 'UTC', LANG: 'C.UTF-8', CI: 'true' };
   if (tools.goRoot) {
     Object.assign(env, {
       GOROOT: tools.goRoot, GOMODCACHE: tools.goModCache, GOCACHE: goCache, GOPATH: join(home, 'gopath'),
       GOFLAGS: '-mod=readonly', GOPROXY: 'off', GOTOOLCHAIN: 'local', GOTELEMETRY: 'off', GOSUMDB: 'off',
+    });
+  }
+  if (tools.dotnetRoot) {
+    // The SDK the operator names, with no user-level NuGet configuration, build servers or telemetry.
+    Object.assign(env, {
+      DOTNET_ROOT: tools.dotnetRoot, DOTNET_CLI_HOME: home, NUGET_PACKAGES: tools.nugetPackages ?? join(home, '.nuget', 'packages'),
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1', DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1', DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false',
+      MSBUILDDISABLENODEREUSE: '1', DOTNET_CLI_DO_NOT_USE_MSBUILD_SERVER: '1',
     });
   }
   if (services.redis) Object.assign(env, { REDIS_HOST: services.redis.host, REDIS_PORT: String(services.redis.port), SERVVIA_CORE_TEST_REDIS_ADDR: `${services.redis.host}:${services.redis.port}` });
@@ -80,7 +88,7 @@ function runPhase({ objective, checks, cwd, env, scratch, tools, label, retry })
   }
   const runs = {};
   for (const check of checks) {
-    const ctx = { node: process.execPath, go: tools.goRoot ? join(tools.goRoot, 'bin', 'go') : 'go', cwd: join(cwd, check.cwd ?? '.'), cwdInRepo: (check.cwd ?? '.').replace(/^\.\/?/, ''), env: { ...env, ...(check.env ?? {}) }, scratch, attempt: `${label}-1` };
+    const ctx = { node: process.execPath, go: tools.goRoot ? join(tools.goRoot, 'bin', 'go') : 'go', dotnet: tools.dotnetRoot ? join(tools.dotnetRoot, 'dotnet') : 'dotnet', cwd: join(cwd, check.cwd ?? '.'), cwdInRepo: (check.cwd ?? '.').replace(/^\.\/?/, ''), env: { ...env, ...(check.env ?? {}) }, scratch, attempt: `${label}-1` };
     const started = Date.now();
     let run = runCheck(check, ctx);
     run.durationMs = Date.now() - started;
@@ -117,7 +125,7 @@ function excerpts(runs, setup, secrets) {
 /**
  * Evaluate `candidate` against the objective frozen at `anchor`.
  * opts: { repo, anchor: { commit, objectivePath, objectiveSha256 }, candidate,
- *         evidenceRoot, tools: { nodeModules, goRoot, goModCache, pgBin, redisBin },
+ *         evidenceRoot, tools: { nodeModules, goRoot, goModCache, dotnetRoot, nugetPackages, pgBin, redisBin },
  *         evaluatorRoot, keepWorkspace }
  */
 export async function evaluate(opts) {
@@ -193,6 +201,7 @@ export async function evaluate(opts) {
     record.environment = {
       os: `${platform()} ${arch()}`, node: process.version, timezone: env.TZ,
       go: tools.goRoot ? toolVersion([join(tools.goRoot, 'bin', 'go'), 'version']) : null,
+      dotnet: tools.dotnetRoot ? toolVersion([join(tools.dotnetRoot, 'dotnet'), '--version']) : null,
       postgres: services.postgres?.version ?? null, redis: services.redis?.version ?? null,
       variables: Object.keys(env).sort(),
     };

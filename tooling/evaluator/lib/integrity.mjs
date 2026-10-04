@@ -18,21 +18,35 @@ import { addedLines, changedPaths, showFile } from './git.mjs';
 export const IV = 'INTEGRITY_VIOLATION';
 export const NR = 'NEEDS_REVIEW';
 
-/** it(...) / test(...) declarations in JS/TS, func TestX( in Go. */
+/** xUnit test attributes ([Fact], [Theory], and the Skippable variants), with or without arguments. */
+const CS_TEST_ATTRIBUTE = /\[\s*(?:Xunit\.)?(?:Fact|Theory|SkippableFact|SkippableTheory)(?:Attribute)?\s*(?:\([^\]]*\))?\s*\]/g;
+
+/** it(...) / test(...) declarations in JS/TS, func TestX( in Go, xUnit test methods in C#. */
 export function countTests(path, text) {
   if (text == null) return 0;
   if (path.endsWith('.go')) return (text.match(/^func Test\w*\s*\(/gm) ?? []).length;
+  if (path.endsWith('.cs')) return (text.match(CS_TEST_ATTRIBUTE) ?? []).length;
   return (text.match(/(?<![\w.$])(?:it|test)\s*(?:\.each\s*\([^)]*\)\s*)?\(/g) ?? []).length;
 }
 
 /**
  * Names of the tests declared in a file: it('…')/test('…') string titles in
- * JS/TS, func TestX in Go. Dynamic titles are not extracted; the count check
+ * JS/TS, func TestX in Go, xUnit test methods in C#. Dynamic titles are not extracted; the count check
  * below still covers them.
  */
 export function testNames(path, text) {
   if (text == null) return [];
   if (path.endsWith('.go')) return [...text.matchAll(/^func (Test\w*)\s*\(/gm)].map((m) => m[1]);
+  if (path.endsWith('.cs')) {
+    // The first method declared after each test attribute (data attributes and comments may sit between).
+    const names = [];
+    for (const m of text.matchAll(CS_TEST_ATTRIBUTE)) {
+      const rest = text.slice(m.index + m[0].length);
+      const method = rest.match(/\b(?:public|internal|private|protected)\s+(?:(?:static|async|override|virtual|unsafe)\s+)*[\w<>[\],.?]+\s+(\w+)\s*\(/);
+      if (method) names.push(method[1]);
+    }
+    return names;
+  }
   return [...text.matchAll(/(?<![\w.$])(?:it|test)\s*\(\s*(['"])((?:\\.|(?!\1).)*)\1/g)].map((m) => m[2]);
 }
 

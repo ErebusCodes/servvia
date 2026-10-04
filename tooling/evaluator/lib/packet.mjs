@@ -24,7 +24,7 @@ function relativize(text) {
 
 /** The first repository source location an excerpt names, if any. */
 export function locationOf(text) {
-  const m = relativize(text).match(/\b((?:apps|services|packages|tooling|contracts|sample|windows-deploy)\/[\w./@-]+\.(?:ts|tsx|js|mjs|go)):(\d+)/);
+  const m = relativize(text).match(/\b((?:apps|services|packages|tooling|contracts|sample|windows-deploy)\/[\w./@-]+\.(?:ts|tsx|js|mjs|go|cs)):(\d+)/);
   return m ? `${m[1]}:${m[2]}` : null;
 }
 

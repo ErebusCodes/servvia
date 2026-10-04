@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -117,7 +117,7 @@ function goTest(check, ctx) {
   if (proc.spawnError) return { ...proc, harnessError: proc.spawnError, tests: [] };
   const { tests, parsed } = parseGoTestJson(proc.stdout, { module: goModule(ctx.cwd), cwdInRepo: ctx.cwdInRepo });
   if (parsed === 0 && proc.exitCode !== 0) {
-    return { ...proc, harnessError: null, tests: [{ name: 'go test (build failed)', status: 'failed', message: proc.stderr.slice(-4000) }] };
+    return { ...proc, harnessError: null, buildFailed: true, tests: [{ name: 'go test (build failed)', status: 'failed', message: proc.stderr.slice(-4000) }] };
   }
   return { ...proc, tests };
 }
@@ -154,7 +154,98 @@ function command(check, ctx) {
   return { ...proc, tests: [] };
 }
 
-const RUNNERS = { jest, 'go-test': goTest, 'node-test': nodeTest, command };
+const XML_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+
+function xmlText(text) {
+  return String(text ?? '').replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (whole, e) => {
+    if (e[0] === '#') return String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1)));
+    return XML_ENTITIES[e] ?? whole;
+  });
+}
+
+function xmlAttributes(text) {
+  return Object.fromEntries([...String(text).matchAll(/([\w:]+)="([^"]*)"/g)].map((m) => [m[1], xmlText(m[2])]));
+}
+
+/** TRX outcomes: anything not passed and not a recognised "did not run" is a failure. */
+const NOT_RUN = new Set(['NotExecuted', 'Inconclusive', 'Pending', 'NotRunnable', 'Disconnected']);
+
+/**
+ * `<file>.cs:line N` in a .NET stack trace, as `<path in the repository>.cs:N`
+ * when the file is in the evaluated workspace.
+ */
+function dotnetLocations(text, roots) {
+  return String(text).replace(/ in (\S+?\.cs):line (\d+)/g, (whole, file, line) => {
+    const root = roots.find((r) => r && file.startsWith(`${r}/`));
+    return root ? ` in ${file.slice(root.length + 1)}:${line}` : ` in ${file}:${line}`;
+  });
+}
+
+/**
+ * Parses one TRX (Visual Studio test results) file into the common test
+ * results. Pure, for testing. `total` is the file's own counter, so a caller
+ * can refuse a file it could not read completely.
+ */
+export function parseTrx(xml, { roots = [] } = {}) {
+  const tests = [];
+  for (const m of String(xml).matchAll(/<UnitTestResult\b([^>]*?)(?:\/>|>([\s\S]*?)<\/UnitTestResult>)/g)) {
+    const attrs = xmlAttributes(m[1]);
+    const status = attrs.outcome === 'Passed' ? 'passed' : NOT_RUN.has(attrs.outcome) ? 'skipped' : 'failed';
+    const body = m[2] ?? '';
+    const message = xmlText(body.match(/<Message>([\s\S]*?)<\/Message>/)?.[1] ?? '');
+    const stack = xmlText(body.match(/<StackTrace>([\s\S]*?)<\/StackTrace>/)?.[1] ?? '');
+    tests.push({
+      name: attrs.testName ?? '',
+      status,
+      message: status === 'failed' ? dotnetLocations(`${message}\n${stack}`, roots).slice(0, 4000) : '',
+    });
+  }
+  const counters = String(xml).match(/<Counters\b([^>]*)\/?>/);
+  const total = counters ? Number(xmlAttributes(counters[1]).total) : null;
+  return { tests, total: Number.isFinite(total) ? total : null };
+}
+
+/**
+ * `dotnet test` with the TRX logger. The evaluator chooses the logger and
+ * the results directory; the check names only what to test (a solution or
+ * project and its options). A build error of the candidate is a failed
+ * result; a restore failure, a missing dotnet or unreadable results are a
+ * harness error.
+ */
+function dotnetTest(check, ctx) {
+  const dir = join(ctx.scratch, `${check.id}-${ctx.attempt}-trx`);
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const argv = [ctx.dotnet, 'test', ...check.args, '--logger', 'trx;LogFilePrefix=results', '--results-directory', dir,
+    '--disable-build-servers', '-p:UseSharedCompilation=false', '--nologo'];
+  const proc = runProcess(argv, { cwd: ctx.cwd, env: ctx.env, timeoutSeconds: check.timeoutSeconds });
+  if (proc.spawnError) return { ...proc, harnessError: `dotnet could not be started (${proc.spawnError}); give the evaluator --dotnet-root`, tests: [] };
+  const output = `${proc.stdout}\n${proc.stderr}`;
+  const repoRoot = ctx.cwdInRepo && ctx.cwdInRepo !== '.' ? ctx.cwd.slice(0, -(ctx.cwdInRepo.length + 1)) : ctx.cwd;
+  let realRoot = null;
+  try { realRoot = realpathSync(repoRoot); } catch { /* the root is used as given */ }
+  const files = readdirSync(dir, { recursive: true }).filter((f) => String(f).endsWith('.trx')).sort();
+  const tests = [];
+  for (const file of files) {
+    const parsed = parseTrx(readFileSync(join(dir, file), 'utf8'), { roots: [repoRoot, realRoot] });
+    if (parsed.total !== null && parsed.total !== parsed.tests.length) {
+      return { ...proc, harnessError: `${file}: the TRX counts ${parsed.total} tests but ${parsed.tests.length} results were read`, tests: [] };
+    }
+    tests.push(...parsed.tests);
+  }
+  const buildErrors = [...new Set(output.split('\n').filter((l) => /:\s*error\s+(?:CS|MSB|NETSDK|FS|BC)\d+/.test(l)).map((l) => l.trim()))];
+  if (/:\s*error\s+NU\d{4}/.test(output) && buildErrors.length === 0) {
+    return { ...proc, harnessError: 'dotnet restore failed (packages could not be restored)', tests: [] };
+  }
+  if (buildErrors.length > 0) {
+    tests.push({ name: 'dotnet build (failed)', status: 'failed', message: dotnetLocations(buildErrors.join('\n'), [repoRoot, realRoot]).replace(/\(\d+,\d+\)/g, (pos) => `:${pos.slice(1).split(',')[0]}`).slice(0, 4000) });
+  } else if (files.length === 0) {
+    return { ...proc, harnessError: proc.exitCode === 0 ? 'dotnet test wrote no TRX results' : `dotnet test failed without results (exit ${proc.exitCode})`, tests: [] };
+  }
+  return { ...proc, tests, buildFailed: buildErrors.length > 0 };
+}
+
+const RUNNERS = { jest, 'go-test': goTest, 'node-test': nodeTest, 'dotnet-test': dotnetTest, command };
 
 export function runCheck(check, ctx) {
   const result = RUNNERS[check.runner](check, ctx);

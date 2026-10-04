@@ -4,7 +4,7 @@
 //   node tooling/evaluator/bin/evaluate.mjs \
 //     --repo <path> --anchor-commit <sha> --objective <path> --objective-sha256 <hex> \
 //     --candidate <sha> [--evidence-dir <dir>] [--node-modules <dir>] \
-//     [--go-root <dir> --go-modcache <dir>] [--pg-bin <dir>] [--redis-bin <dir>]
+//     [--go-root <dir> --go-modcache <dir>] [--dotnet-root <dir> --nuget-packages <dir>] [--pg-bin <dir>] [--redis-bin <dir>]
 //
 // The anchor (commit, objective path, objective sha256) comes from the
 // orchestrator's approval, never from the implementer. Run it from an export
@@ -44,6 +44,8 @@ const record = await evaluate({
     nodeModules: args['node-modules'] && resolve(args['node-modules']),
     goRoot: args['go-root'] && resolve(args['go-root']),
     goModCache: args['go-modcache'] && resolve(args['go-modcache']),
+    dotnetRoot: args['dotnet-root'] && resolve(args['dotnet-root']),
+    nugetPackages: args['nuget-packages'] && resolve(args['nuget-packages']),
     pgBin: args['pg-bin'] ?? '/opt/homebrew/opt/postgresql@18/bin',
     redisBin: args['redis-bin'] ?? '/opt/homebrew/bin',
   },
