@@ -9,14 +9,36 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"servvia/services/core-platform/internal/config"
 )
 
 type Options struct {
 	URL      string
 	MaxConns int32
 	ReadOnly bool
+	// StatementTimeout and LockTimeout, when positive, are sent as the
+	// statement_timeout and lock_timeout of every session (whole
+	// milliseconds), overriding the same parameter in URL. Zero sets
+	// nothing, so the session keeps the server, role or URL value.
+	StatementTimeout time.Duration
+	LockTimeout      time.Duration
+}
+
+// OptionsFromConfig is the single mapping from Core's configuration to its
+// pool options, used by cmd/api and by the tests that check that wiring.
+func OptionsFromConfig(cfg config.Config) Options {
+	return Options{
+		URL:              cfg.DatabaseURL,
+		MaxConns:         cfg.DBMaxConns,
+		ReadOnly:         cfg.DBReadOnly,
+		StatementTimeout: cfg.DBStatementTimeout,
+		LockTimeout:      cfg.DBLockTimeout,
+	}
 }
 
 // NewPool builds the pool without connecting; connectivity is reported by Ping
@@ -38,6 +60,14 @@ func NewPool(ctx context.Context, opts Options) (*pgxpool.Pool, error) {
 	params["timezone"] = "UTC"
 	if opts.ReadOnly {
 		params["default_transaction_read_only"] = "on"
+	}
+	// Startup parameters, so they bound every statement of every session,
+	// including the readiness probe. config validates the range.
+	if opts.StatementTimeout > 0 {
+		params["statement_timeout"] = strconv.FormatInt(opts.StatementTimeout.Milliseconds(), 10)
+	}
+	if opts.LockTimeout > 0 {
+		params["lock_timeout"] = strconv.FormatInt(opts.LockTimeout.Milliseconds(), 10)
 	}
 	return pgxpool.NewWithConfig(ctx, cfg)
 }
