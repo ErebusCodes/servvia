@@ -1,0 +1,139 @@
+{
+  "schema": "servvia.objective/v2",
+  "objectiveId": "story-1-3-venue-connector-ci-job-made-truthful",
+  "storyId": "1.3",
+  "version": 1,
+  "title": "Venue Connector CI job made truthful (fix path): the 3 failing .NET tests pass because the defect is fixed, not hidden",
+  "baseline": "00e64adf9bd9c40501a817bf9831225a389c7725",
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-1-3-venue-connector-ci-job-made-truthful.md",
+      "intentContractSha256": "75e6b142ab7ea55f071137b94859162af5bcbeb8742f1bf975f49f0b8f5dbea6"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-1-context.md",
+      "sha256": "fe1bdbc4f19ba644bef87cefa3828bc3b9e9738d34a1ce5bfb7c528e4e6bb1b2"
+    }
+  },
+  "requirementRefs": [
+    "_bmad-output/planning-artifacts/epics.md Story 1.3 (READY, fix path; the retirement path is BLOCKED on the external-POS cleanup checkpoint)",
+    "PRD/product-requirements.md section 21 (test quality: tests validate behaviour and are deterministic) and section 26 (Definition of Done)",
+    "PRD/product-requirements.md PR-8 (build before cleanup)",
+    "docs/audits/production-readiness-2026-12.md P0-02 and section 3.4 (Venue Connector .NET job: 3 of 502 tests failing)"
+  ],
+  "architectureConstraints": [
+    "fileRestructure.md sections 6 and 7.1: apps/venue-connector/ is a legacy external-POS project classified RETIRE. This story does not retire it, extend it or relocate it",
+    "Epic 1 context: green honestly. No test is skipped, filtered, weakened or edited, no job is set to continue on error, and no lint or warning is suppressed",
+    "The CI definition and the build and project definitions stay unchanged: the evidence places the defect in the analyser, not in the CI or the build"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC1",
+      "given": "the Venue Connector solution at the candidate, built and tested on a non-Windows host with the .NET SDK",
+      "when": "its test suite runs",
+      "then": "every test passes and none is skipped: at least the 502 tests present at the baseline, plus the new regression test"
+    },
+    {
+      "id": "AC2",
+      "given": "the 3 tests that fail at the baseline (NativeTerminalBindingEvidenceTests: WhenTheExpectedExecutableOwnsTheVb6Windows_TheEvidenceIsConsistent, NonVb6Windows_AreNotCountedAsNativeTerminalOwners, MultipleOwners_AreAllReported_MostWindowsFirst)",
+      "when": "they run unchanged against the baseline code and then against the candidate code, on the same non-Windows host",
+      "then": "they fail on the baseline and pass on the candidate, and their source file is byte-for-byte unchanged"
+    },
+    {
+      "id": "AC3",
+      "given": "a window inventory whose visible VB6-class windows are owned by a Windows executable path (for example C:\\Idealpos Solutions\\Idealpos 8\\IPSClient.exe) while the expected executable is IPS.exe",
+      "when": "the native-terminal binding evidence is summarized on any host OS",
+      "then": "the owner is reported by its executable file name (IPSClient.exe), its full path is kept as given, and the report states a contradiction. The same Windows path yields the same file name, presence and verdict on every host, and the results on Windows are unchanged"
+    },
+    {
+      "id": "AC4",
+      "given": "the candidate compared with the baseline",
+      "when": "the CI workflow, the connector's solution and project files, the build, NuGet and test-runner configuration, the existing test files and the Windows-only connector projects are inspected",
+      "then": "none of them has changed, and no skip, focus or suppression has been added"
+    }
+  ],
+  "environment": {
+    "services": []
+  },
+  "setup": [],
+  "checks": [
+    {
+      "id": "venue-connector-dotnet",
+      "category": "unit",
+      "runner": "dotnet-test",
+      "args": ["VerduraIdealposTracer.slnx", "-c", "Release"],
+      "cwd": "apps/venue-connector",
+      "mandatory": true,
+      "minTests": 503,
+      "configFiles": [
+        "apps/venue-connector/VerduraIdealposTracer.slnx",
+        "apps/venue-connector/tests/VerduraIdealposTracer.Tests/VerduraIdealposTracer.Tests.csproj",
+        "apps/venue-connector/src/VerduraIdealposTracer.Core/VerduraIdealposTracer.Core.csproj",
+        "apps/venue-connector/src/VerduraIdealposTracer.Fixtures/VerduraIdealposTracer.Fixtures.csproj",
+        "apps/venue-connector/src/VerduraIdealposTracer.DryRunCli/VerduraIdealposTracer.DryRunCli.csproj"
+      ]
+    }
+  ],
+  "requiredTests": [
+    {
+      "id": "RT1",
+      "check": "venue-connector-dotnet",
+      "name": "VerduraIdealposTracer.Tests.NativeTerminalBindingEvidenceTests.WhenTheExpectedExecutableOwnsTheVb6Windows_TheEvidenceIsConsistent",
+      "expectBaselineFailure": true,
+      "files": ["apps/venue-connector/tests/VerduraIdealposTracer.Tests/NativeTerminalBindingEvidenceTests.cs"]
+    },
+    {
+      "id": "RT2",
+      "check": "venue-connector-dotnet",
+      "name": "VerduraIdealposTracer.Tests.NativeTerminalBindingEvidenceTests.NonVb6Windows_AreNotCountedAsNativeTerminalOwners",
+      "expectBaselineFailure": true,
+      "files": ["apps/venue-connector/tests/VerduraIdealposTracer.Tests/NativeTerminalBindingEvidenceTests.cs"]
+    },
+    {
+      "id": "RT3",
+      "check": "venue-connector-dotnet",
+      "name": "VerduraIdealposTracer.Tests.NativeTerminalBindingEvidenceTests.MultipleOwners_AreAllReported_MostWindowsFirst",
+      "expectBaselineFailure": true,
+      "files": ["apps/venue-connector/tests/VerduraIdealposTracer.Tests/NativeTerminalBindingEvidenceTests.cs"]
+    },
+    {
+      "id": "RT4",
+      "check": "venue-connector-dotnet",
+      "name": "VerduraIdealposTracer.Tests.NativeTerminalBindingEvidencePortabilityTests.WhenADifferentExecutableOwnsTheNativeUi_TheOwnerIsNamedByItsFileNameOnEveryHost",
+      "expectBaselineFailure": true,
+      "files": ["apps/venue-connector/tests/VerduraIdealposTracer.Tests/NativeTerminalBindingEvidencePortabilityTests.cs"]
+    }
+  ],
+  "surfaces": {
+    "allowed": [
+      "apps/venue-connector/src/VerduraIdealposTracer.Core/**",
+      "apps/venue-connector/tests/VerduraIdealposTracer.Tests/NativeTerminalBindingEvidencePortabilityTests.cs"
+    ],
+    "forbidden": [
+      ".github/**",
+      "apps/venue-connector/tests/VerduraIdealposTracer.Tests/NativeTerminalBindingEvidenceTests.cs",
+      "apps/venue-connector/src/VerduraIdealposTracer.Windows/**",
+      "apps/venue-connector/src/VerduraIdealposTracer.Cli/**",
+      "apps/venue-connector/**/*.csproj",
+      "apps/venue-connector/**/*.slnx",
+      "**/Directory.Build.props",
+      "**/Directory.Build.targets",
+      "**/Directory.Packages.props",
+      "**/global.json",
+      "**/*.runsettings",
+      "**/NuGet.Config",
+      "**/NuGet.config",
+      "**/nuget.config",
+      "**/xunit.runner.json"
+    ]
+  },
+  "expectationChanges": [],
+  "allowedSkips": [],
+  "allowedSuppressions": [],
+  "completionCriteria": [
+    "The evaluator's venue-connector-dotnet check (dotnet-test runner on VerduraIdealposTracer.slnx, Release) passes on the candidate with at least 503 tests executed, none failed and none skipped",
+    "RT1 to RT4 fail on the baseline and pass on the candidate on the evaluation host (a non-Windows host: on Windows, RT1 to RT4 would already pass on the baseline)",
+    "No forbidden surface, CI definition, build or project definition, existing test or governance path is changed",
+    "Technical completion is the evaluator's decision CANDIDATE_READY_FOR_ACCEPTANCE only. Proof that the GitHub job is green needs an authorized push and is the orchestrator's decision"
+  ]
+}
