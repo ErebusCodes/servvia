@@ -91,23 +91,8 @@ services:
     ports: ['5173:80']
     depends_on: [api]
 
-  # Formerly "kiosk" (kiosk-frontend). Read-only signage today plus a
-  # legacy, still-reachable self-service ordering flow and an embedded KDS
-  # duplicate — see apps/window-display/README.md.
-  window-display:
-    profiles: [host]
-    build:
-      context: .
-      dockerfile: docker/frontend.Dockerfile
-      args:
-        WORKSPACE: apps/window-display
-        VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
-    restart: unless-stopped
-    ports: ['5174:80']
-    depends_on: [api]
-
   # Formerly "kds". Canonical Kitchen Display — a device-mode build of
-  # admin-console. See apps/kitchen-display/README.md.
+  # admin-console. See apps/web/admin-console/README.md.
   kitchen-display:
     profiles: [host]
     build:
@@ -137,7 +122,7 @@ services:
   # Formerly "tablet" (tablet-frontend, an empty/abandoned scaffold — see
   # docs/decisions/2026-08-17-repository-restructure.md). The canonical
   # Order Tablet is a device-mode build of admin-console. See
-  # apps/order-tablet/README.md.
+  # apps/web/admin-console/README.md.
   order-tablet:
     profiles: [host]
     build:

@@ -66,7 +66,6 @@ $items = @(
     @{ Src = 'apps\web\admin-console\dist-kds';            Dst = 'apps\admin-console\dist-kds';    Type = 'dir';  Svc = 'VerduraKitchenDisplay';  Port = 5175 }
     @{ Src = 'apps\web\admin-console\dist';                Dst = 'apps\admin-console\dist';        Type = 'dir';  Svc = 'VerduraOrderTablet';     Port = 5176 }
     @{ Src = 'apps\web\customer-website\dist';             Dst = 'apps\customer-website\dist';     Type = 'dir';  Svc = 'VerduraCustomerWebsite'; Port = 5173 }
-    @{ Src = 'apps\window-display\dist';               Dst = 'apps\window-display\dist';       Type = 'dir';  Svc = 'VerduraWindowDisplay';   Port = 5174 }
 )
 
 foreach ($i in $items) {

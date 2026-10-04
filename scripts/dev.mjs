@@ -43,14 +43,13 @@ const BACKEND_DIR = join(ROOT, 'apps/api');
 const LOCAL_PG_DIR = join(ROOT, 'local-postgres');
 // Order Tablet and Kitchen Display are device-mode builds of admin-console
 // (VITE_APP_MODE=tablet / =kds), not separate workspaces with their own
-// .env — see apps/order-tablet/README.md and apps/kitchen-display/README.md.
-const FRONTEND_DIRS = ['apps/web/customer-website', 'apps/web/admin-console', 'apps/window-display'];
+// .env — see apps/web/admin-console/README.md.
+const FRONTEND_DIRS = ['apps/web/customer-website', 'apps/web/admin-console'];
 const shutdownGraceMs = 3000;
 
 const SERVICES = [
   ['api', 'dev:api'],
   ['customer-website', 'dev:customer-website'],
-  ['window-display', 'dev:window-display'],
   ['kitchen-display', 'dev:kitchen-display'],
   ['admin-console', 'dev:admin-console'],
   ['order-tablet', 'dev:order-tablet'],
@@ -341,9 +340,8 @@ function spawnService(name, script, extraEnv = {}) {
     shell: IS_WINDOWS,
     env: {
       ...process.env,
-      // Shared source aliases make the window-display and customer-website Vite processes
-      // watch many of the same files. Polling avoids exhausting Linux
-      // inotify limits (and is a no-op cost on macOS/Windows).
+      // Polling avoids exhausting Linux inotify limits when several Vite
+      // processes watch the repo (and is a no-op cost on macOS/Windows).
       CHOKIDAR_USEPOLLING: 'true',
       CHOKIDAR_INTERVAL: '500',
       ...extraEnv,

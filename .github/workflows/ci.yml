@@ -261,8 +261,8 @@ jobs:
       - run: npm test --workspace=apps/web/admin-console
       # All three device-mode builds — Order Tablet and Kitchen Display are
       # the same source built with a different VITE_APP_MODE (see
-      # apps/order-tablet/README.md's own "where the code actually lives"
-      # section), not separate apps; a change that only breaks one mode's
+      # apps/web/admin-console/README.md's device-mode table), not
+      # separate apps; a change that only breaks one mode's
       # build must not pass CI just because the default mode built cleanly.
       - run: npm run build:admin-console
       - run: npm run build:order-tablet
@@ -314,23 +314,6 @@ jobs:
       # real regression coverage, not nothing.
       - run: npm test --workspace=apps/web/customer-website
       - run: npm run build:customer-website
-
-  window-display:
-    name: Window Display — lint, typecheck, build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
-      - run: npm ci
-      # No automated test suite exists for this app either — same honest
-      # non-claim as customer-website above.
-      - run: npm run lint:window-display
-      - run: npm run typecheck --workspace=apps/window-display
-      - run: npm run build:window-display
 
   venue-connector:
     name: Venue Connector (.NET) — build, unit + crash/replay tests

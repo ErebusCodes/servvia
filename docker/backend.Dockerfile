@@ -4,7 +4,6 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/customer-website/package.json apps/web/customer-website/package.json
 COPY apps/web/admin-console/package.json apps/web/admin-console/package.json
-COPY apps/window-display/package.json apps/window-display/package.json
 COPY apps/api/prisma apps/api/prisma
 RUN npm ci
 COPY apps/api apps/api

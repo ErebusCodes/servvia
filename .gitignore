@@ -30,12 +30,11 @@ apps/api/storage/
 *.docx
 
 # All video files are ignored by default — Asset/video/intro.mp4 is the one
-# master copy we track, and the two symlinks that point to it (instead of
-# separate per-app copies) are explicitly allowed through below.
+# master copy we track, and the symlink that points to it (instead of a
+# separate per-app copy) is explicitly allowed through below.
 *.mp4
 !Asset/video/intro.mp4
 !apps/web/customer-website/public/video/intro.mp4
-!apps/window-display/public/video/intro.mp4
 
 AUDIT_REPORT.md
 AUDIT_REPORT_V2.md

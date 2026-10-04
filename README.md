@@ -82,7 +82,7 @@ Every surface is a client of Servvia Core. None of them owns canonical business 
 | Permanent | Transitional (being retired) |
 |---|---|
 | Servvia Core (Go): canonical backend, REST and realtime | NestJS API (`apps/api`): serves today's clients while its domain ownership moves to Servvia Core |
-| PostgreSQL: canonical state | The current React implementations of venue-device surfaces (Order Tablet, KDS, Window Display/kiosk), until the native clients replace them |
+| PostgreSQL: canonical state | The current React implementations of venue-device surfaces (the admin console's Order Tablet and KDS modes), until the native clients replace them |
 | Prisma: the sole schema migration authority | The IdealPOS compatibility integration, POS sync and `ConnectorCommand` |
 | Servvia-owned clients (see [Target clients](#target-clients)) | Legacy bridge, harness and tracer tooling |
 | Servvia realtime (WebSocket) | The Socket.IO `orderUpdate` channel |
@@ -104,7 +104,7 @@ These are the target implementations from ADR 0001, as amended by CC-3 in [`file
 
 ### How the code runs today
 
-Today's web clients (Admin Console, Order Tablet, KDS, Window Display, Customer Website) still call the transitional NestJS API over REST and Socket.IO. Servvia Core runs beside it on the same PostgreSQL schema. It verifies the NestJS-issued access tokens (same HS256 secret) and shares Redis for one rate-limit budget per client. Its APIs are ready for clients, but no client has been switched to them yet. The technology standard is [docs/architecture.md §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture).
+Today's web clients (Admin Console, Order Tablet, KDS, Customer Website) still call the transitional NestJS API over REST and Socket.IO. Servvia Core runs beside it on the same PostgreSQL schema. It verifies the NestJS-issued access tokens (same HS256 secret) and shares Redis for one rate-limit budget per client. Its APIs are ready for clients, but no client has been switched to them yet. The technology standard is [docs/architecture.md §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture).
 
 ## Tenancy
 
@@ -141,8 +141,7 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 | `services/core-platform/` | **Servvia Core (Go)**: canonical domains, HTTP and WebSocket API, tests ([README](services/core-platform/README.md)) |
 | `apps/api/` | NestJS API (transitional). Also holds **`prisma/schema.prisma` and `prisma/migrations/`**, the single migration authority for all services |
 | `apps/web/admin-console/` | React admin console. The same source builds the **Order Tablet** and **Kitchen Display** targets (`VITE_APP_MODE`) |
-| `apps/order-tablet/`, `apps/kitchen-display/` | READMEs describing those two build targets (no separate source) |
-| `apps/window-display/` | React window display (signage) and in-venue kiosk ordering |
+| `apps/android/` | Native Android targets (`waiter-tablet`, `kds`, `window-display`, `kiosk`): structural scaffolds only, not yet built. The legacy `apps/order-tablet/`, `apps/kitchen-display/` and `apps/window-display/` directories were removed by owner decision on 2026-10-05 (`fileRestructure.md` CC-4); there is currently no window display (signage) or web kiosk client |
 | `apps/web/customer-website/` | React public website: menu and table booking |
 | `contracts/` | Language-neutral contracts: OpenAPI, realtime, events, JSON schemas ([README](contracts/README.md)) |
 | `docs/` | Architecture, ADRs, migration phase notes, integrations, deployment and environments |
@@ -212,7 +211,6 @@ npm run dev
 |---|---|---|
 | NestJS API | http://localhost:3000 | `npm run dev:api` |
 | Customer website | http://localhost:5173 | `npm run dev:customer-website` |
-| Window display | http://localhost:5174 | `npm run dev:window-display` |
 | Kitchen display | http://localhost:5175 | `npm run dev:kitchen-display` |
 | Order tablet | http://localhost:5176 | `npm run dev:order-tablet` |
 | Admin console | http://localhost:5177 | `npm run dev:admin-console` |
@@ -361,7 +359,7 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 | NestJS integration | `npm run test:integration --workspace=apps/api` against a migrated, seeded disposable database. Leave `NODE_ENV` unset (Jest uses `test`), and set `SEED_OWNER_PASSWORD` to the seeded owner's password. |
 | Prisma | `cd apps/api && npx prisma format && npx prisma validate && npx prisma generate`, plus the migration checks in [Database and migrations](#database-and-migrations) |
 | Contracts and root scripts | `npm run test:dev-scripts` (includes the contract checker), `npm run check:nul-bytes`, `npm run check:bridge-governance` |
-| Web apps | `npm run lint:admin-console` (and `:customer-website`, `:window-display`), `npm test` (every workspace with tests) |
+| Web apps | `npm run lint:admin-console` (and `:customer-website`), `npm test` (every workspace with tests) |
 | Legacy venue connector (.NET, migration tooling) | `dotnet build apps/venue-connector/VerduraIdealposTracer.slnx`, then `dotnet test --no-build` on the same solution |
 
 **CI** (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests) runs nine jobs:
@@ -369,7 +367,6 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 - NestJS API: real-PostgreSQL integration tests
 - Admin console (including the Order Tablet and KDS targets): lint, typecheck, unit tests, build
 - Customer website: lint, typecheck, build
-- Window display: lint, typecheck, build
 - Root script tests, plus the NUL-byte and bridge-governance guards
 - Legacy migration tooling: venue connector (.NET) build, unit and crash/replay tests
 - Legacy migration tooling: venue connector (.NET) Windows-only projects build

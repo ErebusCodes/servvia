@@ -99,10 +99,12 @@ this host's operation at all — it cannot even start here, because 3000/5176/
 | Service | Port | `dist` served | Build command |
 | --- | --- | --- | --- |
 | `VerduraCustomerWebsite` | 5173 | `apps\customer-website\dist` | `npm run build:customer-website` |
-| `VerduraWindowDisplay` | 5174 | `apps\window-display\dist` | `npm run build:window-display` |
+| `VerduraWindowDisplay` | 5174 | `apps\window-display\dist` | none since 2026-10-05 (see below) |
 | `VerduraKitchenDisplay` | 5175 | `apps\admin-console\dist-kds` | `npm run build:kitchen-display` |
 | `VerduraOrderTablet` | 5176 | `apps\admin-console\dist` | `npm run build:order-tablet` |
 | `VerduraAdminConsole` | 5177 | `apps\admin-console\dist-admin` | `npm run build:admin-console` |
+
+**`VerduraWindowDisplay` after 2026-10-05.** `apps/window-display/` was removed from the repository by owner decision (`fileRestructure.md` CC-4), so the repository no longer builds it and `deploy-frontend-release.ps1` no longer stages it. The service installed on this host was not changed by that removal: it keeps serving its last deployed `dist` until it is decommissioned, which is a separate operational action. The rest of this section describes the host as deployed.
 
 All five share one configuration: `Start SERVICE_AUTO_START`, `ObjectName
 LocalSystem`, `DependOnService :VerduraAPI`, `AppExit Default Restart` with

@@ -15,8 +15,8 @@ deliberately. Where this document says "must", it means "the current clients dep
 
 Sources:
 - Server: `apps/api/src/orders/orders.gateway.ts`
-- Clients: `apps/web/admin-console/src/shared/orders.ts:316-384` (`useLiveOrders`) and `apps/window-display/src/pages/KdsPage.tsx:130-191`
-- Libraries: `socket.io ^4.8.3` and `@nestjs/platform-socket.io ^11.1.27` (`apps/api/package.json:44,60`); `socket.io-client ^4.8.3` (`apps/web/admin-console/package.json:22`, `apps/window-display/package.json:55`)
+- Clients: `apps/web/admin-console/src/shared/orders.ts:316-384` (`useLiveOrders`). The second client, `apps/window-display/src/pages/KdsPage.tsx`, was removed on 2026-10-05 (`fileRestructure.md` CC-4)
+- Libraries: `socket.io ^4.8.3` and `@nestjs/platform-socket.io ^11.1.27` (`apps/api/package.json:44,60`); `socket.io-client ^4.8.3` (`apps/web/admin-console/package.json:22`)
 
 ## 1. Transport
 

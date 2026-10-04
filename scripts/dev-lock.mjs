@@ -54,7 +54,6 @@ export const SUPERVISOR_MARKER = 'scripts/dev.mjs';
 export const CANONICAL_PORTS = {
   api: 3000,
   'customer-website': 5173,
-  'window-display': 5174,
   'kitchen-display': 5175,
   'order-tablet': 5176,
   'admin-console': 5177,

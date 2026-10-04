@@ -10,12 +10,10 @@ COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/customer-website/package.json apps/web/customer-website/package.json
 COPY apps/web/admin-console/package.json apps/web/admin-console/package.json
-COPY apps/window-display/package.json apps/window-display/package.json
 COPY apps/api/prisma apps/api/prisma
 RUN npm ci
 COPY apps/web/customer-website apps/web/customer-website
 COPY apps/web/admin-console apps/web/admin-console
-COPY apps/window-display apps/window-display
 COPY shared shared
 ENV VITE_VENUE_ID=$VITE_VENUE_ID
 ENV VITE_APP_MODE=$VITE_APP_MODE

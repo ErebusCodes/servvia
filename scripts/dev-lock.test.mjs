@@ -313,7 +313,6 @@ test('dev:status — a real verified supervisor is reported as running with its 
 const LOCKED_PORT_MAP = {
   api: 3000,
   'customer-website': 5173,
-  'window-display': 5174,
   'kitchen-display': 5175,
   'order-tablet': 5176,
   'admin-console': 5177,
@@ -343,10 +342,6 @@ function extractDevScriptPort(scriptName) {
   assert.ok(match, `"${scriptName}" script has no --port flag: ${script}`);
   return Number(match[1]);
 }
-
-test('window-display/vite.config.ts port matches CANONICAL_PORTS', () => {
-  assert.equal(extractVitePort('apps/window-display/vite.config.ts'), CANONICAL_PORTS['window-display']);
-});
 
 test("admin-console/vite.config.ts base port (plain 'npm run dev:admin-console', no VITE_APP_MODE) matches CANONICAL_PORTS", () => {
   assert.equal(extractVitePort('apps/web/admin-console/vite.config.ts'), CANONICAL_PORTS['admin-console']);
@@ -394,7 +389,7 @@ function extractComposeHostPort(serviceName) {
   return Number(portsMatch[1]);
 }
 
-for (const service of ['customer-website', 'window-display', 'kitchen-display', 'admin-console', 'order-tablet']) {
+for (const service of ['customer-website', 'kitchen-display', 'admin-console', 'order-tablet']) {
   test(`docker-compose.yml "${service}" published port matches CANONICAL_PORTS`, () => {
     assert.equal(extractComposeHostPort(service), CANONICAL_PORTS[service]);
   });

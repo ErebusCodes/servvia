@@ -11,8 +11,8 @@ Venue configuration, operational administration, menu/catalogue management, staf
 | Mode | Command | Renders | Auth |
 |---|---|---|---|
 | Default (admin) | `npm run dev:admin-console` / `build:admin-console` | Full admin app (`AdminPortalApp`) | Staff JWT session |
-| `VITE_APP_MODE=kds` | `npm run dev:kitchen-display` / `build:kitchen-display` | `KitchenDisplayPage` standalone — see `apps/kitchen-display/README.md` | Device PIN (`KdsPinGate`) |
-| `VITE_APP_MODE=tablet` | `npm run dev:order-tablet` / `build:order-tablet` | `OrderTabletPage` standalone — see `apps/order-tablet/README.md` | Device PIN (`KdsPinGate`) |
+| `VITE_APP_MODE=kds` | `npm run dev:kitchen-display` / `build:kitchen-display` | `KitchenDisplayPage` standalone | Device PIN (`KdsPinGate`) |
+| `VITE_APP_MODE=tablet` | `npm run dev:order-tablet` / `build:order-tablet` | `OrderTabletPage` standalone | Device PIN (`KdsPinGate`) |
 
 `OrderTabletPage.tsx` and `KitchenDisplayPage.tsx` are also reachable as ordinary routes (`/order-tablet`, `/kitchen-display`) inside the full admin app when embedded that way is useful — they are not duplicated, just rendered from two entry points.
 
