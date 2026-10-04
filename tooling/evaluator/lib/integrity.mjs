@@ -125,7 +125,9 @@ export function staticIntegrity({ repo, anchorCommit, candidateCommit, objective
       }
     }
 
-    if (!isSurface && allowed.length > 0 && !matches(path, allowed)) {
+    // The objective's own story spec is where the workflow records its
+    // progress (status, logs); its intent contract is protected separately.
+    if (!isSurface && allowed.length > 0 && !matches(path, allowed) && path !== objective.inputs?.storySpec?.path) {
       add(NR, 'outside-allowed-surfaces', path, 'changed outside the surfaces the objective allows');
     }
 

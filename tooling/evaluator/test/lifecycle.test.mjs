@@ -124,6 +124,16 @@ describe('draft, freeze, gate and evaluation', () => {
     assert.equal(git(p.repo, 'status', '--porcelain'), '', 'an anchored run starts from a clean tree');
   });
 
+  test('the objective\'s own story spec is always an allowed surface: the workflow records its progress there', async (t) => {
+    const p = planned(t);
+    const anchor = p.freeze(p.writeDraft(draftFor(p.head, { surfaces: { allowed: ['sample/**'], forbidden: ['restricted/**'] } })));
+    const r = await p.run(p.candidate({ ...VALID, [SPEC]: SPEC_TEXT().replace("status: 'ready-for-dev'", "status: 'in-review'") }, anchor.commit), { anchor });
+    assert.equal(r.verdict, 'PASS', JSON.stringify(r.verdictReasons));
+    const other = await p.run(p.candidate({ ...VALID, '_bmad-output/implementation-artifacts/spec-9-9-other.md': 'x\n' }, anchor.commit), { anchor });
+    assert.equal(other.verdict, 'NEEDS_REVIEW');
+    assert.ok(other.findings.some((x) => x.code === 'outside-allowed-surfaces'));
+  });
+
   test('a candidate may update the spec\'s status, but not its intent contract or the epic context', async (t) => {
     const p = planned(t);
     const anchor = p.freeze(p.writeDraft(draftFor(p.head)));
