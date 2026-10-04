@@ -16,7 +16,8 @@ export const CORRECTION_RULES = [
   'If meeting the objective needs any of the above, stop and report NEEDS_REVIEW instead of correcting.',
 ];
 
-function relativize(text) {
+/** Workspace and temporary paths removed, so text names repository paths only. */
+export function relativize(text) {
   return String(text ?? '')
     .replace(/(?:[A-Za-z]:)?(?:\/[^\s/'"`()]+)+\/(?:candidate|baseline)\//g, '')
     .replace(/(?:\/private)?\/(?:tmp|var\/folders)\/[^\s'"`),:]+/g, '<path>');

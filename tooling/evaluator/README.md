@@ -194,6 +194,31 @@ file's SHA-256. Cleanup is deterministic and manual:
 days; `--purge-objective <id>` removes one objective's ledger and evidence.
 This is not the final retention architecture. Nothing is written to `PRD/` or committed.
 
+**Baseline evidence.** For each required test with `expectBaselineFailure`,
+`record.requiredTests[].baseline` says what happened to that test on the
+baseline (`lib/baseline.mjs`), never only how many failed:
+
+| State | Failure class | Meaning |
+| --- | --- | --- |
+| `FAILED` | behavioral | it ran and failed |
+| `SKIPPED` | | it was reported as skipped |
+| `NOT_RUN_BUILD_FAILURE` | build | its package, suite or test file did not compile or load (Go `FailedBuild`, a Jest suite that failed to run, a Node test file that exited, a .NET build error) |
+| `NOT_RUN_PACKAGE_FAILURE` | behavioral | its package failed before any of its tests reported |
+| `NOT_RUN_TIMEOUT` | harness | the check timed out first |
+| `NOT_RUN_SETUP_FAILURE` | setup | a baseline setup step failed (the verdict is `HARNESS_ERROR`) |
+| `NOT_RUN_HARNESS_ERROR` | harness | the baseline check gave no usable result (`HARNESS_ERROR`) |
+| `NOT_FOUND` | | the check ran, reported no such test, and nothing it depends on failed to build |
+| `PASSED_UNEXPECTEDLY` | | it passed (`NEEDS_REVIEW`) |
+
+Each entry also carries the baseline results named like the test, the
+failed package, suite or file that explains a test that did not run, and a
+redacted excerpt (at most 1500 characters) and source location.
+`satisfiesExpectedBaselineFailure` is whether the objective's "fails or does
+not run on the baseline" is met; the verdict rules are unchanged. The
+baseline's setup and check output is kept as `baseline-setup-<id>.log` and
+`baseline-check-<id>.log`. Evaluations made before this (the first three real
+stories) have aggregate baseline counts only.
+
 ## Limitations
 
 - Same-account execution: tampering is detected, not prevented.

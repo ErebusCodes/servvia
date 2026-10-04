@@ -48,7 +48,7 @@ function jest(check, ctx) {
     }
     // A suite that could not run (compile error, setup failure) is a failure.
     if (file.status === 'failed' && (file.assertionResults ?? []).length === 0) {
-      tests.push({ name: `${file.name} (suite failed to run)`, status: 'failed', file: file.name, message: file.message ?? '' });
+      tests.push({ name: `${file.name} (suite failed to run)`, status: 'failed', kind: 'build', file: file.name, message: file.message ?? '' });
     }
   }
   return { ...proc, tests };
@@ -77,17 +77,30 @@ function goFailureMessage(lines, pkg, module, cwdInRepo) {
     .slice(0, 4000);
 }
 
+/** The repository directory of a Go package, when the module path tells us. */
+function goPackageDir(pkg, module, cwdInRepo) {
+  if (!module || cwdInRepo == null || (pkg !== module && !pkg.startsWith(`${module}/`))) return null;
+  return [cwdInRepo, pkg.slice(module.length).replace(/^\//, '')].filter(Boolean).join('/') || '.';
+}
+
 /** Parses `go test -json` output into the common test results. Pure, for testing. */
 export function parseGoTestJson(stdout, { module = null, cwdInRepo = null } = {}) {
   const final = new Map();
   const output = new Map();
-  const failedPackages = new Set();
+  const failedPackages = new Map();
+  const buildOutput = new Map();
   let parsed = 0;
   for (const line of String(stdout).split('\n')) {
     if (!line.startsWith('{')) continue;
     let ev;
     try { ev = JSON.parse(line); } catch { continue; }
     parsed += 1;
+    // A package that does not compile reports build-output under its test binary's import path.
+    if (ev.Action === 'build-output' && ev.ImportPath) {
+      if (!buildOutput.has(ev.ImportPath)) buildOutput.set(ev.ImportPath, []);
+      buildOutput.get(ev.ImportPath).push(ev.Output ?? '');
+      continue;
+    }
     if (ev.Action === 'output' && ev.Test) {
       const key = `${ev.Package} ${ev.Test}`;
       if (!output.has(key)) output.set(key, []);
@@ -96,16 +109,24 @@ export function parseGoTestJson(stdout, { module = null, cwdInRepo = null } = {}
     }
     if (!['pass', 'fail', 'skip'].includes(ev.Action)) continue;
     if (ev.Test) final.set(`${ev.Package} ${ev.Test}`, ev.Action);
-    else if (ev.Action === 'fail') failedPackages.add(ev.Package);
+    else if (ev.Action === 'fail') failedPackages.set(ev.Package, ev.FailedBuild ?? null);
   }
   const tests = [...final].map(([name, action]) => ({
     name,
     status: action === 'pass' ? 'passed' : action === 'fail' ? 'failed' : 'skipped',
     message: action === 'fail' ? goFailureMessage(output.get(name) ?? [], name.split(' ')[0], module, cwdInRepo) : '',
   }));
-  for (const pkg of failedPackages) {
-    if (![...final.keys()].some((k) => k.startsWith(`${pkg} `) && final.get(k) === 'fail')) {
-      tests.push({ name: `${pkg} (package failed)`, status: 'failed', message: '' });
+  for (const [pkg, failedBuild] of failedPackages) {
+    if (failedBuild) {
+      // The package did not compile: none of its tests ran. The compiler's own lines carry the location.
+      const dir = goPackageDir(pkg, module, cwdInRepo);
+      const lines = (buildOutput.get(failedBuild) ?? []).filter((l) => !l.startsWith('# '));
+      // Compiler paths are relative to the check's directory; qualify them by its place in the repository.
+      const prefix = cwdInRepo && cwdInRepo !== '.' ? `${cwdInRepo}/` : '';
+      const message = lines.map((l) => l.replace(/^(?:\.\/)?([\w./-]+\.go:\d+)/, `${prefix}$1`)).join('').slice(0, 4000);
+      tests.push({ name: `${pkg} (build failed)`, status: 'failed', kind: 'build', package: pkg, dir, message });
+    } else if (![...final.keys()].some((k) => k.startsWith(`${pkg} `) && final.get(k) === 'fail')) {
+      tests.push({ name: `${pkg} (package failed)`, status: 'failed', kind: 'package', package: pkg, dir: goPackageDir(pkg, module, cwdInRepo), message: '' });
     }
   }
   return { tests, parsed };
@@ -117,7 +138,7 @@ function goTest(check, ctx) {
   if (proc.spawnError) return { ...proc, harnessError: proc.spawnError, tests: [] };
   const { tests, parsed } = parseGoTestJson(proc.stdout, { module: goModule(ctx.cwd), cwdInRepo: ctx.cwdInRepo });
   if (parsed === 0 && proc.exitCode !== 0) {
-    return { ...proc, harnessError: null, buildFailed: true, tests: [{ name: 'go test (build failed)', status: 'failed', message: proc.stderr.slice(-4000) }] };
+    return { ...proc, harnessError: null, buildFailed: true, tests: [{ name: 'go test (build failed)', status: 'failed', kind: 'build', message: proc.stderr.slice(-4000) }] };
   }
   return { ...proc, tests };
 }
@@ -138,7 +159,16 @@ function nodeTest(check, ctx) {
     const status = m[4] ? 'skipped' : m[2] === 'ok' ? 'passed' : 'failed';
     const detail = [];
     for (let j = i + 1; j < lines.length && /^\s+(---|\.\.\.|\w|'|")/.test(lines[j]) && !/^\s*(?:not ok|ok) \d+/.test(lines[j]); j += 1) detail.push(lines[j]);
-    tests.push({ name: m[3].trim(), status, message: status === 'failed' ? detail.join('\n').slice(0, 4000) : '' });
+    const name = m[3].trim();
+    // A test file that failed as a whole (it did not load, or exited) is reported under its own path,
+    // after the diagnostics node printed for it as TAP comments.
+    if (status === 'failed' && check.args.includes(name) && detail.some((l) => /^\s*exitCode:/.test(l))) {
+      const comments = [];
+      for (let j = i - 1; j >= 0 && /^#/.test(lines[j]); j -= 1) if (!/^# Subtest:/.test(lines[j])) comments.unshift(lines[j].replace(/^# ?/, ''));
+      tests.push({ name, status, kind: 'build', file: name, message: [...comments, ...detail].join('\n').slice(0, 4000) });
+      continue;
+    }
+    tests.push({ name, status, message: status === 'failed' ? detail.join('\n').slice(0, 4000) : '' });
   }
   // A file that fails before reporting any test is itself a failing result.
   if (tests.length === 0 && proc.exitCode !== 0) {
@@ -238,7 +268,7 @@ function dotnetTest(check, ctx) {
     return { ...proc, harnessError: 'dotnet restore failed (packages could not be restored)', tests: [] };
   }
   if (buildErrors.length > 0) {
-    tests.push({ name: 'dotnet build (failed)', status: 'failed', message: dotnetLocations(buildErrors.join('\n'), [repoRoot, realRoot]).replace(/\(\d+,\d+\)/g, (pos) => `:${pos.slice(1).split(',')[0]}`).slice(0, 4000) });
+    tests.push({ name: 'dotnet build (failed)', status: 'failed', kind: 'build', message: dotnetLocations(buildErrors.join('\n'), [repoRoot, realRoot]).replace(/\(\d+,\d+\)/g, (pos) => `:${pos.slice(1).split(',')[0]}`).slice(0, 4000) });
   } else if (files.length === 0) {
     return { ...proc, harnessError: proc.exitCode === 0 ? 'dotnet test wrote no TRX results' : `dotnet test failed without results (exit ${proc.exitCode})`, tests: [] };
   }

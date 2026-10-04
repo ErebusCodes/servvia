@@ -13,6 +13,8 @@ import { startPostgres, startRedis } from './services.mjs';
 import { runCheck, runProcess } from './runners.mjs';
 import { computeVerdict, evaluateCheck, evaluateRequiredTests } from './verdict.mjs';
 import { redact, redactDeep, secretValues } from './redact.mjs';
+import { baselineState } from './baseline.mjs';
+import { locationOf, relativize } from './packet.mjs';
 
 export const EVALUATOR_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const EVALUATOR_PATH = 'tooling/evaluator';
@@ -237,6 +239,9 @@ export async function evaluate(opts) {
       });
       base_ = runPhase({ objective, checks: objective.checks.filter((c) => checkIds.includes(c.id)), cwd: baselineDir, env: withDatabase(env, services, 'eval_baseline'), scratch, tools, label: 'baseline', retry: false });
       if (base_.setupFailed) add('HARNESS_ERROR', 'baseline-setup-failed', `baseline setup step ${base_.setupFailed.id} exited ${base_.setupFailed.exitCode}`);
+      record.baselineSetup = base_.setup.map(({ id, exitCode }) => ({ id, exitCode }));
+      raw.push(...base_.setup.map((s) => ({ name: `baseline-setup-${s.id}.log`, content: `${s.stdout}\n--- stderr ---\n${s.stderr}` })));
+      for (const [id, r] of Object.entries(base_.runs)) raw.push({ name: `baseline-check-${id}.log`, content: `${r.stdout}\n--- stderr ---\n${r.stderr}` });
     }
 
     if (!cand.setupFailed) {
@@ -255,7 +260,10 @@ export async function evaluate(opts) {
         baseline: b ? { exitCode: b.exitCode, counts: b.counts } : null,
       };
     });
-    record.requiredTests = (objective.requiredTests ?? []).map((t) => ({ id: t.id, check: t.check, name: t.name, expectBaselineFailure: t.expectBaselineFailure, baselineException: t.baselineException ?? null }));
+    record.requiredTests = (objective.requiredTests ?? []).map((t) => ({
+      id: t.id, check: t.check, name: t.name, expectBaselineFailure: t.expectBaselineFailure, baselineException: t.baselineException ?? null,
+      baseline: t.expectBaselineFailure ? baselineEvidence(t, base_, { notRun: cand.setupFailed ? 'the candidate\'s setup failed, so the baseline was not run' : null, secrets }) : null,
+    }));
     record.excerpts = excerpts(cand.runs, cand.setup, secrets);
     return finish();
   } catch (err) {
@@ -273,6 +281,33 @@ export async function evaluate(opts) {
     record.evidence = writeEvidence(evidenceRoot, record, raw, secrets);
     return record;
   }
+}
+
+/**
+ * The persisted baseline evidence of one required test: its state (lib/baseline.mjs),
+ * the failure class, the baseline results named like it, and a redacted
+ * excerpt and source location of what failed, so a "fails or does not run"
+ * pass can be told apart from a behavioural failure without the raw logs.
+ */
+function baselineEvidence(rt, phase, { notRun, secrets }) {
+  if (notRun) return { state: null, failureClass: null, detail: notRun, observed: [], excerpt: null, location: null };
+  const { state, failureClass, observed, related } = baselineState(rt, phase.runs?.[rt.check], { setupFailed: Boolean(phase.setupFailed) });
+  const run = phase.runs?.[rt.check];
+  const source = related[0] ?? observed.find((t) => t.status === 'failed');
+  let text = source?.message ?? '';
+  if (state === 'NOT_RUN_SETUP_FAILURE') text = `${phase.setupFailed.stderr}\n${phase.setupFailed.stdout}`.split('\n').slice(-40).join('\n');
+  if (state === 'NOT_RUN_HARNESS_ERROR') text = run?.harnessError ?? 'no baseline result for this check';
+  const clean = redact(relativize(text), secrets);
+  return {
+    state,
+    failureClass,
+    satisfiesExpectedBaselineFailure: !['PASSED_UNEXPECTEDLY', 'NOT_RUN_SETUP_FAILURE', 'NOT_RUN_HARNESS_ERROR'].includes(state),
+    detail: state === 'NOT_RUN_SETUP_FAILURE' ? `baseline setup step ${phase.setupFailed.id} exited ${phase.setupFailed.exitCode}` : null,
+    observed: observed.slice(0, 10).map((t) => ({ name: redact(relativize(t.name), secrets), status: t.status })),
+    explainedBy: related.slice(0, 5).map((t) => ({ name: redact(relativize(t.name), secrets), kind: t.kind })),
+    excerpt: clean ? clean.slice(0, 1500) : null,
+    location: locationOf(text),
+  };
 }
 
 /** Raw logs and the record, redacted before they touch disk, with hashes. */
