@@ -9,7 +9,8 @@ import { addedLines, changedPaths, showFile } from './git.mjs';
  * - INTEGRITY_VIOLATION: the candidate changed what judges it, or removed or
  *   disabled tests: governance paths, the objective, a forbidden surface, a
  *   check's own configuration, a deleted test file, fewer tests in a file, a
- *   newly added skip or focus.
+ *   newly added skip or focus, or a new test or expectation-surface file the
+ *   objective does not authorize (new evidence can change what judges it).
  * - NEEDS_REVIEW: a change that may be legitimate but was not authorized by
  *   the objective: an existing test, fixture, snapshot, manifest or build
  *   configuration modified, a new lint or type suppression, a change outside
@@ -93,6 +94,13 @@ export function staticIntegrity({ repo, anchorCommit, candidateCommit, objective
     }
     if (configFiles.includes(path) && !ok) {
       add(IV, 'check-definition-modified', path, 'configuration of an objective check was changed without authorization');
+      continue;
+    }
+    // A new test or expectation-surface file is evidence the checks may pick
+    // up: it is allowed only inside the objective's allowed surfaces or as an
+    // approved expectation change, never merely because it is new.
+    if (status === 'A' && isSurface && !ok && allowed.length > 0 && !matches(path, allowed) && path !== objective.inputs?.storySpec?.path) {
+      add(IV, 'unauthorized-surface-added', path, `a new ${isTest ? 'test' : 'expectation-surface'} file outside the surfaces the objective allows`);
       continue;
     }
 
