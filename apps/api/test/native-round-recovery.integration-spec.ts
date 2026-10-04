@@ -25,17 +25,32 @@
  *   * `requestKey` uniqueness is enforced by the DATABASE rather than by a
  *     read-then-write, under genuine concurrency.
  *
- * IT REFUSES TO RUN AGAINST ANYTHING THAT LOOKS LIKE PRODUCTION. See the guard
- * below - this spec truncates tables, and the repository's own `.env` points
- * `DATABASE_URL` at `verdura_production`. A test that destroys a restaurant's
- * live orders because somebody typed the wrong npm script is not a risk worth
- * carrying for any amount of coverage.
+ * IT REFUSES TO RUN UNLESS A DATABASE IS EXPLICITLY VOUCHED FOR. See the
+ * guard below - this spec truncates tables, and the repository's own `.env`
+ * points `DATABASE_URL` at `verdura_production`. A test that destroys a
+ * restaurant's live orders because somebody typed the wrong npm script is not
+ * a risk worth carrying for any amount of coverage. It executes only when ALL
+ * of these hold for the `DATABASE_URL` it will connect to (as seen after
+ * integration-setup.ts has applied `INTEGRATION_DATABASE_URL`):
+ *
+ *   * the host is `localhost` or `127.0.0.1`;
+ *   * no query parameter is named `host` (in any letter case, with any value,
+ *     empty or repeated): the query engine prefers a `host` query parameter
+ *     over the URL's host, so the host above would not be the one connected to;
+ *   * the database name does not look like production;
+ *   * `NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE` is set and equals that
+ *     database's exact name. The opt-in vouches for ONE named database, never
+ *     for "any"; the database's name alone never makes it disposable.
+ *
+ * Anything else, including a URL that cannot be parsed, skips the suite with a
+ * loud warning. The variable is read only by this spec.
  *
  * HOW TO RUN IT:
  *   docker run -d --name verdura-recovery-it -e POSTGRES_PASSWORD=pw \
  *     -e POSTGRES_USER=pw -e POSTGRES_DB=recovery_it -p 55501:5432 postgres:16-alpine
  *   DATABASE_URL=postgresql://pw:pw@localhost:55501/recovery_it npx prisma migrate deploy
  *   DATABASE_URL=postgresql://pw:pw@localhost:55501/recovery_it \
+ *     NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE=recovery_it \
  *     npx jest --config ./test/jest-integration.json native-round-recovery --runInBand
  */
 
@@ -51,24 +66,57 @@ import { NativeTableRoundService } from '../src/pos-sync/waiterpad/native-table-
 import { DisabledTableRoundWriter } from '../src/pos-sync/waiterpad/waiterpad-table-round-writer';
 
 // ─────────────────────────────────────────────────────────────────────────
-// THE GUARD. Refuse anything that is not an obvious throwaway.
+// THE GUARD. Run only against a local database explicitly vouched for by name.
 // ─────────────────────────────────────────────────────────────────────────
-const url = process.env.DATABASE_URL ?? '';
-const looksDisposable =
-  /localhost|127\.0\.0\.1/.test(url) &&
-  !/verdura_production/.test(url) &&
-  /_it\b|test|audit|throwaway|disposable/.test(url);
+const OPT_IN_KEY = 'NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE';
 
-const describeOrSkip = looksDisposable ? describe : describe.skip;
+// At least as strict as integration-setup.ts's own refusal, whose pattern is
+// private to that file. That refusal is a second layer, not this guard.
+const PRODUCTION_LIKE_NAME = /(^|[_-])(prod|production|live)([_-]|$)|production/i;
 
-if (!looksDisposable) {
+/**
+ * Host, database name and whether a `host` query parameter is present, for a
+ * connection URL; or null if it cannot be read. `searchParams` yields decoded
+ * names (`%68ost` arrives as `host`), one entry per occurrence, empty included.
+ */
+function targetOf(
+  raw: string | undefined,
+): { host: string; name: string; hasHostParameter: boolean } | null {
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    const name = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+    const hasHostParameter = [...parsed.searchParams.keys()].some(
+      (key) => key.toLowerCase() === 'host',
+    );
+    return name === '' ? null : { host: parsed.hostname, name, hasHostParameter };
+  } catch {
+    return null;
+  }
+}
+
+const target = targetOf(process.env.DATABASE_URL);
+const vouchedFor = process.env[OPT_IN_KEY] ?? '';
+const optedIn =
+  target !== null &&
+  (target.host === 'localhost' || target.host === '127.0.0.1') &&
+  !target.hasHostParameter &&
+  !PRODUCTION_LIKE_NAME.test(target.name) &&
+  vouchedFor !== '' &&
+  vouchedFor === target.name;
+
+const describeOrSkip = optedIn ? describe : describe.skip;
+
+if (!optedIn) {
   // Loud rather than silent: a skipped safety test that nobody notices is how
   // this coverage quietly stops existing.
 
   console.warn(
-    '\n[native-round-recovery.integration-spec] SKIPPED. DATABASE_URL does not look like a ' +
-      'disposable database, and this spec truncates tables. Point it at a throwaway ' +
-      'PostgreSQL (see the header) to run it.\n',
+    '\n[native-round-recovery.integration-spec] SKIPPED. NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE ' +
+      'must equal the name of the local, non-production database DATABASE_URL points at, ' +
+      'and this spec truncates tables. DATABASE_URL must also carry no `host` query parameter. ' +
+      'Point DATABASE_URL at a throwaway PostgreSQL and set ' +
+      'the opt-in to its name (see the header) to run it.\n',
   );
 }
 
