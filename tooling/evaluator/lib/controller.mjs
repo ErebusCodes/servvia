@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { evaluate } from './evaluate.mjs';
 import { isAncestor, resolveCommit, showFile } from './git.mjs';
@@ -21,7 +21,9 @@ import { secretValues } from './redact.mjs';
  *                           or this was the last candidate (CORRECTION_LIMIT_REACHED)
  *   NEEDS_REVIEW, INTEGRITY_VIOLATION, HARNESS_ERROR -> STOP
  *
- * State is an append-only, hash-chained ledger outside the repository.
+ * State is an append-only, hash-chained ledger outside the repository. One
+ * advance at a time per objective: a second, concurrent one is refused
+ * (LOOP_BUSY) rather than allowed to overwrite the first one's iteration.
  */
 export const LEDGER_SCHEMA = 'servvia.iteration-ledger/v1';
 export const DECISIONS = { READY: 'CANDIDATE_READY_FOR_ACCEPTANCE', CORRECT: 'CORRECT', STOP: 'STOP' };
@@ -43,9 +45,12 @@ export function sealOf(ledger) {
   return sha256(Buffer.from(JSON.stringify(content)));
 }
 
-function writeLedger(stateRoot, ledger) {
-  ledger.integrity = sealOf(ledger);
+function writeLedger(stateRoot, ledger, expectedIntegrity) {
   const path = ledgerPath(stateRoot, ledger.objectiveId);
+  // Optimistic check under the lock: the ledger on disk is still the one this advance read.
+  const onDisk = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')).integrity : undefined;
+  if (onDisk !== expectedIntegrity) throw new LoopBusy('the ledger changed while this candidate was evaluated');
+  ledger.integrity = sealOf(ledger);
   mkdirSync(join(stateRoot, ledger.objectiveId), { recursive: true });
   writeFileSync(`${path}.tmp`, `${JSON.stringify(ledger, null, 2)}\n`);
   renameSync(`${path}.tmp`, path);
@@ -74,6 +79,39 @@ function lastHash(ledger) {
   return all.length ? chainHash(all.at(-1)) : null;
 }
 
+class LoopBusy extends Error {}
+
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+/** An exclusive per-objective lock; one left by a process that has exited is taken over. */
+function acquireLock(stateRoot, objectiveId) {
+  const dir = join(stateRoot, objectiveId);
+  const path = join(dir, 'ledger.lock');
+  mkdirSync(dir, { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = openSync(path, 'wx');
+      writeFileSync(fd, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }));
+      closeSync(fd);
+      return () => rmSync(path, { force: true });
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      let holder = null;
+      try { holder = JSON.parse(readFileSync(path, 'utf8')).pid; } catch { /* unreadable: treated as held */ }
+      if (attempt > 0 || !Number.isInteger(holder) || alive(holder)) return null;
+      rmSync(path, { force: true });
+    }
+  }
+  return null;
+}
+
 function stop(reason, extra = {}) {
   return { decision: DECISIONS.STOP, reason, ...extra };
 }
@@ -95,8 +133,24 @@ export async function advance(opts) {
   const objective = loaded.objective;
   const policy = JSON.parse(showFile(repo, anchorCommit, 'tooling/evaluator/policy.json').toString('utf8'));
   const maxIterations = 1 + (policy.loop?.maxCorrections ?? 2);
+  const release = acquireLock(stateRoot, objective.objectiveId);
+  if (!release) return stop('LOOP_BUSY', { detail: `another evaluation of ${objective.objectiveId} is in progress; nothing was recorded` });
+  try {
+    return await advanceLocked({ ...opts, anchorCommit, candidate, loaded, policy, maxIterations });
+  } catch (error) {
+    if (error instanceof LoopBusy) return stop('LOOP_BUSY', { detail: `${error.message}; nothing was recorded` });
+    throw error;
+  } finally {
+    release();
+  }
+}
+
+async function advanceLocked(opts) {
+  const { repo, anchor, stateRoot, anchorCommit, candidate, loaded, maxIterations } = opts;
+  const objective = loaded.objective;
   const ledger = readLedger(stateRoot, objective.objectiveId);
   if (!verifyChain(ledger)) return stop('LEDGER_TAMPERED');
+  const readIntegrity = ledger.integrity;
 
   // Objective versions: one loop per version; a newer version supersedes and restarts.
   let entry = ledger.versions.find((v) => v.version === objective.version);
@@ -125,7 +179,7 @@ export async function advance(opts) {
   const halt = (reason, fields = {}) => {
     Object.assign(entry, { status: 'stopped', stopReason: reason });
     const it = record_({ decision: DECISIONS.STOP, reason, ...fields });
-    writeLedger(stateRoot, ledger);
+    writeLedger(stateRoot, ledger, readIntegrity);
     return stop(reason, { iteration: it, ledger: ledgerPath(stateRoot, objective.objectiveId), ledgerIntegrity: ledger.integrity });
   };
 
@@ -141,7 +195,7 @@ export async function advance(opts) {
   if (record.verdict === 'PASS') {
     Object.assign(entry, { status: 'passed', stopReason: null });
     const it = record_({ verdict: 'PASS', decision: DECISIONS.READY, ...evidence });
-    writeLedger(stateRoot, ledger);
+    writeLedger(stateRoot, ledger, readIntegrity);
     return { decision: DECISIONS.READY, verdict: 'PASS', iteration: it, record, ledger: ledgerPath(stateRoot, objective.objectiveId), ledgerIntegrity: ledger.integrity };
   }
   if (record.verdict !== 'FAIL') return { ...halt(record.verdict, { verdict: record.verdict, ...evidence }), verdict: record.verdict, record };
@@ -164,6 +218,6 @@ export async function advance(opts) {
   mkdirSync(join(stateRoot, objective.objectiveId, `v${entry.version}`), { recursive: true });
   writeFileSync(packetPath, packetJson);
   const it = record_({ verdict: 'FAIL', decision: DECISIONS.CORRECT, signature, packetSha256: sha256(Buffer.from(packetJson)), packetPath, ...evidence });
-  writeLedger(stateRoot, ledger);
+  writeLedger(stateRoot, ledger, readIntegrity);
   return { decision: DECISIONS.CORRECT, verdict: 'FAIL', iteration: it, packet, packetPath, record, ledger: ledgerPath(stateRoot, objective.objectiveId), ledgerIntegrity: ledger.integrity };
 }

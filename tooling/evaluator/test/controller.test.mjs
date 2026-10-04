@@ -144,6 +144,48 @@ describe('the bounded correction loop', () => {
     assert.deepEqual([r4.decision, r4.reason], ['STOP', 'LOOP_TERMINAL']);
   });
 
+  test('two candidates submitted at once: one is evaluated, the other is refused and nothing is lost', async (t) => {
+    const f = fresh(t);
+    const c1 = f.candidate(BAD_MULTIPLY);
+    assert.equal((await f.advance(c1)).decision, 'CORRECT');
+    const c2a = f.candidate(BAD_ADD, c1);
+    const c2b = f.candidate(BOTH_BAD, c1);
+    const results = await Promise.all([f.advance(c2a), f.advance(c2b)]);
+    const busy = results.filter((r) => r.reason === 'LOOP_BUSY');
+    assert.equal(busy.length, 1);
+    assert.equal(busy[0].decision, 'STOP');
+    const ledger = readLedger(f.stateRoot, 'demo-multiply');
+    assert.deepEqual(ledger.versions[0].iterations.map((i) => i.n), [1, 2]);
+    assert.equal(ledger.versions[0].status, 'open');
+    assert.ok(!existsSync(join(f.stateRoot, 'demo-multiply', 'ledger.lock')));
+  });
+
+  test('a ledger rewritten by another writer during an evaluation is not overwritten', async (t) => {
+    const f = fresh(t);
+    const c1 = f.candidate(BAD_MULTIPLY);
+    assert.equal((await f.advance(c1)).decision, 'CORRECT');
+    const ledgerFile = join(f.stateRoot, 'demo-multiply', 'ledger.json');
+    const pending = f.advance(f.candidate(BAD_ADD, c1));
+    while (!existsSync(join(f.stateRoot, 'demo-multiply', 'ledger.lock'))) await new Promise((r) => setTimeout(r, 5));
+    const other = JSON.parse(readFileSync(ledgerFile, 'utf8'));
+    other.lessonCandidates.push({ kind: 'LESSON CANDIDATE', note: 'written by another writer' });
+    const { integrity, ...content } = other;
+    void integrity;
+    other.integrity = createHash('sha256').update(JSON.stringify(content)).digest('hex');
+    writeFileSync(ledgerFile, JSON.stringify(other));
+    const r = await pending;
+    assert.deepEqual([r.decision, r.reason], ['STOP', 'LOOP_BUSY']);
+    assert.equal(readLedger(f.stateRoot, 'demo-multiply').versions[0].iterations.length, 1);
+  });
+
+  test('a lock left by a process that no longer exists does not block the loop', async (t) => {
+    const f = fresh(t);
+    mkdirSync(join(f.stateRoot, 'demo-multiply'), { recursive: true });
+    const dead = spawnSync(process.execPath, ['-e', 'process.exit(0)']).pid;
+    writeFileSync(join(f.stateRoot, 'demo-multiply', 'ledger.lock'), JSON.stringify({ pid: dead }));
+    assert.equal((await f.advance(f.candidate(VALID))).decision, 'CANDIDATE_READY_FOR_ACCEPTANCE');
+  });
+
   test('the same failure twice, with different ports, paths and times, stops early and records a lesson candidate', async (t) => {
     const f = fresh(t);
     const c1 = f.candidate(flakyNetwork(41234, '/tmp/servvia-a1/data'));

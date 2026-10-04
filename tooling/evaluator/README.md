@@ -130,7 +130,10 @@ anything itself.
   entry per candidate (candidate, parent candidate, verdict, decision,
   signature, packet and record SHA-256s), hash-chained and sealed on every
   write; a ledger edited by hand stops the loop (`LEDGER_TAMPERED`).
-  Repeated signatures are recorded as unreviewed `LESSON CANDIDATE` entries;
+  One `advance` at a time per objective (`ledger.lock`, held for the whole
+  evaluation; a lock whose process has exited is taken over): a concurrent
+  one is refused with `STOP LOOP_BUSY` and records nothing, and a ledger
+  changed during an evaluation is never overwritten. Repeated signatures are recorded as unreviewed `LESSON CANDIDATE` entries;
   nothing is promoted.
 - **Objective freeze**: `loop.mjs validate` checks a draft and prints
   `OBJECTIVE READY FOR FREEZE` with its SHA-256; it never freezes or approves.
