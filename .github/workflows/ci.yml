@@ -115,6 +115,8 @@ jobs:
       # apps/api/.env.example's own documentation; this workflow does not
       # change that.
       DATABASE_URL: postgresql://verdura:verdura_ci_only@127.0.0.1:5432/verdura_dev
+      # Vouches for this job's own disposable database, so the native-round-recovery integration spec runs.
+      NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE: verdura_dev
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: '6379'
       JWT_ACCESS_SECRET: ci-only-access-secret-at-least-32-characters
