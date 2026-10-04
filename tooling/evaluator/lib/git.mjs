@@ -9,11 +9,11 @@ const MAX = 1024 * 1024 * 1024;
 
 export class GitError extends Error {}
 
-function git(repo, args, { allowFailure = false, encoding = 'utf8' } = {}) {
+function git(repo, args, { allowFailure = false, encoding = 'utf8', env = {} } = {}) {
   const res = spawnSync('git', ['-C', repo, ...args], {
     encoding: encoding === 'buffer' ? undefined : encoding,
     maxBuffer: MAX,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, GIT_CONFIG_NOSYSTEM: '1' },
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, GIT_CONFIG_NOSYSTEM: '1', ...env },
   });
   if (res.status !== 0 && !allowFailure) {
     throw new GitError(`git ${args.join(' ')} failed: ${String(res.stderr).trim()}`);
@@ -24,6 +24,22 @@ function git(repo, args, { allowFailure = false, encoding = 'utf8' } = {}) {
 export function resolveCommit(repo, rev) {
   const res = git(repo, ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`], { allowFailure: true });
   return res.status === 0 ? res.stdout.trim() : null;
+}
+
+/**
+ * The checkout state of a working copy: its HEAD and whether it is clean
+ * (nothing modified, staged or untracked). Read without taking git's
+ * optional index lock, so it never writes to the repository.
+ */
+export function checkoutState(repo) {
+  const env = { GIT_OPTIONAL_LOCKS: '0' };
+  const head = git(repo, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], { allowFailure: true, env });
+  const status = git(repo, ['status', '--porcelain', '--untracked-files=all'], { allowFailure: true, env });
+  return {
+    head: head.status === 0 ? head.stdout.trim() : null,
+    clean: status.status === 0 && status.stdout.trim() === '',
+    status: status.status === 0 ? status.stdout.trim() : null,
+  };
 }
 
 export function isAncestor(repo, ancestor, descendant) {

@@ -119,7 +119,28 @@ anything itself.
 - **History**: each correction is a new commit descending from the previous
   candidate (an amended or rebased candidate stops the loop:
   `CANDIDATE_HISTORY_VIOLATION`); failed candidates stay in git and in the
-  ledger.
+  ledger. The chain is `anchor → C1 → C2 → C3`: no sibling correction from
+  the anchor, no correction from an unrecorded commit.
+- **Starting commit** (`loop.mjs gate`, `gate` in `lib/controller.mjs`): the
+  ledger decides which run is next and where it may start, on a clean
+  checkout:
+
+  | Run | Requires |
+  | --- | --- |
+  | initial (C1) | no candidate of this objective version evaluated; HEAD is exactly the anchor; no failure packet |
+  | correction (C2, C3) | the last candidate's verdict is `FAIL` and decision `CORRECT`; HEAD is exactly that failed candidate (not the anchor, a sibling or any descendant); it descends from the anchor and holds the frozen objective and the approved inputs (intent contract, epic context) unchanged; `--failure-packet` is the packet the controller issued for it, byte for byte; fewer than 1 + `maxCorrections` candidates so far |
+
+  Anything else is `CLOSED`, including every STOP, a passed loop, a
+  superseded or conflicting objective version, and a ledger that does not
+  verify (`LEDGER_TAMPERED`) or belongs to another objective
+  (`LEDGER_MISMATCH`). A sealed ledger stays sealed: emptying its history
+  does not reset the loop.
+- **Quiescent candidate** (`advance --worktree <checkout>`): the run's
+  checkout must be the candidate with a clean tree before the evaluation
+  starts (`STOP WORKTREE_NOT_QUIESCENT`, nothing recorded) and still after it
+  ends (`STOP CANDIDATE_CHANGED_DURING_EVALUATION`, recorded). The
+  evaluator judges the commit by id in any case; this refuses a run in which
+  something (a subagent still running) was writing while it was captured.
 - **Objective versions**: one loop per version. A newer frozen version
   supersedes the open loop (its candidates are kept, marked superseded) and
   restarts the count; an older version or a second freeze of the same
@@ -148,12 +169,17 @@ anything itself.
   `OBJECTIVE READY FOR FREEZE` with its SHA-256, marked as a draft with no
   authority; it never freezes or approves.
   `loop.mjs gate` is open only for an anchored objective matching the
-  approved hash, whose loop is open.
+  approved hash, whose loop is open, from the one starting commit above.
 
 BMAD: `_bmad/custom/bmad-build-auto.toml` runs the gate before planning and
-`loop.mjs advance` after a run ends `done` (which means "candidate
-produced"); corrections are new `bmad-build-auto` runs given the
-`failure_packet`.
+`loop.mjs advance --worktree` after a run ends `done` (which means "candidate
+produced"); corrections are new `bmad-build-auto` runs, checked out at the
+failed candidate, given the `failure_packet`. A correction run reopens the
+spec at `in-progress` and implements (never a follow-up review of the failed
+run); its implementer receives the packet and nothing else from the
+evaluator. Subagent completion is an explicit gate: a launch or resume
+acknowledgement, or a message from a subagent still running, is not a
+result, whatever the platform calls the launch.
 
 ## Evidence (provisional)
 

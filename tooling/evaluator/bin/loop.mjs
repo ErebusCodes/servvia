@@ -8,11 +8,16 @@
 //   loop.mjs validate --objective-file <draft.json> --repo <path>
 //       checks a DRAFT objective; prints OBJECTIVE READY FOR FREEZE and its
 //       SHA-256 for the orchestrator. It never freezes or approves anything.
-//   loop.mjs gate     --repo <path> --anchor-commit <sha> --objective <path> --objective-sha256 <hex>
-//       GATE OPEN only for a frozen, approved objective whose loop is open.
-//   loop.mjs advance  --repo ... --anchor-commit ... --objective ... --objective-sha256 ... --candidate <sha>
+//   loop.mjs gate     --repo <path> --anchor-commit <sha> --objective <path> --objective-sha256 <hex> [--failure-packet <path>]
+//       GATE OPEN only for a frozen, approved objective whose loop is open,
+//       on a clean checkout of the run's one permitted starting commit: the
+//       anchor for the initial candidate; for a correction, exactly the
+//       failed candidate the ledger records, with the packet issued for it.
+//   loop.mjs advance  --repo ... --anchor-commit ... --objective ... --objective-sha256 ... --candidate <sha> [--worktree <path>]
 //       [--node-modules ... --go-root ... --go-modcache ... --dotnet-root ... --nuget-packages ... --pg-bin ... --redis-bin ...]
-//       evaluates the next candidate and prints the decision.
+//       evaluates the next candidate and prints the decision; with
+//       --worktree, the run's checkout must stay at the candidate, clean,
+//       for the whole evaluation.
 //   loop.mjs status   --objective-id <id>
 //   loop.mjs cleanup  --older-than-days <n>  |  --purge-objective <id>
 //
@@ -21,10 +26,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { advance, readLedger, verifyChain } from '../lib/controller.mjs';
+import { advance, gate, readLedger, verifyChain } from '../lib/controller.mjs';
 import { authenticateEvaluator } from '../lib/evaluate.mjs';
 import { OBJECTIVE_SCHEMA, checkBaseline, checkInputs, intentContractSha256, loadFrozenObjective, sha256, validateObjective } from '../lib/objective.mjs';
-import { resolveCommit, showFile } from '../lib/git.mjs';
+import { checkoutState, resolveCommit, showFile } from '../lib/git.mjs';
 import { pruneEvidence, purgeObjective } from '../lib/cleanup.mjs';
 
 const [command, ...rest] = process.argv.slice(2);
@@ -82,18 +87,18 @@ if (command === 'gate') {
   if (wrong) out({ gate: 'CLOSED', reason: wrong }, 20);
   const missing = checkInputs(loaded.objective, (path) => showFile(repo, commit, path));
   if (missing.length) out({ gate: 'CLOSED', reason: `the anchor does not hold the approved inputs: ${missing.join('; ')}` }, 20);
-  const ledger = readLedger(stateRoot, loaded.objective.objectiveId);
-  const newest = Math.max(0, ...ledger.versions.map((v) => v.version));
-  const entry = ledger.versions.find((v) => v.version === loaded.objective.version);
-  if (loaded.objective.version < newest) out({ gate: 'CLOSED', reason: `objective version ${newest} supersedes ${loaded.objective.version}` }, 20);
-  if (entry && (entry.anchorCommit !== commit || entry.objectiveSha256 !== loaded.digest)) out({ gate: 'CLOSED', reason: 'a different anchor is already frozen for this version' }, 20);
-  if (entry && entry.status !== 'open') out({ gate: 'CLOSED', reason: `loop is ${entry.status}: ${entry.stopReason ?? 'awaiting orchestrator acceptance'}` }, 20);
-  out({ gate: 'OPEN', objectiveId: loaded.objective.objectiveId, version: loaded.objective.version, sha256: loaded.digest, iterationsSoFar: entry?.iterations.length ?? 0 }, 0);
+  const policy = JSON.parse(showFile(repo, commit, 'tooling/evaluator/policy.json').toString('utf8'));
+  const result = gate({
+    repo, anchorCommit: commit, objectivePath: args.objective, loaded, stateRoot, maxIterations: 1 + (policy.loop?.maxCorrections ?? 2),
+    checkout: checkoutState(repo), failurePacket: args['failure-packet'],
+  });
+  out(result, result.gate === 'OPEN' ? 0 : 20);
 }
 
 if (command === 'advance') {
   const result = await advance({
     repo: resolve(args.repo), anchor: anchorOf(), candidate: args.candidate, stateRoot, evidenceRoot,
+    worktree: args.worktree && resolve(args.worktree),
     tools: {
       nodeModules: args['node-modules'] && resolve(args['node-modules']),
       goRoot: args['go-root'] && resolve(args['go-root']),
