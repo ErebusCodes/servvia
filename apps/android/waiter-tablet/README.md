@@ -20,4 +20,4 @@ Both modes work in the same context: restaurant → service area → table → v
 - Guest Mode never grants access to staff-authorised functionality. It is enforced by trusted application and backend controls, not by user-interface visibility alone.
 - Entering Staff Mode requires successful staff authorisation. The native mechanism is an open owner decision (PRD O-20); the web predecessor's approved model (DL-081) is reference behaviour, not a requirement for this application.
 
-Structure and ownership: [fileRestructure.md](../../../fileRestructure.md). Requirements: [PRD/product-requirements.md](../../../PRD/product-requirements.md).
+Structure and ownership: [PRD/product-requirements.md, Part C](../../../PRD/product-requirements.md). Requirements: [PRD/product-requirements.md](../../../PRD/product-requirements.md).

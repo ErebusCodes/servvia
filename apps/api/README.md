@@ -2,7 +2,7 @@
 
 **Transitional NestJS 11 backend.** It is not the target architecture.
 
-- **The canonical transactional backend** is Servvia Core (`services/core-platform/`, Go). It owns canonical restaurant state; see [`fileRestructure.md`](../../fileRestructure.md) and [ADR 0001](../../docs/adr/0001-servvia-is-the-operational-pos.md).
+- **The canonical transactional backend** is Servvia Core (`services/core-platform/`, Go). It owns canonical restaurant state; see [`PRD/product-requirements.md` Part C](../../PRD/product-requirements.md) and [ADR 0001](../../docs/adr/0001-servvia-is-the-operational-pos.md).
 - **This API still serves today's callers** (`apps/web/customer-website`, `apps/web/admin-console` and its device-mode builds). It still performs transitional reads and writes against the database for the capabilities it serves.
 - **Capabilities leave this API by migration:** a Core replacement is built, callers are migrated, behaviour is proven, then the Nest path retires. No new canonical behaviour is added here.
 - **Prisma (`apps/api/prisma/`) remains the migration authority** during the transition. That is a schema-ownership arrangement only; it does **not** make this API the canonical transactional backend.

@@ -1,9 +1,9 @@
 # Servvia: consolidated product requirements
 
-> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. Further changes 2026-10-03: source provenance reconciled (README "Provenance status"); production cutover rule; kitchen printing at the pilot made conditional on venue requirement; O-2 decided (transitional credential issuance); ORD-4 and ORD-5 reworded to canonical Core semantics; PRT-1 source repaired. **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; meaning and limits in [README.md](README.md) "Approval"). Amended the same day through controlled change by accepted ADR 0002 (sections 8 and 11).
-> **Architecture authority:** [`fileRestructure.md`](../fileRestructure.md).
+> **Status:** Baseline draft (CC-1), 2026-10-01; amended by CC-3 (tablet application consolidation), 2026-10-02. Further changes 2026-10-03: source provenance reconciled (README "Provenance status"); production cutover rule; kitchen printing at the pilot made conditional on venue requirement; O-2 decided (transitional credential issuance); ORD-4 and ORD-5 reworded to canonical Core semantics; PRT-1 source repaired. **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; meaning and limits in [README.md](README.md) "Approval"). Amended the same day through controlled change by accepted ADR 0002 (sections 8 and 11). **Amended 2026-10-05 by owner decision:** the former `fileRestructure.md` was consolidated into Part C (sections 28–36) and deleted, and the legacy `apps/kitchen-display/`, `apps/order-tablet/` and `apps/window-display/` directories were removed (section 34.3). **Further owner decision 2026-10-05 (KitchenOS capability scope):** the KitchenOS product capability set is part of Servvia's long-term target product (section 13); delivery phasing remains open (DEC-X-17 in volume 00). **Tier-2 ratification 2026-10-05** `[ORCH-T2-2026-10-05]`: O-20 and O-21 decided (architecture; not owner decisions); O-19 reclassified as a planning baseline without owner confirmation. Volumes 00–09 accepted as the normative corpus baseline under this document (volume 00 §00.1.3).
+> **Architecture authority:** this document. Part C (sections 28–36) holds the repository structure, ownership and transition rules formerly in `fileRestructure.md`.
 > **Sources and conflicts:** [README.md](README.md). Each requirement carries its source tag:
-> - `[FR]`: `fileRestructure.md`
+> - `[FR]`: the former `fileRestructure.md` (change records CC-1 to CC-4), consolidated into Part C on 2026-10-05 and deleted; `[FR §…]` citations resolve through the mapping in section 36.2
 > - `[P2]`: `docs/product-requirements.md`, the 2026-10-01 Step 2 draft, kept as a bannered evidence snapshot (not authority)
 > - `[TOM]`: `docs/target-operating-model.md`, as in the accepted baseline (2026-08-15, superseded in part by ADR 0001). Its §1–3 do not govern. Only its retained truthful-state and durable-outbox principles, and its non-IdealPOS rules, are cited
 > - `[ADR]`: `docs/adr/0001-servvia-is-the-operational-pos.md`, with its Decision item number where given (for example `[ADR 7]`)
@@ -18,7 +18,10 @@
 > - `[DS]`: `DESIGN.md`
 > - `[REPO]`: implemented Servvia Core behaviour, observed in the repository (evidence of existing capability, referenced rather than rebuilt)
 > - `[OWNER-QB-2026-10-01]`: the owner's enterprise-quality instruction of 2026-10-01 (Part B). It is not attributed to any older document.
-> - `[OWNER-CC-3-2026-10-02]`: the owner's tablet-consolidation decision of 2026-10-02 (change record CC-3 of `fileRestructure.md`). It is not attributed to any older document.
+> - `[OWNER-KOS-2026-10-05]`: the owner's decision of 2026-10-05 that every genuine product capability described in KitchenOS (`/Users/sarwarkhan/Documents/Obsidian Vault/Restaurant/KitchenOS.md`) belongs in Servvia's long-term target product. It approves capabilities only, not KitchenOS architecture, vendors, numbers, schedules, GTM or compliance assertions.
+> - `[ORCH-T2-2026-10-05]`: the orchestrator's Tier-2 architecture ratification of 2026-10-05 (O-20, O-21; volume 00 §00.10.6) and its reclassification of O-19 as a planning baseline. It is **not** an owner decision and approves no business policy, numeric value or compliance position.
+> - `[OWNER-2026-10-05]`: the owner's decisions of 2026-10-05: removal of the legacy application directories (section 34.3) and consolidation of `fileRestructure.md` into Part C. It is not attributed to any older document.
+> - `[OWNER-CC-3-2026-10-02]`: the owner's tablet-consolidation decision of 2026-10-02 (change record CC-3, section 36.2). It is not attributed to any older document.
 >
 > Requirements carried from `[OLD]` are restated without its superseded stack.
 >
@@ -27,6 +30,7 @@
 > - **Part B, Enterprise Quality Bar and non-functional requirements (sections 15–27).** The owner's quality instruction, tied to Servvia's architecture.
 >   - Every numeric target in Part B is either inherited, with its source, or marked **OWNER TARGET REQUIRED**.
 >   - Policy details that are not yet approved are marked **OWNER DECISION REQUIRED**.
+> - **Part C, architecture, repository structure and transition (sections 28–36).** Consolidated from the former `fileRestructure.md` (owner decision 2026-10-05); no new product requirements.
 > **Windows POS:** detailed behaviour is **PENDING USER POS ANALYSIS REPORT** (section 12).
 
 ## 1. Product definition
@@ -66,19 +70,23 @@
 
 ## 4. Product surfaces
 
-| Surface | Location | Technology | Role | Source |
-|---|---|---|---|---|
-| Go Core | `services/core-platform/` | Go | Canonical state, REST, realtime, events, workers | `[FR]` |
-| Windows POS | `apps/windows/pos-terminal/` | C# / .NET | Main POS terminal. **Pending POS report** | `[FR]` |
-| Waiter Tablet | `apps/android/waiter-tablet/` | Kotlin | The single tablet ordering application: **Staff Mode** (staff-operated mobile POS) and **Guest Mode** (customer-operated table ordering). Predecessor and reference: the web Order Tablet, which already has both modes. The separate Customer Order Tablet was merged into it by CC-3 (section 8) | `[FR] [OWNER-CC-3-2026-10-02]` |
-| Kiosk | `apps/android/kiosk/` | Kotlin | Customer self-service ordering | `[FR]` |
-| KDS | `apps/android/kds/` | Kotlin | Kitchen display (transitional of record: admin-console KDS mode) | `[FR]` |
-| Window Display | `apps/android/window-display/` | Kotlin | Promotions and signage; also the entrance menu display (`[OLD FR-5]`) | `[FR] [OLD FR-5]` |
-| Admin Console | `apps/web/admin-console/` | React + TypeScript | Administration and oversight | `[FR]` |
-| Customer Website | `apps/web/customer-website/` | React + TypeScript | Public site | `[FR] [BR]` |
-| Landing Page | `apps/web/landing-page/` | React + TypeScript | Public landing page (requirements not yet defined) | `[FR]` |
-| Venue Edge | `services/venue-edge/` | Go | Venue hardware and local resilience | `[FR] [ADR 7]` |
-| Analytics / AI | `data/` | Python | Outside the transaction path | `[FR]` |
+This is the single canonical application inventory. Platform technologies are in section 29; repository ownership in section 30.
+
+| Surface | Location | Technology | Role | Current state | Source |
+|---|---|---|---|---|---|
+| Go Core | `services/core-platform/` | Go | Canonical state, REST, realtime, events, workers | TARGET + PARTIALLY IMPLEMENTED: domains D1–D13 with tests; no client switched to it; not deployed | `[FR]` |
+| Windows POS | `apps/windows/pos-terminal/` | C# / .NET | Main POS terminal. **Pending POS report** | TARGET + STRUCTURAL SCAFFOLD ONLY; frozen (section 31) | `[FR]` |
+| Waiter Tablet | `apps/android/waiter-tablet/` | Kotlin | The single tablet ordering application: **Staff Mode** (staff-operated mobile POS) and **Guest Mode** (customer-operated table ordering). Predecessor and reference: the web Order Tablet, which already has both modes. The separate Customer Order Tablet was merged into it by CC-3 (section 8) | TARGET + STRUCTURAL SCAFFOLD ONLY. Transitional predecessor: the Admin Console Order Tablet build mode (section 34.2) | `[FR] [OWNER-CC-3-2026-10-02]` |
+| Kiosk | `apps/android/kiosk/` | Kotlin | Customer self-service ordering | TARGET + STRUCTURAL SCAFFOLD ONLY. No current client: the web kiosk was removed on 2026-10-05 (section 34.3) | `[FR]` |
+| KDS | `apps/android/kds/` | Kotlin | Kitchen display | TARGET + STRUCTURAL SCAFFOLD ONLY. Transitional KDS of record: the Admin Console KDS build mode (section 34.2) | `[FR]` |
+| Window Display | `apps/android/window-display/` | Kotlin | Promotions and signage; also the entrance menu display (`[OLD FR-5]`) | TARGET + STRUCTURAL SCAFFOLD ONLY. No current client: the React window display was removed on 2026-10-05 (section 34.3) | `[FR] [OLD FR-5]` |
+| Admin Console | `apps/web/admin-console/` | React + TypeScript | Administration and oversight | TARGET + IMPLEMENTED IN TARGET LOCATION. Calls Nest; also hosts the transitional Order Tablet and KDS build modes | `[FR]` |
+| Customer Website | `apps/web/customer-website/` | React + TypeScript | Public site | TARGET + IMPLEMENTED IN TARGET LOCATION. Mostly JavaScript; incremental TypeScript migration, no wholesale rewrite first; calls Nest | `[FR] [BR]` |
+| Landing Page | `apps/web/landing-page/` | React + TypeScript | Public landing page (requirements not yet defined) | TARGET + STRUCTURAL SCAFFOLD ONLY; its own application boundary (public-home content may be reused) | `[FR]` |
+| Venue Edge | `services/venue-edge/` | Go | Venue hardware and local resilience | TARGET + STRUCTURAL SCAFFOLD ONLY (section 30.4) | `[FR] [ADR 7]` |
+| Analytics / AI | `data/` | Python | Outside the transaction path | TARGET + NOT YET CREATED | `[FR]` |
+
+**There are exactly four permanent Android applications** (Waiter Tablet, Kiosk, KDS, Window Display; section 32). There is no permanent `apps/android/order-tablet/`; customer-operated table ordering is the Waiter Tablet's Guest Mode (WT-1, WT-3).
 
 ## 5. Domain and system of record
 
@@ -153,8 +161,8 @@
 | WT-2 | **Staff Mode** is the former Waiter Tablet scope: staff-operated ordering at the table (staff-operated mobile POS). Its behaviour is defined by the other requirements of this document; CC-3 adds none. | MUST | `[FR] [P2 §3] [OWNER-CC-3-2026-10-02]` |
 | WT-3 | **Guest Mode** is the former Customer Order Tablet scope: customer-operated table ordering, associated with the same table and visit as Staff Mode. Guest self-ordering stays in scope. Its UX and detailed features are **not yet defined**, as before CC-3. | MUST | `[FR] [P2 §3] [OWNER-CC-3-2026-10-02]` |
 | WT-4 | **Guest Mode never grants access to staff-authorised functionality.** It is a restricted operating context, enforced by trusted application and backend controls, not by user-interface visibility alone (PR-3). | MUST | `[OWNER-CC-3-2026-10-02] [DL]` |
-| WT-5 | **Entering Staff Mode requires successful staff authorisation,** enforced by the same trusted controls (WT-4); a customer cannot switch the tablet into Staff Mode. The mechanism for the native application is **open** (O-20). | MUST | `[OWNER-CC-3-2026-10-02] [DL]` |
-| WT-6 | **Consolidation removes no order-origin information.** Every order still retains its source channel, actor and device identity (section 5). Whether an order must also record its operating mode (Staff Mode or Guest Mode), and how, is **open** (O-21). | MUST | `[TOM §6] [OWNER-CC-3-2026-10-02]` |
+| WT-5 | **Entering Staff Mode requires successful staff authorisation,** enforced by the same trusted controls (WT-4); a customer cannot switch the tablet into Staff Mode. The native mechanism is **decided** (O-20): named staff authentication distinct from device identity (volume 00 §00.10.6). | MUST | `[OWNER-CC-3-2026-10-02] [DL]` `[ORCH-T2-2026-10-05]` |
+| WT-6 | **Consolidation removes no order-origin information.** Every order still retains its source channel, actor and device identity (section 5). Each order and round also records its operating mode (Staff Mode or Guest Mode), established server-side from the verified credential (O-21, **decided**; volume 00 §00.10.6). | MUST | `[TOM §6] [OWNER-CC-3-2026-10-02]` `[ORCH-T2-2026-10-05]` |
 
 **Requirements mapping (CC-3).** Nothing was removed; each former requirement has a new home:
 
@@ -162,13 +170,13 @@
 |---|---|
 | Actor "Customer at a table tablet: customer-operated table ordering" `[FR] [P2 §3]` | Same actor row (section 3), served by **Waiter Tablet → Guest Mode** (WT-3) |
 | Surface "Customer Order Tablet, `apps/android/order-tablet/`, Kotlin, customer-operated table ordering (new)" `[FR]` | **Waiter Tablet → Guest Mode** (section 4, WT-1, WT-3). The path `apps/android/order-tablet/` is removed |
-| "Its UX and features are not defined" (`fileRestructure.md` 4.1) | Kept: Guest Mode UX is not yet defined (WT-3) |
+| "Its UX and features are not defined" (former `fileRestructure.md` 4.1) | Kept: Guest Mode UX is not yet defined (WT-3) |
 | Accessibility "Customer Order Tablet: OWNER TARGET REQUIRED" (section 23) | Waiter Tablet (both modes): **OWNER TARGET REQUIRED** (section 23) |
 | Actor "Waiter: staff-operated ordering at the table (Waiter Tablet)" `[FR] [P2 §3]` | **Waiter Tablet → Staff Mode** (WT-2) |
 | Surface "Waiter Tablet: staff-operated mobile POS (predecessor: web staff Order Tablet)" `[FR]` | **Waiter Tablet → Staff Mode** (section 4, WT-2). The web Order Tablet is now the predecessor of both modes |
 | O-1 "Is the Waiter Tablet required for the pilot venue?" | Unchanged; it now covers both modes |
 
-**Reduced first pilot (ADR 0002).** Guest Mode is excluded from the first pilot and retained in the product architecture; WT-1 to WT-6, O-20 and O-21 are unchanged. For the reduced first pilot, the web Order Tablet's Staff Mode is the temporary settlement surface, within the minimum settlement boundary and retirement rule of ADR 0002 item 8. Guest Mode never receives settlement capability. `[ADR2 4, 8]`
+**Reduced first pilot (ADR 0002).** Guest Mode is excluded from the first pilot and retained in the product architecture; WT-1 to WT-6, O-20 and O-21 are unchanged by ADR 0002 (O-20 and O-21 were later decided by Tier-2 ratification on 2026-10-05). For the reduced first pilot, the web Order Tablet's Staff Mode is the temporary settlement surface, within the minimum settlement boundary and retirement rule of ADR 0002 item 8. Guest Mode never receives settlement capability. `[ADR2 4, 8]`
 
 **Kiosk, window display and public web.**
 
@@ -261,7 +269,7 @@
 - hardware behaviour
 - offline behaviour
 
-Stories that need any of these are **BLOCKED** until the report exists. `[P2 §24] [FR §5]`
+Stories that need any of these are **BLOCKED** until the report exists. The Windows POS structural boundary is in section 31. `[P2 §24] [FR §5]`
 
 ## 13. Deferred and non-goals
 
@@ -288,6 +296,27 @@ Stories that need any of these are **BLOCKED** until the report exists. `[P2 §2
   `[MVP 8.3] [OLD FR-7.9]`
 - **Inventory** has no domain in the approved structure (O-9).
 
+- **Long-term target product scope (owner decision 2026-10-05)** `[OWNER-KOS-2026-10-05]`:
+  - **Included in the long-term target product:** every genuine product capability of the KitchenOS capability set:
+    - multi-channel ordering and service, including phone, online, kiosk and delivery-marketplace channels, table zones, server assignment, courses, queues and waitlists, and bill split and merge;
+    - kitchen and production;
+    - inventory and procurement;
+    - workforce, including scheduling, attendance and payroll capability through jurisdiction packs or provider adapters;
+    - finance, including wallets, operational P&L, accounting integration and tax reporting by jurisdiction pack;
+    - CRM and loyalty;
+    - analytics, forecasting and AI under the control model of volume 00 INV-21;
+    - multi-location and franchise operation;
+    - compliance capability by jurisdiction pack;
+    - an integration ecosystem, external APIs and webhooks;
+    - onboarding and support.
+
+    This includes the domains deferred above (material, recipe and production, procurement, CRM and loyalty, workforce, BI forecasting).
+  - **Not changed:** these capabilities are **not** part of the first pilot. The pilot exclusions and ADR 0002 stand. Their delivery phase and order are open (volume 00 DEC-X-17), and no implementation is authorized by this decision.
+  - **Not approved by it:**
+    - KitchenOS technology, vendors, numeric targets, schedules, GTM, financing and compliance assertions;
+    - Servvia's own finance sub-ledger, enterprise SSO/SCIM and the floor-plan editor, which KitchenOS does not describe and which remain deferred.
+  - Each domain volume (01–09) labels these capabilities `TARGET CAPABILITY — FUTURE DELIVERY`.
+
 ## 14. Open owner decisions
 
 O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [README.md](README.md). O-20 and O-21 come from CC-3 (section 8).
@@ -302,19 +331,19 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 | O-6 | Minimum service-day reports for the pilot |
 | O-7 | Reservations ownership in Core (no domain in the approved structure) |
 | O-8 | Media ownership in Core (no package in the approved structure) |
-| O-9 | Inventory (no domain in the approved structure) |
+| O-9 | Inventory (no domain in the approved structure) **Inclusion resolved 2026-10-05** `[OWNER-KOS-2026-10-05]`: inventory is in the long-term target product; its Core domain follows Part C change control when committed (volume 00 DEC-X-13, DEC-X-17). |
 | O-10 | Android SDK and Gradle decisions |
 | O-11 | Superseded by CC-1: the fresh official BMAD is installed after `PRD/` approval |
 | O-12 | Commercial target customer for Servvia as the POS (C-1) |
 | O-13 | KDS device authentication versus the old "no-auth KDS" requirement (C-3) |
 | O-14 | Public site: pixel freeze versus `[DS]` visual refinement (C-4) |
 | O-15 | Brand naming on public web surfaces: venue brand or Servvia (C-5) |
-| O-16 | Reservation calendar sync and reservation card payments (C-6) |
+| O-16 | Reservation calendar sync and reservation card payments (C-6) **Calendar sync inclusion resolved 2026-10-05** `[OWNER-KOS-2026-10-05]` (provider is an adapter choice); reservation card payments remain open. |
 | O-17 | Which Servvia channels count for availability propagation (C-7) |
-| O-18 | Public web online ordering or pre-ordering scope (C-8) |
-| O-19 | Confirm the inherited numeric performance and availability targets for the Go Core architecture (C-9; section 19) |
-| O-20 | Waiter Tablet: the staff authorisation mechanism for entering Staff Mode in the native application (WT-5). Reference only: `[DL]` DL-081 approved device identity, a restricted customer mode, named staff elevation by personal PIN and manager step-up for the current web Order Tablet; whether that model carries over to the native application is not decided |
-| O-21 | Waiter Tablet: whether and how an order records Staff Mode versus Guest Mode (WT-6), and the future meaning and names of the existing `OrderSource.waiter_tablet`, `OrderSource.order_tablet`, `DeviceKind.order_tablet` and `MenuChannel.order_tablet` values (`fileRestructure.md` 8.F) |
+| O-18 | Public web online ordering or pre-ordering scope (C-8) **Inclusion resolved 2026-10-05** `[OWNER-KOS-2026-10-05]`: online ordering is in the long-term target product; scope details (pre-ordering, payment flow, channels) and delivery phase remain open. |
+| O-19 | Confirm the inherited numeric performance and availability targets for the Go Core architecture (C-9; section 19) **Reclassified 2026-10-05** `[ORCH-T2-2026-10-05]`: **BASELINE ACCEPTED FOR PLANNING — OWNER MAY REVISE THROUGH CONTROLLED CHANGE.** Owner confirmation remains pending before release acceptance; the values are not owner-confirmed and none is changed. |
+| O-20 | Waiter Tablet: the staff authorisation mechanism for entering Staff Mode in the native application (WT-5). Reference only: `[DL]` DL-081 approved device identity, a restricted customer mode, named staff elevation by personal PIN and manager step-up for the current web Order Tablet; whether that model carries over to the native application is not decided **Decided 2026-10-05 (Tier-2 ratification, not an owner decision)** `[ORCH-T2-2026-10-05]`: named staff authentication distinct from device identity; for the MVP the mechanism is the personal staff PIN of the DL-081 model, which is not the permanent architecture. Lifetimes, PIN length, lockout and second-factor policy stay governed policy (P2). Contract: volume 00 §00.10.6. Implementation incomplete. |
+| O-21 | Waiter Tablet: whether and how an order records Staff Mode versus Guest Mode (WT-6), and the future meaning and names of the existing `OrderSource.waiter_tablet`, `OrderSource.order_tablet`, `DeviceKind.order_tablet` and `MenuChannel.order_tablet` values (section 33) **Decided 2026-10-05 (Tier-2 ratification)** `[ORCH-T2-2026-10-05]`: explicit canonical provenance model (volume 00 §00.10.6); `waiter_tablet` is the Waiter Tablet application family in both modes, distinguished by recorded operating mode; `order_tablet` stays readable for compatibility and history and is not emitted by native clients; no destructive enum or schema change. Guest Mode menu-channel display policy is not part of this decision (P9). Implementation incomplete. |
 
 ---
 
@@ -352,11 +381,11 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 | R | Configuration and secrets | One documented configuration contract per service. Production refuses development defaults. Secrets are externally managed and never committed or logged. | `[OWNER-QB-2026-10-01]` `[OLD NFR-2.12] [MVP 9.6]` |
 | S | Dependency and supply chain | Dependencies are pinned through lockfiles and module checksums, and scanned for known vulnerabilities. Vulnerability remediation timelines: **OWNER DECISION REQUIRED**. | `[OWNER-QB-2026-10-01]` |
 | T | Compatibility and upgrade | APIs and events are versioned through `contracts/`. Breaking changes are explicit and coordinated with clients and Venue Edge. Edge and device upgrade, revocation and compatibility are managed. | `[OWNER-QB-2026-10-01]` `[MVP P2] [FR]` |
-| U | Maintainability | Code lives in its `fileRestructure.md` owner. One long-term owner per capability (PR-7). Architecture guard tests stay green. | `[OWNER-QB-2026-10-01]` `[FR] [DL] [REPO]` |
+| U | Maintainability | Code lives in its owner location (Part C, section 30). One long-term owner per capability (PR-7). Architecture guard tests stay green. | `[OWNER-QB-2026-10-01]` `[FR] [DL] [REPO]` |
 | V–AA | Testing (automated, integration, contract, end-to-end, load and performance, security) | Section 21. | `[OWNER-QB-2026-10-01]` |
 | AB | Accessibility | Section 23. | `[OWNER-QB-2026-10-01]` |
 | AC | UX quality | Section 22. | `[OWNER-QB-2026-10-01]` |
-| AD | Visual consistency | Public web follows `[DS]`. A consistent design language across each product family (Android `core/design-system`, Admin Console). Product-family design standards: **OWNER DECISION REQUIRED**. | `[OWNER-QB-2026-10-01]` `[DS] [FR]` |
+| AD | Visual consistency | Public web follows `[DS]`. A consistent design language across each product family (Android: a shared design system lives in `packages/android/` once genuinely shared, section 32; Admin Console). Product-family design standards: **OWNER DECISION REQUIRED**. | `[OWNER-QB-2026-10-01]` `[DS] [FR]` |
 | AE | Device, offline and reconnect | Defined per surface in sections 8, 9 and 18. Windows POS: **PENDING USER POS ANALYSIS REPORT**. | `[OWNER-QB-2026-10-01]` |
 | AF | Operational documentation | Runbooks for deploy, rollback, incident, restore, end of day and Edge installation exist before production. | `[OWNER-QB-2026-10-01]` `[MVP P2]` |
 | AG | Support and diagnostics | Staff-visible recovery for every failure state. Edge and device diagnostics (heartbeat, versions, queue depth, oldest age). Support access is itself authorized and audited. | `[OWNER-QB-2026-10-01]` `[TOM §9] [MVP 9.4]` |
@@ -454,14 +483,14 @@ O-1 to O-11 come from `[P2 §24]`. O-12 to O-18 come from the conflicts in [READ
 
 | Dimension | Approved target | Source | Status |
 |---|---|---|---|
-| API read latency | P95 under 200 ms under normal load | `[OLD NFR-1.1]` | Inherited; owner to confirm (C-9) |
-| Order submission latency | P95 under 500 ms end to end, excluding printing | `[OLD NFR-1.2]` | Inherited; owner to confirm (C-9) |
-| Kitchen-ticket propagation to the KDS | under 3 s from submission | `[OLD FR-6.2, NFR-1.4]` | Inherited; owner to confirm (C-9) |
-| Print latency | under 3 s from submission to printer, validated on venue hardware | `[OLD NFR-1.3] [MVP 9.5]` | Inherited; hardware open (O-4) |
+| API read latency | P95 under 200 ms under normal load | `[OLD NFR-1.1]` | Inherited; planning baseline (O-19); owner confirmation pending before release acceptance (C-9) |
+| Order submission latency | P95 under 500 ms end to end, excluding printing | `[OLD NFR-1.2]` | Inherited; planning baseline (O-19); owner confirmation pending before release acceptance (C-9) |
+| Kitchen-ticket propagation to the KDS | under 3 s from submission | `[OLD FR-6.2, NFR-1.4]` | Inherited; planning baseline (O-19); owner confirmation pending before release acceptance (C-9) |
+| Print latency | under 3 s from submission to printer, validated on venue hardware | `[OLD NFR-1.3] [MVP 9.5]` | Inherited; planning baseline (O-19); hardware open (O-4) |
 | Availability ("86") propagation | p95 under 30 s | `[MVP 9.3]` | Inherited |
-| Admin Console initial load | under 2 s on 10 Mbps | `[OLD NFR-1.5]` | Inherited; owner to confirm (C-9) |
-| Kiosk navigation | under 1 s per page | `[OLD NFR-1.6]` | Inherited; owner to confirm (C-9) |
-| Service availability | 99.5% a month, excluding planned maintenance | `[OLD NFR-6.1]` | Inherited; owner to confirm (C-9) |
+| Admin Console initial load | under 2 s on 10 Mbps | `[OLD NFR-1.5]` | Inherited; planning baseline (O-19); owner confirmation pending before release acceptance (C-9) |
+| Kiosk navigation | under 1 s per page | `[OLD NFR-1.6]` | Inherited; planning baseline (O-19); owner confirmation pending before release acceptance (C-9) |
+| Service availability | 99.5% a month, excluding planned maintenance | `[OLD NFR-6.1]` | Inherited; planning baseline (O-19); owner confirmation pending before release acceptance (C-9) |
 | General realtime propagation (other events) | — | — | **OWNER TARGET REQUIRED** |
 | Menu and query performance (public menu, channel menu) | — | — | **OWNER TARGET REQUIRED** |
 | Concurrent users and devices per venue | — | — | **OWNER TARGET REQUIRED** |
@@ -572,7 +601,7 @@ KDS and printer delivery states are shown truthfully (KIT-2, PR-4).
 
 **"Implemented" is not "production ready".** A production capability must satisfy every applicable gate, each with **explicit release evidence** (test reports, review records, rehearsal logs) rather than informal confidence:
 
-1. architecture compliance (`fileRestructure.md` ownership, no second canonical owner);
+1. architecture compliance (Part C ownership, no second canonical owner);
 2. security review;
 3. tests passing (section 21);
 4. migrations verified (from zero, upgrade, drift);
@@ -615,7 +644,7 @@ KDS and printer delivery states are shown truthfully (KIT-2, PR-4).
 | Security | Section 16 standard on every surface and channel | bcrypt cost of at least 12 or Argon2id; TLS 1.2 or higher; login limited to 10 per IP per 15 minutes | `[OLD NFR-2]` `[OWNER-QB-2026-10-01]` | Security review, security tests | Vulnerability remediation timelines: OWNER DECISION REQUIRED |
 | Tenant isolation | Scope from the verified credential; deny by default | — (binary requirement) | `[MVP 9.6] [P2 §7]` | Cross-tenant tests on REST, WebSocket, files, jobs | Required for every list or aggregate endpoint |
 | Data integrity | Section 17 invariants, atomicity, idempotency | — (binary requirement) | `[TOM] [DL] [REPO]` | PostgreSQL integration and concurrency tests; reconciliation rehearsal | Invariant catalogue per aggregate to be documented |
-| Availability and reliability | Service availability | 99.5% a month | `[OLD NFR-6.1]` | Uptime measurement in production | Owner to confirm (C-9) |
+| Availability and reliability | Service availability | 99.5% a month | `[OLD NFR-6.1]` | Uptime measurement in production | Planning baseline (O-19); owner confirmation pending before release acceptance (C-9) |
 | Performance | Section 19 dimensions | Inherited figures in section 19 | `[OLD NFR-1] [MVP 9.3]` | Load and performance tests before release | Missing targets: OWNER TARGET REQUIRED |
 | Scalability | Venues, devices, users, throughput | — | `[OWNER-QB-2026-10-01]` | Load tests at the owner-set capacity | OWNER TARGET REQUIRED |
 | Realtime | KDS propagation; general event propagation; fail-closed authorization | KDS under 3 s | `[OLD FR-6.2]` `[OWNER-QB-2026-10-01]` | Realtime tests; latency measurement | General propagation: OWNER TARGET REQUIRED |
@@ -628,3 +657,272 @@ KDS and printer delivery states are shown truthfully (KIT-2, PR-4).
 | Deployment safety | Reversible releases; migration rules | — | `[FR]` `[OWNER-QB-2026-10-01]` | Rollback rehearsal; migration tests | — |
 | Backup and restore | Daily backups; restore rehearsed | Retained 30 days | `[OLD NFR-6.2] [MVP 9.7]` | Restore rehearsal | Other retention: OWNER DECISION REQUIRED |
 | Device and Edge reliability | Durable local queue; no loss or duplication; diagnostics | Print under 3 s on venue hardware | `[TOM §8] [MVP 9.4–9.5] [OLD NFR-1.3]` | Hardware integration tests; outage drills | Hardware open (O-4) |
+
+---
+
+# Part C: Architecture, repository structure and transition
+
+Part C consolidates the former `fileRestructure.md` (change records CC-1 to CC-4), which the owner retired on 2026-10-05. It fixes **where Servvia code belongs**, which component owns what, and how transitional code is replaced and retired. It adds no product requirements. The application inventory is section 4; Part C does not repeat it.
+
+## 28. Authority and change control
+
+`[FR §1, §9] [OWNER-2026-10-05]`
+
+- **This document is the architecture and repository-structure authority.** Implementation follows Part C. There is no separate structure document.
+- **Purpose:** architectural ownership must not drift between sessions or contributors; every piece of work has one agreed home; existing code moves toward that home deliberately, not reinterpreted each time.
+- **A genuine architectural change is made here first,** through owner-approved controlled change, before implementation diverges from the agreed structure. Ownership boundaries are never changed silently during implementation.
+- **Internal names that do not alter ownership need no redesign.** For example, the `<domain>api` (transport) and `pgstore` (persistence) subpackage convention inside a Core domain package is an internal naming choice, and the file names shown for a target package record ownership, not required file names.
+- **Product requirements may change implementation details without changing the ownership model.**
+- **Change history:** section 36.
+
+## 29. Architectural invariants and platform technologies
+
+`[FR §2] [ADR 1–2]`
+
+**Invariants** (restating PR-1 and PR-2 at the architecture level):
+1. **Servvia is the operational POS.** There is no external POS in the target architecture.
+2. **PostgreSQL is authoritative.**
+3. **Go Core owns canonical transactional restaurant state** (`services/core-platform/`). There is no second canonical backend and no competing canonical implementation.
+4. **Clients use Servvia APIs and contracts** (`contracts/`).
+5. **No client owns canonical pricing or writes PostgreSQL directly.**
+6. **The Windows POS is a client**, not a parallel backend.
+
+**Platform technologies** (client applications and their technologies are in section 4):
+
+| Area | Technology |
+|---|---|
+| Core POS platform; REST/API; realtime/WebSocket services | Go (`services/core-platform/`) |
+| Venue Edge and hardware orchestration | Go (`services/venue-edge/`) |
+| Future venue device apps | Kotlin / Android |
+| AI, analytics and forecasting | Python (`data/`), outside the transaction path |
+| Transactional database | PostgreSQL |
+| Cache and coordination | Redis |
+| Realtime communication | WebSockets |
+| Media and promotional assets | Google Cloud Storage (NFR-DATA) |
+| Deployment and infrastructure | Docker / containers |
+
+## 30. Repository structure and ownership
+
+`[FR §3, §4, §4.1, §4.2] [CC-2]`
+
+### 30.1 Monorepo convention
+
+**Deployable artifact type first, platform second.**
+
+| Kind of code | Location |
+|---|---|
+| Deployable client application | `apps/<platform>/<application>/` (platforms: `web`, `windows`, `android`) |
+| Backend or long-running service | `services/<service>/` |
+| Reusable library or shared module | `packages/<scope>/<package>/` |
+| Cross-language contract | `contracts/` (`openapi/`, `events/`, `realtime/`, `schemas/`) |
+| Data, ML or analytics workload | `data/` (`analytics/`, `forecasting/`, `ai/`, `pipelines/`) |
+| Database ownership and migration target | `database/` (`migrations/`, `seeds/`, `fixtures/`, `docs/`) |
+| Deployment and runtime infrastructure | `infrastructure/` (`docker/`, `kubernetes/`, `terraform/`, `monitoring/`, `dashboards/`, `secrets/`, `local-dev/`) |
+| Development, CI, codegen and scripts | `tooling/` (`scripts/`, `codegen/`, `generators/`, `test-fixtures/`, `test-tools/`, `ci/`, `deployment/`) |
+| Documentation | `docs/` (`architecture/`, `adr/`, `api/`, `android/`, `windows-pos/`, `admin-console/`, `edge/`, `operations/`, `migration/`) |
+| Authoritative product requirements and architecture | `PRD/` (documentation, not runtime code) |
+| CI workflows; build entry point | `.github/`; a root `Makefile` (not yet created; root `package.json` scripts are the current entry point) |
+
+The listed sub-areas record **structural ownership**. They are not an instruction that each must exist now.
+
+### 30.2 Structural rules
+
+1. **The structure in this section is the agreed target and is authoritative for where new implementation belongs.** It is not redesigned during implementation because another arrangement looks cleaner.
+2. **One canonical backend.** Canonical transactional state has one owner, `services/core-platform/` (Go).
+3. **Services stay under `services/`.** Go Core and Venue Edge are never placed under `apps/`.
+4. **Migrate, don't rewrite for relocation.** Existing implementation moves into the target structure when practical; it is not rewritten because its path differs. New implementation goes directly into the correct target location.
+5. **Transitional code may remain temporarily** while its callers migrate (section 34), but it never redefines the target architecture.
+6. **No duplicate implementations** merely because a target folder exists.
+7. **Only create directories that establish real project or application boundaries, or that imminent implementation needs.** No meaningless empty directories; the target lists are ownership, not a scaffolding checklist.
+8. **`packages/` holds reusable code only.** It is never deployed independently; a package is created only when multiple consumers genuinely share code; it is never a catch-all `shared/`. Platform-scoped packages (`packages/web/`, `packages/android/`, `packages/dotnet/`, `packages/go/`) appear only when real shared consumers justify them, and no placeholders are created in advance.
+9. **Independently deployable applications do not depend directly on another application's source tree.** Genuinely shared code is extracted into a justified package once the real shared boundary is known.
+10. **Migrations:** Prisma (`apps/api/prisma/`) is the migration authority during the transition; `database/` is the final ownership target. Nothing moves until an explicitly approved migration-authority task, which is not permission to rewrite migration history. **Published migrations are never moved, renamed or rewritten.** `services/core-platform/cmd/migrate/` is a future location only if migration ownership is explicitly changed; no competing Go migration system is created.
+11. **Transitional exception:** `apps/api/` (NestJS) is a backend under `apps/` today. It is transitional, is not moved, and retires as its callers migrate to Go Core.
+12. **Root items outside the structure:** `.claude/` (repository-local development and agent configuration) stays at the root and is not product architecture; `tableMap.svg` is unrelated; planning-tool output is governed by section 35.
+
+### 30.3 Servvia Core package ownership
+
+Target packages under `services/core-platform/` (`cmd/api/`; domain packages under `internal/`; infrastructure under `platform/`; tests under `tests/`):
+
+| Target package | Owns | Current state |
+|---|---|---|
+| `internal/identity/` (`auth`, `users`, `roles`, `permissions`, `sessions`) | Authentication, tokens, guards, venue scope | Partially implemented (one flat package) |
+| `internal/identity/devices/` | Device authentication identity: credentials, authentication material, device-session identity, verification, revocation | Inside `internal/devices/` today; mapped in during implementation, not duplicated |
+| `internal/devices/` | The enrolled device registry and lifecycle: registration, state, capabilities, venue assignment, management | Partially implemented (D8) |
+| `internal/terminals/` | The logical POS terminal / workstation | Terminal records inside `internal/devices/` today (D8) |
+| `internal/organizations/`, `internal/venues/` | Tenancy | Organizations not created; venues implemented (read side) |
+| `internal/menu/` (`products`, `categories`, `modifiers`, `availability`) | Menu | Partially implemented (channel menu read) |
+| `internal/menu/pricing/`, `internal/menu/taxes/`, `internal/discounts/` | Pricing, tax and discounts. **Server pricing authority stays in Go Core throughout any migration** | Combined in `internal/pricing/` today; split only when those capabilities are next implemented or migrated, never rewritten for conformity |
+| `internal/tables/`, `internal/orders/`, `internal/checks/`, `internal/kitchen/` | Table sessions; orders and rounds; checks; kitchen tickets, stations and routing | Implemented (checks: no split or allocation yet) |
+| `internal/payments/` | Payments, methods, payment state, settlement, **refunds**, reversal or void where financially applicable | Implemented; refunds still in `internal/refunds/` (consolidate later; behaviour unchanged) |
+| `internal/shifts/`, `internal/cash-management/` | Shifts and cash | Partially implemented (`internal/shifts/`) |
+| `internal/promotions/`, `internal/events/`, `internal/workers/`, `internal/realtime/`, `internal/health/` | Promotions; durable domain events and in-process workers (D13); realtime (D12, reads the D13 log); health | Implemented |
+| `internal/{receipts, staff, idempotency, audit, notifications}/` | As named | Not created as packages |
+| `platform/{postgres, redis, queue, websocket, security, observability, config, clock}/` | Infrastructure adapters | Postgres, config and Redis rate limiting exist in old locations (`internal/platform/postgres/`, `internal/config/`, `internal/ratelimit/`); move only when dependency safety permits; the rest not created |
+| `tests/` | Tests | Normal Go conventions: unit tests beside packages; `tests/{integration, contract, architecture, parity, testsupport}/` are valid; concurrency tests may live in integration or package tests. Working tests are not relocated to match a diagram |
+
+- **D13 events and workers are valid, current Core implementations.** They are not moved into a separate worker service for layout. A separate worker process, if one is ever genuinely needed, becomes its own `services/<service>/`.
+- **Implementation-support packages** (`internal/server/` HTTP routing, `internal/platform/httpx/` HTTP helpers) are details of Core, not subsystems; they stay while they serve Core.
+
+### 30.4 Venue Edge module ownership
+
+`services/venue-edge/` (Go; `cmd/agent/`, `internal/`, `tests/`) owns, under EDGE-1 to EDGE-3: registration, device registry, payment terminal, receipt printer, kitchen printer, cash drawer, customer display, barcode scanner, local cache, local database, command queue, sync, retry, recovery, heartbeat, remote configuration, updates and diagnostics. **State: structural scaffold only.** Printing and payment-terminal transport depend on it. The deleted .NET venue connector was external-POS tooling and is not its basis.
+
+## 31. Windows POS structural freeze
+
+`[FR §5]`
+
+| Frozen item | Value |
+|---|---|
+| Location | `apps/windows/pos-terminal/` |
+| Technology | C# / .NET / Windows |
+| Structural boundary | Four solution folders, `Servvia.Pos.App`, `Servvia.Pos.Features`, `Servvia.Pos.Infrastructure` and `Servvia.Pos.Devices`, in `Servvia.Pos.sln`. No feature breakdown inside them is agreed |
+
+Everything else about the Windows POS is **PENDING USER POS ANALYSIS REPORT** (section 12). Nothing may be designed or implemented ahead of that report. The deleted .NET external-POS projects (`apps/venue-connector/`, `apps/idealpos-bridge*/`, `apps/idealpos-harness/`) are **not** a basis for POS design.
+
+## 32. Android applications
+
+`[FR §4.1] [OWNER-CC-3-2026-10-02] [OWNER-2026-10-05]`
+
+**The permanent Android applications are exactly four:**
+
+| Application | Meaning |
+|---|---|
+| `apps/android/waiter-tablet/` | The single tablet ordering application (WT-1 to WT-6): **Staff Mode** (staff-operated mobile POS) and **Guest Mode** (customer-operated table ordering; UX not yet defined). The web Order Tablet is its predecessor and reference |
+| `apps/android/kds/` | Kitchen display |
+| `apps/android/kiosk/` | Customer self-service ordering |
+| `apps/android/window-display/` | Promotions and digital signage, including the entrance menu display (WD-1) |
+
+- **There is no permanent `apps/android/order-tablet/`** and no separate customer or Guest Mode application. Guest Mode is a mode of the Waiter Tablet.
+- **Four concepts stay separate** for the Waiter Tablet:
+
+  | Concept | Values | Meaning |
+  |---|---|---|
+  | Application identity | `waiter-tablet` | The one Android tablet ordering app |
+  | Operating mode | Staff Mode, Guest Mode | Who is operating the tablet now, and therefore its presentation, permissions and available actions |
+  | Actor | Staff identity, or the device / guest-session identity | Who performed an action on the tablet |
+  | Order provenance | Order source, actor and device identity | Where, by whom and in which mode an order was entered (WT-6; O-21 decided) |
+
+  Being a mode of the Waiter Tablet never grants Guest Mode staff authority (WT-4). Entering Staff Mode needs staff authorisation enforced by trusted application and backend controls (WT-5; native mechanism decided, O-20). Existing evidence: DL-081 (the approved model of the current web Order Tablet) and Go Core, where an unelevated tablet token (`tablet_device`) is a device identity refused by staff-only routes and only an elevated tablet (`tablet_staff`, `tablet_manager`) counts as staff.
+- **Shared Android code** goes to `packages/android/` only when genuinely shared (rule 8). The old `android/core/`, `android/models/` and `android/build-logic/` scaffolds are not recreated.
+- **Where the Gradle root and shared build logic live** (within `apps/android/` or as a `packages/android/` build module) is decided with the Android SDK and Gradle decisions (O-10).
+- **State:** all four are structural scaffolds only; product implementation has not started (section 4).
+
+## 33. Waiter Tablet terminology debt
+
+`[FR §8.F] [OWNER-CC-3-2026-10-02]`
+
+These values are live data, contracts or code. They are kept for compatibility and recorded as terminology debt rather than renamed; their meaning was decided with O-21 on 2026-10-05; nothing is renamed or removed by that decision:
+
+| Occurrence | Classification | Meaning today | Status |
+|---|---|---|---|
+| `DeviceKind.order_tablet` (Prisma, Core `internal/devices`, `contracts/openapi/devices.yaml`) | Physical device classification | The tablet installation regardless of mode; effectively the Waiter Tablet device | KEEP (physical tablet kind). A distinct Waiter Tablet kind may be added additively in implementation planning (O-21); no rename |
+| `MenuChannel.order_tablet` (Prisma, Core `internal/menu`, Nest menu, Admin Console, `contracts/openapi/menu-read.yaml`) | Menu channel | The tablet's menu channel; shows unavailable ("86'd") items dimmed (staff policy) | KEEP. O-21 decided provenance only; Guest Mode menu-channel and display policy remain open under P9 and are needed only when Guest Mode is built |
+| `OrderSource.waiter_tablet`, `OrderSource.order_tablet` (Prisma, Core `internal/orders`, `contracts/openapi/servvia-orders.yaml`, `kitchen-tickets.yaml`) | Order source / audit | Two canonical tablet sources with no documented difference. Core accepts both only from a staff-elevated tablet; neither is defined as Guest Mode. Guest-mode orders currently go through Nest `POST /api/tablet/orders` with legacy source `staff`, attributed to a per-device system actor | KEEP both. O-21: `waiter_tablet` = Waiter Tablet application family (mode recorded separately); `order_tablet` readable for compatibility and history, not emitted by native clients; no destructive migration |
+| `TabletDevice` / `TabletEnrollment` (Nest "Order Tablet identity") | Transitional device identity | Current web tablets | TRANSITIONAL; retires when the Android Waiter Tablet migrates |
+| `src/pages/order-tablet/`, `OrderTabletPage`, `npm run dev:order-tablet` / `build:order-tablet`, `VITE_APP_MODE=tablet`, the `/order-tablet` route, storage key `verdura-order-tablet-pending-submission-v*` | Web predecessor terminology | The working transitional web tablet | KEEP until the web Order Tablet retires |
+
+Historical documents that use these names are not rewritten.
+
+## 34. Transition, migration and retirement
+
+`[FR §6, §7, §8] [PR-7] [PR-8]`
+
+### 34.1 Principle and vocabulary
+
+Replacement follows PR-8: **build the replacement → migrate callers → prove the behaviour → retire the old dependency.** Temporary overlap needs a source owner, a target owner, cutover and retirement criteria, and a bounded period (PR-7).
+
+| Term | Meaning |
+|---|---|
+| KEEP | Stays where it is |
+| MOVE | Relocate without rewriting |
+| MOVE/REFACTOR LATER | Relocate when dependency safety permits; never for visual conformity |
+| MIGRATE | Callers move to a new owner, then the old code retires |
+| BUILD | New implementation |
+| RETIRE / RETIRE LATER | Delete once callers and replacement allow |
+| TARGET + IMPLEMENTED (IN TARGET LOCATION) | Permanent component, implemented (in its permanent path) |
+| TARGET + PARTIALLY IMPLEMENTED | Permanent component, partly built |
+| TARGET + STRUCTURAL SCAFFOLD ONLY | README boundary; no product code |
+| TARGET BOUNDARY CREATED | Boundary exists; nothing inside it yet |
+| TARGET + EXISTS IN OLD LOCATION | Implemented, not yet in its target path |
+| TARGET + NOT YET CREATED | Nothing exists yet |
+| TRANSITIONAL | Current implementation that retires once replaced |
+| REMOVED | Deleted from the repository |
+
+### 34.2 Transitional and old-location components
+
+| Component | Current location | Target | Disposition |
+|---|---|---|---|
+| NestJS API (audit, auth, email, health, kiosk, media, menu, orders, prisma, queue, redis, reporting, reservations, staff, tables, tablet, venues, …) | `apps/api/` | Go Core | **TRANSITIONAL, MIGRATE.** Serves every current client; owns auth, staff, media (GCS), reservations and email today. No client calls Go Core yet |
+| Schema, migrations and seed | `apps/api/prisma/` (also `local-postgres/`, `shared/menu/`) | `database/` | **Migration authority during the transition** (rule 10). The `database/` boundary may exist, but Prisma schema and migrations are never copied, moved or duplicated before an approved migration-authority task |
+| Web Order Tablet (Staff Mode and Guest Mode) | Admin Console build mode `VITE_APP_MODE=tablet` (`apps/web/admin-console/src/pages/order-tablet/`) | `apps/android/waiter-tablet/` | **TRANSITIONAL.** Talks to Nest, including external-POS native rounds. Settlement surface for the reduced first pilot (section 8, ADR 0002 item 8) |
+| Web KDS of record | Admin Console build mode `VITE_APP_MODE=kds` (`KitchenDisplayPage`) | `apps/android/kds/` | **TRANSITIONAL.** Uses Nest; Go kitchen tickets (D4) exist but no client uses them |
+| Nest Socket.IO realtime (`orderUpdate`) | `apps/api/` | Go Core realtime (D12) | **TRANSITIONAL;** retires with its Nest callers |
+| External-POS surfaces in Nest | `apps/api/src/{legacy-external-pos, pos-sync, connector, payment-observation}` and the printer connector dispatch | none | **RETIRE LATER,** per replacement and caller safety. Still live; the web Order Tablet and order creation call them |
+| Legacy external-POS .NET projects | `apps/idealpos-bridge/`, `apps/idealpos-bridge-ci/`, `apps/idealpos-harness/`, `apps/venue-connector/` | none | **RETIRE.** Not target architecture; still in commit `a005642`, deleted from the working tree. Any host-installed services are a separate production decision |
+| `shared/` | repository root | decomposed by owner | **Not a permanent catch-all.** Decomposed caller by caller: seed and fixtures to `database/`, web config to the owning web app, tooling data to `tooling/`, runtime config to the owning service or app. Not mass-moved |
+| `docker/`, `docker-compose.yml`, `windows-deploy/`, `local-postgres/` | repository root | `infrastructure/` (`local-postgres/` → `infrastructure/local-dev/`) | Existing infrastructure; organised under `infrastructure/` where useful, never in a way that breaks tooling. No Go Core image or deployment route exists yet |
+| `scripts/`, `shared/local-dev.mjs`, `find_css_rules.py` | repository root | `tooling/` | Existing tooling; MOVE where useful (CI calls `scripts/*.test.mjs`) |
+| `DESIGN.md`, `PRODUCT.md` and the flat `docs/` files | repository root, `docs/` | sub-locations under `docs/` | KEEP and reorganise incrementally; audit material is documentation and reports are not duplicated to fill target folders |
+| PRD source documents (`docs/product-requirements.md`, `docs/prd.md`, `docs/mvp.md`, `docs/target-operating-model.md`, `PRODUCT.md`, `DESIGN.md`) | as is | — | KEEP as source evidence (see [README.md](README.md)); not moved, deleted or rewritten except by a separate supersession decision |
+| Public-home content | `apps/web/customer-website/` | `apps/web/landing-page/` (optional) | MOVE LATER, optional; may be reused when the landing page is built |
+
+### 34.3 Removed legacy applications (owner decision, 2026-10-05)
+
+`[OWNER-2026-10-05] [FR CC-4]`
+
+- **Removed by explicit owner decision:** `apps/kitchen-display/` (README only), `apps/order-tablet/` (README only) and `apps/window-display/` (the React signage app, which also carried the web Customer Kiosk `/order` and `/tables` and a duplicate KDS). The configuration that built, ran or deployed `apps/window-display/` and the deprecated local-disk media copy into it went with them. The untracked `apps/android/order-tablet/` placeholder was also removed.
+- **This was not a completed replacement.** The owner intentionally overrode the PR-8 retirement gate. The native successors are structural scaffolds, and the removal is **not** evidence of native replacement or functional parity.
+- **Resulting gaps until the native applications exist:**
+  - no Window Display, signage or entrance menu display client (WD-1);
+  - no web customer-kiosk client (the Nest `POST /api/kiosk/orders` API is unchanged).
+- **Unchanged:** the Admin Console KDS and Order Tablet build modes (section 34.2).
+- **Production:** the installed `VerduraWindowDisplay` service is not changed by the removal; decommissioning it is a separate operational action.
+- **Earlier removals:** the obsolete Stage 2 scaffold (`web/`, `desktop/`, `android/` with `android/apps/<application>/`, `android/core/`, `android/models/`, `android/build-logic/`) was removed under CC-2 on 2026-10-01 after its README content moved to `apps/<platform>/<application>/`. The source coupling in which `apps/window-display/` compiled against `apps/web/customer-website/` source ended with the 2026-10-05 removal (rule 9 prevents its recurrence).
+
+### 34.4 Deferred non-architectural decisions
+
+These change no ownership boundary and are decided case by case when the capability is next implemented or migrated:
+- **when** each MOVE/REFACTOR LATER or MOVE/CONSOLIDATE LATER happens (`internal/platform/`, `internal/config/`, `internal/ratelimit/`, `internal/pricing/`, `internal/refunds/`);
+- the order and pace of the Customer Website's incremental TypeScript migration (no wholesale rewrite first);
+- which public-home content, if any, is reused for the landing page;
+- the exact `docs/` sub-locations (including `DESIGN.md`, `PRODUCT.md`, `docs/audit/` and `docs/audits/`);
+- how `shared/` is decomposed;
+- the Android Gradle root (O-10);
+- when the web Order Tablet and the web KDS mode retire, governed by caller and replacement safety (PR-8).
+
+## 35. Planning infrastructure
+
+`[FR CC-1, §8.C]`
+
+- **`PRD/` is the authoritative requirements and architecture source** for planning. It is documentation and planning infrastructure, not runtime or product code.
+- **`docs/planning/` is planning output,** not a PRD input.
+- **The old BMAD setup** (`_bmad/`, `_bmad-output/`, the old `.claude/skills/bmad-*` skills) was removed on 2026-10-01 at the owner's instruction. It is not restored and is not a source of requirements, architecture or planning.
+- **The fresh official BMAD method** is installed only after `PRD/` approval. Its runtime and output locations are whatever its installer creates. It is planning infrastructure, not product architecture, and its planning is generated from `PRD/`.
+
+## 36. Implementation procedure and change history
+
+### 36.1 Implementation procedure
+
+The structure was set in Stage 1 (structure source of truth) and Stage 2 (scaffold of the approved boundaries, no product behaviour). **Stage 3** implements the product step by step inside the approved structure. For every capability:
+1. identify the target path (Part C);
+2. inspect the existing implementation;
+3. KEEP, MOVE, MIGRATE or BUILD as appropriate;
+4. implement;
+5. test;
+6. update documentation;
+7. proceed to the next capability.
+
+The overall repository structure is not redesigned during Stage 3.
+
+### 36.2 Change records
+
+| ID | Date | Change | Status |
+|---|---|---|---|
+| CC-1 | 2026-10-01 | Adds the `PRD/` boundary as the authoritative requirements source; classifies `docs/planning/` as output; records the removal of the old BMAD setup and the order "`PRD/` approved → fresh BMAD install" (section 35) | APPROVED 2026-10-01 |
+| CC-2 | 2026-10-01 | Adopts the monorepo convention (section 30.1): deployable clients under `apps/<platform>/<application>/`, services under `services/`, reusable code under `packages/`. The Admin Console and Customer Website moved to `apps/web/`; the obsolete `web/`, `desktop/` and `android/` scaffold was removed | APPROVED 2026-10-01 |
+| CC-3 | 2026-10-02 | Tablet consolidation: `apps/android/waiter-tablet/` is the single tablet ordering application with Staff Mode and Guest Mode; the separate Customer Order Tablet (`apps/android/order-tablet/`) is merged into Guest Mode and removed; no data or schema value changes (sections 8, 32, 33) | APPROVED 2026-10-02 (owner decision) |
+| CC-4 | 2026-10-05 | Removal of `apps/kitchen-display/`, `apps/order-tablet/` and `apps/window-display/` by owner decision, overriding the replacement gate; not evidence of native parity (section 34.3) | APPROVED 2026-10-05 (owner decision) |
+| — | 2026-10-05 | `fileRestructure.md` consolidated into this document (Part C) and deleted, by owner decision | APPROVED 2026-10-05 (owner decision) |
+
+**Former `fileRestructure.md` section → this document** (for `[FR §…]` citations): §1 and §9 → 28; §2 → 29 (applications: 4); §3 and §4 rules → 30; §4.1 → 30.3, 32 and 35; §4.2 → 30.1–30.2; §5 → 31; §6 and §7 → 4 and 34; §8.A–8.B → 30.3 and 34.4; §8.C → 35; §8.D–8.E → 34.3; §8.F → 32–33; §9.1 → 36.2; §10 → 36.1.

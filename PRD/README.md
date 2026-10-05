@@ -1,8 +1,8 @@
 # PRD: Servvia requirements source
 
-> **Status:** **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; see "Approval" below). Created 2026-10-01 under change record CC-1 of [`fileRestructure.md`](../fileRestructure.md).
+> **Status:** **APPROVED 2026-10-03 as the normative requirements baseline** (owner gate A; see "Approval" below). Created 2026-10-01 under change record CC-1 of the former `fileRestructure.md`. **Amended 2026-10-05 (owner decision):** `fileRestructure.md` was consolidated into `product-requirements.md` Part C and deleted. **Normative corpus baseline 2026-10-05:** volumes 00–09 accepted under SPRD (see "Normative corpus baseline" below).
 > **Purpose:** `PRD/` is the authoritative product and requirements source material from which the fresh official BMAD planning is generated. It is documentation and planning infrastructure, not runtime or product code.
-> **Architecture authority:** [`fileRestructure.md`](../fileRestructure.md). Where a source document conflicts with it, `fileRestructure.md` wins and the requirement is carried forward in technology-neutral form.
+> **Architecture authority:** [`product-requirements.md` Part C](product-requirements.md#part-c-architecture-repository-structure-and-transition) (sections 28–36), which consolidated the former `fileRestructure.md` on 2026-10-05. Where a source document conflicts with it, Part C wins and the requirement is carried forward in technology-neutral form.
 
 ## What the baseline contains
 
@@ -35,7 +35,7 @@ The source documents were inspected in the working tree on 2026-10-01. None was 
 
 | Tag | Source | Classification | How it was used |
 |---|---|---|---|
-| **[FR]** | `fileRestructure.md` | **AUTHORITY** (architecture and ownership) | Product surfaces, technologies, ownership, transitional mapping |
+| **[FR]** | the former `fileRestructure.md`, consolidated into `product-requirements.md` Part C and deleted on 2026-10-05 (mapping: section 36.2) | **AUTHORITY** (architecture and ownership), now Part C | Product surfaces, technologies, ownership, transitional mapping |
 | **[P2]** | `docs/product-requirements.md` (Step 2 draft, 2026-10-01; kept as a bannered **evidence snapshot**, body unchanged, SHA-256 `348eaae4…`) | **SOURCE EVIDENCE, not authority** (corrected 2026-10-03; earlier this row said CURRENT SOURCE) | The backbone of the consolidated PRD: definition, principles, actors, surfaces, domain, capability state, milestones, open items |
 | **[TOM]** | `docs/target-operating-model.md` (accepted-baseline version: 2026-08-15, superseded in part by ADR 0001 on 2026-09-28). Corrected 2026-10-03: an unaccepted 2026-09-30 revision was previously named here | **SUPERSEDED IN PART.** §1–3 do not govern; the truthful-state and durable-outbox principles and the non-IdealPOS rules still apply | Order invariant, in-person and online flows, kitchen routing, identifiers and states, failure policy, edge constraints, release acceptance |
 | **[ADR]** | `docs/adr/0001-servvia-is-the-operational-pos.md` (cited by Decision item, e.g. `[ADR 7]`) | **CURRENT SOURCE** (accepted decision) | Ownership of canonical state; distinct domain concepts; server pricing; Venue Edge scope |
@@ -73,7 +73,7 @@ The consolidated PRD does not resolve these silently. Each is either an owner de
 | C-6 | [OLD] FR-2.7, 2.8 and 2.12 (reservation Google Calendar sync; Stripe Checkout for reservation payments) are not reflected in [TOM] or [FR]. | Carried forward as SHOULD and marked open (O-16). |
 | C-7 | [MVP] 9.3 "86 propagates to at least two real configured channels": under [ADR] the channels are Servvia's own surfaces, not external systems. | Carried forward as availability propagation to Servvia channels. The exact channels and targets are **open** (O-17). |
 | C-8 | [BR] mentions "menu pre-orders" on the public site, and [OLD] FR-2.3 has pre-selected items on reservations. [TOM] section 4 defines an online/prepaid order flow. Whether public web online ordering is in scope is not stated anywhere. | **Open** (O-18). |
-| C-9 | The numeric targets inherited into Part B (API P95 under 200 ms, order submission P95 under 500 ms, KDS under 3 s, print under 3 s, Admin load under 2 s, kiosk navigation under 1 s, 99.5% availability) come from `[OLD]`, which is **superseded in part**. They were set for the NestJS stack and a single venue. | Kept with provenance, as instructed. **Owner to confirm** they remain the approved targets for the Go Core architecture (O-19). |
+| C-9 | The numeric targets inherited into Part B (API P95 under 200 ms, order submission P95 under 500 ms, KDS under 3 s, print under 3 s, Admin load under 2 s, kiosk navigation under 1 s, 99.5% availability) come from `[OLD]`, which is **superseded in part**. They were set for the NestJS stack and a single venue. | Kept with provenance, as instructed. **Owner to confirm** they remain the approved targets for the Go Core architecture (O-19). *2026-10-05: O-19 reclassified as BASELINE ACCEPTED FOR PLANNING — OWNER MAY REVISE THROUGH CONTROLLED CHANGE; owner confirmation still pending before release acceptance.* |
 
 ## Open items for this baseline
 
@@ -109,6 +109,18 @@ What the approval means:
 1. `PRD/README.md` and `PRD/product-requirements.md` are the **normative requirements authority** for Servvia planning and implementation.
 2. **Every open item stays unresolved.** That covers each OWNER DECISION REQUIRED and OWNER TARGET REQUIRED item, the open decisions in section 14 of `product-requirements.md`, R-3, and the PENDING USER POS ANALYSIS REPORT freeze. This approval decides none of them.
 3. **Any story that depends on an unresolved item is BLOCKED** until that item is decided through controlled change.
-4. **Architecture authority remains `fileRestructure.md`.** Accepted ADRs and decisions-log entries may amend or supersede specific requirements, but only through recorded, cross-referenced controlled change.
+4. **Architecture authority remains `fileRestructure.md`.** *Amended 2026-10-05 (owner decision): architecture authority is now Part C of `product-requirements.md`, into which `fileRestructure.md` was consolidated before it was deleted.* Accepted ADRs and decisions-log entries may amend or supersede specific requirements, but only through recorded, cross-referenced controlled change.
 5. **Historical documents are evidence only**, never requirements authority. This includes the `[P2]` snapshot and the legacy `docs/` planning material.
 6. This approval does not itself accept ADR 0002 or adopt the production-readiness audit. Those are separate decisions.
+
+## Normative corpus baseline (2026-10-05)
+
+**SERVVIA PRD NORMATIVE BASELINE ACCEPTED** on 2026-10-05.
+
+- **Scope:** volumes 00–09 become normative refinements of `product-requirements.md` (SPRD), which still wins on any conflict. `CONSOLIDATED_PRD.md` and `fileStructure.MD` remain derived; `PRD_ALIGNMENT.md` remains a control document; the changelog remains a record.
+- **Decision provenance:**
+  - owner-approved product direction: the 2026-10-03 baseline approval above, P3 and P11, and the KitchenOS capability scope (`[OWNER-KOS-2026-10-05]`);
+  - orchestrator Tier-2 architecture ratification (`[ORCH-T2-2026-10-05]`): the 26 decisions of volume 00 §00.10.4, then O-20, O-21, DEC-OPS-25, DEC-FIN-19 and DEC-WFM-19;
+  - acceptance recorded on orchestrator instruction after verification (volume 00 §00.1.3). It is not attributed to the owner.
+- **Retained downstream gates (not owner-approved):** P5 compliance posture (before production or any compliance commitment); P6 financial control values (before pilot enablement of the affected controls); P10 guest-safety configuration (before relevant production use); O-19 owner confirmation (before release acceptance); and every other open item listed in `PRD_ALIGNMENT.md` §7.
+- **It does not mean:** that future-delivery capabilities are committed to a release, that policy values are selected, that implementation is complete, that production or release is approved, that any compliance regime is certified, or that DL-117 is approved (it is not).

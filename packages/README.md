@@ -10,4 +10,4 @@
 - **No speculative platform subtrees.** Directories such as `packages/web/`, `packages/android/`, `packages/dotnet/` or `packages/go/` are created only when a real shared package needs them.
 - **Cross-language API, event and schema contracts** live in `contracts/`, not here.
 
-Structure and ownership: [fileRestructure.md](../fileRestructure.md).
+Structure and ownership: [PRD/product-requirements.md, Part C](../PRD/product-requirements.md).

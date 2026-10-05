@@ -12,4 +12,4 @@
 
 Kubernetes, Terraform, monitoring, dashboards and secrets directories are created only when real implementation requires them.
 
-Structure and ownership: [fileRestructure.md](../fileRestructure.md).
+Structure and ownership: [PRD/product-requirements.md, Part C](../PRD/product-requirements.md).

@@ -8,4 +8,4 @@
 - **Next implementation trigger:** An approved Stage 3 data task, including its PostgreSQL read-access model.
 - **Layout:** `analytics/`, `forecasting/`, `ai/`, `pipelines/`.
 
-Structure and ownership: [fileRestructure.md](../fileRestructure.md).
+Structure and ownership: [PRD/product-requirements.md, Part C](../PRD/product-requirements.md).

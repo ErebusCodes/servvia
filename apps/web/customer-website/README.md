@@ -4,7 +4,7 @@ React + Vite customer-facing website for Verdura restaurant.
 
 ## Responsibility
 
-Public landing page, venue/contact information, marketing content, promotions, and public menu browsing. Also handles the customer reservation booking flow. **Not** the in-venue ordering surface — it must not gain cart, checkout, or order-submission features; that's `apps/web/admin-console`'s Order Tablet device-mode build (see `apps/web/admin-console/README.md`). The former `apps/window-display`, which reused several of this app's pages through a source-level alias, was removed on 2026-10-05 (`fileRestructure.md` CC-4); no other app compiles against this app's source.
+Public landing page, venue/contact information, marketing content, promotions, and public menu browsing. Also handles the customer reservation booking flow. **Not** the in-venue ordering surface — it must not gain cart, checkout, or order-submission features; that's `apps/web/admin-console`'s Order Tablet device-mode build (see `apps/web/admin-console/README.md`). The former `apps/window-display`, which reused several of this app's pages through a source-level alias, was removed on 2026-10-05 (`PRD/product-requirements.md` section 34.3); no other app compiles against this app's source.
 
 ## Development
 

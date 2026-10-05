@@ -14,4 +14,4 @@
 - **Published migrations must not be renamed or rewritten.**
 - There is no second migration history. Nothing from `apps/api/prisma/` is copied here.
 
-Structure and ownership: [fileRestructure.md](../fileRestructure.md).
+Structure and ownership: [PRD/product-requirements.md, Part C](../PRD/product-requirements.md).

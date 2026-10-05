@@ -12,4 +12,4 @@
 
 **Root build entry (`Makefile`):** deliberately not created in Stage 2. There is no stable multi-language build yet, so it would invent commands for applications that do not exist. Root `package.json` scripts remain the current entry point; the `Makefile` is added in Stage 3.
 
-Structure and ownership: [fileRestructure.md](../fileRestructure.md).
+Structure and ownership: [PRD/product-requirements.md, Part C](../PRD/product-requirements.md).

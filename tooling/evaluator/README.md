@@ -64,7 +64,7 @@ approval text could only imply an authorization that does not exist).
 | `objectiveId`, `storyId`, `version`, `title` | identity; `storyId` is the epic story (`12.5`, `12.3a`), `objectiveId` is `story-<epic>-<story>-<slug>` (`story-12-3a-core-database-timeouts`), the one key of its ledger, evidence and cleanup; a changed objective is a new `version` in a new anchor |
 | `inputs` (v2) | `storySpec`: the BMAD spec's `path` and the SHA-256 of its `<intent-contract>` block; `epicContext`: the committed epic context's `path` and SHA-256. `validate` requires them on disk (the epic context committed and unmodified, the baseline the repository's HEAD); `gate` and every evaluation require them at the anchor; a candidate changing the intent contract or the epic context is an `INTEGRITY_VIOLATION`; the spec itself (where the workflow records status and logs) is always an allowed surface |
 | `baseline` | the commit the work starts from: the anchor commit's parent |
-| `requirementRefs`, `architectureConstraints`, `acceptanceCriteria` | traceability (PRD, `fileRestructure.md`, ADRs, the BMAD story); ACs as Given/When/Then |
+| `requirementRefs`, `architectureConstraints`, `acceptanceCriteria` | traceability (PRD including its Part C architecture, ADRs, the BMAD story); ACs as Given/When/Then |
 | `approval` (v1 only) | `approvedBy`, `reference`; not allowed in v2 |
 | `environment.services` | `postgres`, `redis`: started disposable, loopback only |
 | `setup` | commands run before the checks (code generation, migrations, seed) |

@@ -7,4 +7,4 @@
 - **Stage 2 state:** Structural scaffold only. Product implementation has not started.
 - **Next implementation trigger:** An approved Stage 3 task. No duplicate implementation exists here.
 
-Structure and ownership: [fileRestructure.md](../../../fileRestructure.md).
+Structure and ownership: [PRD/product-requirements.md, Part C](../../../PRD/product-requirements.md).

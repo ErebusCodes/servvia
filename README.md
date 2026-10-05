@@ -90,7 +90,7 @@ Every surface is a client of Servvia Core. None of them owns canonical business 
 
 ### Target clients
 
-These are the target implementations from ADR 0001, as amended by CC-3 in [`fileRestructure.md`](fileRestructure.md). **The native clients are not implemented yet.**
+These are the target implementations from ADR 0001, as amended by CC-3 (now recorded in [`PRD/product-requirements.md`](PRD/product-requirements.md) section 36.2). **The native clients are not implemented yet.**
 
 | Surface | Target implementation |
 |---|---|
@@ -141,7 +141,7 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 | `services/core-platform/` | **Servvia Core (Go)**: canonical domains, HTTP and WebSocket API, tests ([README](services/core-platform/README.md)) |
 | `apps/api/` | NestJS API (transitional). Also holds **`prisma/schema.prisma` and `prisma/migrations/`**, the single migration authority for all services |
 | `apps/web/admin-console/` | React admin console. The same source builds the **Order Tablet** and **Kitchen Display** targets (`VITE_APP_MODE`) |
-| `apps/android/` | Native Android targets (`waiter-tablet`, `kds`, `window-display`, `kiosk`): structural scaffolds only, not yet built. The legacy `apps/order-tablet/`, `apps/kitchen-display/` and `apps/window-display/` directories were removed by owner decision on 2026-10-05 (`fileRestructure.md` CC-4); there is currently no window display (signage) or web kiosk client |
+| `apps/android/` | Native Android targets (`waiter-tablet`, `kds`, `window-display`, `kiosk`): structural scaffolds only, not yet built. The legacy `apps/order-tablet/`, `apps/kitchen-display/` and `apps/window-display/` directories were removed by owner decision on 2026-10-05 (`PRD/product-requirements.md` section 34.3); there is currently no window display (signage) or web kiosk client |
 | `apps/web/customer-website/` | React public website: menu and table booking |
 | `contracts/` | Language-neutral contracts: OpenAPI, realtime, events, JSON schemas ([README](contracts/README.md)) |
 | `docs/` | Architecture, ADRs, migration phase notes, integrations, deployment and environments |
