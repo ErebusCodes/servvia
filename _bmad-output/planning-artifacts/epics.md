@@ -1,32 +1,43 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
-  - PRD/README.md
   - PRD/product-requirements.md
-  - fileRestructure.md
+  - PRD/README.md
+  - PRD/00-overview-and-conventions.md
+  - PRD/01-home.md to PRD/09-administration.md (consulted per requirement ID)
   - docs/adr/0001-servvia-is-the-operational-pos.md
   - docs/adr/0002-reduced-first-pilot.md
-  - docs/audits/production-readiness-2026-12.md
-workflow: bmad-create-epics-and-stories (BMAD 6.12.0)
+planningInputs:
+  - docs/checkpoints/2026-10-05/bmad-reconciliation-sprint-change-proposal.md (frozen planning target; record of the Tier-2 decisions D-1, D-3, O-10 and O-13 architecture; not requirements authority)
+  - docs/audits/production-readiness-2026-12.md (evidence and sequencing input only)
+workflow: bmad-create-epics-and-stories (BMAD 6.12.0); re-anchored by bmad-correct-course (Story 14.2)
 generated: 2026-10-03
 baselineCommit: abd4de8
+reanchored: 2026-10-05
+reanchorBaseline: e303ea6
 notes: >-
   Brownfield. No starter template. No UX design contract exists: docs/ux.md
-  is reference evidence only (PRD README, R-1). The PRD has no PRD.md or
-  Architecture.md under planning_artifacts. Per the pinned persistent facts,
-  the PRD document is PRD/product-requirements.md and the Architecture
-  document is fileRestructure.md with ADR 0001 and ADR 0002. The audit is
-  evidence and backlog input, never requirements authority.
+  is reference evidence only (PRD README, R-1). Re-anchored 2026-10-05
+  (Story 14.2): the PRD document is PRD/product-requirements.md with
+  PRD/README.md and the normative volumes PRD/00 to PRD/09; the Architecture
+  document is PRD/product-requirements.md Part C (sections 28 to 36) with
+  ADR 0001 and ADR 0002. fileRestructure.md is retired (consolidated into
+  Part C) and is no input. docs/planning/ is never a requirements input. The
+  audit is evidence and backlog input, never requirements authority.
 ---
 
 # servvia - Epic Breakdown
 
 ## Overview
 
-This document provides the complete epic and story breakdown for servvia. It decomposes the requirements from the PRD (`PRD/product-requirements.md`, approved 2026-10-03) and the architecture requirements (`fileRestructure.md`, ADR 0001, ADR 0002) into implementable stories. Sequencing evidence comes from the adopted production-readiness audit (`docs/audits/production-readiness-2026-12.md`). No UX design contract exists.
+This document provides the complete epic and story breakdown for servvia. It decomposes the requirements from the PRD (`PRD/product-requirements.md`, approved 2026-10-03, with the normative volumes `PRD/00`–`PRD/09`, baseline accepted 2026-10-05) and the architecture requirements (`PRD/product-requirements.md` Part C, ADR 0001, ADR 0002) into implementable stories. Sequencing evidence comes from the adopted production-readiness audit (`docs/audits/production-readiness-2026-12.md`). No UX design contract exists.
+
+**Re-anchoring (2026-10-05, Story 14.2, `bmad-correct-course`).** This plan was generated on 2026-10-03 from the pre-normative PRD and the now-retired `fileRestructure.md`. It is re-anchored to the normative PRD. The change analysis and every story disposition (keep, rewrite, split, supersede, merge, defer) are those of the accepted sprint change proposal (`docs/checkpoints/2026-10-05/bmad-reconciliation-sprint-change-proposal.md`, revision 2 plus its section 17 decisions), which is the frozen planning target and not requirements authority. Every requirement a story cites resolves to SPRD, a normative volume, an accepted ADR or an accepted controlled decision; planning evidence explains sequencing only. Historical statements below that describe the 2026-10-03 state (for example the audit's defect list) are kept as history.
 
 **Planning rules applied:**
-- **Unresolved items stay BLOCKED.** This covers every OWNER TARGET REQUIRED (OTR) and OWNER DECISION REQUIRED (ODR) item, the open decisions in PRD section 14, R-3 and PENDING USER POS ANALYSIS REPORT. A story that needs one says `Status: BLOCKED` and names it. No target, provider behaviour or Windows POS behaviour is invented.
+- **Unresolved items stay BLOCKED.** This covers every OWNER TARGET REQUIRED (OTR) and OWNER DECISION REQUIRED (ODR) item, the decisions still open in PRD section 14 and volume 00 section 00.10, R-3 and PENDING USER POS ANALYSIS REPORT. A story that needs one says `Status: BLOCKED` and names it. No target, provider behaviour or Windows POS behaviour is invented. Open owner and policy gates: O-1; the business parts of O-3, O-4, O-5 and O-6; pilot venue and timing (P13); P6; P2 and other configuration values; P5; P10; O-19 owner confirmation. DL-117 is NOT approved and dates nothing.
+- **Decided, not implemented.** O-20, O-21 (volume 00 §00.10.6), DEC-ADMIN-22, DEC-OPS-21, P3 and P11 (§00.10.5) and the approved Tier-2 register (§00.10.4: DEC-OPS-1, DEC-OPS-4, DEC-FIN-11) are binding architecture. A story is never marked done because its architecture is decided; implementation status comes only from verified repository evidence.
+- **Orchestrator Tier-2 decisions (2026-10-05)** recorded in the sprint change proposal §9, §12 and §17: **D-1** (first pilot: transitional web KDS on canonical Core; permanent target `apps/android/kds`; no permanent web KDS), **D-3** (the pilot web KDS authenticates to Core with a per-device, venue-bound D8 credential; no human login for ordinary KDS operation; the Nest venue PIN is not the canonical model), **O-13 architecture** (per-device, venue-bound D8 KDS identity) and **O-10** (the Android engineering baseline; exact versions pinned only in Story 17.1). SPRD section 14 does not yet record O-10 and O-13 as decided; recording them there is a pending controlled-change follow-up.
 - **Scope follows ADR 0002 (accepted).** The reduced first pilot requires integrated card (PILOT-CARD-3). Settlement goes through the transitional web Order Tablet in Staff Mode. Guest Mode, the Windows POS and the cash drawer are not part of the first pilot. Kitchen printing is conditional on the venue.
 - **The audit's P0-09 description is superseded.** It described a web cashier plus an external-card tender; Epic 9 and Epic 10 replace it.
 - **Order** follows the audit's dependency sequence: P0-02 → P0-03 → P0-04 → P0-05/P0-06 → P0-07 → P0-08 → P0-10 → …, with security and backups interleaved.
@@ -85,8 +96,8 @@ Each ID is kept from the PRD. The text is condensed; the PRD wording governs.
 - WT-2: Staff Mode: staff-operated ordering at the table.
 - WT-3: Guest Mode: customer-operated table ordering; UX undefined.
 - WT-4: Guest Mode never grants staff-authorised functionality; enforced by trusted backend controls.
-- WT-5: Entering Staff Mode requires staff authorisation (native mechanism open: O-20).
-- WT-6: Consolidation removes no order-origin information (mode recording open: O-21).
+- WT-5: Entering Staff Mode requires staff authorisation (native mechanism decided: O-20, volume 00 §00.10.6; implementation incomplete).
+- WT-6: Consolidation removes no order-origin information (provenance model decided: O-21, volume 00 §00.10.6; implementation incomplete).
 - KSK-1: Touch-first kiosk browse, cart, table and submit.
 - KSK-2: Confirmation screen and idle return.
 - KSK-3: Touch targets of at least 48 px; no hover; kiosk readability.
@@ -132,18 +143,36 @@ Each ID is kept from the PRD. The text is condensed; the PRD wording governs.
 - DOD-26: Definition of Done input (PRD section 26). It applies to every story below.
 - MAT-27: the NFR matrix (PRD section 27).
 
+### Normative-corpus requirements used by the re-anchored plan (2026-10-05)
+
+Each ID is defined in the normative corpus; the corpus wording governs.
+
+- INV-3 (identity classes; device and system actors are first-class) and INV-5 (full provenance): volume 00 §00.5.
+- INV-8 (business date), with P3 (effective-dated venue trading-day boundary; volume 00 §00.10.5) and FIN-31 (volume 07).
+- P11 (headline Net Sales including GST; volume 00 §00.10.5) with BI-3 and BI-7 (volume 08).
+- DEC-OPS-21 (device and system audit attribution; volumes 00, 02), DEC-X-6 (volume 00).
+- DEC-ADMIN-22 (event-triggered revocation of live connections) and ADMIN-33 (volume 09); ADMIN-38 keeps the Nest venue PIN TRANSITIONAL (volume 09).
+- O-20 and O-21 contracts (volume 00 §00.10.6); OPS-2 (volume 02).
+- DEC-OPS-1 (cancel, void, comp), DEC-OPS-4 (line-level routing effective at submission), DEC-FIN-11 (uncertain-payment resolution): approved Tier-2 register, volume 00 §00.10.4.
+- DEC-OPS-13 (additional device kinds; volume 02); DEC-X-17 (phasing of TARGET CAPABILITY — FUTURE DELIVERY; volume 00).
+- DEC-FIN-10 (day-close rules; open, pilot-reporting gate with O-6).
+
 ### Additional Requirements
 
-From the architecture (`fileRestructure.md`, ADR 0001, ADR 0002) and the adopted audit (evidence):
-- **No starter template.** This is a brownfield monorepo; the layout is fixed by `fileRestructure.md` (CC-2). Code goes to its owner path (QB-U).
+From the architecture (`PRD/product-requirements.md` Part C, ADR 0001, ADR 0002), the orchestrator Tier-2 decisions and the adopted audit (evidence):
+- **No starter template.** This is a brownfield monorepo; the layout is fixed by SPRD Part C (sections 28–34; `fileRestructure.md` is retired and consolidated there). Code goes to its owner path (QB-U).
+- **D-1 (Tier 2).** The first pilot uses the transitional web KDS migrated to canonical Go Core. The permanent destination is `apps/android/kds`. Replacement sequence: Core authoritative for KDS state; web KDS consumes Core, not Nest; native KDS on the same contracts; native parity proven; callers and venue operation migrate; web KDS retires (PR-8, SPRD §34). There is no permanent web KDS, and no web-KDS-only feature becomes a requirement.
+- **D-3 (Tier 2).** The transitional pilot web KDS authenticates to Core with a per-device, venue-bound D8 credential (enrollment and bootstrap, credential handling appropriate to its deployment, Core HTTP and realtime authorization, revocation, venue binding, audit and O-21 provenance attribution). Ordinary KDS operation needs no human login. The Nest venue-PIN `kds_device` token is not the canonical pilot model.
+- **O-10 (Tier 2).** The native Android baseline: Kotlin 2.x (K2), pinned Gradle wrapper, a supported stable mutually compatible AGP set, Kotlin DSL, Compose / Material 3, JDK 17, one version catalog, dependency verification and locking, Hilt, coroutines / Flow, OkHttp, kotlinx.serialization, Room, DataStore, Android Keystore (StrongBox opportunistic, not required), the supported test and quality stack, and an isolated signing pipeline. Exact versions are selected and pinned in Story 17.1 only; planning pins nothing and never means "always newest". `minSdk` comes from approved venue hardware and is never below API 26 without a new architecture decision.
 - **Ownership.** Go Core (`services/core-platform`) owns canonical transactional state. PostgreSQL is canonical. Prisma (`apps/api/prisma`) stays the only migration authority; published migrations are never rewritten.
 - **Contracts.** `contracts/` (OpenAPI, events, realtime schemas) versions every API and event change (QB-T).
 - **Transitional overlap (PR-7).** NestJS may issue staff and device credentials and serve non-transactional administration during the first pilot (O-2 decided). Core enforces transactional authorization, venue scope and financial roles.
-- **Fixed Android targets.** Exactly four: `waiter-tablet` (Staff and Guest Mode), `kds`, `kiosk`, `window-display`. No customer or order-tablet target. Native apps are not part of the first pilot.
+- **Fixed Android targets.** Exactly four: `apps/android/waiter-tablet` (Staff and Guest Mode), `apps/android/kds`, `apps/android/kiosk`, `apps/android/window-display` (SPRD §32). No customer, order-tablet or fifth target. Native apps are not part of the first pilot (ADR 0002; D-1); they are permanent target architecture on the post-pilot track (Epics 17–19).
+- **Venue Edge and CARD3.** `services/venue-edge` owns local hardware and is never a source of business truth. The first-pilot card path is CARD3 only: a trusted adapter through Venue Edge, with results reported only by a `payment_adapter` D8 identity.
 - **Windows POS.** `apps/windows/pos-terminal` is the permanent target; its behaviour is frozen pending the owner POS analysis report.
 - **ADR 0002.** The reduced first pilot needs integrated card (trusted adapter; D6 unchanged; no staff-recorded card tender) and Staff Mode settlement on the web Order Tablet (transitional; DL-087 partially superseded for Staff Mode only; DL-087 tests changed deliberately). The cash drawer, Guest Mode and the Windows POS are excluded; kitchen printing is conditional.
 - **Audit backlog evidence** (planning estimates, not commitments): P0-01 to P0-19 and P1-01 to P1-07 (audit section 8). The P0-09 description is superseded by ADR 0002.
-- **Known code defects** (audit sections 3–7, code-proven at `54dcfc0`):
+- **Known code defects** (historical, as of 2026-10-03; audit sections 3–7, code-proven at `54dcfc0`; several are fixed in the accepted lineage, see the sprint change proposal §3):
   - realtime revocation fails open (`realtimeapi/handler.go:350-354, 244, 386-389`);
   - staff venue scope is not enforced (`identity/scope.go`; `VenueAccess` is unused in Core);
   - broken Nest `start:prod`;
@@ -167,19 +196,19 @@ No UX design contract exists, so there are no UX-DRs. UX and accessibility are c
 - ORD-2: Epic 5 (Story 5.2).
 - ORD-3: Epic 5 (Story 5.2).
 - ORD-4: Epic 5 (Story 5.2).
-- ORD-5: Epic 5 (Story 5.2); Epic 9 (Story 9.2).
-- KIT-1: Epic 6 (Story 6.1); multi-station data routing in Epic 12 (Story 12.7).
-- KIT-2: Epic 6 (Story 6.2).
-- KIT-3: Epic 6 (Story 6.1). The target needs O-19 confirmation.
-- KIT-4: Epic 6 (Story 6.1).
-- KIT-5: Epic 6 (Story 6.3).
-- KIT-6: Epic 6 (Story 6.2).
+- ORD-5: Epic 5 (Story 5.2); Epic 9 (Story 9.2); O-21 provenance persistence in Epic 15 (Story 15.2).
+- KIT-1: Epic 16 (Story 16.2, line-level routing per DEC-OPS-4; supersedes Story 12.7); consumed by Epic 6 (pilot, D-1) and Epic 18 (native).
+- KIT-2: Epic 6 (Story 6.2); Epic 18 (native).
+- KIT-3: Epic 6 (Story 6.1, transitional web KDS on Core per D-1); Epic 18 (Story 18.1, native). The target is an O-19 planning baseline; owner confirmation is needed before release acceptance.
+- KIT-4: Epic 6 (Story 6.1); Epic 15 (Story 15.5, D8 `kds` credential on Core kitchen routes); Epic 18 (Story 18.1).
+- KIT-5: Epic 6 (Story 6.3); Epic 18 (Story 18.3).
+- KIT-6: Epic 6 (Story 6.2); Epic 18 (Story 18.2).
 - PAY-1: Epic 9 (cash); Epic 10 (card).
 - PAY-2: Epic 13 (Story 13.6), BLOCKED: O-18. The kiosk is turned off by Story 12.5.
 - PAY-3: Epic 10 (Story 10.2); Epic 12 (Story 12.5, kiosk).
 - PAY-4: Epic 10 (Story 10.1).
 - PAY-5: Epic 10 (Stories 10.1 and 10.3).
-- PAY-6: Epic 10 (Story 10.3).
+- PAY-6: Epic 10 (Story 10.3); Epic 16 (Story 16.4, manual uncertain-payment resolution per DEC-FIN-11).
 - PAY-7: Epic 9 (Story 9.5, cash); Epic 10 (Story 10.4, card).
 - REC-1: Epic 11 (Story 11.1), BLOCKED: O-5.
 - MENU-1 to MENU-6: Epic 13 (Story 13.3). Existing transitional Nest capability is preserved; Core ownership is O-7/O-8.
@@ -192,17 +221,20 @@ No UX design contract exists, so there are no UX-DRs. UX and accessibility are c
 - ADM-3: Epic 13 (Story 13.3).
 - RES-1 to RES-3, RES-5: Epic 13 (Story 13.4). RES-3's overbooking defect is in Story 13.4.
 - RES-4: Epic 13 (Story 13.4), BLOCKED: O-16.
-- RPT-1: Epic 13 (Story 13.5).
-- RPT-2: Epic 11 (Story 11.2), BLOCKED: O-6.
-- WT-1 to WT-6: Epic 5 (Story 5.1, Guest Mode off, honouring WT-4); Epic 13 (Story 13.2, Guest Mode on Core and native app), BLOCKED: O-20, O-21.
-- KSK-1 to KSK-5: Epic 12 (Story 12.5, kiosk off for the pilot); Epic 13 (Story 13.7, native kiosk) DEFERRED.
+- RPT-1: Epic 13 (Story 13.5, breadth DEFERRED); the P11 headline computation is Epic 16 (Story 16.5).
+- RPT-2: Epic 11 (Story 11.2), content BLOCKED: O-6 / DEC-FIN-10; depends on Epic 16 (Stories 16.1 P3 and 16.5 P11).
+- WT-1 to WT-6: Epic 5 (Story 5.1, Guest Mode off, honouring WT-4); Epic 15 (Stories 15.2 and 15.3, O-21 provenance and application identity); Epic 19 (native Waiter Tablet Staff Mode, O-20); Epic 13 (Story 13.2, Guest Mode) DEFERRED (ADR 0002 item 4; P9). O-20 and O-21 are decided; implementation is incomplete.
+- KSK-1 to KSK-5: Epic 12 (Story 12.5, kiosk off for the pilot; done); Epic 13 (Story 13.7, native kiosk) DEFERRED until after Epic 17.
 - WD-1: Epic 13 (Story 13.7) DEFERRED.
 - WEB-1 to WEB-5: Epic 2 (Story 2.7, email escaping, WEB-2-adjacent); Epic 13 (Story 13.6). WEB-1 is blocked on O-14 and WEB-5 on O-18.
-- EDGE-1 to EDGE-3: Epic 10 (Story 10.5).
+- EDGE-1 to EDGE-3: Epic 10 (Story 10.5a foundation; Story 10.5b outbound card command lease).
 - PRT-1 to PRT-3: Epic 11 (Story 11.3), depending on O-4 and the venue's kitchen-printing requirement.
 
+- INV-3, INV-5, DEC-OPS-21, DEC-ADMIN-22, O-20, O-21: Epic 15.
+- INV-8 / P3, P11, DEC-OPS-1, DEC-OPS-4, DEC-FIN-11: Epic 16.
+
 NFR coverage:
-- Security: Epics 1–2.
+- Security: Epics 1–2; Epic 15 (audit actors, provenance, revocation, device credentials).
 - Data, backup and recovery: Epic 3.
 - Environment, deployment and TLS: Epic 4.
 - Observability, release, runbooks, E2E and defect policy: Epic 12.
@@ -231,12 +263,11 @@ Waitstaff take orders through the web Order Tablet in Staff Mode, against Servvi
 **FRs covered:** ORD-1 to ORD-5, WT-1, WT-2, WT-4, WT-6. Audit P0-07, P1-01.
 
 ### Epic 6: Kitchen on Core
-Kitchen staff see and advance Core kitchen tickets in real time, and keep working through an outage.
-**FRs covered:** KIT-1 to KIT-6. Audit P0-08.
+Kitchen staff see and advance Core kitchen tickets in real time, and keep working through an outage. Under D-1 the first-pilot surface is the transitional web KDS moved off Nest onto Core, authenticated per D-3; it retires through Epic 18.
+**FRs covered:** KIT-2 to KIT-6 (KIT-1 routing in Epic 16). D-1, D-3. Audit P0-08.
 
-### Epic 7: Order lifecycle
-Managers can cancel or void orders with authorisation. Orders complete truthfully, and pending payments resolve.
-**FRs covered:** ORD-1 (lifecycle), PR-9. Audit P0-10.
+### Order lifecycle (formerly numbered 7; superseded 2026-10-05)
+Its two stories are rewritten into Epic 16 (Stories 16.3 and 16.4), citing the approved DEC-OPS-1 and DEC-FIN-11. The original text is kept below as a superseded record.
 
 ### Epic 8: Real venue and staff setup
 Owners configure the real venue, tables, tax and named staff with roles and venue grants, without seed scripts.
@@ -260,7 +291,31 @@ Operators detect, diagnose and recover failures, and the release is proven by th
 
 ### Epic 13: Deferred and blocked product scope (placeholders)
 This records the remaining product scope so nothing is lost. Each story stays BLOCKED or DEFERRED until its decision is made.
-**FRs covered:** MENU-1 to MENU-6, AVL-1, ADM-1, ADM-3, RES-1 to RES-5, RPT-1, WT-3, WT-5 (native), KSK-1 to KSK-5 (native), WD-1, WEB-1 to WEB-5, PAY-2.
+**FRs covered:** MENU-1 to MENU-6, AVL-1, ADM-1, ADM-3, RES-1 to RES-5, RPT-1 (breadth), WT-3, KSK-1 to KSK-5 (native), WD-1, WEB-1 to WEB-5, PAY-2. WT-5 (native Staff Mode) moves to Epic 19.
+
+### Epic 14: Baseline integration and planning re-anchor (Wave A)
+One integrated baseline holds the accepted engineering lineage, the legacy cleanup and the normative PRD, and BMAD planning consumes the normative PRD instead of retired or stale sources.
+**Covers:** SPRD §28, §35, §36; volume 00 §00.1.1; PR-7. Planning and configuration only.
+
+### Epic 15: Canonical identity, provenance and audit (Wave B)
+Every pilot-critical action is attributable to a truthful actor (staff, device or system), every order carries its full provenance, revocation takes effect on live connections, and Core kitchen routes accept per-device KDS credentials.
+**Covers:** INV-3, INV-5, DEC-OPS-21, DEC-ADMIN-22, ADMIN-33, O-20, O-21, D-3, NFR-SEC-3, NFR-AUD, WT-5, WT-6.
+
+### Epic 16: Service-day correctness (Wave C)
+Orders, payments and reports land on the correct business date, kitchen lines route to the right stations, and cancel, void, comp and uncertain payments follow the approved append-only architecture.
+**Covers:** INV-8 / P3, FIN-31, P11 (BI-3, BI-7), KIT-1 / DEC-OPS-4, DEC-OPS-1, DEC-FIN-11, PAY-6, PR-9, VEN-1 (with Story 8.2).
+
+### Epic 17: Native Android platform foundation (post-pilot track)
+The four native applications share one approved engineering baseline (O-10), secure device enrollment and credential storage, and a Core realtime client.
+**Covers:** SPRD §29, §32; O-10; D8; O-13 architecture; O-20 §8; NFR-RT.
+
+### Epic 18: Native Android KDS (post-pilot; permanent KDS replacement)
+The kitchen runs on `apps/android/kds`, the permanent KDS, which replaces the transitional web KDS after parity is proven (D-1 steps 3–6). It is not a first-pilot blocker under D-1.
+**Covers:** KIT-2 to KIT-6, D-1, O-13 architecture, PR-8, SPRD §34.
+
+### Epic 19: Native Waiter Tablet Staff Mode (post-pilot; primary transitional-retirement target)
+Waitstaff use the native `apps/android/waiter-tablet` in Staff Mode, with O-20 staff elevation and O-21 provenance, replacing the transitional web Order Tablet and its ADR 0002 settlement exception.
+**Covers:** WT-1, WT-2, WT-4, WT-5, WT-6, O-20, O-21, ADR 0002 item 8 retirement rule, PR-8.
 
 ## Epic 1: Trustworthy build, CI and production start
 
@@ -319,6 +374,7 @@ So that CI is green without hiding failures.
 - Traceability: TEST-21, PR-8; audit P0-02.
 - Depends on: none.
 - Status: READY (fix path). The retirement path is BLOCKED: approval of the external-POS cleanup checkpoint (the C workstream).
+- Delivery: DONE. Fix path accepted (frozen objective `story-1-3-venue-connector-ci-job-made-truthful` v1; integrated in `ff3e4d7`). Tracking corrected 2026-10-05.
 
 ### Story 1.4: Nest production start runs the built entry point
 
@@ -370,7 +426,55 @@ So that unreviewed or failing changes cannot reach the release line.
 
 - Traceability: QB-Q, REL-24; audit P0-02.
 - Depends on: Stories 1.1 to 1.3.
-- Status: NEEDS AUTHORIZATION: GitHub repository administration (a remote change).
+- Status: NEEDS AUTHORIZATION: GitHub repository administration (a remote change). Sequenced after Wave A (Epic 14).
+
+### Story 1.7: Native-round-recovery integration tests run truthfully in CI
+
+Recorded 2026-10-05 from its accepted story spec (`spec-1-7-native-round-recovery-ci-truthfulness.md`), which governs.
+
+- Traceability: SPRD §21 (TEST-21), SPRD §24.
+- Status: DONE. Accepted (frozen objective `story-1-7-native-round-recovery-ci-truthfulness` v1; integrated in `38bea30`).
+
+### Story 1.8: Native-round-recovery tests refuse a DATABASE_URL host query override
+
+Recorded 2026-10-05 from its accepted story spec (`spec-1-8-native-round-recovery-host-override-safety.md`), which governs.
+
+- Traceability: SPRD §16, SPRD §21 (TEST-21).
+- Depends on: Story 1.7.
+- Status: DONE. Accepted (frozen objective `story-1-8-native-round-recovery-host-override-safety` v1; integrated in `38bea30`).
+
+### Story 1.9: Test-harness loopback binding
+
+As an engineer,
+I want every API test request to target exactly the loopback endpoint its in-process test server is bound to,
+So that evaluator and CI verdicts on integration tests cannot be corrupted by a wildcard/IPv4 port collision with an unrelated local process.
+
+**Acceptance Criteria:**
+
+**Given** the integrated baseline, where API test servers bind a wildcard address while requests target `127.0.0.1` (a measured intermittent failure on `38bea30`)
+**When** the story is implemented under a frozen objective
+**Then** every test server binds the explicit loopback endpoint that its requests target, with no production networking change
+**And** every existing test still runs and passes at its re-measured floor, and the Story 1.7 recovery suite and Story 1.8 fail-safe pass unchanged.
+
+- Traceability: SPRD §21 (TEST-21: deterministic tests on disposable environments), SPRD §24 (tests passing with explicit evidence), SPRD §16 (fail closed).
+- Depends on: Stories 14.1 and 14.2 (Wave A).
+- Status: REWRITE — NOT FROZEN. The 2026-10-05 draft objective is stale and is not authority. The objective is regenerated and frozen only after the preconditions in the sprint change proposal §15 hold (see the Story 14.2 readiness record). Not authorized for implementation.
+
+### Story 1.10: CI asserts the native-round-recovery suite executes
+
+As an engineer,
+I want CI to fail when the native-round-recovery suite is skipped instead of executed,
+So that a green API integration job proves those tests actually ran.
+
+**Acceptance Criteria:**
+
+**Given** the API integration CI job can report green while the recovery suite falls back to a skip (Story 1.7 recorded deferral)
+**When** the job runs
+**Then** it fails unless the recovery tests executed; no test is weakened or skipped to obtain green.
+
+- Traceability: SPRD §21 (TEST-21), SPRD §24.
+- Depends on: Story 1.9.
+- Status: DEFERRED (keep) to the first Epic 1 slot after Wave B starts. Not started.
 
 ## Epic 2: Secure access to staff, devices and realtime
 
@@ -703,8 +807,9 @@ So that customers cannot reach staff functions (WT-4) and the pilot scope matche
 **And** Guest Mode code and the WT requirements are retained, not deleted.
 
 - Traceability: WT-1, WT-2, WT-4, WT-5; ADR 0002 item 4; audit P1-01.
-- Depends on: Story 2.2.
-- Status: READY
+- Depends on: Story 2.2; Story 15.3 (application-identity claim).
+- Status: READY after Story 15.3.
+- Re-anchored 2026-10-05 (REWRITE): O-20 and O-21 are decided (volume 00 §00.10.6) and are no longer open. The web tablet keeps the DL-081 elevation model as a transitional surface (O-2) and carries the application-identity claim from Story 15.3. Guest Mode stays off for the first pilot (ADR 0002 item 4).
 
 ### Story 5.2: Order Tablet Staff Mode submits sessions, orders and rounds to Core
 
@@ -721,8 +826,8 @@ So that the kitchen and billing work from the canonical record.
 **And** the order carries source, actor and device identity (WT-6); ordering opens no check (ORD-5)
 **And** Core writes are enabled only in an environment that has passed the Epic 3 baseline.
 
-- Traceability: ORD-1 to ORD-5, WT-6, PR-2, PR-3.
-- Depends on: Stories 5.1, 4.2 and 3.1.
+- Traceability: ORD-1 to ORD-5, WT-6, PR-2, PR-3; O-21 (volume 00 §00.10.6).
+- Depends on: Stories 5.1, 4.2 and 3.1; Stories 15.2 and 15.3 (the tablet's switch to Core writes O-21 provenance).
 - Status: READY after its dependencies.
 
 ### Story 5.3: Order Tablet consumes Core realtime and resynchronises
@@ -746,6 +851,8 @@ So that the tablet never shows stale state.
 
 Kitchen staff see and advance Core kitchen tickets in real time and keep working through an outage. Audit P0-08.
 
+Re-anchored 2026-10-05 under **D-1**: the first-pilot KDS is the transitional web KDS (Admin Console KDS build mode) moved off Nest onto Core kitchen tickets and the Core realtime kitchen audience, authenticated with a per-device, venue-bound D8 `kds` credential (**D-3**, Story 15.5). It keeps only the KIT-2 to KIT-6 behaviour; no web-KDS-only feature becomes a requirement. It is transitional and retires through Epic 18 (PR-8, SPRD §34). The permanent KDS is `apps/android/kds`.
+
 ### Story 6.1: KDS reads and advances Core kitchen tickets with an authenticated device
 
 As kitchen staff,
@@ -754,14 +861,14 @@ So that the kitchen works from the canonical record.
 
 **Acceptance Criteria:**
 
-**Given** a D8 KDS device credential (authenticated, revocable)
+**Given** a per-device, venue-bound D8 `kds` credential enrolled into the KDS browser installation (D-3), and no human login for ordinary operation
 **When** tickets are created by a Core round
-**Then** they appear through Core realtime with the KIT-4 fields, and advance through valid transitions only
-**And** cross-venue access is refused.
+**Then** the transitional web KDS reads them from Core HTTP and the Core realtime kitchen audience (not Nest or socket.io) with the KIT-4 fields, and advances them through valid transitions only, attributed to the device actor
+**And** cross-venue access and a revoked device are refused over HTTP and realtime.
 
-- Traceability: KIT-1, KIT-3, KIT-4, NFR-SEC-3.
-- Depends on: Stories 2.1, 2.2 and 5.2.
-- Status: READY. KDS authentication follows the PRD default (authenticated devices). O-13 asks whether that may be relaxed; this story does not relax it.
+- Traceability: KIT-3, KIT-4, NFR-SEC-3, INV-3; D-1, D-3; O-13 architecture.
+- Depends on: Stories 2.1, 2.2, 5.2, 15.5 and 16.2.
+- Status: READY after its dependencies. Re-anchored 2026-10-05 (REWRITE): O-13 is decided as architecture (per-device D8 identity) and D-3 replaces the Nest venue-PIN token for pilot venues; the browser credential handling covers only what this transitional surface needs.
 
 ### Story 6.2: KDS surfaces delivery failures and survives backend outages
 
@@ -776,7 +883,7 @@ So that an outage never silently hides work.
 **Then** received tickets remain visible from a persisted cache, the outage is shown, reconnection is automatic, and state is refetched (KIT-6)
 **And** silent failures in `KitchenDisplayPage.tsx:427-477` are replaced by visible states (PR-4).
 
-- Traceability: KIT-2, KIT-6, PR-4; audit P1-01.
+- Traceability: KIT-2, KIT-6, PR-4; audit P1-01; D-1 (transitional web KDS on Core).
 - Depends on: Story 6.1.
 - Status: READY after its dependency.
 
@@ -796,11 +903,13 @@ So that late orders stand out.
 - Depends on: Story 6.1.
 - Status: READY. The threshold is venue configuration, not an invented target.
 
-## Epic 7: Order lifecycle
+## Order lifecycle (formerly numbered 7) — superseded 2026-10-05
+
+Superseded record, not tracked. Both items are rewritten into Epic 16 (7.1 → Story 16.3 citing DEC-OPS-1; 7.2 → Story 16.4 citing DEC-FIN-11). The original text is kept unchanged below.
 
 Managers cancel or void orders with authorisation. Orders complete truthfully, and pending payments resolve. Audit P0-10.
 
-### Story 7.1: Manager-authorised order cancel and void in Core
+#### Former item 7.1 (superseded by 16.3): Manager-authorised order cancel and void in Core
 
 As a manager,
 I want to cancel or void an order or line with a reason and manager authorisation,
@@ -818,7 +927,7 @@ So that mistakes are corrected by explicit, audited compensating actions.
 - Depends on: Stories 2.2 and 5.2.
 - Status: READY
 
-### Story 7.2: Order completion and pending-payment resolution
+#### Former item 7.2 (superseded by 16.4): Order completion and pending-payment resolution
 
 As a manager,
 I want orders to complete when served and billed, and pending or uncertain payments to have an explicit resolution path,
@@ -888,13 +997,15 @@ So that pricing and service use the real venue.
 **When** an owner edits them
 **Then** they persist to the canonical record and are audited; tax uses the verified NZ GST-inclusive profile only, with other profiles failing closed.
 
-- Traceability: VEN-1, TBL-1; audit P0-11.
+- Traceability: VEN-1, TBL-1; audit P0-11; P3 (volume 00 §00.10.5: the venue trading-day boundary configuration lives in these settings).
 - Depends on: Story 8.1.
-- Status: READY
+- Status: READY. Re-anchored 2026-10-05 (REORDER): sequenced in Wave C, before Story 16.1, and includes the P3 boundary configuration (organization default plus venue override, prospective changes only).
 
 ## Epic 9: Cash settlement from the Order Tablet Staff Mode
 
 Authorised staff bill a visit, take cash under their shift, refund, and close the visit. ADR 0002 item 8; DL-118.
+
+Re-anchored 2026-10-05: Stories 9.1 to 9.6 additionally depend on Story 15.2 (O-21 provenance on checks, payments and refunds) and Story 16.1 (P3 business date). Settlement on the web Order Tablet is the transitional ADR 0002 exception; it retires through Story 19.3.
 
 ### Story 9.1: Staff open and close their own cash shift from Staff Mode
 
@@ -1000,6 +1111,8 @@ So that no visit closes with money outstanding.
 
 Staff take card payments whose success comes only from a trusted, certified terminal integration. ADR 0002 item 2 (PILOT-CARD-3).
 
+Re-anchored 2026-10-05: CARD3 is the only first-pilot card path. Story 10.5 is split into 10.5a (Venue Edge foundation) and 10.5b (outbound Core → Edge card command lease); nothing dispatches pending card payments to an adapter today. CARD3 track order: 10.1 → 10.5a → 10.5b → 10.2 → 10.3 → 10.4, then 10.6 after the O-3 business choice.
+
 ### Story 10.1: Provider-neutral payment-adapter contract
 
 As an architect of the payment subsystem,
@@ -1066,7 +1179,7 @@ So that refunds are as trustworthy as payments.
 - Depends on: Story 10.2.
 - Status: READY (simulator)
 
-### Story 10.5: Venue Edge service foundation (identity, durable queue, diagnostics)
+### Story 10.5a: Venue Edge service foundation (identity, durable queue, diagnostics)
 
 As a venue operator,
 I want a Venue Edge service with a revocable venue identity, an encrypted durable leased queue, restart survival and visible health,
@@ -1081,7 +1194,24 @@ So that terminals (and printers where needed) are driven reliably.
 
 - Traceability: EDGE-1 to EDGE-3, NFR-OFF; ADR 0001 item 7.
 - Depends on: Story 10.1.
-- Status: READY
+- Status: READY. Re-anchored 2026-10-05 (SPLIT): the card command lease moved to Story 10.5b.
+
+### Story 10.5b: Core to Venue Edge card command lease
+
+As a venue operator,
+I want Venue Edge to lease pending card commands from Core over an outbound-only connection,
+So that card payments created in Core actually reach the trusted terminal adapter, exactly once.
+
+**Acceptance Criteria:**
+
+**Given** Core holds pending card payments and Venue Edge connects outbound only (EDGE-2)
+**When** Edge leases pending card commands with idempotency
+**Then** each command is delivered at most once per lease, survives Edge and Core restarts, and its result returns only through the existing trusted adapter result route (a `payment_adapter` D8 identity)
+**And** an expired lease or an uncertain outcome is never retried in a way that could duplicate a charge (PAY-6).
+
+- Traceability: EDGE-2, EDGE-3, PAY-1, PAY-6; ADR 0002 item 2 (CARD3).
+- Depends on: Story 10.5a.
+- Status: READY after its dependency.
 
 ### Story 10.6: Provider-specific terminal adapter and certification
 
@@ -1096,8 +1226,8 @@ So that the pilot can take real cards.
 **Then** it passes the provider's certification, plus failure-injection tests through Venue Edge.
 
 - Traceability: PAY-1, PAY-3, PAY-4; ADR 0002 item 2.
-- Depends on: Stories 10.3 to 10.5.
-- Status: BLOCKED: O-3 (in-person card provider and terminal).
+- Depends on: Stories 10.3, 10.4, 10.5a and 10.5b.
+- Status: BLOCKED: O-3 business part (card provider, acquirer, terminal, commercial terms). The trusted-adapter mechanism is decided (CARD3).
 
 ## Epic 11: Receipts, printing and day close
 
@@ -1127,13 +1257,13 @@ So that the day can be reconciled and closed.
 
 **Acceptance Criteria:**
 
-**Given** a service day
+**Given** a service day whose records carry a P3 business date
 **When** the day is closed
-**Then** the report contains exactly the decided O-6 minimum.
+**Then** the report contains exactly the decided O-6 minimum, computed from the Core read models with the P11 metric definitions, and payments reported separately from sales.
 
-- Traceability: RPT-2.
-- Depends on: Story 9.3.
-- Status: BLOCKED: O-6.
+- Traceability: RPT-2; P3, P11 (volume 00 §00.10.5); DEC-FIN-10.
+- Depends on: Stories 9.3, 16.1 and 16.5.
+- Status: BLOCKED: O-6 business part / DEC-FIN-10 (content). Re-anchored 2026-10-05 (REWRITE): the business date and the sales measure are decided; only the report content remains open.
 
 ### Story 11.3: Receipt and (conditional) kitchen printing through Venue Edge
 
@@ -1143,13 +1273,13 @@ So that print delivery is truthful and recoverable.
 
 **Acceptance Criteria:**
 
-**Given** Venue Edge (Story 10.5)
+**Given** Venue Edge (Story 10.5a)
 **When** print jobs are issued
 **Then** PRT-1 to PRT-3 and ADM-2 hold, with delivery separate from acknowledgement and explicit, attributed reprints.
 
 - Traceability: PRT-1 to PRT-3, ADM-2, KIT-2.
-- Depends on: Stories 10.5 and 11.1.
-- Status: BLOCKED: O-4 (printers and protocol), O-5, and the venue's kitchen-printing requirement (not established).
+- Depends on: Stories 10.5a and 11.1.
+- Status: BLOCKED: O-4 business part (hardware purchase; whether the venue requires kitchen printing), O-5 business/legal part. The print-job mechanism (Venue Edge, independent delivery states) is decided.
 
 ## Epic 12: Operational readiness and release acceptance
 
@@ -1188,21 +1318,28 @@ So that an incident can be reconstructed.
 - Progress (2026-10-04): Nest now assigns and echoes `X-Request-Id` and `X-Correlation-Id` by Core's rules and attaches both to its security events. Nest does not call Core today, so there is nothing to forward yet. Remaining: Core metrics, and request IDs on Nest's other (non-security) logs.
 - Status: READY
 
-### Story 12.3: Core database timeouts, device-route rate limits and dead-letter replay
+### Story 12.3a: Core database statement timeout and lock timeout
+
+Recorded 2026-10-05 (SPLIT of the former Story 12.3) from its accepted story spec (`spec-12-3a-core-database-timeouts.md`), which governs.
+
+- Traceability: RES-18.x, QB-F; audit P1-03.
+- Status: DONE. Accepted (frozen objective `story-12-3a-core-database-timeouts` v1; integrated in `8a4d3ab`). Timeout values come from operator configuration, not invented targets.
+
+### Story 12.3b: Device-route rate limits and dead-letter replay
 
 As an operator,
-I want statement and lock timeouts, device-route rate limits and an audited dead-letter replay,
+I want device-route rate limits and an audited dead-letter replay,
 So that stuck work is bounded and recoverable.
 
 **Acceptance Criteria:**
 
-**Given** Core has none of these
+**Given** Core has neither (database timeouts are delivered by Story 12.3a)
 **When** they are added
 **Then** each is tested, including a replay that is idempotent and audited.
 
 - Traceability: RES-18.x, QB-F; audit P1-03.
 - Depends on: none.
-- Status: READY. Specific timeout values come from configuration, not invented targets.
+- Status: READY. Specific limits come from configuration, not invented targets. Re-anchored 2026-10-05 (SPLIT remainder of the former Story 12.3).
 
 ### Story 12.4: Legacy decoupling for Servvia-native venues
 
@@ -1235,6 +1372,7 @@ So that the GST overcharge and the public, unbounded payment intent cannot reach
 - Traceability: PAY-3, KSK-4; audit P0-19, section 4.10.
 - Depends on: Story 1.5.
 - Status: READY
+- Delivery: DONE. Accepted (frozen objective `story-12-5-kiosk-off-in-production` v1; integrated in `e575658`). Tracking corrected 2026-10-05.
 
 ### Story 12.6: Hide or relabel mock Admin pages
 
@@ -1252,7 +1390,7 @@ So that no fabricated data is presented as real (PR-4).
 - Depends on: none.
 - Status: READY
 
-### Story 12.7: Data-driven station routing
+#### Former item 12.7 (superseded 2026-10-05 by 16.2; not tracked): Data-driven station routing
 
 As kitchen staff,
 I want lines routed to configured stations,
@@ -1266,7 +1404,7 @@ So that multi-station kitchens get the right tickets.
 
 - Traceability: KIT-1; audit P1-07.
 - Depends on: Story 6.1.
-- Status: DEFERRED. Needed only with more than one station; the venue's station set is not established.
+- Status (historical): DEFERRED. Superseded 2026-10-05: re-scoped to DEC-OPS-4 (line-level routing effective at submission) as Story 16.2, which is on the first-pilot critical path.
 
 ### Story 12.8: End-to-end acceptance and failure drills
 
@@ -1324,13 +1462,13 @@ So that capacity is known.
 
 **Acceptance Criteria:**
 
-**Given** approved targets
+**Given** the O-19 planning-baseline targets
 **When** the test runs in staging
 **Then** results are reported against them.
 
 - Traceability: PERF-19, NFR-PERF; audit P1-06.
 - Depends on: Story 4.2.
-- Status: BLOCKED: O-19 (inherited targets unconfirmed) and the section 19 OTR rows.
+- Status: READY after its dependency, to run against the O-19 planning baseline (SPRD §14: BASELINE ACCEPTED FOR PLANNING). Release acceptance still needs O-19 owner confirmation; the section 19 OTR rows stay BLOCKED and no number is invented. Re-anchored 2026-10-05 (gate wording).
 
 ### Story 12.12: Real-device, LAN and venue validation dry run
 
@@ -1402,7 +1540,7 @@ So that the kitchen can work without errors.
 - Follow-up (2026-10-04 review): printer reprint and retry and native-round resolution recorded a staff member acting through an elevated tablet without the tablet; they now record it, and refuse a device credential (which names no staff member) before changing anything.
 - Status: DONE
 
-### Story 12.16: Device-originated orders without a synthetic staff creator
+#### Former item 12.16 (merged 2026-10-05 into 15.2; not tracked): Device-originated orders without a synthetic staff creator
 
 As an owner,
 I want kiosk and unelevated-tablet orders attributed to the device or channel that created them,
@@ -1416,7 +1554,7 @@ So that no order names a fabricated staff member as its creator.
 
 - Traceability: NFR-AUD; Story 12.15 finding.
 - Depends on: Story 12.15.
-- Status: READY
+- Status (historical): READY. Merged 2026-10-05: a device-originated order creator is a special case of O-21 provenance, delivered by Story 15.2.
 
 ## Epic 13: Deferred and blocked product scope (placeholders)
 
@@ -1444,11 +1582,11 @@ So that I can self-order (WT-3).
 
 **Acceptance Criteria:**
 
-**Given** decisions O-20 and O-21
-**When** they are made
-**Then** a Core guest path and native Staff Mode authorisation are designed from them.
+**Given** decisions O-20 and O-21 (decided 2026-10-05, volume 00 §00.10.6) and DEC-OPS-8
+**When** Guest Mode is scheduled after the first pilot
+**Then** a Core guest path is designed from them; native Staff Mode authorisation is delivered by Epic 19.
 
-- Status: BLOCKED: O-20, O-21; DEFERRED (ADR 0002 item 4).
+- Status: DEFERRED (ADR 0002 item 4); Guest Mode menu-channel and display policy is open under P9. Re-anchored 2026-10-05 (SPLIT / DEFER): no longer blocked by O-20 or O-21; native Staff Mode moved to Epic 19, and Guest Mode becomes an Epic 19 follow-on.
 
 ### Story 13.3: Menu, availability and admin capabilities move to their decided owner
 
@@ -1493,7 +1631,7 @@ So that I can see trading.
 **Then** they are venue-scoped and exportable.
 
 - Traceability: RPT-1.
-- Status: DEFERRED. The mock Reports page is handled by Story 12.6.
+- Status: DEFERRED (RPT-1 breadth; DEC-BI residuals). The mock Reports page is handled by Story 12.6. Re-anchored 2026-10-05 (SPLIT): the P11 headline sales computation moved to Story 16.5.
 
 ### Story 13.6: Public web and online ordering scope
 
@@ -1518,12 +1656,386 @@ So that the permanent devices replace the web runtimes.
 
 **Acceptance Criteria:**
 
-**Given** the Android toolchain decisions (O-10)
-**When** they are made
-**Then** native stories are written.
+**Given** the approved Android baseline (O-10) proven by Epics 17 and 18
+**When** the native kiosk and window display are scheduled
+**Then** native stories are written for `apps/android/kiosk` and `apps/android/window-display`, with their device kinds added additively (DEC-OPS-13).
 
-- Traceability: KSK-1 to KSK-5, WD-1.
-- Status: BLOCKED: O-10; DEFERRED (native apps are P3).
+- Traceability: KSK-1 to KSK-5, WD-1; DEC-OPS-13.
+- Status: DEFERRED until after Epic 17; display policy open under P9. Re-anchored 2026-10-05 (SPLIT / DEFER): O-10 is decided, so this is no longer blocked by it; neither app is a first-pilot surface.
+
+## Epic 14: Baseline integration and planning re-anchor (Wave A)
+
+One integrated baseline holds the accepted engineering lineage, the legacy cleanup and the normative PRD, and BMAD planning consumes the normative PRD instead of retired or stale sources. Added 2026-10-05 (sprint change proposal §5). Planning and configuration only; no runtime change.
+
+### Story 14.1: Integrate the normative PRD into the accepted lineage and retire fileRestructure.md
+
+As the orchestrator,
+I want one integrated baseline that holds the accepted lineage, the legacy cleanup and the normative PRD corpus,
+So that every later story is planned and evaluated against a single authoritative baseline.
+
+**Acceptance Criteria:**
+
+**Given** the cleanup tip `354ea1b` and the accepted normative PRD corpus
+**When** the corpus is integrated byte-exact and `fileRestructure.md` is removed (consolidated into SPRD Part C)
+**Then** current-state references point to `PRD/product-requirements.md`, while historical and frozen evidence is not rewritten
+**And** exactly four Android application directories exist and the three removed legacy application directories are absent.
+
+- Traceability: SPRD §28, §36; PRD README "Normative corpus baseline"; PR-7.
+- Status: DONE. Wave A commit `5ee6474` on `integration/normative-prd-baseline` (2026-10-05).
+
+### Story 14.2: Re-anchor BMAD configuration and active planning to the normative PRD
+
+As the orchestrator,
+I want BMAD configuration, the active epics, the epic contexts and sprint tracking to consume the normative PRD,
+So that no planning workflow uses the retired `fileRestructure.md`, `docs/planning/` or stale planning as requirements authority.
+
+**Acceptance Criteria:**
+
+**Given** `_bmad/custom/*.toml` and the active planning artifacts name `fileRestructure.md` as the architecture input
+**When** they are re-anchored
+**Then** every active BMAD input resolves to SPRD, the normative volumes, accepted ADRs or accepted controlled decisions, and none names `fileRestructure.md` or `docs/planning/` as an input
+**And** sprint tracking shows accepted stories as done, Story 1.9 as not frozen and Story 1.10 as deferred
+**And** frozen objectives and accepted story specs are unchanged (hashes), and no runtime, migration, contract or CI file changes.
+
+- Traceability: SPRD §28, §35; volume 00 §00.1.1.
+- Depends on: Story 14.1.
+- Status: Executed 2026-10-05; awaiting orchestrator review.
+
+## Epic 15: Canonical identity, provenance and audit (Wave B)
+
+Every pilot-critical action is attributable to a truthful actor, every order carries its full provenance, revocation takes effect on live connections, and Core kitchen routes accept per-device KDS credentials. Venue scope and fail-closed realtime are already in the accepted lineage (Epic 2). O-20, O-21, DEC-ADMIN-22 and DEC-OPS-21 are decided; their implementation is missing or partial.
+
+### Story 15.1: Core audit records device and system actors truthfully
+
+As an auditor,
+I want every Core audit record to name its real actor class (staff, device or system),
+So that no device or system action is attributed to a staff member.
+
+**Acceptance Criteria:**
+
+**Given** the existing `AuditLog` actor-shape constraint supports staff, device and system actors, but Core writers record staff only
+**When** every Core `AuditLog` writer (orders, tables, checks, payments, adjustments, promotions, shifts, devices) records its actor
+**Then** staff, device and system actions are recorded with their own actor class and identity, per writer, with tests
+**And** a device or system action can never write a staff identity (negative test).
+
+- Traceability: INV-3, DEC-OPS-21, DEC-X-6, NFR-AUD; O-21 (volume 00 §00.10.6).
+- Depends on: Story 14.1.
+- Status: READY
+
+### Story 15.2: O-21 provenance persistence
+
+As an owner,
+I want every order, round, check, payment and refund to record where, by whom and in which mode it was entered,
+So that consolidation removes no order-origin information (WT-6).
+
+**Acceptance Criteria:**
+
+**Given** orders carry only a source and a submitting staff id today, and events carry no actor or correlation
+**When** O-21 provenance is persisted additively (application identity, device id, operating mode, actor class, actor or guest-session id, correlation id, idempotency context) and domain events carry actor, correlation and causation
+**Then** a mixed-mode visit records each round's own provenance, an idempotent replay from a different credential returns the original provenance, and a client-declared mode is ignored in favour of the credential
+**And** `order_tablet` stays readable, native clients cannot emit it, published migrations are untouched and no enum is changed destructively; device-originated orders name their real origin with no synthetic staff creator (absorbs former item 12.16).
+
+- Traceability: O-21 (volume 00 §00.10.6), INV-5, OPS-2, WT-6, PAY-3, ORD-3, NFR-AUD.
+- Depends on: Stories 15.1 and 15.3.
+- Status: READY after its dependencies.
+
+### Story 15.3: Credentials carry application identity (O-20 / O-21 foundation)
+
+As a security reviewer,
+I want tablet and KDS credentials to carry a verified application identity from which Core derives mode and actor class,
+So that provenance and staff authority come from trusted credentials, not client claims.
+
+**Acceptance Criteria:**
+
+**Given** Nest issues transitional tablet and KDS credentials (O-2) with no application-identity claim
+**When** the claim is added and Core verifies it
+**Then** Core derives operating mode and actor class from the credential kind, and a token without the claim is refused on routes reserved for clients that carry it (legacy web clients keep a compatibility path until migrated)
+**And** account-level PIN lockout exists as configurable policy whose values come from P2 configuration, never invented, and staff authority is never silently refreshed.
+
+- Traceability: O-20 (volume 00 §00.10.6), O-21, O-2, WT-4, WT-5.
+- Depends on: Story 14.1.
+- Status: READY. Lockout and lifetime values: P2 configuration (open).
+
+### Story 15.4: Event-triggered realtime revocation
+
+As a security reviewer,
+I want revoking a staff session, account, venue grant or device to close the affected live connections immediately,
+So that revoked authority does not survive on an open socket.
+
+**Acceptance Criteria:**
+
+**Given** live connections are re-checked only periodically today
+**When** a revocation event occurs
+**Then** the affected connections are closed by the event itself, the closure is audited, and the periodic re-check remains as a safety net
+**And** the close latency is measured and reported without asserting an invented numeric bound (the threshold is an owner target).
+
+- Traceability: DEC-ADMIN-22, ADMIN-33, NFR-SEC-3, SPRD §16; O-20 (volume 00 §00.10.6).
+- Depends on: Story 15.1.
+- Status: READY after its dependency. Required before release acceptance.
+
+### Story 15.5: Core kitchen routes accept per-device D8 kds credentials
+
+As kitchen staff,
+I want the KDS to authenticate to Core as a per-device, venue-bound device,
+So that the pilot KDS needs no human login and every kitchen action is attributable and revocable.
+
+**Acceptance Criteria:**
+
+**Given** Core kitchen ticket routes do not accept D8 `kds` device credentials today
+**When** the device-authorization chain is added to the kitchen ticket read and transition routes
+**Then** an enrolled `kds` device reads and transitions its venue's tickets, attributed to the device actor
+**And** a revoked device and a cross-venue device are refused over HTTP and realtime; enrollment is single-use, short-lived and audited.
+
+- Traceability: INV-3, NFR-SEC-3, KIT-4; O-21 (volume 00 §00.10.6); O-13 architecture and D-3 (Tier-2 decisions).
+- Depends on: Story 15.1.
+- Status: READY after its dependency. Credential rotation cadence: P2 configuration (open).
+
+## Epic 16: Service-day correctness (Wave C)
+
+Orders, payments and reports land on the correct business date, kitchen lines route to the right stations, and cancel, void, comp and uncertain payments follow the approved append-only architecture. P3, P11, DEC-OPS-1, DEC-OPS-4 and DEC-FIN-11 are decided; their implementation is missing. Story 8.2 (venue settings, including the P3 boundary configuration) precedes Story 16.1.
+
+### Story 16.1: P3 business date
+
+As a manager,
+I want every service-day record assigned to the venue's business date deterministically,
+So that trading days, reports and day close agree across midnight and DST.
+
+**Acceptance Criteria:**
+
+**Given** an effective-dated venue trading-day boundary (organization default plus venue override; changes are prospective only)
+**When** orders, rounds, checks, payments, refunds and shifts are recorded
+**Then** each receives its business date deterministically while UTC timestamps are preserved
+**And** property tests across DST transitions pass, and a boundary change never rewrites historical business dates.
+
+- Traceability: P3 (volume 00 §00.10.5), INV-8, FIN-31, VEN-1.
+- Depends on: Stories 8.2 and 15.2 (shared migration window).
+- Status: READY after its dependencies.
+
+### Story 16.2: Line-level station routing
+
+As kitchen staff,
+I want each order line routed to its configured station using the configuration in effect at submission,
+So that multi-station kitchens receive exactly their tickets.
+
+**Acceptance Criteria:**
+
+**Given** a single kitchen station today
+**When** a station configuration model exists and a round is submitted
+**Then** routing is line-level and effective at submission, and one round can produce several station tickets
+**And** a later configuration change does not re-route already-submitted lines.
+
+- Traceability: KIT-1, DEC-OPS-4 (volume 00 §00.10.4), PRT-1.
+- Depends on: Story 14.1.
+- Status: READY. Supersedes former item 12.7.
+
+### Story 16.3: Cancel, void and comp in Core
+
+As a manager,
+I want to cancel, void or comp with a reason under configured authority,
+So that mistakes are corrected by explicit, linked, append-only compensating actions.
+
+**Acceptance Criteria:**
+
+**Given** the approved DEC-OPS-1 architecture
+**When** an authorised, venue-granted role cancels, voids or comps an order, line or check
+**Then** Core records an append-only, linked compensating action with audit and domain events in one transaction, and cancels related kitchen tickets where applicable
+**And** billed or paid items are never silently voided (PR-9), with tests for authorization, idempotency, concurrency and refusal paths; permission thresholds are configuration supplied before pilot enablement (P6), never invented.
+
+- Traceability: DEC-OPS-1 (volume 00 §00.10.4), PR-9, INT-17.1.
+- Depends on: Stories 15.1 and 15.2.
+- Status: READY after its dependencies. Pilot enablement BLOCKED: P6 values. Rewrites former item 7.1.
+
+### Story 16.4: Order completion and uncertain-payment resolution
+
+As a manager,
+I want orders to complete truthfully and uncertain payments to have an explicit, evidenced resolution path,
+So that visits can close and nothing stays pending forever.
+
+**Acceptance Criteria:**
+
+**Given** payments can be pending or uncertain and block visit close
+**When** an authorised role records a resolution through the append-only manual resolution route, with provider evidence and step-up authorisation
+**Then** the payment leaves `uncertain` only through that route or reconciliation, a contradicting provider fact goes to reconciliation, and the visit-close invariants hold.
+
+- Traceability: DEC-FIN-11 (volume 00 §00.10.4), PAY-6, INT-17.x.
+- Depends on: Story 16.3.
+- Status: READY after its dependency. Rewrites former item 7.2.
+
+### Story 16.5: P11 operational sales computation
+
+As an owner,
+I want the headline sales measure computed in Core per business date,
+So that the pilot's sales figures follow the decided definition.
+
+**Acceptance Criteria:**
+
+**Given** the P11 definitions (headline Net Sales including GST; billed basis less discounts and comps; refunds on their own business date)
+**When** the Core read model computes Gross Sales, Discounts/Comps, Net Sales including GST, GST, Net Sales excluding GST and Refunds/Returns per business date
+**Then** fixtures reproduce the metric definitions exactly, refunds land on their own business date, and tenders are reported separately from sales.
+
+- Traceability: P11 (volume 00 §00.10.5), BI-3, BI-7; volume 08 metric definitions.
+- Depends on: Story 16.1.
+- Status: READY after its dependency. Report content beyond the headline stays with O-6 / DEC-FIN-10 and the DEC-BI residuals.
+
+## Epic 17: Native Android platform foundation (post-pilot track)
+
+The four native applications share one approved engineering baseline (O-10), secure device enrollment and credential storage, and a Core realtime client. This is permanent target architecture, off the first-pilot critical path (ADR 0002; D-1; O-1 open). O-10 is approved; no version is pinned by planning.
+
+### Story 17.1: Android engineering baseline per O-10
+
+As an Android engineer,
+I want one reproducible Android build baseline for the four applications,
+So that every native app is built, verified and tested the same way.
+
+**Acceptance Criteria:**
+
+**Given** the four application scaffolds under `apps/android/` and the approved O-10 baseline
+**When** the baseline is created
+**Then** it uses Kotlin 2.x (K2), a pinned Gradle wrapper, Kotlin DSL, Compose / Material 3, JDK 17, one version catalog, dependency verification and locking, and the approved library, test and quality stack, with a required CI job that has no `continue-on-error`
+**And** the story records official compatibility and release evidence and pins one supported, stable, mutually compatible Kotlin / Gradle / AGP / Compose / JDK / SDK set (never "always newest"; no alpha, beta or RC)
+**And** `minSdk` follows approved venue hardware and is not below API 26, release signing stays outside the repository and CI, no fifth application exists, and no product UI is built.
+
+- Traceability: O-10 (Tier-2 decision), SPRD §29, §32.
+- Depends on: Story 14.2.
+- Status: READY (post-pilot track). Gradle root and build-logic placement are settled within O-10 in this story. Hardware-derived `minSdk` input: O-4 business part.
+
+### Story 17.2: Native device enrollment, secure credential storage and Core realtime client
+
+As a venue device,
+I want to enroll once, store my device credential securely and keep a Core realtime subscription,
+So that native apps authenticate as revocable, venue-bound devices and stay current.
+
+**Acceptance Criteria:**
+
+**Given** the Core D8 enrollment routes and the realtime contract
+**When** a native app enrolls with a single-use, short-lived enrollment
+**Then** its credential material is protected by the Android Keystore (hardware-backed or StrongBox where available; StrongBox is not required), no reusable staff secret is stored on the device, and the realtime client authorizes at subscribe, deduplicates by event id, drops stale versions, backs off and refetches over HTTP
+**And** revocation fails closed, and re-enrollment never reuses a credential.
+
+- Traceability: D8, O-13 architecture, O-20 §8 (volume 00 §00.10.6), NFR-RT, `contracts/realtime`.
+- Depends on: Stories 17.1, 15.3 and 15.5.
+- Status: READY after its dependencies. Shared code moves to `packages/android` only when a second app consumes it.
+
+## Epic 18: Native Android KDS (post-pilot; permanent KDS replacement)
+
+The kitchen runs on `apps/android/kds`, the permanent KDS. It is the first native surface, a time-boxed platform pathfinder on the lowest-risk surface, and replaces the transitional web KDS after parity (D-1 steps 3–6). It is not a first-pilot blocker under D-1.
+
+### Story 18.1: Native KDS tickets and transitions on Core with a D8 identity
+
+As kitchen staff,
+I want the native KDS to show and advance Core kitchen tickets as an enrolled device,
+So that the permanent KDS works from the canonical record.
+
+**Acceptance Criteria:**
+
+**Given** an enrolled `kds` device (Story 17.2) and Core kitchen routes accepting it (Story 15.5)
+**When** tickets are created by a Core round
+**Then** they appear in real time with the KIT-4 fields and advance through valid transitions only, attributed to the device actor; cross-venue and revoked devices are refused.
+
+- Traceability: KIT-3, KIT-4; D-1; O-13 architecture.
+- Depends on: Stories 17.2, 15.5 and 16.2.
+- Status: READY after its dependencies.
+
+### Story 18.2: Native KDS outage cache and reconnect
+
+As kitchen staff,
+I want received tickets to stay visible during an outage and the KDS to resynchronise on reconnect,
+So that an outage never silently hides work.
+
+**Acceptance Criteria:**
+
+**Given** a backend or realtime outage
+**When** it occurs and recovers
+**Then** received tickets remain visible from the local cache, the outage is shown, reconnection is automatic, and state is refetched and deduplicated.
+
+- Traceability: KIT-2, KIT-6, PR-4.
+- Depends on: Story 18.1.
+- Status: READY after its dependency.
+
+### Story 18.3: Native KDS ready alert and age colours
+
+As kitchen staff,
+I want a visual and audible ready alert and age colouring,
+So that late orders stand out.
+
+**Acceptance Criteria:**
+
+**Given** a venue-configured age threshold
+**When** a ticket ages past it or an order becomes ready
+**Then** colour and alert behave per KIT-5.
+
+- Traceability: KIT-5.
+- Depends on: Story 18.1.
+- Status: READY after its dependency. The threshold is venue configuration, not an invented target.
+
+### Story 18.4: Native KDS parity proof, venue migration and web KDS retirement
+
+As the owner,
+I want the native KDS proven at parity before venues move and the web KDS retires,
+So that the transitional surface is removed without loss of function, security or reliability.
+
+**Acceptance Criteria:**
+
+**Given** the native KDS and the transitional web KDS on the same Core contracts
+**When** functional, security, reliability and operational parity is proven and venues migrate
+**Then** the web KDS build mode retires through a legacy-retirement checkpoint (PR-8, SPRD §34), and no web-KDS-only feature is imported.
+
+- Traceability: D-1 steps 4–6, PR-8, SPRD §34.
+- Depends on: Stories 18.1 to 18.3 and Epic 6.
+- Status: READY after its dependencies. Venue migration and retirement need separate operational authorization.
+
+## Epic 19: Native Waiter Tablet Staff Mode (post-pilot; primary transitional-retirement target)
+
+Waitstaff use `apps/android/waiter-tablet` in Staff Mode. It replaces the transitional web Order Tablet, the DL-081 Nest tablet identity and the ADR 0002 settlement exception, and reuses the foundation proven by Epic 18 (it may start once Story 17.2 is proven, without waiting for Story 18.4). Whether it is required for the first pilot is O-1 (open; ADR 0002 default is no). Guest Mode (Story 13.2) is a follow-on.
+
+### Story 19.1: Native Staff Mode elevation per O-20
+
+As a waiter,
+I want to enter Staff Mode on the native tablet with my own staff authentication, separate from the device identity,
+So that staff authority is personal, short-lived and revocable.
+
+**Acceptance Criteria:**
+
+**Given** the O-20 contract (named staff authentication distinct from device identity; the MVP mechanism is the personal staff PIN)
+**When** a staff member elevates on an enrolled tablet
+**Then** Core verifies the elevation, the elevated authority is short-lived and server-revocable, it ends on leaving Staff Mode, and no reusable staff secret is stored on the device
+**And** lifetimes, PIN length, lockout and second-factor values come from P2 configuration, never invented.
+
+- Traceability: O-20 (volume 00 §00.10.6), WT-2, WT-4, WT-5.
+- Depends on: Stories 17.2 and 15.3.
+- Status: READY after its dependencies.
+
+### Story 19.2: Native Staff Mode ordering on Core with O-21 provenance
+
+As a waiter,
+I want to open visits and submit orders and rounds from the native tablet,
+So that the kitchen and billing work from the canonical record with full provenance.
+
+**Acceptance Criteria:**
+
+**Given** an elevated native Staff Mode tablet
+**When** orders and rounds are submitted
+**Then** Core records them idempotently with O-21 provenance (application `waiter-tablet`, device, Staff Mode, staff actor), the native client never emits `order_tablet`, and Core totals and stable errors are shown.
+
+- Traceability: ORD-1 to ORD-5, WT-1, WT-2, WT-6; O-21 (volume 00 §00.10.6).
+- Depends on: Stories 19.1 and 15.2.
+- Status: READY after its dependencies.
+
+### Story 19.3: Native settlement parity and web-tablet settlement retirement
+
+As the owner,
+I want native Staff Mode settlement at parity with the web Order Tablet before the web settlement exception retires,
+So that the ADR 0002 transitional settlement surface is removed safely.
+
+**Acceptance Criteria:**
+
+**Given** Epic 9 settlement on Core and the native Staff Mode tablet
+**When** settlement parity is proven
+**Then** web-tablet settlement retires under the ADR 0002 item 8 retirement rule and a legacy-retirement checkpoint (PR-8).
+
+- Traceability: ADR 0002 item 8, PR-8, PAY-1, PAY-7.
+- Depends on: Stories 19.2 and Epic 9.
+- Status: READY after its dependencies. Retirement needs separate operational authorization.
 
 ## Readiness Gate Record (bmad-sprint-planning, 2026-10-03)
 
@@ -1542,3 +2054,41 @@ The operator authorised proceeding, so tracking was generated.
 4. **Epics 1–4 are enabler epics.** The template's "user value, not technical layers" principle is bent deliberately: these are production-blocking prerequisites from the adopted audit, and each is phrased in operator or owner value.
 5. **Several stories need separately authorised actions** (a push, GitHub administration, production database, infrastructure, venue access). They are marked NEEDS AUTHORIZATION.
 6. **The audit's P0-09 estimate no longer matches the accepted scope.** The backlog should be re-estimated from this plan.
+
+## Readiness Gate Record (bmad-sprint-planning, 2026-10-05, re-anchoring)
+
+**Verdict: CONCERNS.** Tracking was regenerated under the Story 14.2 authorization; the concerns are surfaced for orchestrator review, not resolved here.
+
+**Inputs.** BMAD configuration (`_bmad/custom/*.toml`, 11 files) loads `PRD/product-requirements.md`, `PRD/README.md`, `PRD/00-overview-and-conventions.md`, ADR 0001 and ADR 0002; the domain volumes 01–09 are consulted per requirement ID. `fileRestructure.md`, `docs/planning/` and the derived or control PRD documents are not inputs.
+
+**Implementable as recorded:** Epics 1–6, 8–10, 12 and 14–19. Every story cites SPRD, a normative volume, an accepted ADR or an accepted controlled decision, and carries explicit BLOCKED, NEEDS AUTHORIZATION or DEFERRED markers where a gate applies. Epic 11 and Epic 13 remain BLOCKED or DEFERRED placeholders (O-4, O-5 and O-6 business parts; O-7, O-14 to O-18; P9; the POS report); no developer has to invent anything, and they cannot start.
+
+**Concerns:**
+1. **Decision recording.** D-1, D-3, O-10 and the O-13 architecture are orchestrator Tier-2 decisions recorded only in the checkpoint sprint change proposal (§9, §12, §17). SPRD section 14 still lists O-10 and O-13 without a decision tag. Recording them in SPRD (or the decisions log) is a controlled-change follow-up outside Story 14.2.
+2. **Authority ordering.** Volume 00 §00.1.1 places accepted ADRs and decisions-log entries above volumes 00–09, while the Story 14.2 instruction places the volumes above ADRs. BMAD configuration escalates any genuine ADR-versus-volume conflict instead of resolving it; none is known.
+3. **No UX design contract** for the client epics (5, 6, 9, 18, 19). They rely on existing screens and the SPRD UX and accessibility requirements; new UX needs its own design input.
+4. **Owner and policy values remain absent:** P2 (session, PIN, lockout, credential rotation), P6 (financial-control values), section 19 OTR rows, alert thresholds, retention and defect severity. The affected stories mark them as configuration or BLOCKED.
+5. **Epic contexts** exist only for Epics 1 and 12 (recompiled 2026-10-05). Contexts for Epics 15–19 must be compiled and committed before their first story is prepared.
+6. **Enabler epics** (1–4, 14–17) deliberately bend the "user value, not technical layers" principle; each is phrased in operator or owner value.
+7. **Separately authorised actions** (push, GitHub administration, production database, infrastructure, venue access, retirement checkpoints) remain marked NEEDS AUTHORIZATION.
+
+## Readiness record for item 1.9 (2026-10-05, re-anchoring)
+
+Story 1.9 stays **REWRITE — NOT FROZEN** and is **not authorized**. This record lists the preconditions of the sprint change proposal §15 against the re-anchored state. It freezes nothing.
+
+**Satisfied by Wave A and Story 14.2:**
+- **Integrated baseline:** `integration/normative-prd-baseline` (Wave A `5ee6474`, checkpoint `e303ea6`). The objective's `baseline` must be the full id of the Story 14.2 commit (or a later orchestrator-chosen tip on this branch), never `38bea30`.
+- **Requirement inputs:** the story's requirements resolve to SPRD §21 (deterministic tests on disposable environments), §24 (tests passing with explicit evidence) and §16 (fail closed), and to Story 1.9 in this plan. The stale draft's claim that the story is "recorded only in its story spec (epics.md is not edited)" no longer holds and must not be reused.
+- **Epic context:** `_bmad-output/implementation-artifacts/epic-1-context.md` is recompiled and committed with Story 14.2; a regenerated objective binds its new sha256 through `inputs.epicContext`.
+- **BMAD configuration:** `bmad-build-auto` and `bmad-spec` load the normative PRD and cannot use `fileRestructure.md` as authority; the evaluator-contract facts are unchanged.
+- **Defect surface still present at the tip (static, read-only):** `apps/api` declares `supertest` `^6.3.4` (lockfile 6.3.4); `apps/api/test/connector-command-harness.integration-spec.ts:171` is `await app.listen(0);`; 25 `apps/api` files import Supertest.
+
+**Remaining before the objective can be regenerated and frozen:**
+1. **Story spec:** `spec-1-9-test-harness-loopback-binding.md` exists only as local, unpublished evidence. It must be re-validated against the integrated tip (paths, line 171, dependency delta, unit and integration floors) and placed at `_bmad-output/implementation-artifacts/` by the freeze operation; its intent contract is what `inputs.storySpec` hashes.
+2. **Baseline re-measurement on the integrated tip:** unit and integration floors, the only allowed skips, lint and typecheck, the native-round-recovery suite hash, and the Supertest-file inventory, on disposable PostgreSQL 18 and Redis in UTC. The `354ea1b` lockfile removed 158 packages, so the supertest 7.3.1 dependency delta (supertest, superagent, formidable) is recomputed against it.
+3. **Required-file generation source:** the endpoint-check REQUIRED list and the objective fields are regenerated mechanically by `gen-fragment-1-9.mjs` and `gen-objective-1-9.mjs` (local evidence, `handoff-artifacts/2026-10-05-story-1-9-PAUSED-not-frozen`), never hand-typed. Both generators must first be revised: they hard-code the `38bea30` baseline guard, a session-specific scratch path, and requirement references that cite the pre-re-anchoring plan. The 2026-10-05 draft objective (sha256 `1e5872…648b`) is stale and is not reused.
+4. **Evaluator dependencies:** decide dependency provisioning. The evaluator links one operator-supplied `node_modules`; the proposal is `npm ci --ignore-scripts` from the candidate's approved lockfile in a disposable export plus a supertest runtime-resolution check (`provision.sh`, prepared, never run). Record the Node qualification (`.nvmrc` pins 22; the accepted validation used Node 24 as baseline-identical debt) and the Go and PostgreSQL toolchain paths the `evaluator_tools:` line will name.
+5. **Reproduction:** show that the flake, or its mechanism (wildcard bind versus `127.0.0.1` request), is still demonstrable on the integrated tip.
+6. **Orchestrator freeze decision:** the orchestrator reviews the regenerated draft, its `validate` output and sha256, and freezes it by committing the draft unchanged with the spec on the draft's baseline (objectives README).
+
+Story 1.10 stays DEFERRED behind Story 1.9.

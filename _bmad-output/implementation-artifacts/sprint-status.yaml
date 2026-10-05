@@ -29,22 +29,27 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-03-2026 13:11
-last_updated: 10-03-2026 13:11
+last_updated: 10-05-2026 16:30
 project: servvia
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
+# Re-anchored 2026-10-05 (Story 14.2). Planning tracking only, never requirements authority. Requirements: PRD/product-requirements.md + PRD/00-09.
 development_status:
-  epic-1: backlog
+  epic-1: in-progress
   1-1-api-lint-passes-so-the-api-ci-job-runs-to-completion: done
   1-2-go-core-ci-job-with-real-postgresql-and-redis: done
-  1-3-venue-connector-ci-job-made-truthful: backlog
+  1-3-venue-connector-ci-job-made-truthful: done
   1-4-nest-production-start-runs-the-built-entry-point: done
   1-5-production-configuration-fails-closed: done
   1-6-protect-the-main-branch: backlog
+  1-7-native-round-recovery-integration-tests-run-truthfully-in-ci: done
+  1-8-native-round-recovery-tests-refuse-a-database_url-host-query: done
+  1-9-test-harness-loopback-binding: backlog
+  1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog
   epic-1-retrospective: optional
 
-  epic-2: backlog
+  epic-2: done
   2-1-realtime-credential-revocation-fails-closed: done
   2-2-staff-venue-access-is-enforced-by-core: done
   2-3-remove-the-unauthenticated-local-file-write-endpoint-from-pr: done
@@ -53,9 +58,9 @@ development_status:
   2-6-transitional-socket-io-authentication-and-cors-hardening: done
   2-7-kitchen-role-cannot-create-or-cancel-orders-reservation-emai: done
   2-8-durable-staff-sessions-in-postgresql: done
-  2-9-device-credentials-reach-only-device-routes: done
-  2-10-nest-api-enforces-staff-venue-access: done
-  2-11-governed-first-owner-bootstrap: done
+  2-9-device-and-tablet-credentials-reach-only-the-routes-made-for: done
+  2-10-staff-venue-access-is-enforced-by-the-nest-api-too: done
+  2-11-a-real-installation-s-first-owner-comes-only-from-a-governed: done
   epic-2-retrospective: optional
 
   epic-3: backlog
@@ -80,15 +85,10 @@ development_status:
   6-3-ready-alert-and-age-colour-coding: backlog
   epic-6-retrospective: optional
 
-  epic-7: backlog
-  7-1-manager-authorised-order-cancel-and-void-in-core: backlog
-  7-2-order-completion-and-pending-payment-resolution: backlog
-  epic-7-retrospective: optional
-
-  epic-8: backlog
+  epic-8: in-progress
   8-1-staff-management-with-roles-and-venue-grants: done
-  8-2-venue-tax-and-table-settings-from-real-data: backlog
   8-3-staff-integrity-under-concurrency: done
+  8-2-venue-tax-and-table-settings-from-real-data: backlog
   epic-8-retrospective: optional
 
   epic-9: backlog
@@ -105,7 +105,8 @@ development_status:
   10-2-trusted-adapter-identity-and-result-ingestion-hardening: backlog
   10-3-uncertain-outcomes-reconciliation-and-no-duplicate-charge: backlog
   10-4-card-refunds-and-reversals-through-the-adapter: backlog
-  10-5-venue-edge-service-foundation-identity-durable-queue-diagnos: backlog
+  10-5a-venue-edge-service-foundation-identity-durable-queue-diagnos: backlog
+  10-5b-core-to-venue-edge-card-command-lease: backlog
   10-6-provider-specific-terminal-adapter-and-certification: backlog
   epic-10-retrospective: optional
 
@@ -115,14 +116,14 @@ development_status:
   11-3-receipt-and-conditional-kitchen-printing-through-venue-edge: backlog
   epic-11-retrospective: optional
 
-  epic-12: backlog
+  epic-12: in-progress
   12-1-monitoring-and-alerting-for-outages-backups-dead-letters-and: backlog
   12-2-request-ids-structured-logs-and-core-metrics: backlog
-  12-3-core-database-timeouts-device-route-rate-limits-and-dead-let: backlog
+  12-3a-core-database-statement-timeout-and-lock-timeout: done
+  12-3b-device-route-rate-limits-and-dead-letter-replay: backlog
   12-4-legacy-decoupling-for-servvia-native-venues: backlog
-  12-5-kiosk-off-in-production-until-fixed: backlog
+  12-5-kiosk-off-in-production-until-fixed: done
   12-6-hide-or-relabel-mock-admin-pages: backlog
-  12-7-data-driven-station-routing: backlog
   12-8-end-to-end-acceptance-and-failure-drills: backlog
   12-9-runbooks-and-operational-rehearsal: backlog
   12-10-security-review-and-penetration-test: backlog
@@ -131,7 +132,6 @@ development_status:
   12-13-durable-ingestion-and-retention-of-security-and-operational: backlog
   12-14-isolated-queue-infrastructure-for-nest-integration-tests: done
   12-15-kitchen-kds-device-status-changes-fail-on-the-audit-actor-fo: done
-  12-16-device-originated-orders-without-a-synthetic-staff-creator: backlog
   epic-12-retrospective: optional
 
   epic-13: backlog
@@ -143,3 +143,42 @@ development_status:
   13-6-public-web-and-online-ordering-scope: backlog
   13-7-native-kiosk-and-window-display: backlog
   epic-13-retrospective: optional
+
+  epic-14: in-progress
+  14-1-integrate-the-normative-prd-into-the-accepted-lineage-and-re: done
+  14-2-re-anchor-bmad-configuration-and-active-planning-to-the-norm: review  # executed 2026-10-05; awaiting orchestrator review
+  epic-14-retrospective: optional
+
+  epic-15: backlog
+  15-1-core-audit-records-device-and-system-actors-truthfully: backlog
+  15-2-o-21-provenance-persistence: backlog
+  15-3-credentials-carry-application-identity-o-20-o-21-foundation: backlog
+  15-4-event-triggered-realtime-revocation: backlog
+  15-5-core-kitchen-routes-accept-per-device-d8-kds-credentials: backlog
+  epic-15-retrospective: optional
+
+  epic-16: backlog
+  16-1-p3-business-date: backlog
+  16-2-line-level-station-routing: backlog
+  16-3-cancel-void-and-comp-in-core: backlog
+  16-4-order-completion-and-uncertain-payment-resolution: backlog
+  16-5-p11-operational-sales-computation: backlog
+  epic-16-retrospective: optional
+
+  epic-17: backlog
+  17-1-android-engineering-baseline-per-o-10: backlog
+  17-2-native-device-enrollment-secure-credential-storage-and-core: backlog
+  epic-17-retrospective: optional
+
+  epic-18: backlog
+  18-1-native-kds-tickets-and-transitions-on-core-with-a-d8-identit: backlog
+  18-2-native-kds-outage-cache-and-reconnect: backlog
+  18-3-native-kds-ready-alert-and-age-colours: backlog
+  18-4-native-kds-parity-proof-venue-migration-and-web-kds-retireme: backlog
+  epic-18-retrospective: optional
+
+  epic-19: backlog
+  19-1-native-staff-mode-elevation-per-o-20: backlog
+  19-2-native-staff-mode-ordering-on-core-with-o-21-provenance: backlog
+  19-3-native-settlement-parity-and-web-tablet-settlement-retiremen: backlog
+  epic-19-retrospective: optional
