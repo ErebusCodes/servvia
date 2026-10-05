@@ -2,7 +2,7 @@
 
 > **Status:** DERIVED, GENERATED VIEW — **not an authority and not editable.** It is regenerated deterministically from [`product-requirements.md`](product-requirements.md) and volumes 00–09 by `generate_consolidated.py` (kept with the 2026-10-05 hardening evidence). Any edit made here is lost on regeneration; change the source volume instead. On any difference, the source wins.
 
-> **Source fingerprints (sha256, first 16 hex):** `product-requirements.md` 0db15afbaa50c205; `00-overview-and-conventions.md` 9f3a52c066b996b1; `01-home.md` 71a61a16ead55623; `02-operations.md` abaf8f15cbcd1ef3; `03-recipe-and-production.md` 571ce13d4fcf356c; `04-material-management.md` 64ab7072cae6c3d6; `05-crm-and-loyalty.md` b3d1dcb6ef700b80; `06-workforce.md` 6de1f7a0ae292e3c; `07-finance.md` 95beae6e6396ced0; `08-reports-and-bi.md` c04c2fde9e8616a3; `09-administration.md` e22f41721a60b879
+> **Source fingerprints (sha256, first 16 hex):** `product-requirements.md` 0e918cab5e5732ca; `00-overview-and-conventions.md` 7f34a273db444db1; `01-home.md` 71a61a16ead55623; `02-operations.md` abaf8f15cbcd1ef3; `03-recipe-and-production.md` 571ce13d4fcf356c; `04-material-management.md` 64ab7072cae6c3d6; `05-crm-and-loyalty.md` b3d1dcb6ef700b80; `06-workforce.md` 6de1f7a0ae292e3c; `07-finance.md` 95beae6e6396ced0; `08-reports-and-bi.md` c04c2fde9e8616a3; `09-administration.md` e22f41721a60b879
 
 ## 1. Authority and corpus map
 

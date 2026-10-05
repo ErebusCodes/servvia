@@ -19,7 +19,9 @@ When sources disagree, the higher source wins:
 6. source material (the Verdura v5.2 PRD) and historical evidence;
 7. planning output (BMAD and `docs/planning/`), which is never requirements authority.
 
-Implementation reality never redefines a TARGET requirement. A domain volume refines SPRD; it does not override it. A domain volume that needs to change an SPRD requirement records a decision (section 00.10) instead.
+Implementation reality never redefines a TARGET requirement; it states only what currently exists. A domain volume refines SPRD; it does not override it. A domain volume that needs to change an SPRD requirement records a decision (section 00.10) instead.
+
+**Direct architectural conflicts.** An accepted ADR controls a conflicting statement in volumes 00–09 unless a later controlled decision (recorded in SPRD or in the decision register, section 00.10) explicitly supersedes it. If supersession is ambiguous, work stops and the conflict is escalated. Conflicting normative sources are never reconciled silently.
 
 ### 00.1.2 Document map
 
@@ -49,7 +51,7 @@ Implementation reality never redefines a TARGET requirement. A domain volume ref
 - **What is accepted:** volumes 00–09 as normative refinements of SPRD, which remains the higher authority (00.1.1). The requirements baseline is authoritative even though the downstream decisions and implementation work identified in the volumes and in [`PRD_ALIGNMENT.md`](PRD_ALIGNMENT.md) §7 remain.
 - **Decision provenance:**
   - owner-approved product direction: the SPRD baseline approval (2026-10-03), P3 and P11 (00.10.5), and the KitchenOS capability scope (DEC-X-1);
-  - orchestrator Tier-2 architecture ratification: the register in 00.10.4 and the contracts in 00.10.6 (O-20, O-21, DEC-OPS-25, DEC-FIN-19, DEC-WFM-19). These are not owner decisions;
+  - orchestrator Tier-2 architecture ratification: the register in 00.10.4, the contracts in 00.10.6 (O-20, O-21, DEC-OPS-25, DEC-FIN-19, DEC-WFM-19) and in 00.10.7 (O-10, O-13). These are not owner decisions;
   - acceptance recorded on orchestrator instruction after verification.
 - **Retained gates, not owner-approved:** P5 (before production or any compliance commitment), P6 (before pilot enablement of the affected financial controls), P10 (before relevant production use), O-19 owner confirmation (before release acceptance), and the other open decisions with their gates.
 - **Acceptance does not mean:** commitment of `TARGET CAPABILITY — FUTURE DELIVERY` items to any release; selection of open policy values; completed implementation; production, release or deployment approval; certified compliance; or approval of DL-117 (not approved).
@@ -205,7 +207,7 @@ Specified once; domains consume them and do not re-implement them.
 
 ### 00.10.1 Decisions inherited from SPRD
 
-O-1 to O-21 (SPRD §14) remain authoritative and open unless SPRD records them as decided (O-2 decided 2026-10-03; O-11 superseded; O-20 and O-21 decided 2026-10-05 by Tier-2 ratification, contracts in 00.10.6; O-19 reclassified as a planning baseline, owner confirmation pending before release acceptance). Of particular cross-domain weight: O-4 (hardware), O-7 (reservations in Core), O-8 (media ownership), O-9 (inventory domain), O-10 (Android toolchain), O-13 (KDS authentication), O-17 (availability channels), O-19 (targets confirmation, a release-acceptance gate), and every OWNER DECISION REQUIRED / OWNER TARGET REQUIRED item of Part B.
+O-1 to O-21 (SPRD §14) remain authoritative and open unless SPRD records them as decided (O-2 decided 2026-10-03; O-11 superseded; O-20 and O-21 decided 2026-10-05 by Tier-2 ratification, contracts in 00.10.6; O-10 and O-13 decided 2026-10-05 by Tier-2 ratification, contracts in 00.10.7; O-19 reclassified as a planning baseline, owner confirmation pending before release acceptance). Of particular cross-domain weight: O-4 (hardware), O-7 (reservations in Core), O-8 (media ownership), O-9 (inventory domain), O-10 (Android toolchain; decided), O-13 (KDS authentication; decided), O-17 (availability channels), O-19 (targets confirmation, a release-acceptance gate), and every OWNER DECISION REQUIRED / OWNER TARGET REQUIRED item of Part B.
 
 ### 00.10.2 Cross-cutting decisions (this corpus)
 
@@ -328,6 +330,35 @@ Ratified by the orchestrator as Tier-2 architecture on 2026-10-05 (SPRD `[ORCH-T
 7. **Server authority:** operating mode and actor class are established from the verified server-side credential or session. A client-declared mode is never trusted.
 8. **Compatibility values (SPRD §33):** `waiter_tablet` is the native Waiter Tablet application or surface family; Staff and Guest Mode are distinguished by operating mode, not by separate application identity. The legacy `order_tablet` values stay readable for compatibility and history; native clients do not emit new `order_tablet` provenance. No destructive enum or schema migration is made; any additive cleanup is implementation planning.
 9. **Not decided here:** Guest Mode menu-channel and display policy (P9) and Guest Mode UX (WT-3, undefined).
+
+### 00.10.7 Ratified Android baseline and KDS device identity (O-10, O-13; 2026-10-05)
+
+Ratified by the orchestrator as Tier-2 architecture on 2026-10-05 (SPRD `[ORCH-T2-2026-10-05]`). They are **not** owner decisions and approve no business policy or numeric value. Both are `DECISION RESOLVED — IMPLEMENTATION BLOCKER`: the decisions are made; the native Android baseline and Core acceptance of per-device KDS credentials are not yet built.
+
+**O-10 — Android engineering baseline** (the four applications of SPRD §32).
+1. **Stack:** native Kotlin (Kotlin 2.x, K2 generation); a pinned Gradle wrapper; Kotlin DSL build scripts; Jetpack Compose with Material 3; JDK 17 baseline.
+2. **Build integrity:** one version catalog; Gradle dependency verification and dependency locking. Convention and build logic are introduced as justified; shared runtime modules are extracted only on genuine cross-app reuse (SPRD §32).
+3. **Libraries:** Hilt; Kotlin coroutines and Flow; OkHttp for HTTP and WebSocket; kotlinx.serialization; contract-derived clients where appropriate; Room; DataStore; Android Keystore for protected device-credential material.
+4. **Quality:** the supported Android testing and quality stack (unit, coroutine/Flow, HTTP mock-server, Robolectric, Compose UI, managed-device or instrumented and contract tests; Android Lint, ktlint/Spotless, detekt); required Android CI verification never uses continue-on-error.
+5. **Release signing** is isolated from source control and ordinary CI logs, in a separately authorized release pipeline.
+6. **Version governance:** when the baseline is first built, a supported, stable, mutually compatible Kotlin / Gradle / Android Gradle Plugin / Compose / JDK / SDK set is selected from authoritative compatibility and release information and reproducibly pinned. The architecture does not mean "always newest stable". Later upgrades are controlled changes. No exact version is fixed by this contract.
+7. **SDK governance:** `minSdk` derives from approved venue hardware and must not fall below API 26 without a new architecture decision. `compileSdk` and `targetSdk` follow the supported toolchain and the selected distribution requirements. The distribution channel is an owner or release choice.
+8. **Credential storage:** the Android Keystore is the invariant. Hardware-backed or StrongBox protection is used where supported and appropriate; StrongBox is not a universal device-compatibility requirement. No reusable staff secret is stored on a device (00.10.6, O-20 item 8).
+
+**O-13 — KDS device authentication.**
+1. Ordinary KDS operation uses a per-device, venue-bound D8 device identity and credential. No human login is required for ordinary KDS operation. The old "no-auth KDS" requirement (SPRD README C-3) is not adopted.
+2. Device identity is distinct from staff identity (INV-3) and conveys no staff authority.
+3. Enrollment, bootstrap, secure storage and recovery are implementation mechanics. The credential-rotation mechanism is engineering-level; its cadence is configurable policy (P2).
+4. Revocation invalidates authorization, including live realtime connections (DEC-ADMIN-22). A lost or stolen device is handled by revocation; recovery is revocation followed by fresh enrollment, never credential reuse.
+5. Realtime subscription authorization uses the device identity.
+6. Audit and provenance identify the device or system actor (DEC-OPS-21; 00.10.6, O-21 item 4).
+7. Venue reassignment requires revocation and re-enrollment, consistent with venue-bound identity; there is no in-place venue move.
+8. Privileged KDS administration remains an Admin Console concern under staff authorization unless a later approved requirement creates an on-device privileged operation.
+9. The Nest venue PIN (`KDS_VENUE_PINS`) stays TRANSITIONAL (ADMIN-38) and is not the canonical model.
+
+**Transitional consequences (orchestrator Tier-2 decisions D-1 and D-3, 2026-10-05; sequencing records in `docs/checkpoints/2026-10-05/`).** The first-pilot KDS is the transitional web KDS migrated to canonical Core; the permanent KDS is `apps/android/kds`, and the web KDS retires after native parity under PR-8 (SPRD §34) (D-1). The transitional web KDS authenticates to Core with the per-device, venue-bound identity of O-13, not the Nest venue PIN (D-3).
+
+**Supersession of earlier wording.** ADR 0002 Decision item 4 ("O-20 and O-21 stay open") and SPRD README conflict C-3 (KDS authentication as an open owner decision) recorded the state on 2026-10-03. They are explicitly superseded on those points by SPRD §14 and sections 00.10.6 and 00.10.7. ADR 0002 is otherwise unchanged and remains in force; its text is retained unchanged as historical decision context, following the ADR convention (`docs/adr/README.md`).
 
 ## 00.11 Current versus target by domain
 

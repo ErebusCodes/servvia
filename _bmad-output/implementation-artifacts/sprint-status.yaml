@@ -29,24 +29,26 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-03-2026 13:11
-last_updated: 10-05-2026 16:30
+last_updated: 10-05-2026 18:00
 project: servvia
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 # Re-anchored 2026-10-05 (Story 14.2). Planning tracking only, never requirements authority. Requirements: PRD/product-requirements.md + PRD/00-09.
+# Re-anchored 2026-10-05 (Story 14.2). Planning tracking only, never requirements authority. Requirements: PRD/product-requirements.md + PRD/00-09.
+# NOTE: sprint_plan.py rebuilds development_status on every write and drops inline comments; re-apply annotations after any write run.
 development_status:
   epic-1: in-progress
   1-1-api-lint-passes-so-the-api-ci-job-runs-to-completion: done
   1-2-go-core-ci-job-with-real-postgresql-and-redis: done
-  1-3-venue-connector-ci-job-made-truthful: done
+  1-3-venue-connector-ci-job-made-truthful: done  # accepted ff3e4d7 (tracking corrected 2026-10-05)
   1-4-nest-production-start-runs-the-built-entry-point: done
   1-5-production-configuration-fails-closed: done
-  1-6-protect-the-main-branch: backlog
-  1-7-native-round-recovery-integration-tests-run-truthfully-in-ci: done
-  1-8-native-round-recovery-tests-refuse-a-database_url-host-query: done
-  1-9-test-harness-loopback-binding: backlog
-  1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog
+  1-6-protect-the-main-branch: backlog  # NEEDS AUTHORIZATION (GitHub admin); after Wave A
+  1-7-native-round-recovery-integration-tests-run-truthfully-in-ci: done  # accepted 38bea30
+  1-8-native-round-recovery-tests-refuse-a-database_url-host-query: done  # accepted 38bea30
+  1-9-test-harness-loopback-binding: backlog  # REWRITE - NOT FROZEN; objective regenerated/frozen only after proposal s15 preconditions; NOT AUTHORIZED
+  1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog  # DEFERRED (keep); not started; first Epic 1 slot after Wave B starts
   epic-1-retrospective: optional
 
   epic-2: done
@@ -60,7 +62,7 @@ development_status:
   2-8-durable-staff-sessions-in-postgresql: done
   2-9-device-and-tablet-credentials-reach-only-the-routes-made-for: done
   2-10-staff-venue-access-is-enforced-by-the-nest-api-too: done
-  2-11-a-real-installation-s-first-owner-comes-only-from-a-governed: done
+  2-11-a-real-installation-s-first-owner-comes-only-from-a-governed: done  # 2.9-2.11 keys re-derived from titles 2026-10-05; status carried over
   epic-2-retrospective: optional
 
   epic-3: backlog
@@ -79,7 +81,7 @@ development_status:
   5-3-order-tablet-consumes-core-realtime-and-resynchronises: backlog
   epic-5-retrospective: optional
 
-  epic-6: backlog
+  epic-6: backlog  # D-1: pilot = transitional web KDS on Core; D-3 per-device D8 credential (15.5)
   6-1-kds-reads-and-advances-core-kitchen-tickets-with-an-authenti: backlog
   6-2-kds-surfaces-delivery-failures-and-survives-backend-outages: backlog
   6-3-ready-alert-and-age-colour-coding: backlog
@@ -88,7 +90,7 @@ development_status:
   epic-8: in-progress
   8-1-staff-management-with-roles-and-venue-grants: done
   8-3-staff-integrity-under-concurrency: done
-  8-2-venue-tax-and-table-settings-from-real-data: backlog
+  8-2-venue-tax-and-table-settings-from-real-data: backlog  # Wave C, before 16.1 (P3 boundary configuration)
   epic-8-retrospective: optional
 
   epic-9: backlog
@@ -107,10 +109,10 @@ development_status:
   10-4-card-refunds-and-reversals-through-the-adapter: backlog
   10-5a-venue-edge-service-foundation-identity-durable-queue-diagnos: backlog
   10-5b-core-to-venue-edge-card-command-lease: backlog
-  10-6-provider-specific-terminal-adapter-and-certification: backlog
+  10-6-provider-specific-terminal-adapter-and-certification: backlog  # BLOCKED: O-3 business part
   epic-10-retrospective: optional
 
-  epic-11: backlog
+  epic-11: backlog  # BLOCKED: O-4/O-5/O-6 business parts; 11.2 after 16.1/16.5
   11-1-customer-receipt: backlog
   11-2-minimum-service-day-close-report: backlog
   11-3-receipt-and-conditional-kitchen-printing-through-venue-edge: backlog
@@ -119,22 +121,22 @@ development_status:
   epic-12: in-progress
   12-1-monitoring-and-alerting-for-outages-backups-dead-letters-and: backlog
   12-2-request-ids-structured-logs-and-core-metrics: backlog
-  12-3a-core-database-statement-timeout-and-lock-timeout: done
+  12-3a-core-database-statement-timeout-and-lock-timeout: done  # accepted 8a4d3ab (split of former 12.3)
   12-3b-device-route-rate-limits-and-dead-letter-replay: backlog
   12-4-legacy-decoupling-for-servvia-native-venues: backlog
-  12-5-kiosk-off-in-production-until-fixed: done
+  12-5-kiosk-off-in-production-until-fixed: done  # accepted e575658 (tracking corrected 2026-10-05)
   12-6-hide-or-relabel-mock-admin-pages: backlog
   12-8-end-to-end-acceptance-and-failure-drills: backlog
   12-9-runbooks-and-operational-rehearsal: backlog
   12-10-security-review-and-penetration-test: backlog
-  12-11-performance-and-load-smoke-test: backlog
+  12-11-performance-and-load-smoke-test: backlog  # runs against O-19 planning baseline; owner confirmation before release acceptance
   12-12-real-device-lan-and-venue-validation-dry-run: backlog
   12-13-durable-ingestion-and-retention-of-security-and-operational: backlog
   12-14-isolated-queue-infrastructure-for-nest-integration-tests: done
   12-15-kitchen-kds-device-status-changes-fail-on-the-audit-actor-fo: done
   epic-12-retrospective: optional
 
-  epic-13: backlog
+  epic-13: backlog  # DEFERRED/BLOCKED placeholders (no 'deferred' status exists in the tracker vocabulary)
   13-1-windows-pos-terminal: backlog
   13-2-guest-mode-on-core-and-the-native-waiter-tablet: backlog
   13-3-menu-availability-and-admin-capabilities-move-to-their-decid: backlog
@@ -144,9 +146,9 @@ development_status:
   13-7-native-kiosk-and-window-display: backlog
   epic-13-retrospective: optional
 
-  epic-14: in-progress
-  14-1-integrate-the-normative-prd-into-the-accepted-lineage-and-re: done
-  14-2-re-anchor-bmad-configuration-and-active-planning-to-the-norm: review  # executed 2026-10-05; awaiting orchestrator review
+  epic-14: done
+  14-1-integrate-the-normative-prd-into-the-accepted-lineage-and-re: done  # Wave A 5ee6474
+  14-2-re-anchor-bmad-configuration-and-active-planning-to-the-norm: done  # accepted 0d1e334 + governance closure (2026-10-05)
   epic-14-retrospective: optional
 
   epic-15: backlog
@@ -157,7 +159,7 @@ development_status:
   15-5-core-kitchen-routes-accept-per-device-d8-kds-credentials: backlog
   epic-15-retrospective: optional
 
-  epic-16: backlog
+  epic-16: backlog  # 16.3 pilot enablement needs P6 values; 7.1/7.2 rewritten as 16.3/16.4; 12.7 -> 16.2
   16-1-p3-business-date: backlog
   16-2-line-level-station-routing: backlog
   16-3-cancel-void-and-comp-in-core: backlog
@@ -165,19 +167,19 @@ development_status:
   16-5-p11-operational-sales-computation: backlog
   epic-16-retrospective: optional
 
-  epic-17: backlog
+  epic-17: backlog  # post-pilot; O-10 decided (Tier 2; SPRD s14, PRD/00 s00.10.7); versions pinned only in 17.1
   17-1-android-engineering-baseline-per-o-10: backlog
   17-2-native-device-enrollment-secure-credential-storage-and-core: backlog
   epic-17-retrospective: optional
 
-  epic-18: backlog
+  epic-18: backlog  # post-pilot permanent KDS replacement; not a first-pilot blocker (D-1)
   18-1-native-kds-tickets-and-transitions-on-core-with-a-d8-identit: backlog
   18-2-native-kds-outage-cache-and-reconnect: backlog
   18-3-native-kds-ready-alert-and-age-colours: backlog
   18-4-native-kds-parity-proof-venue-migration-and-web-kds-retireme: backlog
   epic-18-retrospective: optional
 
-  epic-19: backlog
+  epic-19: backlog  # post-pilot native Waiter Tablet Staff Mode; primary transitional-retirement target; O-1 open
   19-1-native-staff-mode-elevation-per-o-20: backlog
   19-2-native-staff-mode-ordering-on-core-with-o-21-provenance: backlog
   19-3-native-settlement-parity-and-web-tablet-settlement-retiremen: backlog

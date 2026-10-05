@@ -8,7 +8,7 @@ inputDocuments:
   - docs/adr/0001-servvia-is-the-operational-pos.md
   - docs/adr/0002-reduced-first-pilot.md
 planningInputs:
-  - docs/checkpoints/2026-10-05/bmad-reconciliation-sprint-change-proposal.md (frozen planning target; record of the Tier-2 decisions D-1, D-3, O-10 and O-13 architecture; not requirements authority)
+  - docs/checkpoints/2026-10-05/bmad-reconciliation-sprint-change-proposal.md (frozen planning target; record of the Tier-2 decisions D-1 and D-3; O-10 and O-13 are recorded in the normative PRD; not requirements authority)
   - docs/audits/production-readiness-2026-12.md (evidence and sequencing input only)
 workflow: bmad-create-epics-and-stories (BMAD 6.12.0); re-anchored by bmad-correct-course (Story 14.2)
 generated: 2026-10-03
@@ -36,8 +36,8 @@ This document provides the complete epic and story breakdown for servvia. It dec
 
 **Planning rules applied:**
 - **Unresolved items stay BLOCKED.** This covers every OWNER TARGET REQUIRED (OTR) and OWNER DECISION REQUIRED (ODR) item, the decisions still open in PRD section 14 and volume 00 section 00.10, R-3 and PENDING USER POS ANALYSIS REPORT. A story that needs one says `Status: BLOCKED` and names it. No target, provider behaviour or Windows POS behaviour is invented. Open owner and policy gates: O-1; the business parts of O-3, O-4, O-5 and O-6; pilot venue and timing (P13); P6; P2 and other configuration values; P5; P10; O-19 owner confirmation. DL-117 is NOT approved and dates nothing.
-- **Decided, not implemented.** O-20, O-21 (volume 00 §00.10.6), DEC-ADMIN-22, DEC-OPS-21, P3 and P11 (§00.10.5) and the approved Tier-2 register (§00.10.4: DEC-OPS-1, DEC-OPS-4, DEC-FIN-11) are binding architecture. A story is never marked done because its architecture is decided; implementation status comes only from verified repository evidence.
-- **Orchestrator Tier-2 decisions (2026-10-05)** recorded in the sprint change proposal §9, §12 and §17: **D-1** (first pilot: transitional web KDS on canonical Core; permanent target `apps/android/kds`; no permanent web KDS), **D-3** (the pilot web KDS authenticates to Core with a per-device, venue-bound D8 credential; no human login for ordinary KDS operation; the Nest venue PIN is not the canonical model), **O-13 architecture** (per-device, venue-bound D8 KDS identity) and **O-10** (the Android engineering baseline; exact versions pinned only in Story 17.1). SPRD section 14 does not yet record O-10 and O-13 as decided; recording them there is a pending controlled-change follow-up.
+- **Decided, not implemented.** O-10, O-13 (SPRD §14; volume 00 §00.10.7), O-20, O-21 (volume 00 §00.10.6), DEC-ADMIN-22, DEC-OPS-21, P3 and P11 (§00.10.5) and the approved Tier-2 register (§00.10.4: DEC-OPS-1, DEC-OPS-4, DEC-FIN-11) are binding architecture. A story is never marked done because its architecture is decided; implementation status comes only from verified repository evidence.
+- **Orchestrator Tier-2 decisions (2026-10-05).** **O-10** (the Android engineering baseline; exact versions pinned only in Story 17.1) and **O-13** (per-device, venue-bound D8 KDS identity; no human login) are recorded as decided in SPRD §14 with contracts in volume 00 §00.10.7. **D-1** (first pilot: transitional web KDS on canonical Core; permanent target `apps/android/kds`; no permanent web KDS) and **D-3** (the pilot web KDS authenticates to Core with the O-13 per-device, venue-bound D8 credential; the Nest venue PIN is not the canonical model) are sequencing and transitional decisions recorded in the sprint change proposal §9 and §17, with their architectural consequences in volume 00 §00.10.7.
 - **Scope follows ADR 0002 (accepted).** The reduced first pilot requires integrated card (PILOT-CARD-3). Settlement goes through the transitional web Order Tablet in Staff Mode. Guest Mode, the Windows POS and the cash drawer are not part of the first pilot. Kitchen printing is conditional on the venue.
 - **The audit's P0-09 description is superseded.** It described a web cashier plus an external-card tender; Epic 9 and Epic 10 replace it.
 - **Order** follows the audit's dependency sequence: P0-02 → P0-03 → P0-04 → P0-05/P0-06 → P0-07 → P0-08 → P0-10 → …, with security and backups interleaved.
@@ -1699,7 +1699,7 @@ So that no planning workflow uses the retired `fileRestructure.md`, `docs/planni
 
 - Traceability: SPRD §28, §35; volume 00 §00.1.1.
 - Depends on: Story 14.1.
-- Status: Executed 2026-10-05; awaiting orchestrator review.
+- Status: DONE. Accepted 2026-10-05: implementation `0d1e334`, followed by the governance closure that recorded O-10 and O-13 in the normative PRD and made the authority rule explicit.
 
 ## Epic 15: Canonical identity, provenance and audit (Wave B)
 
@@ -2064,8 +2064,8 @@ The operator authorised proceeding, so tracking was generated.
 **Implementable as recorded:** Epics 1–6, 8–10, 12 and 14–19. Every story cites SPRD, a normative volume, an accepted ADR or an accepted controlled decision, and carries explicit BLOCKED, NEEDS AUTHORIZATION or DEFERRED markers where a gate applies. Epic 11 and Epic 13 remain BLOCKED or DEFERRED placeholders (O-4, O-5 and O-6 business parts; O-7, O-14 to O-18; P9; the POS report); no developer has to invent anything, and they cannot start.
 
 **Concerns:**
-1. **Decision recording.** D-1, D-3, O-10 and the O-13 architecture are orchestrator Tier-2 decisions recorded only in the checkpoint sprint change proposal (§9, §12, §17). SPRD section 14 still lists O-10 and O-13 without a decision tag. Recording them in SPRD (or the decisions log) is a controlled-change follow-up outside Story 14.2.
-2. **Authority ordering.** Volume 00 §00.1.1 places accepted ADRs and decisions-log entries above volumes 00–09, while the Story 14.2 instruction places the volumes above ADRs. BMAD configuration escalates any genuine ADR-versus-volume conflict instead of resolving it; none is known.
+1. **Decision recording.** D-1, D-3, O-10 and the O-13 architecture are orchestrator Tier-2 decisions recorded only in the checkpoint sprint change proposal (§9, §12, §17). SPRD section 14 still lists O-10 and O-13 without a decision tag. Recording them in SPRD (or the decisions log) is a controlled-change follow-up outside Story 14.2. **Resolved 2026-10-05 (governance closure):** O-10 and O-13 are recorded as decided in SPRD §14 with contracts in volume 00 §00.10.7; D-1 and D-3 stay in the proposal, with their consequences referenced in §00.10.7.
+2. **Authority ordering.** Volume 00 §00.1.1 places accepted ADRs and decisions-log entries above volumes 00–09, while the Story 14.2 instruction places the volumes above ADRs. BMAD configuration escalates any genuine ADR-versus-volume conflict instead of resolving it; none is known. **Resolved 2026-10-05 (governance closure):** the orchestrator set the rule. Externally: owner decision, then the normative corpus under its own governance, then accepted controlled decision records, then verified repository reality (implementation state only), then BMAD planning, then history. Inside the corpus, volume 00 §00.1.1 governs: an accepted ADR controls a conflicting volume statement unless a later controlled decision explicitly supersedes it, and ambiguous supersession stops and escalates. The contradictory Story 14.2 wording is removed from the BMAD configuration.
 3. **No UX design contract** for the client epics (5, 6, 9, 18, 19). They rely on existing screens and the SPRD UX and accessibility requirements; new UX needs its own design input.
 4. **Owner and policy values remain absent:** P2 (session, PIN, lockout, credential rotation), P6 (financial-control values), section 19 OTR rows, alert thresholds, retention and defect severity. The affected stories mark them as configuration or BLOCKED.
 5. **Epic contexts** exist only for Epics 1 and 12 (recompiled 2026-10-05). Contexts for Epics 15–19 must be compiled and committed before their first story is prepared.

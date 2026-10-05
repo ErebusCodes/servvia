@@ -113,7 +113,7 @@ SPRD §14 decisions: O-2 decided (2026-10-03); O-11 superseded; **O-20 and O-21 
 |---|---|
 | Before the affected pilot workflows are enabled (P6; mechanisms normative, values owner-controlled) | DEC-X-7 (approval and separation-of-duties thresholds, including void, cancel, comp and refund authority and comp semantics); DEC-FIN-4 (GST attribution of refunds); DEC-FIN-6 (tips); DEC-FIN-7 (service charges, only if enabled). DL-081 manager step-up values are transitional defaults, not approved policy |
 | Before pilot reporting and day close (P3/P11 residuals, with SPRD O-6) | DEC-FIN-10; DEC-BI-2; DEC-BI-4; DEC-BI-11 |
-| Pilot readiness and timing (P13) | SPRD O-3, O-4, O-5, O-13; draft DL-117 milestone (NOT approved) |
+| Pilot readiness and timing (P13) | SPRD O-3, O-4 and O-5 (business parts only); pilot venue and timing; draft DL-117 milestone (NOT approved). O-13 removed 2026-10-05: architecture decided (volume 00 §00.10.7), no Tier-3 residue |
 | Before release acceptance (P7) | O-19 owner confirmation of the planning baseline; DEC-X-8 (capacity); DEC-X-9 (RPO/RTO; any availability above 99.5 %) |
 | Before production or any compliance commitment (P5; platform mechanisms normative) | DEC-X-5; validation evidence for any jurisdiction pack (INV-22) and any payroll pack or provider (DEC-WFM-19) |
 | Before relevant production use (P10; capability normative, configuration gated) | DEC-RCP-5 (allergen list contents; the current eight-item client list is not a compliance assertion); DEC-OPS-19 (allergen acknowledgement) |

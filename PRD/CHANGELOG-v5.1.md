@@ -2,6 +2,18 @@
 
 > **Record, not authority.** Material, decision-relevant changes only. The label "v5.1" was named by the owner for this Servvia corpus; it is not a continuation of the Verdura document series (see DEC-X-14).
 
+## 2026-10-05 — Governance closure: O-10 and O-13 recorded as decided; ADR conflict rule
+
+**Orchestrator verdict (Story 14.2 review):** O-10 and O-13 are Tier-2 decisions (orchestrator authority, not owner decisions) and are recorded in the normative corpus; ADR-versus-volume precedence made explicit.
+
+| Change | Where |
+|---|---|
+| O-10 decided: native Kotlin Android baseline; versions selected and pinned when first built (not "always newest"); `minSdk` from approved hardware, never below API 26 without a new decision; Keystore invariant, StrongBox opportunistic | SPRD §14, §32, §34.4, §36.2; 00 §00.10.1, §00.10.7 |
+| O-13 decided: per-device, venue-bound D8 KDS identity; no human login; no-auth KDS not adopted; Nest venue PIN stays transitional | SPRD §14; README C-3; 00 §00.10.7; PRD_ALIGNMENT P13 |
+| D-1 and D-3 consequences referenced minimally | 00 §00.10.7 |
+| ADR 0002 item 4 ("O-20 and O-21 stay open") explicitly superseded on that point; ADR text unchanged | 00 §00.10.7 |
+| Accepted ADR controls a conflicting volume unless explicitly superseded; ambiguous supersession stops and escalates | 00 §00.1.1 |
+
 ## 2026-10-05 — Tier-2 ratification applied; normative PRD baseline accepted
 
 **Orchestrator verdicts:** KitchenOS assimilation ACCEPTED; final blocker analysis ACCEPTED; O-20, O-21, DEC-OPS-25, DEC-FIN-19 and DEC-WFM-19 ratified as Tier 2 (orchestrator authority, not owner decisions); normative acceptance instructed subject to verification. **Result: SERVVIA PRD NORMATIVE BASELINE ACCEPTED.**
