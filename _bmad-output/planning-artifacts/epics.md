@@ -2309,10 +2309,13 @@ So that forecasts improve from evidence and retrospectives feed planning.
 **When** a story moves through it
 **Then** the program records, per story: objective-preparation elapsed effort, implementation elapsed effort, evaluator elapsed time, correction iterations, review and rework rounds, test-suite growth, defect escapes and reopens, and blocker or external waiting time kept separately
 **And** epic retrospectives consume these records and route their action items into planning; the measurements are about the engineering program, never surveillance of individuals.
+**And** (refined 2026-10-06 at objective preparation) every value states whether it was measured, derived (re-computable from git and the evaluator's ledger and records), explicitly recorded or unknown. Unmeasured values stay unknown and are never inferred. The records are append-only, and a correction is a new auditable record. Telemetry reads the evaluator's ledger and records and never writes them, so it cannot change a verdict or any evidence.
+**And** the seven governed stories completed before it (1.3, 1.7, 1.8, 1.9, 12.3a, 12.5, 15.1) are backfilled with derived facts only. Their objective-preparation effort, review rounds and recorded effort stay unknown.
 
-- Traceability: DOD-26; REL-24.
+- Allowed surfaces (conceptual): a new repository tool under `tooling/telemetry/` (Node.js built-ins only) and its event log under `_bmad-output/implementation-artifacts/telemetry/`. No change to `tooling/evaluator/**`, frozen objectives, the PRD or product code.
+- Traceability: DOD-26; REL-24; TEST-21.
 - Depends on: none.
-- Status: READY.
+- Status: READY. Comes before the next governed product story (accepted program revision 2, `7f21624`).
 
 ### Story 20.4: Durable evidence retention and stronger evaluator isolation
 
