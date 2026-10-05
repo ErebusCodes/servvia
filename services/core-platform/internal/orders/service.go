@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/pricing"
 	"servvia/services/core-platform/internal/promotions"
 )
@@ -24,6 +25,9 @@ type Actor struct {
 	Role    string
 	// OnTablet: the caller is a tablet elevated by this staff member.
 	OnTablet bool
+	// Device is the device the staff member acted through, from the
+	// verified credential (audit.DeviceOf); the zero value is none.
+	Device audit.Device
 }
 
 // CreateCommand places an order. IdempotencyKey makes it safe to retry.

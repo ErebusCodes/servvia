@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/orders"
 	"servvia/services/core-platform/internal/platform/httpx"
@@ -249,7 +250,8 @@ func (h *Handler) scope(w http.ResponseWriter, r *http.Request) (orders.Scope, o
 	return orders.Scope{OrganizationID: p.OrganizationID, Venue: pricing.Venue{ID: v.ID, OrganizationID: v.OrganizationID,
 			Tax: pricing.TaxProfile{Currency: v.Tax.Currency, TaxJurisdiction: v.Tax.TaxJurisdiction, PricesIncludeTax: v.Tax.PricesIncludeTax}}},
 		orders.Actor{StaffID: p.ID, Email: p.Email, Role: p.Role,
-			OnTablet: p.Kind == identity.KindTabletStaff || p.Kind == identity.KindTabletManager}, true
+			OnTablet: p.Kind == identity.KindTabletStaff || p.Kind == identity.KindTabletManager,
+			Device:   audit.DeviceOf(p)}, true
 }
 
 func decode(w http.ResponseWriter, r *http.Request, into any) bool {

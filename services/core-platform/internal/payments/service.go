@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"servvia/services/core-platform/internal/audit"
 )
 
 // Scope is the tenancy of every operation.
@@ -21,6 +23,9 @@ type Staff struct {
 	StaffID string
 	Email   string
 	Role    string
+	// Device is the device the staff member acted through, from the
+	// verified credential (audit.DeviceOf); the zero value is none.
+	Device audit.Device
 }
 
 // Adapter is the trusted payment adapter reporting a result: a registered

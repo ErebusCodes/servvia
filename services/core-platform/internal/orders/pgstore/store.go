@@ -41,6 +41,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	coreaudit "servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/events"
 	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/orders"
@@ -488,12 +489,8 @@ func roundFact(ctx context.Context, tx pgx.Tx, venueID, orderID, roundID string,
 }
 
 func audit(ctx context.Context, tx pgx.Tx, sc orders.Scope, a orders.Actor, action, orderID string, after map[string]any) error {
-	body, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'order', $8, $9)`,
-		newUUID(), sc.OrganizationID, sc.Venue.ID, a.StaffID, a.Email, a.Role, action, orderID, body)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.Venue.ID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, a.Device), Action: action, Resource: "order", ResourceID: orderID, After: after})
 }
 
 // Audit writes a best-effort audit row outside any transaction.

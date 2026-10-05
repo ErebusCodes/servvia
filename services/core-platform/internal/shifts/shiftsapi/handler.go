@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/platform/httpx"
 	"servvia/services/core-platform/internal/shifts"
@@ -192,7 +193,7 @@ func (h *Handler) scope(w http.ResponseWriter, r *http.Request) (shifts.Scope, s
 		return shifts.Scope{}, shifts.Actor{}, false
 	}
 	return shifts.Scope{OrganizationID: p.OrganizationID, VenueID: v.ID, Currency: v.Tax.Currency},
-		shifts.Actor{StaffID: p.ID, Email: p.Email, Role: p.Role}, true
+		shifts.Actor{StaffID: p.ID, Email: p.Email, Role: p.Role, Device: audit.DeviceOf(p)}, true
 }
 
 func decode(w http.ResponseWriter, r *http.Request, into any) bool {
