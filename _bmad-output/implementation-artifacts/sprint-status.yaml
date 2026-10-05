@@ -29,12 +29,11 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-03-2026 13:11
-last_updated: 10-05-2026 18:00
+last_updated: 10-06-2026 09:00
 project: servvia
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-# Re-anchored 2026-10-05 (Story 14.2). Planning tracking only, never requirements authority. Requirements: PRD/product-requirements.md + PRD/00-09.
 # Re-anchored 2026-10-05 (Story 14.2). Planning tracking only, never requirements authority. Requirements: PRD/product-requirements.md + PRD/00-09.
 # NOTE: sprint_plan.py rebuilds development_status on every write and drops inline comments; re-apply annotations after any write run.
 development_status:
@@ -47,8 +46,8 @@ development_status:
   1-6-protect-the-main-branch: backlog  # NEEDS AUTHORIZATION (GitHub admin); after Wave A
   1-7-native-round-recovery-integration-tests-run-truthfully-in-ci: done  # accepted 38bea30
   1-8-native-round-recovery-tests-refuse-a-database_url-host-query: done  # accepted 38bea30
-  1-9-test-harness-loopback-binding: review  # frozen fc064b5 (objective dd4483c8); candidate f9110b7 governed PASS (CANDIDATE_READY_FOR_ACCEPTANCE); awaiting orchestrator acceptance
-  1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog  # DEFERRED (keep); not started; first Epic 1 slot after Wave B starts
+  1-9-test-harness-loopback-binding: done  # accepted by the orchestrator 2026-10-06; frozen fc064b5 (objective dd4483c8); candidate f9110b7 governed PASS; integrated 963bd4c
+  1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog  # DEFERRED (keep); not started; needs its own orchestrator authorization; does not follow Story 1.9 automatically
   epic-1-retrospective: optional
 
   epic-2: done
@@ -151,12 +150,17 @@ development_status:
   14-2-re-anchor-bmad-configuration-and-active-planning-to-the-norm: done  # accepted 0d1e334 + governance closure (2026-10-05)
   epic-14-retrospective: optional
 
-  epic-15: backlog
-  15-1-core-audit-records-device-and-system-actors-truthfully: backlog
-  15-2-o-21-provenance-persistence: backlog
-  15-3-credentials-carry-application-identity-o-20-o-21-foundation: backlog
-  15-4-event-triggered-realtime-revocation: backlog
-  15-5-core-kitchen-routes-accept-per-device-d8-kds-credentials: backlog
+  epic-15: backlog  # reconciled 2026-10-06 against dff753a; order in epics.md Epic 15; implementation NOT authorized
+  15-1-core-audit-records-device-and-system-actors-truthfully: backlog  # RECOMMENDED FIRST Epic 15 story (awaiting orchestrator authorization)
+  15-3-core-derives-application-identity-operating-mode-and-actor-c: backlog  # re-scoped 2026-10-06: Core-derived from verified credential; no Nest token change (ADMIN-38)
+  15-2a-o-21-order-and-round-provenance-persistence: backlog  # split of former 15.2; after 15.3
+  15-2b-domain-events-carry-actor-correlation-and-causation: backlog  # split of former 15.2; after 15.2a
+  15-2c-device-originated-orders-carry-no-synthetic-staff-creator-tr: backlog  # former 12.16 (merged into 15.2), own slice
+  15-2d-check-payment-and-refund-provenance: backlog  # split of former 15.2; after 15.2a; before Epic 9 on Core
+  15-4a-core-closes-live-realtime-connections-when-a-credential-is-r: backlog  # split of former 15.4 (Core side); required before release acceptance
+  15-4b-nest-revocations-signal-core-push-close: backlog  # split of former 15.4 (Nest side); after 15.4a; required before release acceptance
+  15-5-core-kitchen-routes-accept-per-device-d8-kds-credentials: backlog  # after 15.1; D-3 / O-13
+  15-7-d8-single-use-enrollment-redemption-device-bootstrap: backlog  # new 2026-10-06 (O-13 item 3, D-3); needed by 6.1 and 17.2
   epic-15-retrospective: optional
 
   epic-16: backlog  # 16.3 pilot enablement needs P6 values; 7.1/7.2 rewritten as 16.3/16.4; 12.7 -> 16.2

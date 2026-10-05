@@ -196,7 +196,7 @@ No UX design contract exists, so there are no UX-DRs. UX and accessibility are c
 - ORD-2: Epic 5 (Story 5.2).
 - ORD-3: Epic 5 (Story 5.2).
 - ORD-4: Epic 5 (Story 5.2).
-- ORD-5: Epic 5 (Story 5.2); Epic 9 (Story 9.2); O-21 provenance persistence in Epic 15 (Story 15.2).
+- ORD-5: Epic 5 (Story 5.2); Epic 9 (Story 9.2); O-21 provenance persistence in Epic 15 (Stories 15.2a and 15.2d).
 - KIT-1: Epic 16 (Story 16.2, line-level routing per DEC-OPS-4; supersedes Story 12.7); consumed by Epic 6 (pilot, D-1) and Epic 18 (native).
 - KIT-2: Epic 6 (Story 6.2); Epic 18 (native).
 - KIT-3: Epic 6 (Story 6.1, transitional web KDS on Core per D-1); Epic 18 (Story 18.1, native). The target is an O-19 planning baseline; owner confirmation is needed before release acceptance.
@@ -223,7 +223,7 @@ No UX design contract exists, so there are no UX-DRs. UX and accessibility are c
 - RES-4: Epic 13 (Story 13.4), BLOCKED: O-16.
 - RPT-1: Epic 13 (Story 13.5, breadth DEFERRED); the P11 headline computation is Epic 16 (Story 16.5).
 - RPT-2: Epic 11 (Story 11.2), content BLOCKED: O-6 / DEC-FIN-10; depends on Epic 16 (Stories 16.1 P3 and 16.5 P11).
-- WT-1 to WT-6: Epic 5 (Story 5.1, Guest Mode off, honouring WT-4); Epic 15 (Stories 15.2 and 15.3, O-21 provenance and application identity); Epic 19 (native Waiter Tablet Staff Mode, O-20); Epic 13 (Story 13.2, Guest Mode) DEFERRED (ADR 0002 item 4; P9). O-20 and O-21 are decided; implementation is incomplete.
+- WT-1 to WT-6: Epic 5 (Story 5.1, Guest Mode off, honouring WT-4); Epic 15 (Stories 15.2a and 15.3, O-21 provenance and server-derived application identity); Epic 19 (native Waiter Tablet Staff Mode, O-20); Epic 13 (Story 13.2, Guest Mode) DEFERRED (ADR 0002 item 4; P9). O-20 and O-21 are decided; implementation is incomplete.
 - KSK-1 to KSK-5: Epic 12 (Story 12.5, kiosk off for the pilot; done); Epic 13 (Story 13.7, native kiosk) DEFERRED until after Epic 17.
 - WD-1: Epic 13 (Story 13.7) DEFERRED.
 - WEB-1 to WEB-5: Epic 2 (Story 2.7, email escaping, WEB-2-adjacent); Epic 13 (Story 13.6). WEB-1 is blocked on O-14 and WEB-5 on O-18.
@@ -458,7 +458,7 @@ So that evaluator and CI verdicts on integration tests cannot be corrupted by a 
 
 - Traceability: SPRD §21 (TEST-21: deterministic tests on disposable environments), SPRD §24 (tests passing with explicit evidence), SPRD §16 (fail closed).
 - Depends on: Stories 14.1 and 14.2 (Wave A).
-- Status: FROZEN 2026-10-05 (objective `story-1-9-test-harness-loopback-binding` v1, sha256 `dd4483c8…af77704`, anchor `fc064b5`, baseline `e42edeb`). Candidate `f9110b7`: governed evaluator PASS, decision CANDIDATE_READY_FOR_ACCEPTANCE (iteration 1). Awaiting orchestrator acceptance.
+- Status: DONE. Accepted by the orchestrator on 2026-10-06 (objective `story-1-9-test-harness-loopback-binding` v1, sha256 `dd4483c8…af77704`, anchor `fc064b5`, baseline `e42edeb`; candidate `f9110b7`, governed evaluator PASS / CANDIDATE_READY_FOR_ACCEPTANCE at iteration 1, evaluation record `d814065d…`, ledger integrity `374fde09…`; integrated in `963bd4c`). The TAP correction residual stays open: no correction occurred.
 
 ### Story 1.10: CI asserts the native-round-recovery suite executes
 
@@ -474,7 +474,7 @@ So that a green API integration job proves those tests actually ran.
 
 - Traceability: SPRD §21 (TEST-21), SPRD §24.
 - Depends on: Story 1.9.
-- Status: DEFERRED (keep) to the first Epic 1 slot after Wave B starts. Not started.
+- Status: DEFERRED (keep). Not started. It is not scheduled to follow Story 1.9 automatically: it needs its own orchestrator authorization (Story 1.9 is only its technical prerequisite).
 
 ## Epic 2: Secure access to staff, devices and realtime
 
@@ -807,9 +807,9 @@ So that customers cannot reach staff functions (WT-4) and the pilot scope matche
 **And** Guest Mode code and the WT requirements are retained, not deleted.
 
 - Traceability: WT-1, WT-2, WT-4, WT-5; ADR 0002 item 4; audit P1-01.
-- Depends on: Story 2.2; Story 15.3 (application-identity claim).
+- Depends on: Story 2.2; Story 15.3 (application identity derived by Core).
 - Status: READY after Story 15.3.
-- Re-anchored 2026-10-05 (REWRITE): O-20 and O-21 are decided (volume 00 §00.10.6) and are no longer open. The web tablet keeps the DL-081 elevation model as a transitional surface (O-2) and carries the application-identity claim from Story 15.3. Guest Mode stays off for the first pilot (ADR 0002 item 4).
+- Re-anchored 2026-10-05 (REWRITE): O-20 and O-21 are decided (volume 00 §00.10.6) and are no longer open. The web tablet keeps the DL-081 elevation model as a transitional surface (O-2) and carries the application identity Core derives from its verified credential (Story 15.3). Guest Mode stays off for the first pilot (ADR 0002 item 4).
 
 ### Story 5.2: Order Tablet Staff Mode submits sessions, orders and rounds to Core
 
@@ -827,7 +827,7 @@ So that the kitchen and billing work from the canonical record.
 **And** Core writes are enabled only in an environment that has passed the Epic 3 baseline.
 
 - Traceability: ORD-1 to ORD-5, WT-6, PR-2, PR-3; O-21 (volume 00 §00.10.6).
-- Depends on: Stories 5.1, 4.2 and 3.1; Stories 15.2 and 15.3 (the tablet's switch to Core writes O-21 provenance).
+- Depends on: Stories 5.1, 4.2 and 3.1; Stories 15.2a and 15.3 (the tablet's switch to Core writes O-21 provenance).
 - Status: READY after its dependencies.
 
 ### Story 5.3: Order Tablet consumes Core realtime and resynchronises
@@ -867,7 +867,7 @@ So that the kitchen works from the canonical record.
 **And** cross-venue access and a revoked device are refused over HTTP and realtime.
 
 - Traceability: KIT-3, KIT-4, NFR-SEC-3, INV-3; D-1, D-3; O-13 architecture.
-- Depends on: Stories 2.1, 2.2, 5.2, 15.5 and 16.2.
+- Depends on: Stories 2.1, 2.2, 5.2, 15.5, 15.7 and 16.2.
 - Status: READY after its dependencies. Re-anchored 2026-10-05 (REWRITE): O-13 is decided as architecture (per-device D8 identity) and D-3 replaces the Nest venue-PIN token for pilot venues; the browser credential handling covers only what this transitional surface needs.
 
 ### Story 6.2: KDS surfaces delivery failures and survives backend outages
@@ -1005,7 +1005,7 @@ So that pricing and service use the real venue.
 
 Authorised staff bill a visit, take cash under their shift, refund, and close the visit. ADR 0002 item 8; DL-118.
 
-Re-anchored 2026-10-05: Stories 9.1 to 9.6 additionally depend on Story 15.2 (O-21 provenance on checks, payments and refunds) and Story 16.1 (P3 business date). Settlement on the web Order Tablet is the transitional ADR 0002 exception; it retires through Story 19.3.
+Re-anchored 2026-10-05: Stories 9.1 to 9.6 additionally depend on Story 15.2d (O-21 provenance on checks, payments and refunds) and Story 16.1 (P3 business date). Settlement on the web Order Tablet is the transitional ADR 0002 exception; it retires through Story 19.3.
 
 ### Story 9.1: Staff open and close their own cash shift from Staff Mode
 
@@ -1540,7 +1540,7 @@ So that the kitchen can work without errors.
 - Follow-up (2026-10-04 review): printer reprint and retry and native-round resolution recorded a staff member acting through an elevated tablet without the tablet; they now record it, and refuse a device credential (which names no staff member) before changing anything.
 - Status: DONE
 
-#### Former item 12.16 (merged 2026-10-05 into 15.2; not tracked): Device-originated orders without a synthetic staff creator
+#### Former item 12.16 (merged 2026-10-05 into 15.2, now 15.2c; not tracked): Device-originated orders without a synthetic staff creator
 
 As an owner,
 I want kiosk and unelevated-tablet orders attributed to the device or channel that created them,
@@ -1554,7 +1554,7 @@ So that no order names a fabricated staff member as its creator.
 
 - Traceability: NFR-AUD; Story 12.15 finding.
 - Depends on: Story 12.15.
-- Status (historical): READY. Merged 2026-10-05: a device-originated order creator is a special case of O-21 provenance, delivered by Story 15.2.
+- Status (historical): READY. Merged 2026-10-05: a device-originated order creator is a special case of O-21 provenance, delivered by Story 15.2c (split 2026-10-06).
 
 ## Epic 13: Deferred and blocked product scope (placeholders)
 
@@ -1703,75 +1703,185 @@ So that no planning workflow uses the retired `fileRestructure.md`, `docs/planni
 
 ## Epic 15: Canonical identity, provenance and audit (Wave B)
 
-Every pilot-critical action is attributable to a truthful actor, every order carries its full provenance, revocation takes effect on live connections, and Core kitchen routes accept per-device KDS credentials. Venue scope and fail-closed realtime are already in the accepted lineage (Epic 2). O-20, O-21, DEC-ADMIN-22 and DEC-OPS-21 are decided; their implementation is missing or partial.
+Every pilot-critical action is attributable to a truthful actor, every order and round carries its canonical provenance, revocation takes effect on live connections, and Core kitchen routes accept per-device KDS credentials. O-20, O-21, DEC-ADMIN-22, DEC-OPS-21 and the O-13 architecture (with D-3) are decided; their implementation is missing or partial.
+
+**Reconciled 2026-10-06 against the accepted lineage (`dff753a`).** Code audit; evidence in each story's "Current state" line.
+- **Already implemented, not repeated here:** Core staff venue scope (`identity/venueaccess.go`; Epic 2); fail-closed realtime admission (`realtime/realtimeapi/handler.go`); the periodic 60 s realtime re-check of tablet status, staff session and D8 `kds` credential; D8 enroll / rotate / revoke with venue binding (`devices/`); realtime admission of a D8 `kds` device to the kitchen audience (`realtime/authorization.go`); the `AuditLog` actor shape (staff / device / system, CHECK `AuditLog_actor_shape_check`, migration `20261010000000_audit_actor_types`); venue-scoped idempotency keys on orders, rounds, checks and payments, with replay returning the original.
+- **Authorization and provenance stay separate.** Stories that derive provenance never widen authorization, and stories that change authorization record no new provenance.
+- **Transitional credentials gain no capability** (ADMIN-38). The Nest tablet and KDS-PIN tokens are not extended. Application identity is derived by Core from the already-verified credential kind (15.3). Native clients receive Core-issued credentials with Epics 17–19.
+- **Not in Epic 15:**
+  - Windows POS authentication (PENDING USER POS ANALYSIS REPORT);
+  - Android implementation (Epics 17–19);
+  - the web KDS migration (6.1);
+  - account-level PIN lockout for native Staff Mode, a mechanism of Core-owned O-20 elevation (Story 19.1; values P2), which is not added to the transitional Nest tablet (ADMIN-38).
+
+**Order (dependency graph):**
+1. **Foundations, independent:** 15.1 (audit actor model) ‖ 15.3 (server-derived principal) ‖ 15.4a (Core push-close) ‖ 15.7 (D8 bootstrap).
+2. 15.1 → 15.5 (kitchen routes accept D8 `kds`).
+3. 15.3 → 15.2a (order and round provenance) → 15.2b (event metadata); 15.2a → 15.2d (check, payment and refund provenance).
+4. 15.1 → 15.2c (Nest device-originated orders without synthetic staff).
+5. 15.4a → 15.4b (Nest revocations signal push-close).
+6. **Consumers later:** 6.1 (transitional web KDS: 15.5, 15.7, 16.2); 5.1 and 5.2 (15.3, 15.2a); Epics 9 and 16 (15.2a, 15.2d); 17.2 and 19.x (15.3, 15.5, 15.7).
 
 ### Story 15.1: Core audit records device and system actors truthfully
 
 As an auditor,
 I want every Core audit record to name its real actor class (staff, device or system),
-So that no device or system action is attributed to a staff member.
+So that no device or system action is attributed to a staff member and no device-originated mutation goes unaudited.
 
 **Acceptance Criteria:**
 
-**Given** the existing `AuditLog` actor-shape constraint supports staff, device and system actors, but Core writers record staff only
-**When** every Core `AuditLog` writer (orders, tables, checks, payments, adjustments, promotions, shifts, devices) records its actor
-**Then** staff, device and system actions are recorded with their own actor class and identity, per writer, with tests
-**And** a device or system action can never write a staff identity (negative test).
+**Given** the existing `AuditLog` actor shape (staff, device, system; enforced by `AuditLog_actor_shape_check`) and Core's eight staff-only audit writers
+**When** Core records an audited mutation
+**Then** every Core audit writer records the actor through one Core audit-actor model that can express staff, device and system actors in the shape the CHECK constraint enforces
+**And** a staff action taken through a tablet records the staff actor together with the tablet's device kind and device id (today the device is dropped)
+**And** results reported by a D8 `payment_adapter` device (payment result, refund result, reversal) write device-actor audit rows (today they write transitions only)
+**And** a device or system action can never write a staff identity, and no synthetic staff row is created (negative tests).
 
-- Traceability: INV-3, DEC-OPS-21, DEC-X-6, NFR-AUD; O-21 (volume 00 §00.10.6).
-- Depends on: Story 14.1.
-- Status: READY
+- Current state (2026-10-06): Core `INSERT INTO "AuditLog"` at `orders/pgstore/store.go:492`, `checks/pgstore/store.go:453`, `payments/pgstore/store.go:520`, `payments/pgstore/adjustments.go:310`, `shifts/pgstore/store.go:259`, `tables/pgstore/store.go:371`, `promotions/pgstore/store.go:215`, `devices/pgstore/store.go:368` write only `actorId`/`actorEmail`/`actorRole` (staff). `OnTablet` (`orders/ordersapi/handler.go:252`) is not persisted. Payment-adapter results write no audit row (`payments/pgstore/store.go:515-517`).
+- Allowed surfaces (conceptual): Core audit writers and a shared Core audit-actor type under `services/core-platform/internal/**`; their unit and integration tests. No schema change (the schema already supports the shape); no Nest, contract or client change.
+- Acceptance evidence: integration tests on PostgreSQL per writer, for a staff actor and for staff-through-tablet; a device-actor row for each payment-adapter result route; a negative test that a device or system principal cannot produce a staff-shaped row; the existing audit tests keep passing.
+- Traceability: INV-3, DEC-OPS-21, DEC-X-6, NFR-AUD; O-21 item 4 (volume 00 §00.10.6).
+- Depends on: none (Story 14.1 done).
+- Status: READY. **Recommended first Epic 15 story.**
 
-### Story 15.2: O-21 provenance persistence
+### Story 15.3: Core derives application identity, operating mode and actor class from the verified credential
+
+As a security reviewer,
+I want Core to establish the caller's application identity, operating mode and actor class from the verified credential alone,
+So that provenance and staff authority never rest on what a client declares.
+
+**Acceptance Criteria:**
+
+**Given** the credential kinds Core already verifies (staff session JWT, Nest `tablet_device` / `tablet_staff` / `tablet_manager` and `kds_device` JWTs, D8 device credentials)
+**When** an authenticated request reaches Core
+**Then** Core resolves one server-side principal carrying application identity, operating mode, actor class, actor identity, device identity and venue, derived only from the verified credential
+**And** a client-declared application identity or mode is never trusted. In particular, the order source a tablet declares is checked against the derived application identity, not merely against `StaffMaySubmit`
+**And** the transitional Nest tokens are not changed (ADMIN-38), and no authorization rule is widened.
+
+- Current state (2026-10-06): no application-identity claim exists (`identity/token.go:65-75`; Nest `jwt-payload.interface.ts:16-29`). Actor class is partly inferred from the token kind (`identity/guards.go:104-154`; `realtime/realtimeapi/handler.go:372-384`). `OrderSource` is client-declared, gated only by `StaffMaySubmit` (`orders/order.go:49-54`).
+- Open at objective preparation: the application-identity values for the transitional web surfaces. O-21 fixes `waiter_tablet` for the native family and keeps `order_tablet` readable. If a value is not already defined by the PRD (section 33, O-21) it is escalated, not invented.
+- Allowed surfaces (conceptual): `services/core-platform/internal/identity/**` and the call sites that read the principal; their tests. No Nest or client change.
+- Acceptance evidence: a table-driven test over every credential kind covering application identity, mode and actor class; a negative test that a mismatched declared source is refused; the existing guard and venue-scope tests unchanged.
+- Traceability: O-21 items 1 and 7, O-20 items 1–3 (volume 00 §00.10.6), INV-3, OPS-2, WT-4, WT-6; ADMIN-38.
+- Depends on: none.
+- Status: READY (application-identity values for transitional surfaces confirmed at objective preparation). Re-scoped 2026-10-06: it no longer adds a claim to Nest-issued tokens (ADMIN-38), and PIN lockout moved to native Staff Mode elevation (19.1).
+
+### Story 15.2a: O-21 order and round provenance persistence
 
 As an owner,
-I want every order, round, check, payment and refund to record where, by whom and in which mode it was entered,
+I want every order and every round to record where, by whom and in which mode it was entered,
 So that consolidation removes no order-origin information (WT-6).
 
 **Acceptance Criteria:**
 
-**Given** orders carry only a source and a submitting staff id today, and events carry no actor or correlation
-**When** O-21 provenance is persisted additively (application identity, device id, operating mode, actor class, actor or guest-session id, correlation id, idempotency context) and domain events carry actor, correlation and causation
-**Then** a mixed-mode visit records each round's own provenance, an idempotent replay from a different credential returns the original provenance, and a client-declared mode is ignored in favour of the credential
-**And** `order_tablet` stays readable, native clients cannot emit it, published migrations are untouched and no enum is changed destructively; device-originated orders name their real origin with no synthetic staff creator (absorbs former item 12.16).
+**Given** orders carry only a client-declared source and rounds only a submitting staff id
+**When** O-21 provenance is persisted additively on orders and rounds (application identity, device id, operating mode, actor class, actor or guest-session id, correlation id, with the idempotency context already stored), from the 15.3 principal
+**Then** a mixed-mode visit records each round's own provenance, an idempotent replay from a different credential returns the original provenance, and a client-declared mode is ignored
+**And** `order_tablet` stays readable, published migrations are untouched, and no enum is changed destructively.
 
-- Traceability: O-21 (volume 00 §00.10.6), INV-5, OPS-2, WT-6, PAY-3, ORD-3, NFR-AUD.
-- Depends on: Stories 15.1 and 15.3.
-- Status: READY after its dependencies.
+- Current state (2026-10-06): `Order.source` (client-declared), `OrderRound.submittedByStaffId`; no device, application, mode, actor class or correlation fields (`prisma/schema.prisma` Order :989-1085, OrderRound :1181). A replay returns the stored original (`orders/service.go:212-221, 287-305`), but a different actor's replay is only logged.
+- Allowed surfaces (conceptual): one additive Prisma migration on Order and OrderRound; Core orders domain and store; `contracts/openapi` order contract (additive). No client change.
+- Acceptance evidence: migration from zero and upgrade; integration tests for a mixed-mode visit, a cross-credential replay and an ignored declared mode; contract tests.
+- Traceability: O-21 items 1, 2, 6, 7, 8 (volume 00 §00.10.6); INV-5; OPS-2; WT-6; ORD-3.
+- Depends on: Story 15.3.
+- Status: READY after its dependency. (SPLIT 2026-10-06 of the former Story 15.2.)
 
-### Story 15.3: Credentials carry application identity (O-20 / O-21 foundation)
+### Story 15.2b: Domain events carry actor, correlation and causation
 
-As a security reviewer,
-I want tablet and KDS credentials to carry a verified application identity from which Core derives mode and actor class,
-So that provenance and staff authority come from trusted credentials, not client claims.
+As an operator,
+I want durable domain events to carry the identity, correlation and causation needed for downstream attribution,
+So that consumers never reconstruct Staff versus Guest Mode or the actor from a payload value.
 
 **Acceptance Criteria:**
 
-**Given** Nest issues transitional tablet and KDS credentials (O-2) with no application-identity claim
-**When** the claim is added and Core verifies it
-**Then** Core derives operating mode and actor class from the credential kind, and a token without the claim is refused on routes reserved for clients that carry it (legacy web clients keep a compatibility path until migrated)
-**And** account-level PIN lockout exists as configurable policy whose values come from P2 configuration, never invented, and staff authority is never silently refreshed.
+**Given** `DomainEvent` holds no actor, correlation or causation (`events/event.go:23-46`; `events/pgstore/store.go:40-62`)
+**When** an event is written in the same transaction as its round, order or transition
+**Then** it carries the actor class and identity, the correlation id and the causation id of the originating request; the realtime envelope extends additively, and existing consumers keep working.
 
-- Traceability: O-20 (volume 00 §00.10.6), O-21, O-2, WT-4, WT-5.
-- Depends on: Story 14.1.
-- Status: READY. Lockout and lifetime values: P2 configuration (open).
+- Allowed surfaces (conceptual): Core events package and its writers; `contracts/realtime` (additive); an additive migration.
+- Acceptance evidence: projector and realtime tests read the metadata; a replay keeps the original metadata; contract tests.
+- Traceability: O-21 item 5 (volume 00 §00.10.6); INV-5; NFR-AUD.
+- Depends on: Story 15.2a.
+- Status: READY after its dependency. (SPLIT of the former Story 15.2.)
 
-### Story 15.4: Event-triggered realtime revocation
+### Story 15.2c: Device-originated orders carry no synthetic staff creator (transitional Nest paths)
+
+As an owner,
+I want kiosk and unelevated-tablet orders attributed to the device that created them,
+So that no order or audit row names a fabricated staff member.
+
+**Acceptance Criteria:**
+
+**Given** Nest attributes kiosk orders to a synthetic `kiosk-system+<org>` staff row (`orders/orders.service.ts:1038-1053`) and restricted tablet orders to a synthetic `tablet-device+<deviceId>` staff row (`tablet/tablet-auth.service.ts:103-118`)
+**When** such orders are created
+**Then** they and their audit rows name the device (or system) actor through the existing Nest audit-actor helper; existing rows are left unchanged, and no new synthetic staff row is created.
+
+- Allowed surfaces (conceptual): the two Nest creation paths and their tests. No Core change; no new capability on the transitional tablet (ADMIN-38: an attribution correction only).
+- Traceability: INV-3, NFR-AUD, DEC-OPS-21; former Story 12.16.
+- Depends on: none (the Nest helper already supports device and system actors). The kiosk stays off in production (12.5).
+- Status: READY. (Formerly 12.16, merged into 15.2 and now its own slice.)
+
+### Story 15.2d: Check, payment and refund provenance
+
+As an auditor,
+I want checks, payments and refunds to record the same canonical provenance as orders and rounds,
+So that financial actions are attributable to application, device, mode and actor.
+
+**Acceptance Criteria:**
+
+**Given** checks, payments and refunds record only staff ids (plus `originDeviceId` on adjustments)
+**When** they are created
+**Then** they record O-21 provenance from the 15.3 principal, additively, and replays keep the original.
+
+- Traceability: O-21 item 2 (volume 00 §00.10.6); INV-5; PAY-3.
+- Depends on: Story 15.2a.
+- Status: READY after its dependency. Needed before Epic 9 switches the web tablet's settlement to Core. (SPLIT of the former Story 15.2.)
+
+### Story 15.4a: Core closes live realtime connections when a credential is revoked
 
 As a security reviewer,
-I want revoking a staff session, account, venue grant or device to close the affected live connections immediately,
+I want a revocation to close the affected live Core realtime connections as a consequence of the revocation itself,
 So that revoked authority does not survive on an open socket.
 
 **Acceptance Criteria:**
 
-**Given** live connections are re-checked only periodically today
-**When** a revocation event occurs
-**Then** the affected connections are closed by the event itself, the closure is audited, and the periodic re-check remains as a safety net
-**And** the close latency is measured and reported without asserting an invented numeric bound (the threshold is an owner target).
+**Given** Core ends subscriptions only on slow consumers or shutdown (`realtime/hub.go:15-19`), and has no revocation signal (no NOTIFY or bus)
+**When** a revocation is committed
+**Then** a revocation signal emitted in the revoking transaction reaches the realtime hub, which closes every affected connection
+**And** a D8 device revoked through Core (`devices/pgstore/store.go:179`) closes that device's sockets end to end
+**And** the periodic revalidation stays as defence in depth and also covers venue grants, which are checked today only at subscription time (`realtimeapi/handler.go:404-415`).
 
-- Traceability: DEC-ADMIN-22, ADMIN-33, NFR-SEC-3, SPRD §16; O-20 (volume 00 §00.10.6).
-- Depends on: Story 15.1.
-- Status: READY after its dependency. Required before release acceptance.
+- Out of scope: the transitional Nest socket.io gateway (`orders.gateway.ts`).
+- The signal mechanism is a Tier-1 choice at objective preparation. A shorter polling interval is not acceptable as the mechanism (DEC-ADMIN-22).
+- Acceptance evidence: integration tests showing a device revocation closing its socket by event, without waiting for the re-check; a grant revocation closing a staff socket through the safety net; close latency measured and reported, with no invented numeric bound (P7).
+- Traceability: DEC-ADMIN-22, ADMIN-33, SPRD §16 items 5 and 12, NFR-SEC-3; O-20 item 7; O-13 architecture item 4.
+- Depends on: none (Story 15.1 recommended first, for the audit of revocation-driven events).
+- Status: READY. Required before release acceptance. (SPLIT 2026-10-06 of the former Story 15.4: Core side.)
+
+### Story 15.4b: Nest revocations signal Core push-close
+
+As a security reviewer,
+I want revocations that Nest performs to close the affected Core realtime connections too,
+So that staff sessions, staff accounts, venue grants and tablet devices revoked in Nest stop working immediately on live connections.
+
+**Acceptance Criteria:**
+
+**Given** the Nest revocation paths:
+- staff session revoke and logout (`auth/staff-session.service.ts:55-78`, `auth/auth.service.ts:228`);
+- role change, deactivate, remove and credential reset (`staff/staff-administration.service.ts`);
+- credential setup (`staff/credential-setup.service.ts:149`);
+- venue-grant removal (`staff-administration.service.ts:292-313`);
+- tablet-device revocation (`tablet/tablet-auth.service.ts:232-256`);
+
+**When** any of them commits
+**Then** it emits the 15.4a revocation signal in the same transaction, and Core closes the affected connections.
+
+- Allowed surfaces (conceptual): those Nest revocation paths and their tests. This is not new capability on transitional credentials: it propagates the existing revocations (DEC-ADMIN-22).
+- Acceptance evidence: one integration test per revocation path showing the affected Core realtime connection closed by the signal, without waiting for the periodic re-check.
+- Traceability: DEC-ADMIN-22, ADMIN-33, SPRD §16 item 5, NFR-SEC-3; O-20 item 7 (volume 00 §00.10.6).
+- Depends on: Story 15.4a.
+- Status: READY after its dependency. Required before release acceptance. (SPLIT of the former Story 15.4: Nest side.)
 
 ### Story 15.5: Core kitchen routes accept per-device D8 kds credentials
 
@@ -1781,14 +1891,33 @@ So that the pilot KDS needs no human login and every kitchen action is attributa
 
 **Acceptance Criteria:**
 
-**Given** Core kitchen ticket routes do not accept D8 `kds` device credentials today
+**Given** Core kitchen ticket routes accept only JWTs (`kitchenCallers`, `server/server.go:137-149`: Nest `kds_device` JWT or staff), while realtime already admits a D8 `kds` device
 **When** the device-authorization chain is added to the kitchen ticket read and transition routes
-**Then** an enrolled `kds` device reads and transitions its venue's tickets, attributed to the device actor
-**And** a revoked device and a cross-venue device are refused over HTTP and realtime; enrollment is single-use, short-lived and audited.
+**Then** an active D8 `kds` device reads and transitions its own venue's tickets, attributed to the device actor (transition history and audit through 15.1)
+**And** a revoked device and a device registered at another venue are refused; staff access is unchanged; the Nest `kds_device` JWT remains accepted only as the transitional path until 6.1 migrates the web KDS.
 
-- Traceability: INV-3, NFR-SEC-3, KIT-4; O-21 (volume 00 §00.10.6); O-13 architecture and D-3 (Tier-2 decisions).
+- Allowed surfaces (conceptual): Core server wiring for kitchen routes, the kitchen API and their tests; `contracts/openapi/kitchen-tickets.yaml` (additive security scheme).
+- Traceability: INV-3, NFR-SEC-3, KIT-4; O-13 architecture and D-3 (volume 00 §00.10.7); O-21 item 4.
 - Depends on: Story 15.1.
 - Status: READY after its dependency. Credential rotation cadence: P2 configuration (open).
+
+### Story 15.7: D8 single-use enrollment redemption (device bootstrap)
+
+As a venue administrator,
+I want to enroll a device with a single-use, short-lived enrollment that the device itself redeems,
+So that a device credential is never handed through an administrator's browser and nothing ships pre-provisioned.
+
+**Acceptance Criteria:**
+
+**Given** D8 enrollment returns the device credential to the enrolling administrator (`devices/service.go:137-176`; there is no redemption route)
+**When** an administrator creates an enrollment and the device redeems it once
+**Then** the first credential is issued only on redemption; a second redemption, an expired enrollment and a redemption for another venue are refused; enrollment and redemption are audited.
+
+- Open at objective preparation: the bootstrap mechanism and the enrollment lifetime are Tier-1 mechanics (volume 00 §00.10.7, O-13 item 3); the lifetime is configuration (P2), never an invented value.
+- Allowed surfaces (conceptual): Core devices domain, store, API and tests; `contracts/openapi/devices.yaml` (additive); one additive migration if needed.
+- Traceability: O-13 architecture items 1, 3 and 7 and D-3 (volume 00 §00.10.7); SPRD §16 item 6.
+- Depends on: none.
+- Status: READY. Needed by 6.1 (the transitional web KDS) and 17.2 (native devices).
 
 ## Epic 16: Service-day correctness (Wave C)
 
@@ -1808,7 +1937,7 @@ So that trading days, reports and day close agree across midnight and DST.
 **And** property tests across DST transitions pass, and a boundary change never rewrites historical business dates.
 
 - Traceability: P3 (volume 00 §00.10.5), INV-8, FIN-31, VEN-1.
-- Depends on: Stories 8.2 and 15.2 (shared migration window).
+- Depends on: Stories 8.2 and 15.2a (shared migration window).
 - Status: READY after its dependencies.
 
 ### Story 16.2: Line-level station routing
@@ -1842,7 +1971,7 @@ So that mistakes are corrected by explicit, linked, append-only compensating act
 **And** billed or paid items are never silently voided (PR-9), with tests for authorization, idempotency, concurrency and refusal paths; permission thresholds are configuration supplied before pilot enablement (P6), never invented.
 
 - Traceability: DEC-OPS-1 (volume 00 §00.10.4), PR-9, INT-17.1.
-- Depends on: Stories 15.1 and 15.2.
+- Depends on: Stories 15.1 and 15.2a.
 - Status: READY after its dependencies. Pilot enablement BLOCKED: P6 values. Rewrites former item 7.1.
 
 ### Story 16.4: Order completion and uncertain-payment resolution
@@ -1913,7 +2042,7 @@ So that native apps authenticate as revocable, venue-bound devices and stay curr
 **And** revocation fails closed, and re-enrollment never reuses a credential.
 
 - Traceability: D8, O-13 architecture, O-20 §8 (volume 00 §00.10.6), NFR-RT, `contracts/realtime`.
-- Depends on: Stories 17.1, 15.3 and 15.5.
+- Depends on: Stories 17.1, 15.3, 15.5 and 15.7.
 - Status: READY after its dependencies. Shared code moves to `packages/android` only when a second app consumes it.
 
 ## Epic 18: Native Android KDS (post-pilot; permanent KDS replacement)
@@ -1999,7 +2128,7 @@ So that staff authority is personal, short-lived and revocable.
 **Given** the O-20 contract (named staff authentication distinct from device identity; the MVP mechanism is the personal staff PIN)
 **When** a staff member elevates on an enrolled tablet
 **Then** Core verifies the elevation, the elevated authority is short-lived and server-revocable, it ends on leaving Staff Mode, and no reusable staff secret is stored on the device
-**And** lifetimes, PIN length, lockout and second-factor values come from P2 configuration, never invented.
+**And** a configurable account-level PIN lockout exists (moved from the former Story 15.3; it is not added to the transitional Nest tablet, ADMIN-38); lifetimes, PIN length, lockout and second-factor values come from P2 configuration, never invented.
 
 - Traceability: O-20 (volume 00 §00.10.6), WT-2, WT-4, WT-5.
 - Depends on: Stories 17.2 and 15.3.
@@ -2018,7 +2147,7 @@ So that the kitchen and billing work from the canonical record with full provena
 **Then** Core records them idempotently with O-21 provenance (application `waiter-tablet`, device, Staff Mode, staff actor), the native client never emits `order_tablet`, and Core totals and stable errors are shown.
 
 - Traceability: ORD-1 to ORD-5, WT-1, WT-2, WT-6; O-21 (volume 00 §00.10.6).
-- Depends on: Stories 19.1 and 15.2.
+- Depends on: Stories 19.1 and 15.2a.
 - Status: READY after its dependencies.
 
 ### Story 19.3: Native settlement parity and web-tablet settlement retirement
