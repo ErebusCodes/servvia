@@ -1,0 +1,5 @@
+migrate exit 0
+gofmt exit 0
+vet exit 0
+go test exit 0; top-level tests pass 306 fail 0 skip 0; with subtests pass 438 fail 0 skip 0
+DONE

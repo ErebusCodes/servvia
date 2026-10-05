@@ -1,0 +1,33 @@
+# positive control (disposable; evaluate.mjs, no ledger)
+verdict PASS
+objective 06db19c272182923b07a7c7816a7554693e962a9855ca70eadd463956ba86934
+anchor 27cbb7249b047aac2df54835e6f12e03efb51beb (simulated, disposable)
+candidate bd6ac253a5a5d6f33269fe2a19914cf7f0432109
+environment v22.23.3 go version go1.27.1 darwin/arm64 postgres (PostgreSQL) 18.4 (Homebrew) Redis server v=8.10.1
+check core-gofmt exit 0 tests 0 skipped 0
+check core-vet exit 0 tests 0 skipped 0
+check core-tests exit 0 tests 443 skipped 0
+check audit-writer-single-path exit 0 tests 0 skipped 0
+check audit-attribution-routes exit 0 tests 0 skipped 0
+check audit-actor-model exit 0 tests 0 skipped 0
+required RT-1 baseline NOT_RUN_BUILD_FAILURE
+required RT-2 baseline NOT_RUN_BUILD_FAILURE
+required RT-3 baseline NOT_RUN_BUILD_FAILURE
+required RT-4 baseline NOT_RUN_BUILD_FAILURE
+required RT-5 baseline NOT_RUN_BUILD_FAILURE
+
+## check-audit-attribution-routes.log (first lines)
+ok   TestEvalStory151StaffThroughTablet: pass
+ok   TestEvalStory151ManagerThroughTablet: pass
+ok   TestEvalStory151StaffSession: pass
+ok   TestEvalStory151NothingFabricated: pass
+ok   TestEvalStory151DatabaseShapeIntact: pass
+
+## check-audit-actor-model.log (first lines)
+ok   TestEvalStory151ActorModelAgainstPostgres: pass
+
+--- stderr ---
+## check-audit-writer-single-path.log
+ok   84 Core production Go files: the AuditLog is written only by services/core-platform/internal/audit/audit.go; the 8 baseline writers delegate to it
+
+--- stderr ---

@@ -1,0 +1,78 @@
+objective sha256 06db19c272182923b07a7c7816a7554693e962a9855ca70eadd463956ba86934; anchor 27cbb7249b047aac2df54835e6f12e03efb51beb; positive bd6ac253a5a5d6f33269fe2a19914cf7f0432109
+CONTROL-PASS     control-positive                   the disposable positive control, unchanged
+CAUGHT           unfixed-baseline                   the anchor itself: no implementation
+    coverage:  FAIL services/core-platform/internal/checks/pgstore/store.go: names the "AuditLog" table outside services/core-platform/internal/audit | FAIL services/core-platform/internal/devices/pgstore/store.go: names the "AuditLog" table outside services/core-platform/internal/audit
+    routes:    TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151NothingFabricated
+    model:     TestEvalStory151ActorModelAgainstPostgres, the evaluator-owned test did not run (go test exit 1)
+    required:  not passing TestActorShapes, TestInvalidActorsAreRefused, TestDeviceOfPrincipal, TestAuditActorRowsAgainstPostgres, TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           relabel-without-device             one write path, but the tablet is never recorded
+    routes:    TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151NothingFabricated
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestDeviceOfPrincipal, TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           always-device                      every principal is recorded as acting through a tablet
+    routes:    TestEvalStory151StaffSession
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestDeviceOfPrincipal, TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           tablet-manager-ignored             a manager PIN on a tablet loses the device
+    routes:    TestEvalStory151ManagerThroughTablet, TestEvalStory151NothingFabricated
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestDeviceOfPrincipal
+CAUGHT           hard-coded-device-id               a constant device id that satisfies the implementer test
+    routes:    TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151NothingFabricated
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           device-from-other-claim            device id taken from another claim
+    routes:    TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151NothingFabricated
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestDeviceOfPrincipal, TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           client-declared-device             a request header overrides the verified device
+    routes:    TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151NothingFabricated
+CAUGHT           one-route-drops-device             refunds through a tablet lose the device
+    routes:    TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151StaffSession, TestEvalStory151NothingFabricated, TestEvalStory151DatabaseShapeIntact, the evaluator-owned test did not run (go test exit 1)
+    model:     TestEvalStory151ActorModelAgainstPostgres, the evaluator-owned test did not run (go test exit 1)
+    required:  not passing TestAuditActorRowsAgainstPostgres, TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           one-store-drops-device             the order writer drops the device
+    routes:    TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151NothingFabricated
+CAUGHT           always-staff-class                 every row is written as a staff row
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestAuditActorRowsAgainstPostgres
+CAUGHT           always-staff-class-tests-weakened  device and system written as staff, with the implementer test weakened to hide it
+    model:     TestEvalStory151ActorModelAgainstPostgres
+CAUGHT           synthetic-staff-for-device         a device actor borrows a fabricated staff identity
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestActorShapes, TestAuditActorRowsAgainstPostgres
+CAUGHT           staff-email-nulled                 a staff email the credential lacks becomes NULL (behaviour change)
+    model:     TestEvalStory151ActorModelAgainstPostgres
+CAUGHT           no-validation                      invalid actors of a class are not refused
+    model:     TestEvalStory151ActorModelAgainstPostgres
+    required:  not passing TestInvalidActorsAreRefused
+CAUGHT           second-write-path                  a writer keeps its own AuditLog SQL beside the audit package
+    coverage:  FAIL services/core-platform/internal/shifts/pgstore/store.go: names the "AuditLog" table outside services/core-platform/internal/audit | FAIL INSERT INTO "AuditLog" must occur exactly once, under services/core-platform/internal/audit; found 2: services/core-platform/internal/audit/audit.go, services
+CAUGHT           weaken-constraint-migration        a migration drops the actor-shape CHECK
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:apps/api/prisma/migrations/20261101000000_relax_audit_actor/migration.sql
+CAUGHT           skip-required-test                 a required test is skipped
+    integrity: INTEGRITY_VIOLATION:skip-or-focus-added:services/core-platform/tests/integration/audit_attribution_test.go
+    required:  not passing TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           required-test-renamed              a required test is renamed away
+    required:  not passing TestStaffViaTabletAuditRowAgainstPostgres
+CAUGHT           evaluator-test-preplaced           the candidate occupies the evaluator-owned test file
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:services/core-platform/tests/integration/zz_eval_story151_routes_test.go
+    routes:    the candidate already has tests/integration/zz_eval_story151_routes_test.go
+    model:     the candidate already has tests/integration/zz_eval_story151_routes_test.go
+CAUGHT           forbidden-cmd-api                  cmd/api changed
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:services/core-platform/cmd/api/main.go
+CAUGHT           forbidden-identity                 identity changed
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:services/core-platform/internal/identity/token.go
+CAUGHT           forbidden-testsupport              testsupport changed
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:services/core-platform/tests/testsupport/fixtures.go
+CAUGHT           existing-test-edited               an existing integration test changed
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:services/core-platform/tests/integration/table_sessions_test.go
+CAUGHT           existing-unit-test-edited          an existing unit test in an allowed package changed
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:services/core-platform/internal/tables/session_test.go
+CAUGHT           go-sum-changed                     go.sum changed
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:services/core-platform/go.sum
+CAUGHT           nest-changed                       Nest changed (15.2c territory)
+    integrity: INTEGRITY_VIOLATION:forbidden-surface:apps/api/src/audit/audit-actor.ts
+CAUGHT           lint-suppression                   a lint suppression is added
+    integrity: NEEDS_REVIEW:suppression-added:services/core-platform/internal/audit/audit.go
+SUMMARY variants 27; caught 27; MASKED 0; control passes every mechanism

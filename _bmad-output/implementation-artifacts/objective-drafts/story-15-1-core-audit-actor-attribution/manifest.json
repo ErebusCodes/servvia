@@ -1,0 +1,84 @@
+{
+  "schema": "servvia.freeze-candidate-manifest/v1",
+  "status": "FREEZE CANDIDATE — NOT YET FROZEN",
+  "objectiveId": "story-15-1-core-audit-actor-attribution",
+  "version": 1,
+  "baseline": "5d5772d8ad172a6374beb5892a22a389ac34c8af",
+  "measuredAt": "6526159916ea6d7ee843a20e1ab1d83dbbcf46cf",
+  "draftObjective": {
+    "path": "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/v1.objective.json",
+    "sha256": "06db19c272182923b07a7c7816a7554693e962a9855ca70eadd463956ba86934"
+  },
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-15-1-core-audit-actor-attribution.md",
+      "intentContractSha256": "ed8b6d40288f3e7917ff08ddfb4a717e4249b8f4f5f9a6c358fc595c37632f97"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-15-context.md",
+      "sha256": "3692db6f884cc3b95bb1e83d0ecd9e66d4b6b6ad8cdb5a262ad37fc1d24ed004"
+    }
+  },
+  "toolchain": {
+    "node": {
+      "major": 22,
+      "validatedVersion": "22.23.3"
+    },
+    "npm": {
+      "version": "11.17.0",
+      "use": "provisioning only (npm ci --ignore-scripts of the unchanged baseline lockfile for prisma migrate deploy)"
+    },
+    "go": {
+      "version": "1.27.1",
+      "source": "services/core-platform/go.mod go directive"
+    },
+    "postgres": {
+      "major": 18,
+      "validatedVersion": "18.4"
+    }
+  },
+  "derived": {
+    "auditWriters": [
+      "services/core-platform/internal/checks/pgstore/store.go",
+      "services/core-platform/internal/devices/pgstore/store.go",
+      "services/core-platform/internal/orders/pgstore/store.go",
+      "services/core-platform/internal/payments/pgstore/adjustments.go",
+      "services/core-platform/internal/payments/pgstore/store.go",
+      "services/core-platform/internal/promotions/pgstore/store.go",
+      "services/core-platform/internal/shifts/pgstore/store.go",
+      "services/core-platform/internal/tables/pgstore/store.go"
+    ],
+    "latestMigration": "20261014000000_tablet_pin_venue_enrollment",
+    "goDirective": "1.27.1",
+    "evaluatorGoSourceSha256": {
+      "tests/integration/zz_eval_story151_routes_test.go": "21a6f400554b7067c30eb7c473081b41c7c0f7ae48c34c2fabb36422cbe70fcf",
+      "tests/integration/zz_eval_story151_model_test.go": "16e563aafbeded8237ec563d19adf1d83f15bc0b84825ca211fdce0233d04d3f"
+    },
+    "checkScriptSha256": {
+      "audit-writer-single-path": "834660f1a36850174059cdfd88c69a146e592e4c70ed27101e544aff5c56d42e",
+      "audit-attribution-routes": "b420002b094e878c1fb16375d7946dce908b9ed0f4e30c9c2c5ef4311376eda1",
+      "audit-actor-model": "38b226d4b50aab70b8abf697054f5645f9fa83768bc3753069fd3675e721a837"
+    },
+    "forbiddenSurfaces": 157
+  },
+  "files": {
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/README.md": "5684e9842a84eb33cfee8356f6d74c62338efa90018a5177d7d199b5bf344782",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/EVIDENCE.md": "8ac502c9c5936e3d279a16468b3633181ea212acd64c0fdfc479fd72587474f6",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/adversarial-probes.mjs": "7a9ee59fedc4794d04104b8fd582d2d4965bb36757a2c29744af6431020b6a04",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/adversarial-probes.out": "31f9c6b152d81f748b4616be4db75f6d6b828a8f50396664b3ef2a326e73fb4b",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/baseline-measure.mjs": "97280f0701308ebb3b0199a5789697973c29fdd1acbd8a0d18846c508e4adef8",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/baseline-measure.txt": "4e1be19d37514d60f6311cf1b93815d875e8a23c6db5fcc5e73c2ea89db645ad",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/baseline-per-package.json": "7faee16634dc56dad02b690485a1afec1b0984f0d27b89bcc90830792069ed46",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/control-negative.txt": "c487bd36c1b6d7d935babcdf0c98368b887099977dc8ded56dd8ee84ec1347c2",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/evidence/control-positive.txt": "a3a908f5a79d5708c650bbb6d916b4f51fe1a66cf08d9b9c68c7e8d44201811e",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/generator/checks/attribution-blackbox.js": "4356010bdf7f1052b12e54945ce3149934b5125b5b80fedf3fc26d4c6da61266",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/generator/checks/attribution_model_test.go.txt": "16e563aafbeded8237ec563d19adf1d83f15bc0b84825ca211fdce0233d04d3f",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/generator/checks/attribution_routes_test.go.txt": "21a6f400554b7067c30eb7c473081b41c7c0f7ae48c34c2fabb36422cbe70fcf",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/generator/checks/writer-coverage.js": "83c7fff8c52ab9ca8443f98a0d4c0a562a9edfdbfa261064d88f839f2dd0f9ae",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/generator/generate.mjs": "91f533be5492f46abc224bc50321b424d154a8722c060f4a321e485964221758",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/generator/inputs.json": "d0cb9520db45ade72bc8ece269761611c438188293cfc167578085a3bed1f67b",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/provisioning/README.md": "45fa52cdeac59558ed551630fc1d1c1fe3d74c71e7acfa0d4078a172066c7601",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-15-1-core-audit-actor-attribution/provisioning/provision.sh": "868c3f75264af84c8cc2c023f0921c79bb65526dd39fe44f82ff1e4755c690c2",
+    "_bmad-output/implementation-artifacts/spec-15-1-core-audit-actor-attribution.md": "9cec41585fcd6ac2d679fa14378b93818cd816697d2f360d476ccd8a2b78f964"
+  }
+}

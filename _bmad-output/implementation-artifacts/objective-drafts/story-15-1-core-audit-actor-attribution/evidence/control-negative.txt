@@ -1,0 +1,42 @@
+# negative control (disposable; evaluate.mjs, no ledger)
+verdict FAIL
+objective 06db19c272182923b07a7c7816a7554693e962a9855ca70eadd463956ba86934
+anchor 27cbb7249b047aac2df54835e6f12e03efb51beb (simulated, disposable)
+candidate 27cbb7249b047aac2df54835e6f12e03efb51beb
+environment v22.23.3 go version go1.27.1 darwin/arm64 postgres (PostgreSQL) 18.4 (Homebrew) Redis server v=8.10.1
+check core-gofmt exit 0 tests 0 skipped 0
+check core-vet exit 0 tests 0 skipped 0
+check core-tests exit 0 tests 438 skipped 0
+check audit-writer-single-path exit 1 tests 0 skipped 0
+check audit-attribution-routes exit 1 tests 0 skipped 0
+check audit-actor-model exit 1 tests 0 skipped 0
+required RT-1 baseline NOT_FOUND
+required RT-2 baseline NOT_FOUND
+required RT-3 baseline NOT_FOUND
+required RT-4 baseline NOT_FOUND
+required RT-5 baseline NOT_FOUND
+finding FAIL check-failed audit-writer-single-path exit code 1
+finding FAIL check-failed audit-attribution-routes exit code 1
+finding FAIL check-failed audit-actor-model exit code 1
+finding FAIL required-test-missing core-tests RT-1: no test named "servvia/services/core-platform/internal/audit TestActorShapes" ran
+finding FAIL required-test-missing core-tests RT-2: no test named "servvia/services/core-platform/internal/audit TestInvalidActorsAreRefused" ran
+finding FAIL required-test-missing core-tests RT-3: no test named "servvia/services/core-platform/internal/audit TestDeviceOfPrincipal" ran
+finding FAIL required-test-missing core-tests RT-4: no test named "servvia/services/core-platform/tests/integration TestAuditActorRowsAgainstPostgres" ran
+finding FAIL required-test-missing core-tests RT-5: no test named "servvia/services/core-platform/tests/integration TestStaffViaTabletAuditRowAgainstPostgres" ran
+
+## check-audit-attribution-routes.log (first lines)
+FAIL TestEvalStory151StaffThroughTablet: fail
+       zz_eval_story151_routes_test.go:339: tablet_staff: AuditLog shift 10939a07-04fb-4c1c-92dd-e45ee275cfcb: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = [staff 54436f8d-643b-4659-b60b-dd7f244462eb [redacted] cashier <null> <null> <null>], want [staff 54436f8d-643b-4659-b60b-dd7f244462eb eval-54436f8d-643b-4659-b60b-dd7f244
+       zz_eval_story151_routes_test.go:339: tablet_staff: AuditLog table_session 15c7f760-4d11-4536-bf7d-28451bb64e49: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = [staff 54436f8d-643b-4659-b60b-dd7f244462eb [redacted] cashier <null> <null> <null>], want [staff 54436f8d-643b-4659-b60b-dd7f244462eb eval-54436f8d-643b-4659-b60b
+       zz_eval_story151_routes_test.go:339: tablet_staff: AuditLog order ORD-600255: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = [staff 54436f8d-643b-4659-b60b-dd7f244462eb [redacted] cashier <null> <null> <null>], want [staff 54436f8d-643b-4659-b60b-dd7f244462eb [redacted] cashier
+       zz_eval_story151_routes_test.go:339: tablet_staff: AuditLog check 4a81c536-65c5-4049-891d-02bc7b74e099: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = [staff 54436f8d-643b-4659-b60b-dd7f244462eb [redacted] cashier <null> <null> <null>], want [staff 54436f8d-643b-4659-b60b-dd7f244462eb eval-54436f8d-643b-4659-b60b-dd7f244
+       zz_eval_story151_routes_test.go:339: tablet_staff: AuditLog payment 63b10c0b-05fa-4edc-9e02-8b87fbab3af0: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = [staff 54436f8d-643b-4659-b60b-dd7f244462eb [redacted] cashier <null> <null> <null>], want [staff 54436f8d-643b-4659-b60b-dd7f244462eb eval-54436f8d-643b-4659-b60b-dd7f2
+## check-audit-actor-model.log (first lines)
+FAIL TestEvalStory151ActorModelAgainstPostgres: no result
+FAIL the evaluator-owned test did not run (go test exit 1)
+       # servvia/services/core-platform/tests/integration
+       tests/integration/zz_eval_story151_model_test.go:17:2: package servvia/services/core-platform/internal/audit is not in std (<scratch>/s151/go/root/src/servvia/services/core-platform
+## check-audit-writer-single-path.log
+FAIL services/core-platform/internal/checks/pgstore/store.go: names the "AuditLog" table outside services/core-platform/internal/audit
+FAIL services/core-platform/internal/devices/pgstore/store.go: names the "AuditLog" table outside services/core-platform/internal/audit
+FAIL services/core-platform/internal/orders/pgstore/store.go: names the "AuditLog" table outside services/core-platform/internal/audit
