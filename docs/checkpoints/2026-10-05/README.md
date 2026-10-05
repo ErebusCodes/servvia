@@ -86,12 +86,12 @@
 
 ## 6. Publication state (2026-10-05)
 
-- **Branch:** `integration/normative-prd-baseline` on `origin`, pushed without force.
+- **Branch:** `integration/normative-prd-baseline` on `origin` (`https://github.com/ErebusCodes/servvia`), pushed without force. The first push published tip `585fcc6`.
 - **Commits on top of `354ea1b`:**
   - `5ee6474` (Wave A);
   - the checkpoint-documentation commit that adds this folder;
   - one follow-up commit recording the pull-request number.
-- **Pull request:** open against `main`, **not merged**, no auto-merge.
+- **Pull request:** [#1](https://github.com/ErebusCodes/servvia/pull/1) against `main`. **Open, not merged, no auto-merge.**
 - **`main`:** not moved (local and remote `main` stay at `a005642`).
 - **Validation:** see the pull-request description. In summary:
   - dev-scripts 84/84;
