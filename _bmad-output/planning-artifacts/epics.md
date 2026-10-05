@@ -458,7 +458,7 @@ So that evaluator and CI verdicts on integration tests cannot be corrupted by a 
 
 - Traceability: SPRD §21 (TEST-21: deterministic tests on disposable environments), SPRD §24 (tests passing with explicit evidence), SPRD §16 (fail closed).
 - Depends on: Stories 14.1 and 14.2 (Wave A).
-- Status: REWRITE — NOT FROZEN. The 2026-10-05 draft objective is stale and is not authority. The objective is regenerated and frozen only after the preconditions in the sprint change proposal §15 hold (see the Story 14.2 readiness record). Not authorized for implementation.
+- Status: FROZEN 2026-10-05 (objective `story-1-9-test-harness-loopback-binding` v1, sha256 `dd4483c8…af77704`, anchor `fc064b5`, baseline `e42edeb`). Candidate `f9110b7`: governed evaluator PASS, decision CANDIDATE_READY_FOR_ACCEPTANCE (iteration 1). Awaiting orchestrator acceptance.
 
 ### Story 1.10: CI asserts the native-round-recovery suite executes
 

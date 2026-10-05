@@ -47,7 +47,7 @@ development_status:
   1-6-protect-the-main-branch: backlog  # NEEDS AUTHORIZATION (GitHub admin); after Wave A
   1-7-native-round-recovery-integration-tests-run-truthfully-in-ci: done  # accepted 38bea30
   1-8-native-round-recovery-tests-refuse-a-database_url-host-query: done  # accepted 38bea30
-  1-9-test-harness-loopback-binding: backlog  # REWRITE - NOT FROZEN; objective regenerated/frozen only after proposal s15 preconditions; NOT AUTHORIZED
+  1-9-test-harness-loopback-binding: review  # frozen fc064b5 (objective dd4483c8); candidate f9110b7 governed PASS (CANDIDATE_READY_FOR_ACCEPTANCE); awaiting orchestrator acceptance
   1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog  # DEFERRED (keep); not started; first Epic 1 slot after Wave B starts
   epic-1-retrospective: optional
 
