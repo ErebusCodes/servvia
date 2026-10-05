@@ -1743,7 +1743,7 @@ So that no device or system action is attributed to a staff member and a staff a
 - Acceptance evidence: integration tests on PostgreSQL per writer, for a staff actor and for staff-through-tablet; a negative test that a device or system actor cannot produce a staff-shaped row; the existing audit tests keep passing. (The former "device-actor row for each payment-adapter result route" was removed 2026-10-06: it conflicts with FIN-36, volume 07.)
 - Traceability: INV-3, DEC-OPS-21, DEC-X-6, NFR-AUD, FIN-36; O-21 item 4 (volume 00 §00.10.6).
 - Depends on: none (Story 14.1 done).
-- Status: READY. **Recommended first Epic 15 story.**
+- Status: READY. **Recommended first Epic 15 story.** Objective preparation 2026-10-06: freeze candidate `story-15-1-core-audit-actor-attribution` v1 (sha256 `06db19c272182923b07a7c7816a7554693e962a9855ca70eadd463956ba86934`, baseline `5d5772d`, packet `69f4123`, `objective-drafts/story-15-1-core-audit-actor-attribution/`). **NOT FROZEN; implementation NOT AUTHORIZED**; three orchestrator decisions are pending (`docs/checkpoints/2026-10-06/README.md`).
 
 ### Story 15.3: Core derives application identity, operating mode and actor class from the verified credential
 
@@ -2197,11 +2197,13 @@ The operator authorised proceeding, so tracking was generated.
 2. **Authority ordering.** Volume 00 §00.1.1 places accepted ADRs and decisions-log entries above volumes 00–09, while the Story 14.2 instruction places the volumes above ADRs. BMAD configuration escalates any genuine ADR-versus-volume conflict instead of resolving it; none is known. **Resolved 2026-10-05 (governance closure):** the orchestrator set the rule. Externally: owner decision, then the normative corpus under its own governance, then accepted controlled decision records, then verified repository reality (implementation state only), then BMAD planning, then history. Inside the corpus, volume 00 §00.1.1 governs: an accepted ADR controls a conflicting volume statement unless a later controlled decision explicitly supersedes it, and ambiguous supersession stops and escalates. The contradictory Story 14.2 wording is removed from the BMAD configuration.
 3. **No UX design contract** for the client epics (5, 6, 9, 18, 19). They rely on existing screens and the SPRD UX and accessibility requirements; new UX needs its own design input.
 4. **Owner and policy values remain absent:** P2 (session, PIN, lockout, credential rotation), P6 (financial-control values), section 19 OTR rows, alert thresholds, retention and defect severity. The affected stories mark them as configuration or BLOCKED.
-5. **Epic contexts** exist only for Epics 1 and 12 (recompiled 2026-10-05). Contexts for Epics 15–19 must be compiled and committed before their first story is prepared.
+5. **Epic contexts** exist only for Epics 1 and 12 (recompiled 2026-10-05). Contexts for Epics 15–19 must be compiled and committed before their first story is prepared. *(2026-10-06: `epic-15-context.md` was compiled at `5d5772d` for Story 15.1 preparation; its acceptance is pending orchestrator decision B.)*
 6. **Enabler epics** (1–4, 14–17) deliberately bend the "user value, not technical layers" principle; each is phrased in operator or owner value.
 7. **Separately authorised actions** (push, GitHub administration, production database, infrastructure, venue access, retirement checkpoints) remain marked NEEDS AUTHORIZATION.
 
 ## Readiness record for item 1.9 (2026-10-05, re-anchoring)
+
+> *Historical record (2026-10-05). Superseded: Story 1.9 was frozen, implemented and accepted as DONE on 2026-10-06 (see its Status line in Epic 1).*
 
 Story 1.9 stays **REWRITE — NOT FROZEN** and is **not authorized**. This record lists the preconditions of the sprint change proposal §15 against the re-anchored state. It freezes nothing.
 
