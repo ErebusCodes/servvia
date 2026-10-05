@@ -6,16 +6,26 @@
   "baseline": "e42edeb3c865737e919be8c1c8bebfc4bb7f279b",
   "draftObjective": {
     "path": "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/v1.objective.json",
-    "sha256": "02206f1c5bb5812f9a4f0085c825f914f0a1e6e52be9e00e7dcaed80fb4c5049"
+    "sha256": "dd4483c8751d1c341d7850be1e8f1481541b10c9c7a05dcedb6cf6198af77704"
   },
   "inputs": {
     "storySpec": {
       "path": "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md",
-      "intentContractSha256": "4363761c823c38dbaf6e102db2fe74e0bd19ba6d5e31491049cb602401d40c3f"
+      "intentContractSha256": "5ab704b8a71f4b946816d0bdbe328d076d60a349dd0a4b437943e7bcab2ee217"
     },
     "epicContext": {
       "path": "_bmad-output/implementation-artifacts/epic-1-context.md",
       "sha256": "9519213b9535f8dd508ffbd9471be8311da7aac3206ddac2c646a04664fe7301"
+    }
+  },
+  "toolchain": {
+    "node": {
+      "major": 22
+    },
+    "npm": {
+      "version": "11.17.0",
+      "tarball": "https://registry.npmjs.org/npm/-/npm-11.17.0.tgz",
+      "integrity": "sha512-PurxiZexEHDTE4SSaLI3ZrnbAGiZfeyUcQcxcP5D+hfytNAze/D1IzDuInTn9XVLIbAQUnQuSPXJx02LHjLvQw=="
     }
   },
   "derived": {
@@ -49,6 +59,7 @@
       "apps/api/test/venue-access.integration-spec.ts"
     ],
     "harnessBaselineSha256": "8723e2d8136f4d508c1b9dd82d7ca4557c5c89433ac523fc29859f95c11650e3",
+    "harnessExpectedSha256": "02375620e2cae596ece0df17995737470e5241c52f949ca9cb0a3bbd3031f5fd",
     "apiPackageRestSha256": "b23ecbc1ab7f1f6f78b7322e810d5747ca213a1c6128f0aee01bfd5fc7d2d575",
     "lockfileRestSha256": "77e2e30f1a5f07f4be16eb8d6e3dde6d5b0be1fca2357d1f48cac0c6ac196e56",
     "baselineLockfileMeta": {
@@ -58,11 +69,11 @@
     "forbiddenSurfaceCount": 107
   },
   "files": {
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/README.md": "df031de302379288501695abc6bac39a7cd70204168c4ff5ee6e5d0901c0e947",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/DRAFT-RECONCILIATION.md": "f362e4a0fe37dc24cbe2c90abdb9d7270b22a87050ad4a4c827a08cf5360e8ea",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/EVIDENCE.md": "0e619904e3bcabc52e67269fabf4aeda5186e3918cab0910233a683cef1b12e3",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.mjs": "a3f12bd344949a4295164a5b25f588f5c77da88ab9a38e91a0329c180a026c25",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.out": "a56b4f7b0854056f3f216d30f2cc1199098b150d0516fa5949e8d2f92e3ef526",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/README.md": "57a02494fb1169064543814677dd3b9d8cdc35ffd0fca80c8fb53a1c874dd7f7",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/DRAFT-RECONCILIATION.md": "85079a6f84a1217bf414586565cf238b8f52f94853f2a0a27d32ed0bd18c8db1",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/EVIDENCE.md": "a4a72aefdca8715140caf03c1afe54e4a7adf3d75323390f0fd23e856d60b27c",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.mjs": "17deecff93d1d561c6bfe656ac445744226290377ab618060be93b8f09b529d5",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.out": "17fa71500fadab3d6460ad904dca3c8fb438d1269ad8885d1a1d31143e99a45e",
     "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure-n22.txt": "40017283e47d823155fc10ea7a42e5e56c9be5ec05eae94e786dee34ab31e22a",
     "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure-n24.txt": "3d7ec032a282ea72c35a59d5fd681b82f6b1cd96605d66ca23194ebc2e40d7b0",
     "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure.mjs": "6de5a511dcacab3652f2fee769af81b36d0a8d6cd714232d1ab4fb7bb8656c66",
@@ -72,12 +83,13 @@
     "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/dependency-delta.js": "3c239e838a4d24dadbe51fe2a68cb923356b425fde4916b0cc2b1d4a8878a6b4",
     "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/endpoint-identity.js": "6d8ef8af5b7c0b69b9e58b05190892c8fcae2696b0808dbc0aeb3ec9840d5e83",
     "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/explicit-loopback.js": "caa8614c3b9eb3776d9003b6851abf831b9765a0be0a376016cae4574169574e",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/harness-bounded.js": "eafcbb8004c0c6a415cdeccf2071fd74f876f2bdb2c5239801a86450921965b0",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/harness-bounded.js": "a592b8b3d6226c8039c054ad2418a329e62f76c9dd3cfadc64a53494d1714037",
     "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/runtime-resolution.js": "c1113ef1005749ec4e4cee152ac68f2e2d5ebded47fcbc6698af47854c10bf69",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/generate.mjs": "098c3dfb97c59174f969d570f15ca82ee5b5a1618398d4435564b9b4037a3cca",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/inputs.json": "588750f8bfb6b4e9df51b31aa0d890e647eb28d83af6b4c37786d847f4a7e08c",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/README.md": "ca7db081644ea1bcf70159d3a899e6a2fba4d027f7031eb149d34a1108864b96",
-    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/provision.sh": "265513d045ed6f696a0d1294bd93820abb560c5be2aa5c3d32aeb02a36044c7b",
-    "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md": "648bb94840223806302b2d4f438550344c46e8773121e4adf0a03a1073e395e0"
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/generate.mjs": "7657abb9dfe691d238328551cc100e9d91129be254bf1d1b50c625b145373e53",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/inputs.json": "06bb3400dfce491181d332e76a083fddfbe1acacd00a049811fb7886c3bfa08f",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/README.md": "dad32277e8da6da788e3d5c66cface68053ce780b04f28812cd6e514db28d8f7",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/fetch-npm.sh": "2f35884e8f1acc4d2148ea6d608f2ca6a01eb0eb61ad3f34b25dc3fd409288be",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/provision.sh": "8819ba3b950fce668fc0563bd143a349eb771de1efb4a7fc04ba77bc5a388e7a",
+    "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md": "34f0c3ba945c35f21d7e97674ed08f8a553a569462528f210e711716563cef7f"
   }
 }

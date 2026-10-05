@@ -85,7 +85,7 @@ That is 6 full integration runs plus 13 targeted runs, with **no natural failure
 **Expected verdicts after freeze:**
 - **Unchanged or partial candidate:** `FAIL` (the checks above).
 - **A candidate that touches anything outside its three files, the Stories 1.7/1.8 artifacts, governance, the objective, the epic context, the spec's intent contract, or adds a test or helper file:** `INTEGRITY_VIOLATION`.
-- **A correct Option A candidate:** expected to `PASS`, but **not demonstrated**. No positive control was built, because implementation is not authorized.
+- **A correct Option A candidate:** not demonstrated in this round (no positive control was built at the time). Superseded by section 7: on the final bytes the positive control `PASS`es.
 
 ## 6. Adversarial coverage (`adversarial-probes.mjs`, output `adversarial-probes.out`)
 
@@ -108,3 +108,59 @@ Result: **27 of 27 wrong variants are rejected by a finding specific to them, an
 | evaluator, objective or epic context edited; spec intent contract edited; this packet edited | `INTEGRITY_VIOLATION` (governance-modified, objective-modified, intent-contract-modified, forbidden-surface) |
 
 The runtime check `loopback-endpoint-identity` (every bind on `127.0.0.1`, every request matched, 25/25 files evidenced, suites at their floors) additionally rejects any unsafe bind reached through code paths that static scans cannot see.
+
+## 7. Freeze validation, round 2 (positive and negative controls on the final bytes)
+
+**Final objective:** `v1.objective.json`, sha256 `dd4483c8751d1c341d7850be1e8f1481541b10c9c7a05dcedb6cf6198af77704`, baseline `e42edeb3c865737e919be8c1c8bebfc4bb7f279b`. Every control below ran against exactly these bytes, committed in a simulated freeze anchor in a disposable clone. Nothing was published.
+
+### 7.1 Toolchain (Tier-2 tooling decision)
+
+- **Node 22.23.3 (darwin-arm64).** Official tarball, verified against nodejs.org `SHASUMS256.txt`.
+- **npm 11.17.0.** Registry tarball; its sha512 equals the published integrity `sha512-PurxiZexEHDTE4SSaLI3ZrnbAGiZfeyUcQcxcP5D+hfytNAze/D1IzDuInTn9XVLIbAQUnQuSPXJx02LHjLvQw==`; engines `^20.17.0 || >=22.9.0`. A registry signature is published (key `SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U`), but no provenance attestation; the signature itself was not verified.
+- **Combination check:** obtained with `provisioning/fetch-npm.sh`. `npm version` reports `npm 11.17.0`, `node 22.23.3`.
+- **First attempt (npm 10.9.9, Node 22's bundled npm):** the identical install nested the three entries under `apps/api/node_modules` and dropped `libc` from 22 unrelated platform entries; the anchored dependency check failed. The same command under npm 11.17 matched the approved delta. That evidence motivated the decision.
+
+### 7.2 Positive control: disposable Option A candidate, never published
+
+**Changes** (candidate `a4ef452…` on anchor `04131be…`; 3 files, +34/−28):
+- `apps/api/package.json`: `supertest` `^6.3.4` → `^7.3.1`, plus npm re-sorting one devDependencies key (`dotenv`);
+- `package-lock.json`: produced by `npm install supertest@7.3.1 --save-dev -w apps/api --ignore-scripts`, with npm 11.17.0 on Node 22.23.3;
+- the harness: `await app.listen(0);` → `await app.listen(0, '127.0.0.1');`.
+
+**Lockfile against the baseline:**
+- 0 entries added, 0 removed;
+- changed only `""`, `apps/api` and `node_modules/{supertest,superagent,formidable}`;
+- the three entries are byte-identical to the approved entries (7.3.1, 10.4.1, 3.5.4, all `dev: true`, matching integrity);
+- nothing nested under `apps/api/node_modules`;
+- `libc` fields 23 → 23 (no platform-entry normalization).
+
+**Provisioning** (`provision.sh`, npm 11.17.0 on Node 22.23.3):
+- npm 10.9.9 is refused before any work;
+- the anchored `supertest-dependency-delta` check passed before install;
+- `npm ci --ignore-scripts` succeeded, and the lockfile was unchanged (sha256 `6ed14a22…cc7f1e965`);
+- runtime resolution: supertest 7.3.1, superagent 10.4.1, formidable 3.5.4.
+
+### 7.3 Evaluator verdicts (evaluate.mjs from an export of the anchor; authentic evaluator tree `31f37af2…`; Node 22.23.3)
+
+| Candidate | Verdict | Detail |
+|---|---|---|
+| Positive control `a4ef452` | **PASS** (record sha256 `21bcaee3…dc6ed57e8`) | **12 of 12 checks pass**; no integrity finding; no verdict reason. api-unit 2120/2120; api-integration 378 passed, 5 skipped (GcsStorageProvider only), with RT-01 to RT-16 present; native-round-recovery-fail-safe (all 14 cases ok); native-round-recovery-suite-unchanged; ci-workflow-opt-in; api-lint; api-typecheck; loopback-endpoint-identity; test-server-explicit-loopback (177 API test files scanned); connector-harness-change-bounded; supertest-dependency-delta; supertest-runtime-resolution |
+| Unfixed baseline (no-op, candidate = anchor) | **FAIL** (record sha256 `3ab58ccc…ff48f6a8d`) | Exactly four reasons, all Story 1.9 defect checks: loopback-endpoint-identity, test-server-explicit-loopback, connector-harness-change-bounded ("unchanged from the baseline"), supertest-dependency-delta. No integrity finding. Every inherited check passes (unit 2120, integration 378 + 5 skipped, fail-safe, suite hash, ci opt-in, lint, typecheck, runtime resolution) |
+| Supplementary: positive control on the superseded bytes `d8a81297…` | PASS | Same Option A delta; the structural harness check without its distinct diagnoses |
+
+### 7.4 Runtime endpoint proof (observed by the evaluator's probe)
+
+| | Positive control | Unfixed baseline |
+|---|---|---|
+| Test-server listens | 1,196, every one on `127.0.0.1` | 1,196, every one on the wildcard `:::<port>` |
+| Requests matched to their server's endpoint | 1,008 | 0 |
+| Supertest-importing files evidenced | 25 / 25 | 0 / 25 |
+| Problems | 0 | 998 |
+
+### 7.5 Adversarial regression on the final bytes (`adversarial-probes.out`)
+
+- **Variants:** 31 in total, 30 wrong plus the no-op. Three harness variants were added for the structural AC-4: correct bind plus a hidden extra edit; correct bind present twice; reformatted bind.
+- **Result:** 30 of 30 rejected by a finding specific to them; **0 masked**.
+- **Change made along the way:** the first structural version reported every harness failure as "something else changed", which made two variants indistinguishable from the unfixed baseline. The check now gives distinct diagnoses (unchanged from the baseline; host-less start still present; bind not exactly once; changed outside the one expression).
+
+**TAP residual:** this validation is not a naturally occurring correction cycle. No ledger was written (`~/.servvia` holds no Story 1.9 state) and no failure packet was issued. The residual stays open.

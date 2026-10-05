@@ -25,7 +25,7 @@
 
 ## Regenerate and verify
 
-Run under Node 22, with a `node_modules` that holds the repository-locked `js-yaml` (for example one provisioned by `provisioning/provision.sh`):
+Run under Node 22, with a `node_modules` that holds the repository-locked `js-yaml` (for example one provisioned by `provisioning/provision.sh` with npm 11.17.0):
 
 ```bash
 node _bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/generate.mjs \
@@ -39,20 +39,26 @@ node tooling/evaluator/bin/loop.mjs validate \
 
 ## Freeze procedure (orchestrator only)
 
-1. Decide the open points listed under "Freeze decisions" below.
+1. Issue the freeze authorization; the decisions it rests on are recorded under "Freeze decisions" below.
 2. On the baseline `e42edeb3c865737e919be8c1c8bebfc4bb7f279b` (the anchor's parent must be exactly that commit), commit only:
    - `v1.objective.json`, byte for byte, as `_bmad-output/implementation-artifacts/objectives/story-1-9-test-harness-loopback-binding/v1.objective.json`;
    - the story spec, byte for byte, at `_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md`.
 
    The packet itself is not part of the anchor. It lives on the integration branch for review.
-3. Record the anchor commit and the approved sha256. Evaluate candidates per `provisioning/README.md`, launching the evaluator under **Node 22**. The evaluator records `record.environment.node`.
+3. Record the anchor commit and the approved sha256. Evaluate candidates per `provisioning/README.md`: provision with npm **11.17.0** on Node 22, and launch the evaluator under **Node 22**. The evaluator records `record.environment.node`.
 
-## Freeze decisions (open for the orchestrator)
+## Freeze decisions (orchestrator, 2026-10-05)
 
-1. **Confirm Option A.** The draft carries the 2026-10-05 selection: supertest `^7.3.1` plus the one explicit harness bind. The acceptance criteria are behavioural, but AC-3 and AC-4 and the dependency and harness checks encode Option A's exact shape.
-2. **Accept the provenance of the approved lockfile entries.** They are verified against the registry. They are not observed in a real install of the fix, because building the fix is not authorized.
-3. **Accept that no positive control exists.** No correct implementation has been evaluated against this draft. The adversarial evidence proves rejection, not acceptance. The prior 2026-10-05 evidence (Option A on `38bea30`: 25/25 files evidenced, 0 problems) is historical support only.
-4. **Accept the floors.** The floors are raised to the measured baseline: unit 2120, integration 378.
+1. **Option A:** provisionally accepted, conditional on a positive-control PASS. Validated: see `evidence/EVIDENCE.md` section 7.
+2. **Registry-derived lockfile entries:** accepted. They are now also proven in a real install: npm 11.17.0 on Node 22 produced exactly these entries.
+3. **Positive control:** required before freeze. Done in a disposable clone and never published.
+4. **Floors:** accepted (unit 2120, integration 378).
+5. **Tooling (Tier 2):**
+   - Node 22 is the runtime and evaluator engine.
+   - The lockfile is authored, and dependencies are provisioned, with exactly npm 11.17.0 on Node 22 (`provisioning/fetch-npm.sh`).
+   - npm 10 output is not accepted, and no version floats.
+   - No `packageManager` field is added.
+6. **AC-4 is structural:** only the harness's one host-less server-start expression may change, and it must become the explicit loopback bind. No source line number is part of the contract.
 
 ## TAP residual (unchanged)
 

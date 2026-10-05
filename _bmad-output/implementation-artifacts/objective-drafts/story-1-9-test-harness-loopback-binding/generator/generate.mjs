@@ -46,7 +46,9 @@ const readJson = (p, what) => { if (!existsSync(p)) fail(`${what} missing: ${rel
 
 // ---- explicit inputs -------------------------------------------------------------------------------
 const inputs = readJson(join(HERE, 'inputs.json'), 'generator inputs');
-for (const k of ['baseline', 'objectiveId', 'storyId', 'version', 'title', 'specPath', 'epicContextPath', 'inheritedObjectivePath', 'harness', 'supertest', 'floors', 'allowedSkip']) if (inputs[k] === undefined) fail(`inputs.json lacks ${k}`);
+for (const k of ['baseline', 'objectiveId', 'storyId', 'version', 'title', 'specPath', 'epicContextPath', 'inheritedObjectivePath', 'harness', 'supertest', 'toolchain', 'floors', 'allowedSkip']) if (inputs[k] === undefined) fail(`inputs.json lacks ${k}`);
+const TC = inputs.toolchain;
+if (TC.node?.major !== 22 || !/^11\.\d+\.\d+$/.test(TC.npm?.version ?? '') || !/^sha512-/.test(TC.npm?.integrity ?? '')) fail('inputs.toolchain must pin Node 22 and an exact npm 11.x.y with its sha512 integrity');
 const B = inputs.baseline;
 if (!/^[0-9a-f]{40}$/.test(B)) fail('inputs.baseline must be a full commit id');
 try { if (git('cat-file', '-t', B).trim() !== 'commit') fail(`baseline ${B} is not a commit`); } catch { fail(`baseline ${B} is not in the repository`); }
@@ -71,9 +73,12 @@ const objectiveInputs = {
 // ---- baseline-derived facts ----------------------------------------------------------------------
 const o18 = JSON.parse(atBaseText(inputs.inheritedObjectivePath));
 const H = inputs.harness.file;
-const harnessLines = atBaseText(H).split('\n');
-const baseLine = harnessLines[inputs.harness.line - 1];
-if (baseLine?.trim() !== inputs.harness.baselineLineTrimmed) fail(`${H}:${inputs.harness.line} at the baseline is ${JSON.stringify(baseLine?.trim())}, not ${JSON.stringify(inputs.harness.baselineLineTrimmed)}`);
+const harnessText = atBaseText(H);
+const BASE_EXPR = inputs.harness.baselineExpression; const NEW_EXPR = inputs.harness.approvedExpression;
+if (!BASE_EXPR || !NEW_EXPR) fail('inputs.harness needs baselineExpression and approvedExpression');
+if (harnessText.split(BASE_EXPR).length - 1 !== 1) fail(`${H} at the baseline must contain ${JSON.stringify(BASE_EXPR)} exactly once`);
+if (harnessText.includes(NEW_EXPR)) fail(`${H} at the baseline already contains ${JSON.stringify(NEW_EXPR)}`);
+const harnessExpected = harnessText.replace(BASE_EXPR, NEW_EXPR);
 
 const IMPORT_RE = "from 'supertest'|require\\('supertest'\\)";
 const required = git('grep', '-lE', IMPORT_RE, B, '--', 'apps/api').trim().split('\n').filter(Boolean)
@@ -107,7 +112,7 @@ const fill = (file, values) => {
 const scripts = {
   endpoint: fill('endpoint-identity.js', { REQUIRED: required, FLOORS: { unit: inputs.floors.unit, integration: inputs.floors.integration } }),
   listen: fill('explicit-loopback.js', {}),
-  harness: fill('harness-bounded.js', { FILE: H, LINE: inputs.harness.line, BASE_SHA256: sha256(Buffer.from(harnessLines.join('\n'), 'utf8')), BASE_LINE: baseLine }),
+  harness: fill('harness-bounded.js', { FILE: H, BASE_EXPR, NEW_EXPR, BASE_SHA256: sha256(Buffer.from(harnessText, 'utf8')), EXPECTED_SHA256: sha256(Buffer.from(harnessExpected, 'utf8')) }),
   deps: fill('dependency-delta.js', { RANGE, PKG_REST: shaJson(pkgRest), LOCK_REST: shaJson(lockRest), ENTRIES, BASE_META }),
   resolve: fill('runtime-resolution.js', {}),
 };
@@ -179,22 +184,23 @@ const objective = {
   ],
   architectureConstraints: [
     "Endpoint-identity invariant: every HTTP request a test sends to an in-process Servvia test server targets exactly the explicit local endpoint that server is bound to, 127.0.0.1:<port>. No test server binds a wildcard (::, 0.0.0.0) or an unspecified host",
-    "Approach carried from the 2026-10-05 orchestrator selection (Option A; to be confirmed at freeze): apps/api devDependencies.supertest -> " + RANGE + " (supertest 7 starts an unbound server on 127.0.0.1 and requests 127.0.0.1) plus the single explicit bind await app.listen(0, '127.0.0.1') at " + H + ':' + inputs.harness.line + '. Rejected: a shared bootstrap or http/net monkeypatch (hides future host-less binds behind global behaviour) and per-suite edits of every Supertest file (wide and repetitive)',
-    'Test-only scope: the implementation surface is exactly apps/api/package.json, package-lock.json and line ' + inputs.harness.line + ' of ' + H + '. Production code (apps/api/src/**, including main.ts and its listen host), Prisma, schema, migrations, auth, contracts, Go Core, other applications, CI (.github/**) and the evaluator (tooling/**) do not change',
+    "Approach carried from the 2026-10-05 orchestrator selection (Option A; to be confirmed at freeze): apps/api devDependencies.supertest -> " + RANGE + " (supertest 7 starts an unbound server on 127.0.0.1 and requests 127.0.0.1) plus the single explicit bind: the harness\'s one host-less server start " + BASE_EXPR + " in " + H + " becomes " + NEW_EXPR + '. Rejected: a shared bootstrap or http/net monkeypatch (hides future host-less binds behind global behaviour) and per-suite edits of every Supertest file (wide and repetitive)',
+    'Test-only scope: the implementation surface is exactly apps/api/package.json, package-lock.json and the one server-start expression of ' + H + '. Production code (apps/api/src/**, including main.ts and its listen host), Prisma, schema, migrations, auth, contracts, Go Core, other applications, CI (.github/**) and the evaluator (tooling/**) do not change',
     'Dependency delta (pinned by supertest-dependency-delta): package-lock.json entries node_modules/supertest ' + ENTRIES['node_modules/supertest'].version + ', node_modules/superagent ' + ENTRIES['node_modules/superagent'].version + ' and node_modules/formidable ' + ENTRIES['node_modules/formidable'].version + ' with their registry integrity, all dev-only; the apps/api supertest range; npm synchronising the lockfile name/engines metadata with the unchanged manifests. Every other field of apps/api/package.json and package-lock.json is hash-pinned to the baseline; no package is added or removed',
-    'Evaluator dependency provisioning: the evaluator links one operator-supplied node_modules root and does not install the candidate lockfile. The evaluation is provisioned with npm ci --ignore-scripts from the candidate lockfile in a disposable export, under Node 22 (the repository-pinned engine), only after supertest-dependency-delta passes on that lockfile; supertest-runtime-resolution fails if the supertest, superagent or formidable the tests load differ from the candidate lockfile (provisioning/README.md)',
+    'Toolchain (Tier-2 tooling decision, 2026-10-05): Node ' + TC.node.major + ' is the runtime and evaluator engine. The lockfile change is authored, and evaluator dependencies are provisioned, with exactly npm ' + TC.npm.version + ' (' + TC.npm.tarball + ', ' + TC.npm.integrity + ') running under Node ' + TC.node.major + '. Node 22\'s bundled npm 10 is not accepted (it nests the supertest, superagent and formidable entries under apps/api/node_modules and drops libc from unrelated platform entries, which supertest-dependency-delta rejects); no floating npm version. This is a Story 1.9 constraint, not a repository package-manager migration',
+    'Evaluator dependency provisioning: the evaluator links one operator-supplied node_modules root and does not install the candidate lockfile. The evaluation is provisioned with npm ' + TC.npm.version + ' under Node ' + TC.node.major + ' (npm ci --ignore-scripts from the candidate lockfile in a disposable export), only after supertest-dependency-delta passes on that lockfile; provisioning fails closed on any other Node major or npm version; supertest-runtime-resolution fails if the supertest, superagent or formidable the tests load differ from the candidate lockfile (provisioning/README.md)',
     'Determinism: loopback-endpoint-identity observes every TCP listen and every http/https request of the full unit and integration suites (an observation-only probe added by the check through the protected Jest configurations) and requires every in-process test server to bind 127.0.0.1 and every request to it to target the same endpoint, with matched evidence in each of the ' + required.length + ' Supertest-importing files. It is not a flake-rate measurement',
     'Stories 1.7 and 1.8 are protected: apps/api/test/native-round-recovery.integration-spec.ts, their specs, frozen objectives and evidence are forbidden surfaces; the checks native-round-recovery-fail-safe and native-round-recovery-suite-unchanged are inherited unchanged from the frozen Story 1.8 objective at the baseline; ci-workflow-opt-in is inherited with its ci.yml hash re-derived at this baseline (ci.yml changed legitimately at 354ea1b; the derivation reproduces Story 1.8\'s constant at Story 1.8\'s baseline); api-integration, api-unit, api-lint and api-typecheck are inherited with floors raised to the baseline measurement (unit ' + fl.unit + ', integration ' + fl.integration + ') and api-unit no longer listing apps/api/package.json as configuration (it is held by supertest-dependency-delta)',
-    'Baseline: ' + B + ' (integration/normative-prd-baseline after Story 14.2). Measured there: supertest ' + lock.packages['node_modules/supertest'].version + ' locked; ' + required.length + ' Supertest-importing files; ' + H + ':' + inputs.harness.line + ' is a host-less listen; unit ' + fl.unit + ' and integration ' + fl.integration + ' passed with only the ' + inputs.allowedSkip.count + ' GcsStorageProvider skips',
+    'Baseline: ' + B + ' (integration/normative-prd-baseline after Story 14.2). Measured there: supertest ' + lock.packages['node_modules/supertest'].version + ' locked; ' + required.length + ' Supertest-importing files; ' + H + ' starts its server with the host-less ' + BASE_EXPR + '; unit ' + fl.unit + ' and integration ' + fl.integration + ' passed with only the ' + inputs.allowedSkip.count + ' GcsStorageProvider skips',
     'Recorded, not in scope: Story 1.10 (CI asserts the native-round-recovery suite executes) is separate and deferred; LIBPQ SERVICE FORM NOT APPLICABLE TO CURRENT PRISMA PATH',
   ],
   acceptanceCriteria: [
     { id: 'AC-1', given: 'the candidate with its approved dependencies installed', when: 'the full API unit and integration suites run under the evaluator endpoint probe', then: 'every in-process test server binds 127.0.0.1, every request to an in-process test server targets the 127.0.0.1 endpoint that server is bound to, each of the ' + required.length + ' Supertest-importing files shows matched runtime evidence, and both suites pass at their floors (unit ' + fl.unit + ', integration ' + fl.integration + ')' },
     { id: 'AC-2', given: 'the candidate API test sources', when: 'they are scanned', then: "every listen call in API test code names the explicit loopback host '127.0.0.1', so no test server can bind a wildcard or an unspecified host" },
     { id: 'AC-3', given: 'the candidate manifests and lockfile', when: 'they are compared with the baseline', then: 'the only dependency change is the dev-only apps/api supertest ' + RANGE + ' upgrade with exactly the approved lockfile entries, and the supertest, superagent and formidable the tests load at run time are the versions the lockfile pins' },
-    { id: 'AC-4', given: 'the connector command harness', when: 'it is compared with the baseline', then: 'it differs only at line ' + inputs.harness.line + ", which binds the explicit loopback endpoint its external command process targets (await app.listen(0, '127.0.0.1');)" },
+    { id: 'AC-4', given: 'the connector command harness', when: 'it is compared with the baseline', then: 'it equals the baseline file except that its one host-less server start (' + BASE_EXPR + ') binds the explicit loopback endpoint its external command process targets (' + NEW_EXPR + '); no other statement, test or assertion in the file changes' },
     { id: 'AC-5', given: 'the candidate', when: 'the inherited checks run', then: 'API integration passes (at least ' + fl.integration + ', only the ' + inputs.allowedSkip.count + ' GcsStorageProvider skips), RT-01 to RT-16 pass, the Story 1.8 fail-safe passes, the recovery suite hash is unchanged, the CI opt-in wiring is unchanged, and API unit (at least ' + fl.unit + '), lint and typecheck pass' },
-    { id: 'AC-6', given: 'the candidate', when: 'it is compared with the baseline', then: 'nothing outside apps/api/package.json, package-lock.json, the one harness line and the story spec changes; no test is added, removed, renamed, skipped, focused or weakened; no suppression, shared test bootstrap, monkeypatch, environment switch or production behaviour change is added' },
+    { id: 'AC-6', given: 'the candidate', when: 'it is compared with the baseline', then: 'nothing outside apps/api/package.json, package-lock.json, the harness server-start expression and the story spec changes; no test is added, removed, renamed, skipped, focused or weakened; no suppression, shared test bootstrap, monkeypatch, environment switch or production behaviour change is added' },
   ],
   environment: structuredClone(o18.environment),
   setup: structuredClone(o18.setup),
@@ -203,7 +209,7 @@ const objective = {
   allowedSkips: [{ check: inputs.allowedSkip.check, test: inputs.allowedSkip.test, reason: 'Real Google Cloud Storage coverage: runs only with GCS_INTEGRATION_TEST_* credentials, which neither CI nor the evaluator has. Skipped identically on the baseline ' + B.slice(0, 7) + ' (' + inputs.allowedSkip.count + ' tests); not part of this story.' }],
   surfaces: { allowed, forbidden: [...forbidden].sort() },
   expectationChanges: [
-    { path: H, reason: 'One line only: line ' + inputs.harness.line + ", await app.listen(0); becomes await app.listen(0, '127.0.0.1');, so the in-process API binds the explicit loopback endpoint its external command process targets (baseUrl http://127.0.0.1:<port>/api). connector-harness-change-bounded pins the rest of the file.", retiresTests: [] },
+    { path: H, reason: 'One expression only: the host-less server start ' + BASE_EXPR + ' becomes ' + NEW_EXPR + ', so the in-process API binds the explicit loopback endpoint its external command process targets (baseUrl http://127.0.0.1:<port>/api). connector-harness-change-bounded requires the rest of the file to equal the baseline.', retiresTests: [] },
     { path: 'apps/api/package.json', reason: 'devDependencies.supertest ' + apiPkg.devDependencies.supertest + ' -> ' + RANGE + ' only (npm may re-sort devDependencies keys); every other field is pinned by supertest-dependency-delta.', retiresTests: [] },
     { path: 'package-lock.json', reason: 'Exactly the approved dev-only entries (supertest ' + ENTRIES['node_modules/supertest'].version + ', superagent ' + ENTRIES['node_modules/superagent'].version + ', formidable ' + ENTRIES['node_modules/formidable'].version + ', with their integrity), the apps/api supertest range, and npm synchronising name/engines metadata with the unchanged package.json files; everything else is pinned by supertest-dependency-delta.', retiresTests: [] },
   ],
@@ -213,7 +219,7 @@ const objective = {
     'loopback-endpoint-identity passes: ' + required.length + '/' + required.length + ' Supertest-importing files evidenced, zero bind/request mismatches, zero non-loopback test listens, unit and integration green under the probe',
     'test-server-explicit-loopback, connector-harness-change-bounded, supertest-dependency-delta and supertest-runtime-resolution pass',
     'native-round-recovery-fail-safe, native-round-recovery-suite-unchanged, ci-workflow-opt-in, api-integration, api-unit, api-lint and api-typecheck pass; RT-01 to RT-16 pass on the candidate and the baseline (regression characterizations)',
-    'The only skips are the ' + inputs.allowedSkip.count + ' GcsStorageProvider tests; the candidate changes only apps/api/package.json, package-lock.json, ' + H + ' (line ' + inputs.harness.line + ') and the story spec',
+    'The only skips are the ' + inputs.allowedSkip.count + ' GcsStorageProvider tests; the candidate changes only apps/api/package.json, package-lock.json, the server-start expression of ' + H + ' and the story spec',
     "Technical completion is the evaluator decision CANDIDATE_READY_FOR_ACCEPTANCE only; acceptance, merging and pushing are the orchestrator's",
   ],
 };
@@ -235,7 +241,8 @@ const manifest = {
   baseline: B,
   draftObjective: { path: draftRel, sha256: sha256(objectiveBytes) },
   inputs: objectiveInputs,
-  derived: { ciWorkflowRestSha256: ciCheck.args[3], story18CiWorkflowRestSha256: inherit('ci-workflow-opt-in').args[3], supertestImportingFiles: required.map((f) => `apps/api/${f}`), harnessBaselineSha256: sha256(Buffer.from(harnessLines.join('\n'), 'utf8')), apiPackageRestSha256: shaJson(pkgRest), lockfileRestSha256: shaJson(lockRest), baselineLockfileMeta: BASE_META, forbiddenSurfaceCount: forbidden.size },
+  toolchain: { node: { major: TC.node.major }, npm: { version: TC.npm.version, tarball: TC.npm.tarball, integrity: TC.npm.integrity } },
+  derived: { ciWorkflowRestSha256: ciCheck.args[3], story18CiWorkflowRestSha256: inherit('ci-workflow-opt-in').args[3], supertestImportingFiles: required.map((f) => `apps/api/${f}`), harnessBaselineSha256: sha256(Buffer.from(harnessText, 'utf8')), harnessExpectedSha256: sha256(Buffer.from(harnessExpected, 'utf8')), apiPackageRestSha256: shaJson(pkgRest), lockfileRestSha256: shaJson(lockRest), baselineLockfileMeta: BASE_META, forbiddenSurfaceCount: forbidden.size },
   files,
 };
 const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n', 'utf8');

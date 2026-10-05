@@ -8,7 +8,7 @@
   "inputs": {
     "storySpec": {
       "path": "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md",
-      "intentContractSha256": "4363761c823c38dbaf6e102db2fe74e0bd19ba6d5e31491049cb602401d40c3f"
+      "intentContractSha256": "5ab704b8a71f4b946816d0bdbe328d076d60a349dd0a4b437943e7bcab2ee217"
     },
     "epicContext": {
       "path": "_bmad-output/implementation-artifacts/epic-1-context.md",
@@ -25,13 +25,14 @@
   ],
   "architectureConstraints": [
     "Endpoint-identity invariant: every HTTP request a test sends to an in-process Servvia test server targets exactly the explicit local endpoint that server is bound to, 127.0.0.1:<port>. No test server binds a wildcard (::, 0.0.0.0) or an unspecified host",
-    "Approach carried from the 2026-10-05 orchestrator selection (Option A; to be confirmed at freeze): apps/api devDependencies.supertest -> ^7.3.1 (supertest 7 starts an unbound server on 127.0.0.1 and requests 127.0.0.1) plus the single explicit bind await app.listen(0, '127.0.0.1') at apps/api/test/connector-command-harness.integration-spec.ts:171. Rejected: a shared bootstrap or http/net monkeypatch (hides future host-less binds behind global behaviour) and per-suite edits of every Supertest file (wide and repetitive)",
-    "Test-only scope: the implementation surface is exactly apps/api/package.json, package-lock.json and line 171 of apps/api/test/connector-command-harness.integration-spec.ts. Production code (apps/api/src/**, including main.ts and its listen host), Prisma, schema, migrations, auth, contracts, Go Core, other applications, CI (.github/**) and the evaluator (tooling/**) do not change",
+    "Approach carried from the 2026-10-05 orchestrator selection (Option A; to be confirmed at freeze): apps/api devDependencies.supertest -> ^7.3.1 (supertest 7 starts an unbound server on 127.0.0.1 and requests 127.0.0.1) plus the single explicit bind: the harness's one host-less server start await app.listen(0); in apps/api/test/connector-command-harness.integration-spec.ts becomes await app.listen(0, '127.0.0.1');. Rejected: a shared bootstrap or http/net monkeypatch (hides future host-less binds behind global behaviour) and per-suite edits of every Supertest file (wide and repetitive)",
+    "Test-only scope: the implementation surface is exactly apps/api/package.json, package-lock.json and the one server-start expression of apps/api/test/connector-command-harness.integration-spec.ts. Production code (apps/api/src/**, including main.ts and its listen host), Prisma, schema, migrations, auth, contracts, Go Core, other applications, CI (.github/**) and the evaluator (tooling/**) do not change",
     "Dependency delta (pinned by supertest-dependency-delta): package-lock.json entries node_modules/supertest 7.3.1, node_modules/superagent 10.4.1 and node_modules/formidable 3.5.4 with their registry integrity, all dev-only; the apps/api supertest range; npm synchronising the lockfile name/engines metadata with the unchanged manifests. Every other field of apps/api/package.json and package-lock.json is hash-pinned to the baseline; no package is added or removed",
-    "Evaluator dependency provisioning: the evaluator links one operator-supplied node_modules root and does not install the candidate lockfile. The evaluation is provisioned with npm ci --ignore-scripts from the candidate lockfile in a disposable export, under Node 22 (the repository-pinned engine), only after supertest-dependency-delta passes on that lockfile; supertest-runtime-resolution fails if the supertest, superagent or formidable the tests load differ from the candidate lockfile (provisioning/README.md)",
+    "Toolchain (Tier-2 tooling decision, 2026-10-05): Node 22 is the runtime and evaluator engine. The lockfile change is authored, and evaluator dependencies are provisioned, with exactly npm 11.17.0 (https://registry.npmjs.org/npm/-/npm-11.17.0.tgz, sha512-PurxiZexEHDTE4SSaLI3ZrnbAGiZfeyUcQcxcP5D+hfytNAze/D1IzDuInTn9XVLIbAQUnQuSPXJx02LHjLvQw==) running under Node 22. Node 22's bundled npm 10 is not accepted (it nests the supertest, superagent and formidable entries under apps/api/node_modules and drops libc from unrelated platform entries, which supertest-dependency-delta rejects); no floating npm version. This is a Story 1.9 constraint, not a repository package-manager migration",
+    "Evaluator dependency provisioning: the evaluator links one operator-supplied node_modules root and does not install the candidate lockfile. The evaluation is provisioned with npm 11.17.0 under Node 22 (npm ci --ignore-scripts from the candidate lockfile in a disposable export), only after supertest-dependency-delta passes on that lockfile; provisioning fails closed on any other Node major or npm version; supertest-runtime-resolution fails if the supertest, superagent or formidable the tests load differ from the candidate lockfile (provisioning/README.md)",
     "Determinism: loopback-endpoint-identity observes every TCP listen and every http/https request of the full unit and integration suites (an observation-only probe added by the check through the protected Jest configurations) and requires every in-process test server to bind 127.0.0.1 and every request to it to target the same endpoint, with matched evidence in each of the 25 Supertest-importing files. It is not a flake-rate measurement",
     "Stories 1.7 and 1.8 are protected: apps/api/test/native-round-recovery.integration-spec.ts, their specs, frozen objectives and evidence are forbidden surfaces; the checks native-round-recovery-fail-safe and native-round-recovery-suite-unchanged are inherited unchanged from the frozen Story 1.8 objective at the baseline; ci-workflow-opt-in is inherited with its ci.yml hash re-derived at this baseline (ci.yml changed legitimately at 354ea1b; the derivation reproduces Story 1.8's constant at Story 1.8's baseline); api-integration, api-unit, api-lint and api-typecheck are inherited with floors raised to the baseline measurement (unit 2120, integration 378) and api-unit no longer listing apps/api/package.json as configuration (it is held by supertest-dependency-delta)",
-    "Baseline: e42edeb3c865737e919be8c1c8bebfc4bb7f279b (integration/normative-prd-baseline after Story 14.2). Measured there: supertest 6.3.4 locked; 25 Supertest-importing files; apps/api/test/connector-command-harness.integration-spec.ts:171 is a host-less listen; unit 2120 and integration 378 passed with only the 5 GcsStorageProvider skips",
+    "Baseline: e42edeb3c865737e919be8c1c8bebfc4bb7f279b (integration/normative-prd-baseline after Story 14.2). Measured there: supertest 6.3.4 locked; 25 Supertest-importing files; apps/api/test/connector-command-harness.integration-spec.ts starts its server with the host-less await app.listen(0);; unit 2120 and integration 378 passed with only the 5 GcsStorageProvider skips",
     "Recorded, not in scope: Story 1.10 (CI asserts the native-round-recovery suite executes) is separate and deferred; LIBPQ SERVICE FORM NOT APPLICABLE TO CURRENT PRISMA PATH"
   ],
   "acceptanceCriteria": [
@@ -57,7 +58,7 @@
       "id": "AC-4",
       "given": "the connector command harness",
       "when": "it is compared with the baseline",
-      "then": "it differs only at line 171, which binds the explicit loopback endpoint its external command process targets (await app.listen(0, '127.0.0.1');)"
+      "then": "it equals the baseline file except that its one host-less server start (await app.listen(0);) binds the explicit loopback endpoint its external command process targets (await app.listen(0, '127.0.0.1');); no other statement, test or assertion in the file changes"
     },
     {
       "id": "AC-5",
@@ -69,7 +70,7 @@
       "id": "AC-6",
       "given": "the candidate",
       "when": "it is compared with the baseline",
-      "then": "nothing outside apps/api/package.json, package-lock.json, the one harness line and the story spec changes; no test is added, removed, renamed, skipped, focused or weakened; no suppression, shared test bootstrap, monkeypatch, environment switch or production behaviour change is added"
+      "then": "nothing outside apps/api/package.json, package-lock.json, the harness server-start expression and the story spec changes; no test is added, removed, renamed, skipped, focused or weakened; no suppression, shared test bootstrap, monkeypatch, environment switch or production behaviour change is added"
     }
   ],
   "environment": {
@@ -257,7 +258,7 @@
       "args": [
         "node",
         "-e",
-        "// connector-harness-change-bounded (Story 1.9). The connector command harness may differ from the\n// baseline only at its one host-less listen, which must bind the explicit loopback endpoint that its\n// external command process targets. Generated constants: FILE, LINE, BASE_SHA256, BASE_LINE.\nconst fs = require('node:fs'); const { createHash } = require('node:crypto');\nconst FILE = \"apps/api/test/connector-command-harness.integration-spec.ts\"; const LINE = 171; const BASE_SHA256 = \"8723e2d8136f4d508c1b9dd82d7ca4557c5c89433ac523fc29859f95c11650e3\"; const BASE_LINE = \"    await app.listen(0);\";\nconst WANT = \"await app.listen(0, '127.0.0.1');\";\nconst text = fs.readFileSync(FILE, 'utf8'); const lines = text.split('\\n');\nconst problems = [];\nif (lines[LINE - 1]?.trim() !== WANT) problems.push(`${FILE}:${LINE} is ${JSON.stringify(lines[LINE - 1]?.trim())}, not ${JSON.stringify(WANT)}`);\nconst restored = [...lines]; restored[LINE - 1] = BASE_LINE;\nconst got = createHash('sha256').update(restored.join('\\n')).digest('hex');\nif (got !== BASE_SHA256) problems.push(`${FILE} changed outside line ${LINE} (with line ${LINE} restored its sha256 is ${got}, the baseline is ${BASE_SHA256})`);\nfor (const p of problems) console.log('FAIL ' + p);\nif (problems.length) process.exit(1);\nconsole.log(`ok   ${FILE} differs from the baseline only by its explicit loopback bind (line ${LINE})`);\n"
+        "// connector-harness-change-bounded (Story 1.9). The connector command harness may differ from the\n// baseline only by its one host-less server start becoming an explicit loopback bind on the endpoint\n// its external command process targets. Structural, not positional: the candidate file must equal the\n// baseline file with that single expression replaced, so no surrounding test, assertion or setup\n// changes. Each way of failing has its own diagnosis.\n// Generated constants (from the baseline): FILE, BASE_EXPR, NEW_EXPR, BASE_SHA256, EXPECTED_SHA256.\nconst fs = require('node:fs'); const { createHash } = require('node:crypto');\nconst FILE = \"apps/api/test/connector-command-harness.integration-spec.ts\"; const BASE_EXPR = \"await app.listen(0);\"; const NEW_EXPR = \"await app.listen(0, '127.0.0.1');\"; const BASE_SHA256 = \"8723e2d8136f4d508c1b9dd82d7ca4557c5c89433ac523fc29859f95c11650e3\"; const EXPECTED_SHA256 = \"02375620e2cae596ece0df17995737470e5241c52f949ca9cb0a3bbd3031f5fd\";\nconst text = fs.readFileSync(FILE, 'utf8');\nconst sha = (s) => createHash('sha256').update(s).digest('hex');\nconst count = (s) => text.split(s).length - 1;\nconst problems = [];\nconst got = sha(text);\nif (got === BASE_SHA256) {\n  problems.push(`${FILE} is unchanged from the baseline: its host-less server start ${JSON.stringify(BASE_EXPR)} still binds the wildcard`);\n} else if (got !== EXPECTED_SHA256) {\n  if (count(BASE_EXPR) > 0) problems.push(`${FILE} still contains the host-less server start ${JSON.stringify(BASE_EXPR)}`);\n  if (count(NEW_EXPR) !== 1) problems.push(`${FILE} contains the explicit loopback bind ${JSON.stringify(NEW_EXPR)} ${count(NEW_EXPR)} times, not exactly once`);\n  // With the server start normalized back to the baseline form, any remaining difference lies outside\n  // the one authorized expression: surrounding tests, assertions or setup were changed.\n  const normalized = count(NEW_EXPR) === 1 && count(BASE_EXPR) === 0 ? text.replace(NEW_EXPR, BASE_EXPR) : text;\n  if (sha(normalized) !== BASE_SHA256) problems.push(`${FILE} changed outside its one server-start expression (surrounding tests, assertions or setup differ from the baseline)`);\n}\nfor (const p of problems) console.log('FAIL ' + p);\nif (problems.length) process.exit(1);\nconsole.log(`ok   ${FILE} differs from the baseline only by its explicit loopback bind`);\n"
       ],
       "mandatory": true
     },
@@ -526,7 +527,7 @@
   "expectationChanges": [
     {
       "path": "apps/api/test/connector-command-harness.integration-spec.ts",
-      "reason": "One line only: line 171, await app.listen(0); becomes await app.listen(0, '127.0.0.1');, so the in-process API binds the explicit loopback endpoint its external command process targets (baseUrl http://127.0.0.1:<port>/api). connector-harness-change-bounded pins the rest of the file.",
+      "reason": "One expression only: the host-less server start await app.listen(0); becomes await app.listen(0, '127.0.0.1');, so the in-process API binds the explicit loopback endpoint its external command process targets (baseUrl http://127.0.0.1:<port>/api). connector-harness-change-bounded requires the rest of the file to equal the baseline.",
       "retiresTests": []
     },
     {
@@ -546,7 +547,7 @@
     "loopback-endpoint-identity passes: 25/25 Supertest-importing files evidenced, zero bind/request mismatches, zero non-loopback test listens, unit and integration green under the probe",
     "test-server-explicit-loopback, connector-harness-change-bounded, supertest-dependency-delta and supertest-runtime-resolution pass",
     "native-round-recovery-fail-safe, native-round-recovery-suite-unchanged, ci-workflow-opt-in, api-integration, api-unit, api-lint and api-typecheck pass; RT-01 to RT-16 pass on the candidate and the baseline (regression characterizations)",
-    "The only skips are the 5 GcsStorageProvider tests; the candidate changes only apps/api/package.json, package-lock.json, apps/api/test/connector-command-harness.integration-spec.ts (line 171) and the story spec",
+    "The only skips are the 5 GcsStorageProvider tests; the candidate changes only apps/api/package.json, package-lock.json, the server-start expression of apps/api/test/connector-command-harness.integration-spec.ts and the story spec",
     "Technical completion is the evaluator decision CANDIDATE_READY_FOR_ACCEPTANCE only; acceptance, merging and pushing are the orchestrator's"
   ]
 }

@@ -10,7 +10,8 @@
 #   from there, never from the candidate). <out-dir> must not exist; it is created.
 #
 # Fails closed (non-zero exit and an <out-dir>/REFUSED marker; never use that directory) unless:
-#   1. node is major 22 (the repository-pinned engine: .nvmrc, engines ">=22 <23");
+#   1. node is major 22 (the repository-pinned engine: .nvmrc, engines ">=22 <23") and npm is exactly
+#      11.17.0 running on that node (Story 1.9 tooling decision; obtain it with fetch-npm.sh);
 #   2. the candidate's package-lock.json is byte-identical to the baseline's, or passes the anchored
 #      objective's supertest-dependency-delta check (no unapproved package is ever installed);
 #   3. npm ci --ignore-scripts succeeds and leaves package-lock.json byte-identical;
@@ -24,6 +25,11 @@ REPO=$1; ANCHOR=$2; OBJ=$3; CAND=$4; OUT=$5
 [ -e "$OUT" ] && { echo "REFUSED: $OUT already exists" >&2; exit 2; }
 MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 [ "$MAJOR" = "22" ] || { echo "REFUSED: node $(node --version); the repository pins Node 22" >&2; exit 2; }
+NPM_WANT=11.17.0
+NPM_GOT=$(npm --version)
+[ "$NPM_GOT" = "$NPM_WANT" ] || { echo "REFUSED: npm $NPM_GOT; Story 1.9 provisioning requires exactly npm $NPM_WANT (fetch-npm.sh)" >&2; exit 2; }
+NPM_NODE=$(npm version --json | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8")).node.split(".")[0])')
+[ "$NPM_NODE" = "22" ] || { echo "REFUSED: npm runs on node $NPM_NODE, not Node 22" >&2; exit 2; }
 BASE=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8")).baseline)' < <(git -C "$REPO" show "$ANCHOR:$OBJ"))
 mkdir -p "$OUT/tree"
 git -C "$REPO" archive "$CAND" | tar -x -C "$OUT/tree"
