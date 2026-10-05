@@ -1719,7 +1719,7 @@ Every pilot-critical action is attributable to a truthful actor, every order and
 1. **Foundations, independent:** 15.1 (audit actor model) ‖ 15.3 (server-derived principal) ‖ 15.4a (Core push-close) ‖ 15.7 (D8 bootstrap).
 2. 15.1 → 15.5 (kitchen routes accept D8 `kds`).
 3. 15.3 → 15.2a (order and round provenance) → 15.2b (event metadata); 15.2a → 15.2d (check, payment and refund provenance).
-4. 15.1 → 15.2c (Nest device-originated orders without synthetic staff).
+4. 15.2c (Nest device-originated orders without synthetic staff) is independent of 15.1: it uses the existing Nest audit-actor helper (`apps/api/src/audit/audit-actor.ts`), which already records device and system actors. *(Corrected 2026-10-06 at Story 15.1 objective preparation; the former edge 15.1 → 15.2c was false.)*
 5. 15.4a → 15.4b (Nest revocations signal push-close).
 6. **Consumers later:** 6.1 (transitional web KDS: 15.5, 15.7, 16.2); 5.1 and 5.2 (15.3, 15.2a); Epics 9 and 16 (15.2a, 15.2d); 17.2 and 19.x (15.3, 15.5, 15.7).
 
@@ -1727,7 +1727,7 @@ Every pilot-critical action is attributable to a truthful actor, every order and
 
 As an auditor,
 I want every Core audit record to name its real actor class (staff, device or system),
-So that no device or system action is attributed to a staff member and no device-originated mutation goes unaudited.
+So that no device or system action is attributed to a staff member and a staff action records the device it was taken on.
 
 **Acceptance Criteria:**
 
@@ -1735,13 +1735,13 @@ So that no device or system action is attributed to a staff member and no device
 **When** Core records an audited mutation
 **Then** every Core audit writer records the actor through one Core audit-actor model that can express staff, device and system actors in the shape the CHECK constraint enforces
 **And** a staff action taken through a tablet records the staff actor together with the tablet's device kind and device id (today the device is dropped)
-**And** results reported by a D8 `payment_adapter` device (payment result, refund result, reversal) write device-actor audit rows (today they write transitions only)
+**And** results reported by a D8 `payment_adapter` device (payment result, refund result, reversal) stay in the append-only transition histories with the device identity, as FIN-36 requires; Story 15.1 adds no AuditLog row for them and invents no staff actor
 **And** a device or system action can never write a staff identity, and no synthetic staff row is created (negative tests).
 
-- Current state (2026-10-06): Core `INSERT INTO "AuditLog"` at `orders/pgstore/store.go:492`, `checks/pgstore/store.go:453`, `payments/pgstore/store.go:520`, `payments/pgstore/adjustments.go:310`, `shifts/pgstore/store.go:259`, `tables/pgstore/store.go:371`, `promotions/pgstore/store.go:215`, `devices/pgstore/store.go:368` write only `actorId`/`actorEmail`/`actorRole` (staff). `OnTablet` (`orders/ordersapi/handler.go:252`) is not persisted. Payment-adapter results write no audit row (`payments/pgstore/store.go:515-517`).
+- Current state (2026-10-06): Core `INSERT INTO "AuditLog"` at `orders/pgstore/store.go:492`, `checks/pgstore/store.go:453`, `payments/pgstore/store.go:520`, `payments/pgstore/adjustments.go:310`, `shifts/pgstore/store.go:259`, `tables/pgstore/store.go:371`, `promotions/pgstore/store.go:215`, `devices/pgstore/store.go:368` write only `actorId`/`actorEmail`/`actorRole` (staff). `OnTablet` (`orders/ordersapi/handler.go:252`) is not persisted. Payment-adapter results write no AuditLog row; they are recorded as transitions with the device id and actor kind `payment_adapter` (`payments/pgstore/store.go:345`, `payments/pgstore/adjustments.go:197, 366`), which satisfies FIN-36 (corrected 2026-10-06 at objective preparation).
 - Allowed surfaces (conceptual): Core audit writers and a shared Core audit-actor type under `services/core-platform/internal/**`; their unit and integration tests. No schema change (the schema already supports the shape); no Nest, contract or client change.
-- Acceptance evidence: integration tests on PostgreSQL per writer, for a staff actor and for staff-through-tablet; a device-actor row for each payment-adapter result route; a negative test that a device or system principal cannot produce a staff-shaped row; the existing audit tests keep passing.
-- Traceability: INV-3, DEC-OPS-21, DEC-X-6, NFR-AUD; O-21 item 4 (volume 00 §00.10.6).
+- Acceptance evidence: integration tests on PostgreSQL per writer, for a staff actor and for staff-through-tablet; a negative test that a device or system actor cannot produce a staff-shaped row; the existing audit tests keep passing. (The former "device-actor row for each payment-adapter result route" was removed 2026-10-06: it conflicts with FIN-36, volume 07.)
+- Traceability: INV-3, DEC-OPS-21, DEC-X-6, NFR-AUD, FIN-36; O-21 item 4 (volume 00 §00.10.6).
 - Depends on: none (Story 14.1 done).
 - Status: READY. **Recommended first Epic 15 story.**
 
