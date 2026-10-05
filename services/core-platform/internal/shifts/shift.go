@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"time"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/identity"
 )
 
@@ -107,6 +108,9 @@ type Actor struct {
 	StaffID string
 	Email   string
 	Role    string
+	// Device is the device the staff member acted through, from the
+	// verified credential (audit.DeviceOf); the zero value is none.
+	Device audit.Device
 }
 
 // Supervises reports whether the actor may read and close any shift at the

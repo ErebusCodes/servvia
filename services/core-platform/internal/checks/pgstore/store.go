@@ -23,6 +23,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	coreaudit "servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/checks"
 	"servvia/services/core-platform/internal/events"
 	eventstore "servvia/services/core-platform/internal/events/pgstore"
@@ -445,16 +446,9 @@ func (st *Store) Void(ctx context.Context, cmd checks.VoidCommand) (checks.Check
 // audit records a financial change in the existing AuditLog, in the change's
 // transaction: every check actor is a staff member.
 func audit(ctx context.Context, tx pgx.Tx, sc checks.Scope, a checks.Actor, action, checkID string, before, after map[string]any) error {
-	var beforeJSON []byte
-	if before != nil {
-		beforeJSON, _ = json.Marshal(before)
-	}
-	afterJSON, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", before, after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'check', $8, $9, $10)`,
-		newID(), sc.OrganizationID, sc.Venue.ID, a.StaffID, a.Email, a.Role, action, checkID, beforeJSON, afterJSON)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.Venue.ID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, a.Device), Action: action, Resource: "check", ResourceID: checkID,
+		Before: before, After: after})
 }
 
 // Audit writes a best-effort audit row outside any transaction.

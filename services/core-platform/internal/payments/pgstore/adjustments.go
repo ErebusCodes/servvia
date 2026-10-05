@@ -10,13 +10,13 @@ package pgstore
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	coreaudit "servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/payments"
 	"servvia/services/core-platform/internal/refunds"
 )
@@ -306,12 +306,8 @@ func adjustmentDetail(n refunds.NewAdjustment, id string, status payments.Status
 
 // staffAudit writes an AuditLog row for a staff action, in its transaction.
 func staffAudit(ctx context.Context, tx pgx.Tx, sc refunds.Scope, a refunds.Staff, action, id string, after map[string]any) error {
-	body, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'refund', $8, $9)`,
-		newID(), sc.OrganizationID, sc.VenueID, a.StaffID, a.Email, a.Role, action, id, body)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.VenueID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, a.Device), Action: action, Resource: "refund", ResourceID: id, After: after})
 }
 
 func (s AdjustmentStore) Audit(ctx context.Context, sc refunds.Scope, a refunds.Staff, action, id string, detail map[string]any) {

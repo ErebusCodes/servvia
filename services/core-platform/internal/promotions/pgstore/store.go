@@ -12,7 +12,6 @@ package pgstore
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	coreaudit "servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/events"
 	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/promotions"
@@ -207,16 +207,9 @@ func snapshot(p promotions.Promotion) map[string]any {
 }
 
 func audit(ctx context.Context, tx pgx.Tx, sc promotions.Scope, a promotions.Actor, action, id string, before, after map[string]any) error {
-	var beforeJSON []byte
-	if before != nil {
-		beforeJSON, _ = json.Marshal(before)
-	}
-	afterJSON, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", before, after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'promotion', $8, $9, $10)`,
-		newID(), sc.OrganizationID, sc.VenueID, a.StaffID, a.Email, a.Role, action, id, beforeJSON, afterJSON)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.VenueID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, coreaudit.Device{}), Action: action, Resource: "promotion", ResourceID: id,
+		Before: before, After: after})
 }
 
 func newID() string {

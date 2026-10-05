@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"time"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/devices/devicesapi"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/payments"
@@ -299,7 +300,7 @@ func (h *Handler) staffScope(w http.ResponseWriter, r *http.Request) (payments.S
 		return payments.Scope{}, payments.Staff{}, false
 	}
 	return payments.Scope{OrganizationID: p.OrganizationID, VenueID: v.ID},
-		payments.Staff{StaffID: p.ID, Email: p.Email, Role: p.Role}, true
+		payments.Staff{StaffID: p.ID, Email: p.Email, Role: p.Role, Device: audit.DeviceOf(p)}, true
 }
 
 func decode(w http.ResponseWriter, r *http.Request, into any) bool {

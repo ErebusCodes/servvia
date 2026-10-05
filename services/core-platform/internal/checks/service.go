@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/pricing"
 )
 
@@ -22,6 +23,9 @@ type Actor struct {
 	StaffID string
 	Email   string
 	Role    string
+	// Device is the device the staff member acted through, from the
+	// verified credential (audit.DeviceOf); the zero value is none.
+	Device audit.Device
 }
 
 // CreateCommand bills orders: either every order of one table session, or

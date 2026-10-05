@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"time"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/platform/httpx"
 	"servvia/services/core-platform/internal/tables"
@@ -95,7 +96,7 @@ func (h *Handler) scope(w http.ResponseWriter, r *http.Request) (tables.Scope, t
 		return tables.Scope{}, tables.Actor{}, false
 	}
 	return tables.Scope{OrganizationID: p.OrganizationID, VenueID: venueID},
-		tables.Actor{StaffID: p.ID, Email: p.Email, Role: p.Role}, true
+		tables.Actor{StaffID: p.ID, Email: p.Email, Role: p.Role, Device: audit.DeviceOf(p)}, true
 }
 
 // ListOpen serves GET /api/venues/{venueId}/table-sessions: the open sessions.

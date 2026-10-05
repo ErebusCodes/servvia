@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/payments"
 )
 
@@ -20,6 +21,9 @@ type Staff struct {
 	StaffID string
 	Email   string
 	Role    string
+	// Device is the device the staff member acted through, from the
+	// verified credential (audit.DeviceOf); the zero value is none.
+	Device audit.Device
 }
 
 // RefundCommand asks to return an amount of a payment. The amount is a

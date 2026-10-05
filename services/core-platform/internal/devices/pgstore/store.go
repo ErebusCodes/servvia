@@ -12,7 +12,6 @@ package pgstore
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	coreaudit "servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/devices"
 )
 
@@ -360,16 +360,9 @@ func mapActor(err error) error {
 // audit records an administrative change in the existing AuditLog, in its
 // transaction. Never a credential or verifier.
 func audit(ctx context.Context, tx pgx.Tx, sc devices.Scope, a devices.Actor, action, resource, id string, before, after map[string]any) error {
-	var beforeJSON []byte
-	if before != nil {
-		beforeJSON, _ = json.Marshal(before)
-	}
-	afterJSON, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", before, after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, $8, $9, $10, $11)`,
-		newID(), sc.OrganizationID, sc.VenueID, a.StaffID, a.Email, a.Role, action, resource, id, beforeJSON, afterJSON)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.VenueID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, coreaudit.Device{}), Action: action, Resource: resource, ResourceID: id,
+		Before: before, After: after})
 }
 
 // NewID is a random v4 UUID, the form of every Prisma @default(uuid()) id.
