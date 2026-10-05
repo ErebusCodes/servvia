@@ -2,7 +2,8 @@
 title: 'Story 1.9: API test requests target the explicit loopback endpoint their test server is bound to'
 type: 'bugfix'
 created: '2026-10-05'
-status: 'ready-for-dev'
+status: 'done'
+baseline_revision: 'fc064b5e10783fdd05842f73c31f88018066fd82'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -102,6 +103,8 @@ Measured on the baseline (2026-10-05): all 25 Supertest-importing files in `apps
 - 2026-10-05 (tooling decision, freeze validation round 2): the lockfile is authored and evaluator dependencies are provisioned with exactly npm 11.17.0 under Node 22 (Node 22's bundled npm 10.9.9 widened the lockfile delta in the first positive-control attempt).
 
 ## Review Triage Log
+
+- 2026-10-05 (implementation, anchored run fc064b5): implemented exactly the two execution tasks. Lockfile authored with npm 11.17.0 on Node 22.23.3 (`npm install supertest@7.3.1 --save-dev -w apps/api --ignore-scripts`); the delta is the three approved entries plus the apps/api range and npm's name/engines synchronisation. Harness: the one server start `await app.listen(0);` became `await app.listen(0, '127.0.0.1');`. Nothing else changed. The status `done` means candidate produced; acceptance is the evaluator's decision and the orchestrator's.
 
 ## Design Notes
 
