@@ -1743,7 +1743,7 @@ So that no device or system action is attributed to a staff member and a staff a
 - Acceptance evidence: integration tests on PostgreSQL per writer, for a staff actor and for staff-through-tablet; a negative test that a device or system actor cannot produce a staff-shaped row; the existing audit tests keep passing. (The former "device-actor row for each payment-adapter result route" was removed 2026-10-06: it conflicts with FIN-36, volume 07.)
 - Traceability: INV-3, DEC-OPS-21, DEC-X-6, NFR-AUD, FIN-36; O-21 item 4 (volume 00 §00.10.6).
 - Depends on: none (Story 14.1 done).
-- Status: READY. **Recommended first Epic 15 story.** Objective preparation 2026-10-06: freeze candidate `story-15-1-core-audit-actor-attribution` v1 (sha256 `06db19c272182923b07a7c7816a7554693e962a9855ca70eadd463956ba86934`, baseline `5d5772d`, packet `69f4123`, `objective-drafts/story-15-1-core-audit-actor-attribution/`). **NOT FROZEN; implementation NOT AUTHORIZED**; three orchestrator decisions are pending (`docs/checkpoints/2026-10-06/README.md`).
+- Status: READY. **Recommended first Epic 15 story.** Objective preparation 2026-10-06: freeze candidate `story-15-1-core-audit-actor-attribution` v1 (sha256 `06db19c272182923b07a7c7816a7554693e962a9855ca70eadd463956ba86934`, baseline `5d5772d`, packet `69f4123`); orchestrator decisions A, B and C accepted on resume (2026-10-06). **IN REVIEW (2026-10-06):** frozen at anchor `e1dae66`; candidate `453d07b` governed PASS / CANDIDATE_READY_FOR_ACCEPTANCE on the first iteration (evaluation record `ce026d66…`, ledger integrity `16c99c79…`); integrated `4747043`. Awaiting orchestrator acceptance.
 
 ### Story 15.3: Core derives application identity, operating mode and actor class from the verified credential
 

@@ -151,7 +151,7 @@ development_status:
   epic-14-retrospective: optional
 
   epic-15: backlog  # reconciled 2026-10-06 against dff753a; order in epics.md Epic 15; implementation NOT authorized
-  15-1-core-audit-records-device-and-system-actors-truthfully: backlog  # RECOMMENDED FIRST; freeze candidate 06db19c2 prepared 2026-10-06 (baseline 5d5772d, packet 69f4123); NOT FROZEN; implementation NOT AUTHORIZED; 3 orchestrator decisions pending
+  15-1-core-audit-records-device-and-system-actors-truthfully: review  # decisions A/B/C accepted; frozen e1dae66 (objective 06db19c2); candidate 453d07b governed PASS (CANDIDATE_READY_FOR_ACCEPTANCE); integrated 4747043; awaiting orchestrator acceptance
   15-3-core-derives-application-identity-operating-mode-and-actor-c: backlog  # re-scoped 2026-10-06: Core-derived from verified credential; no Nest token change (ADMIN-38)
   15-2a-o-21-order-and-round-provenance-persistence: backlog  # split of former 15.2; after 15.3
   15-2b-domain-events-carry-actor-correlation-and-causation: backlog  # split of former 15.2; after 15.2a
