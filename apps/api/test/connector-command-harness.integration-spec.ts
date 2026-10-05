@@ -168,7 +168,7 @@ describe('Connector Command Harness (integration, real process + real local Post
     await app.init();
     // A real, separate OS process (the harness) needs a real TCP port to
     // reach — supertest's request(app.getHttpServer()) alone never listens.
-    await app.listen(0);
+    await app.listen(0, '127.0.0.1');
     const server = app.getHttpServer() as import('http').Server;
     const address = server.address();
     const port = address && typeof address === 'object' ? address.port : 0;
