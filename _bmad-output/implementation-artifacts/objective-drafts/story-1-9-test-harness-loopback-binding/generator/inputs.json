@@ -1,0 +1,87 @@
+{
+  "schema": "servvia.story-1-9-generator-inputs/v1",
+  "status": "FREEZE CANDIDATE — NOT YET FROZEN. Generator inputs only; no authority.",
+  "baseline": "e42edeb3c865737e919be8c1c8bebfc4bb7f279b",
+  "objectiveId": "story-1-9-test-harness-loopback-binding",
+  "storyId": "1.9",
+  "version": 1,
+  "title": "API test requests target the explicit loopback endpoint their test server is bound to",
+  "specPath": "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md",
+  "epicContextPath": "_bmad-output/implementation-artifacts/epic-1-context.md",
+  "inheritedObjectivePath": "_bmad-output/implementation-artifacts/objectives/story-1-8-native-round-recovery-host-override-safety/v1.objective.json",
+  "harness": {
+    "file": "apps/api/test/connector-command-harness.integration-spec.ts",
+    "line": 171,
+    "baselineLineTrimmed": "await app.listen(0);"
+  },
+  "supertest": {
+    "range": "^7.3.1",
+    "approvedEntries": {
+      "node_modules/supertest": {
+        "version": "7.3.1",
+        "resolved": "https://registry.npmjs.org/supertest/-/supertest-7.3.1.tgz",
+        "integrity": "sha512-vNaNCFoCR/edDbErQZp5KLNT8R4dSPHX7rlDLoE8hWLAm/878j6ShMbe8HK/E6RwwuhlSXVelXAIg9AxR5WWPw==",
+        "dev": true,
+        "license": "MIT",
+        "dependencies": {
+          "cookie-signature": "^1.2.2",
+          "methods": "^1.1.2",
+          "superagent": "^10.3.0"
+        },
+        "engines": {
+          "node": ">=14.18.0"
+        }
+      },
+      "node_modules/superagent": {
+        "version": "10.4.1",
+        "resolved": "https://registry.npmjs.org/superagent/-/superagent-10.4.1.tgz",
+        "integrity": "sha512-PVMkMrhKrSTtFhUU8jiWuGh/gyRMKiyCTCmm0+qVzRNxlfntmRKJkDhlEXN62x3HIb33sQ4kmL8lcSdccWAchQ==",
+        "dev": true,
+        "license": "MIT",
+        "dependencies": {
+          "component-emitter": "^1.3.1",
+          "cookiejar": "^2.1.4",
+          "debug": "^4.3.7",
+          "fast-safe-stringify": "^2.1.1",
+          "form-data": "^4.0.5",
+          "formidable": "^3.5.4",
+          "methods": "^1.1.2",
+          "mime": "2.6.0",
+          "qs": "^6.14.1"
+        },
+        "engines": {
+          "node": ">=14.18.0"
+        }
+      },
+      "node_modules/formidable": {
+        "version": "3.5.4",
+        "resolved": "https://registry.npmjs.org/formidable/-/formidable-3.5.4.tgz",
+        "integrity": "sha512-YikH+7CUTOtP44ZTnUhR7Ic2UASBPOqmaRkRKxRbywPTe5VxF7RRCck4af9wutiZ/QKM5nME9Bie2fFaPz5Gug==",
+        "dev": true,
+        "license": "MIT",
+        "dependencies": {
+          "@paralleldrive/cuid2": "^2.2.2",
+          "dezalgo": "^1.0.4",
+          "once": "^1.4.0"
+        },
+        "engines": {
+          "node": ">=14.0.0"
+        },
+        "funding": {
+          "url": "https://ko-fi.com/tunnckoCore/commissions"
+        }
+      }
+    },
+    "provenance": "Lockfile entries npm writes for supertest 7.3.1 and its newest in-range superagent (10.4.1) and formidable (3.5.4). Verified field by field against the npm registry on 2026-10-05 (tarball URL, integrity, license, dependencies, engines; formidable funding is normalized by npm from a string to {url}, the only form present in the baseline lockfile). 7.3.1, 10.4.1 and 3.5.4 are the newest versions in their ranges on that date. If a newer in-range superagent or formidable is published before implementation, a fresh install resolves differently and this input must be re-derived as a new objective version."
+  },
+  "floors": {
+    "unit": 2120,
+    "integration": 378,
+    "provenance": "Measured on the baseline under Node 22.23.3 (darwin-arm64), disposable PostgreSQL 18 and Redis in UTC, after prisma migrate deploy, prisma generate and seed: unit 2120 passed of 2120 (136 suites); integration 378 passed, 5 skipped, 0 failed (34 suites). Identical under Node 24.19.0 (see evidence/EVIDENCE.md)."
+  },
+  "allowedSkip": {
+    "check": "api-integration",
+    "test": "GcsStorageProvider (real GCS integration)",
+    "count": 5
+  }
+}
