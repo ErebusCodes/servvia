@@ -36,7 +36,7 @@ tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 # Re-anchored 2026-10-05 (Story 14.2). Planning tracking only, never requirements authority. Requirements: PRD/product-requirements.md + PRD/00-09.
 # NOTE: sprint_plan.py rebuilds development_status on every write and drops inline comments; re-apply annotations after any write run.
-# Denominator (2026-10-06): 98 tracked stories. 'done' here is G1 (story complete) only, never production readiness: release gates G1-G5 in _bmad-output/planning-artifacts/release-readiness-program.md.
+# Denominator (2026-10-06, revised): 108 tracked stories (98 + 10 added by the release-readiness program; history 61 -> 70 -> 93 -> 98 -> 108). 'done' here is G1 (story complete) only, never production readiness: release gates G1-G5 in _bmad-output/planning-artifacts/release-readiness-program.md.
 development_status:
   epic-1: in-progress
   1-1-api-lint-passes-so-the-api-ci-job-runs-to-completion: done
@@ -49,6 +49,8 @@ development_status:
   1-8-native-round-recovery-tests-refuse-a-database_url-host-query: done  # accepted 38bea30
   1-9-test-harness-loopback-binding: done  # accepted by the orchestrator 2026-10-06; frozen fc064b5 (objective dd4483c8); candidate f9110b7 governed PASS; integrated 963bd4c
   1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog  # DEFERRED (keep); not started; needs its own orchestrator authorization; does not follow Story 1.9 automatically
+  1-11-dependency-and-supply-chain-security-in-ci: backlog  # added 2026-10-06 (release-readiness program); RR-1
+  1-12-standing-regression-gate-in-ci: backlog  # added 2026-10-06 (release-readiness program); RR-5
   epic-1-retrospective: optional
 
   epic-2: done
@@ -73,6 +75,7 @@ development_status:
   epic-4: backlog
   4-1-core-runs-as-a-managed-windows-service-with-explicit-configu: backlog
   4-2-staging-environment-mirroring-the-venue-topology: backlog
+  4-3-reproducible-release-artifact-scripted-deployment-and-rollba: backlog  # added 2026-10-06 (release-readiness program); RR-4; production deploy NEEDS AUTHORIZATION
   epic-4-retrospective: optional
 
   epic-5: backlog
@@ -134,6 +137,8 @@ development_status:
   12-13-durable-ingestion-and-retention-of-security-and-operational: backlog
   12-14-isolated-queue-infrastructure-for-nest-integration-tests: done
   12-15-kitchen-kds-device-status-changes-fail-on-the-audit-actor-fo: done
+  12-17-accessibility-and-ux-acceptance-of-the-release-surfaces: backlog  # added 2026-10-06 (release-readiness program); RR-3
+  12-18-production-documentation-set: backlog  # added 2026-10-06 (release-readiness program); RR-9
   epic-12-retrospective: optional
 
   epic-13: backlog  # DEFERRED/BLOCKED placeholders (no 'deferred' status exists in the tracker vocabulary)
@@ -189,3 +194,11 @@ development_status:
   19-2-native-staff-mode-ordering-on-core-with-o-21-provenance: backlog
   19-3-native-settlement-parity-and-web-tablet-settlement-retiremen: backlog
   epic-19-retrospective: optional
+
+  epic-20: backlog  # added 2026-10-06: governed autonomous improvement loop (AIL-1..AIL-6); runs alongside product work
+  20-1-governed-evaluator-in-ci: backlog  # AIL-1; early
+  20-2-reusable-objective-preparation-tooling: backlog  # AIL-3; early
+  20-3-program-telemetry-and-retrospective-feedback: backlog  # AIL-5; early
+  20-4-durable-evidence-retention-and-stronger-evaluator-isolation: backlog  # AIL-6; before production qualification (G3)
+  20-5-lesson-extraction-and-promotion-phase-3: backlog  # AIL-4; BLOCKED until natural correction evidence (AIL-2, TAP residual); never manufactured
+  epic-20-retrospective: optional

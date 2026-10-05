@@ -34,7 +34,7 @@ This document provides the complete epic and story breakdown for servvia. It dec
 
 **Re-anchoring (2026-10-05, Story 14.2, `bmad-correct-course`).** This plan was generated on 2026-10-03 from the pre-normative PRD and the now-retired `fileRestructure.md`. It is re-anchored to the normative PRD. The change analysis and every story disposition (keep, rewrite, split, supersede, merge, defer) are those of the accepted sprint change proposal (`docs/checkpoints/2026-10-05/bmad-reconciliation-sprint-change-proposal.md`, revision 2 plus its section 17 decisions), which is the frozen planning target and not requirements authority. Every requirement a story cites resolves to SPRD, a normative volume, an accepted ADR or an accepted controlled decision; planning evidence explains sequencing only. Historical statements below that describe the 2026-10-03 state (for example the audit's defect list) are kept as history.
 
-**Release readiness (2026-10-06).** Story completion is not production readiness. The release gates G1–G5 (story, subsystem integration, release candidate, pilot, production), the canonical denominator (98 tracked stories), the coverage map, the proposed gap units, the autonomous-loop maturity, the program toward the owner's April 2027 target and the estimate envelope are in `_bmad-output/planning-artifacts/release-readiness-program.md` (planning artifact, PROPOSED, awaiting orchestrator review; not requirements authority).
+**Release readiness (2026-10-06).** Story completion is not production readiness. The release gates G1–G5 (story, subsystem integration, release candidate, pilot, production), the canonical denominator (108 tracked stories since revision 2), pilot versus production-complete scope (G5 requires the permanent native KDS and Waiter Tablet Staff Mode; Epics 18 and 19), the readiness and loop units (Stories 1.11, 1.12, 4.3, 12.17, 12.18 and Epic 20; extensions to 12.8 and 12.10), the program toward the owner's April 2027 target and the estimate envelope are in `_bmad-output/planning-artifacts/release-readiness-program.md`, with gate decisions in `release-gate-register.md` (planning artifacts, revision 2 awaiting orchestrator approval; not requirements authority). Each story keeps its own enterprise-quality obligations (SPRD §15, §26); the gates prove the integrated product.
 
 **Planning rules applied:**
 - **Unresolved items stay BLOCKED.** This covers every OWNER TARGET REQUIRED (OTR) and OWNER DECISION REQUIRED (ODR) item, the decisions still open in PRD section 14 and volume 00 section 00.10, R-3 and PENDING USER POS ANALYSIS REPORT. A story that needs one says `Status: BLOCKED` and names it. No target, provider behaviour or Windows POS behaviour is invented. Open owner and policy gates: O-1; the business parts of O-3, O-4, O-5 and O-6; pilot venue and timing (P13); P6; P2 and other configuration values; P5; P10; O-19 owner confirmation. DL-117 is NOT approved and dates nothing.
@@ -319,6 +319,10 @@ The kitchen runs on `apps/android/kds`, the permanent KDS, which replaces the tr
 Waitstaff use the native `apps/android/waiter-tablet` in Staff Mode, with O-20 staff elevation and O-21 provenance, replacing the transitional web Order Tablet and its ADR 0002 settlement exception.
 **Covers:** WT-1, WT-2, WT-4, WT-5, WT-6, O-20, O-21, ADR 0002 item 8 retirement rule, PR-8.
 
+### Epic 20: Governed autonomous improvement loop (development lifecycle)
+The governed evaluator and its bounded correction loop run as part of everyday development: in CI, with reusable objective-preparation tooling, program telemetry, durable evidence and stronger isolation, and lesson promotion once natural evidence exists.
+**Covers:** TEST-21, REL-24, DOD-26; owner program definition of completion (2026-10-06, planning input).
+
 ## Epic 1: Trustworthy build, CI and production start
 
 Engineers and operators can trust that what passes CI is what runs, that production refuses unsafe defaults, and that the Go Core is tested on every change. Audit P0-02 and P0-03.
@@ -338,7 +342,7 @@ So that the API job's typecheck and unit stages run in CI instead of stopping at
 
 - Traceability: TEST-21, QB-S; audit P0-02, CI evidence in section 3.4.
 - Depends on: none.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `94b6fa6`). Status line reconciled 2026-10-06.
 
 ### Story 1.2: Go Core CI job with real PostgreSQL and Redis
 
@@ -358,7 +362,7 @@ So that Core regressions are caught before merge.
 - Traceability: TEST-21, QB-I, QB-K; audit P0-02.
 - Depends on: none.
 - Finding resolved (2026-10-04): the API integration job now also runs on PostgreSQL 18, the production major version (18.6). Every Nest integration suite in this batch ran locally on PostgreSQL 18.4.
-- Status: READY. Validating on GitHub needs a push (NEEDS AUTHORIZATION: push). Local validation runs with the same commands against disposable containers.
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `19dbdff`). Status line reconciled 2026-10-06 (formerly READY; its validation on GitHub was noted as needing push authorization).
 
 ### Story 1.3: Venue Connector CI job made truthful
 
@@ -375,7 +379,7 @@ So that CI is green without hiding failures.
 
 - Traceability: TEST-21, PR-8; audit P0-02.
 - Depends on: none.
-- Status: READY (fix path). The retirement path is BLOCKED: approval of the external-POS cleanup checkpoint (the C workstream).
+- Status: DONE (fix path): accepted (frozen objective `story-1-3-venue-connector-ci-job-made-truthful` v1; candidate `4f987f7`; integrated `ff3e4d7`). The retirement path remains BLOCKED: approval of the external-POS cleanup checkpoint (the C workstream). Status line reconciled 2026-10-06.
 - Delivery: DONE. Fix path accepted (frozen objective `story-1-3-venue-connector-ci-job-made-truthful` v1; integrated in `ff3e4d7`). Tracking corrected 2026-10-05.
 
 ### Story 1.4: Nest production start runs the built entry point
@@ -393,7 +397,7 @@ So that the production service starts.
 
 - Traceability: QB-Q, REL-24; audit P0-03.
 - Depends on: none.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `746a7f8`). Status line reconciled 2026-10-06.
 
 ### Story 1.5: Production configuration fails closed
 
@@ -412,7 +416,7 @@ So that development guards can never be open in production.
 
 - Traceability: QB-R, SEC-16.7, NFR-SEC-2; audit P0-03, section 4.2.
 - Depends on: Story 1.4.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `60fc872`). Status line reconciled 2026-10-06.
 
 ### Story 1.6: Protect the main branch
 
@@ -478,6 +482,40 @@ So that a green API integration job proves those tests actually ran.
 - Depends on: Story 1.9.
 - Status: DEFERRED (keep). Not started. It is not scheduled to follow Story 1.9 automatically: it needs its own orchestrator authorization (Story 1.9 is only its technical prerequisite).
 
+### Story 1.11: Dependency and supply-chain security in CI
+
+As the owner,
+I want every dependency pinned and scanned for known vulnerabilities on every change,
+So that no unreviewed or vulnerable package reaches a release.
+
+**Acceptance Criteria:**
+
+**Given** the npm lockfile and the Go module checksums
+**When** CI runs on a change
+**Then** it refuses a dependency that is not pinned by the lockfile or `go.sum`, and it scans npm and Go dependencies for known vulnerabilities
+**And** findings are triaged under the defect policy (DEF-25), with no release-blocking finding left open at a release candidate (G3), and no new tool or registry is trusted without review.
+
+- Traceability: SPRD §15 row S; SEC-16 (section 16 item 14); DEF-25.
+- Depends on: Story 1.2.
+- Status: READY. Triage severities follow the DEF-25 policy (OWNER DECISION REQUIRED); scanning and pinning do not wait for it. (Added 2026-10-06 by the production-readiness program reconciliation (`_bmad-output/planning-artifacts/release-readiness-program.md`): RR-1.)
+
+### Story 1.12: Standing regression gate in CI
+
+As the owner,
+I want critical journeys, contracts and migrations re-proven on every change,
+So that a regression is caught before it reaches a release candidate.
+
+**Acceptance Criteria:**
+
+**Given** the release-acceptance journeys automated by Story 12.8 as they become available, the contract tests in `contracts/` and the Prisma migrations
+**When** CI runs on a change
+**Then** the critical end-to-end journeys and the contract tests run against disposable PostgreSQL and Redis, and the migrations are proven from zero, as an upgrade from the previous release and free of drift
+**And** a failure blocks the change; no journey, contract or migration check is skipped to make the gate pass.
+
+- Traceability: TEST-21 (section 21 contract, end-to-end and migration rows); REL-24 (section 24 items 3 and 4).
+- Depends on: Stories 1.2 and 3.1; it grows with Story 12.8.
+- Status: READY to build incrementally. (Added 2026-10-06 by the production-readiness program reconciliation (`_bmad-output/planning-artifacts/release-readiness-program.md`): RR-5.)
+
 ## Epic 2: Secure access to staff, devices and realtime
 
 Staff, devices and realtime subscribers act only within their verified identity, role and venue. Revoked or unverifiable credentials are refused immediately. Audit P0-04.
@@ -517,7 +555,7 @@ So that a revoked device can never keep receiving venue events.
 - Traceability: SEC-16.5, SEC-16.12, NFR-SEC-3, QB-B; audit section 4.3, P0-04.
 - PRODUCT DECISION DEPENDENCY: NONE.
 - Depends on: none.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `fff21b2`). Status line reconciled 2026-10-06.
 
 ### Story 2.2: Staff venue access is enforced by Core
 
@@ -547,7 +585,7 @@ So that staff can act only in explicitly granted venues.
 - Traceability: SEC-16.3, NFR-SEC-3, QB-D, MVP 9.6 (via PRD section 11 pilot acceptance); audit section 4.8; ADR 0002 item 9.
 - PRODUCT DECISION DEPENDENCY: NONE for the rule as written.
 - Depends on: none.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `78b0253`). Status line reconciled 2026-10-06.
 
 ### Story 2.3: Remove the unauthenticated local file-write endpoint from production builds
 
@@ -564,7 +602,7 @@ So that no unauthenticated client can write files.
 
 - Traceability: SEC-16.8, QB-B; audit section 4.1.
 - Depends on: Story 1.5.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `fe3e98b`). Status line reconciled 2026-10-06.
 
 ### Story 2.4: Named staff sign-in replaces the shared admin PIN
 
@@ -600,7 +638,7 @@ So that a leaked or stale token cannot be used for 7 days.
 
 - Traceability: SEC-16.4, SEC-16.5; audit section 4.7.
 - Depends on: Story 2.2.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `2f36300`). Status line reconciled 2026-10-06.
 
 ### Story 2.6: Transitional socket.io authentication and CORS hardening
 
@@ -616,7 +654,7 @@ So that the legacy realtime path is not the weak link until clients move to Core
 
 - Traceability: SEC-16.9, SEC-16.12; audit section 4.4.
 - Depends on: Story 2.5.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `f6efe6b`). Status line reconciled 2026-10-06.
 
 ### Story 2.7: Kitchen role cannot create or cancel orders; reservation email is escaped
 
@@ -636,7 +674,7 @@ So that a kitchen screen cannot alter orders and email cannot be injected.
 
 - Traceability: least privilege SEC-16.1; NFR-SEC-2; audit sections 4.6 and 4.9.
 - Depends on: none.
-- Status: READY
+- Status: DONE (tracked `done` in sprint-status.yaml; part of the accepted lineage recorded in docs/checkpoints/2026-10-05; implemented in `5095101`). Status line reconciled 2026-10-06.
 
 ### Story 2.8: Durable staff sessions in PostgreSQL
 
@@ -789,6 +827,23 @@ So that cutover stories can be proven before the venue.
 - Traceability: REL-24, SEC-16 (TLS); audit P0-06.
 - Depends on: Story 4.1.
 - Status: NEEDS AUTHORIZATION: provisioning staging infrastructure.
+
+### Story 4.3: Reproducible release artifact, scripted deployment and rollback
+
+As an operator,
+I want every release to be one reproducible, versioned artifact deployed and rolled back by script,
+So that what was qualified is exactly what runs, and every release is reversible.
+
+**Acceptance Criteria:**
+
+**Given** a commit that passes CI
+**When** a release is cut
+**Then** CI produces a versioned, reproducible artifact for Go Core (and each transitional service still released), with its checksums and dependency manifest
+**And** a scripted deployment installs that exact artifact into staging (Story 4.2) and, under separate authorization, production, and a scripted rollback restores the previous release, or the release documents its forward-fix path when a migration is not reversible (SPRD §15 row Q).
+
+- Traceability: SPRD §15 row Q; REL-24 (section 24 items 4, 5 and 8).
+- Depends on: Stories 4.1 and 4.2.
+- Status: READY in staging after its dependencies. A production deployment is NEEDS AUTHORIZATION. (Added 2026-10-06 by the production-readiness program reconciliation (`_bmad-output/planning-artifacts/release-readiness-program.md`): RR-4.)
 
 ## Epic 5: Staff ordering on Core from the Order Tablet
 
@@ -1373,7 +1428,7 @@ So that the GST overcharge and the public, unbounded payment intent cannot reach
 
 - Traceability: PAY-3, KSK-4; audit P0-19, section 4.10.
 - Depends on: Story 1.5.
-- Status: READY
+- Status: DONE. Accepted (frozen objective `story-12-5-kiosk-off-in-production` v1, anchor `a4a4190`; candidate `8b58e48`; integrated `e575658`). Status line reconciled 2026-10-06.
 - Delivery: DONE. Accepted (frozen objective `story-12-5-kiosk-off-in-production` v1; integrated in `e575658`). Tracking corrected 2026-10-05.
 
 ### Story 12.6: Hide or relabel mock Admin pages
@@ -1419,8 +1474,9 @@ So that go-live readiness is proven, not asserted.
 **Given** the release-acceptance list
 **When** the suite runs in staging
 **Then** every item passes, with evidence: pricing and tax, no duplicate charges or KOTs, ordered replay, station routing, payment reconciliation, refunds, device revocation, audit correlation, and staff-visible recovery.
+**And** (extended 2026-10-06, RR-7) a release-level data-integrity validation reconciles the acceptance and drill data end to end (orders, rounds and lines, checks, payments, refunds and reversals, shift cash, AuditLog and domain-event coverage) and reports every discrepancy as a defect.
 
-- Traceability: REL-24, PRD section 11; audit P0-15.
+- Traceability: REL-24, PRD section 11; SPRD §17 (section 24 item 11); audit P0-15.
 - Depends on: Epics 5 to 10.
 - Status: READY to build incrementally. Final pass needs Story 10.6 (BLOCKED: O-3).
 
@@ -1451,8 +1507,9 @@ So that release-blocking issues are found first.
 **Given** Epics 1 and 2 are complete
 **When** the review runs
 **Then** findings are triaged under the defect policy.
+**And** (extended 2026-10-06, RR-2) the review includes a recorded threat review of each external surface (Core API, Core realtime, Venue Edge, device credentials and the payment adapter) that feeds its test plan, and penetration testing precedes production exposure of each new external surface.
 
-- Traceability: SEC-16, DEF-25; audit P1-05.
+- Traceability: SEC-16, DEF-25; §00.8 item 7 (volume 00); audit P1-05.
 - Depends on: Epic 2.
 - Status: BLOCKED: DEF-25 severity definitions (ODR).
 
@@ -1557,6 +1614,40 @@ So that no order names a fabricated staff member as its creator.
 - Traceability: NFR-AUD; Story 12.15 finding.
 - Depends on: Story 12.15.
 - Status (historical): READY. Merged 2026-10-05: a device-originated order creator is a special case of O-21 provenance, delivered by Story 15.2c (split 2026-10-06).
+
+### Story 12.17: Accessibility and UX acceptance of the release surfaces
+
+As the owner,
+I want every user-facing surface in a release accepted for accessibility and UX,
+So that a release candidate meets the product-quality bar on its real surfaces, not only story by story.
+
+**Acceptance Criteria:**
+
+**Given** a release candidate and the user-facing surfaces it ships
+**When** they are reviewed against the accessibility requirements (semantic structure, keyboard access and screen-reader compatibility where applicable, contrast, visible focus, scalable text, understandable errors, touch targets) and the UX requirements
+**Then** each surface has a recorded acceptance with its findings, triaged under the defect policy
+**And** no release-blocking finding remains open at G3. Story-level accessibility obligations stay with each story; this story proves the integrated surfaces.
+
+- Traceability: UX-22, A11Y-23 (SPRD §22, §23); SPRD §15 rows AB and AC; REL-24 (section 24 items 12 and 13).
+- Depends on: the surfaces of the release (Epics 5, 6 and 9 for the pilot; Epics 18 and 19 for production completion).
+- Status: READY after its dependencies. (Added 2026-10-06 by the production-readiness program reconciliation (`_bmad-output/planning-artifacts/release-readiness-program.md`): RR-3.)
+
+### Story 12.18: Production documentation set
+
+As an operator and as staff,
+I want the documentation a production capability needs to exist with it,
+So that the product can be operated, integrated, secured and used without tribal knowledge.
+
+**Acceptance Criteria:**
+
+**Given** the capabilities of a release
+**When** the release candidate is assembled
+**Then** its documentation set exists: an API reference generated from `contracts/`, data-model and deployment documentation, security procedures and role-specific user guidance
+**And** the runbooks of Story 12.9 are linked from it; documentation is versioned with the release.
+
+- Traceability: §00.8 item 6 (volume 00); SPRD §15 row AF; REL-24 (section 24 item 7).
+- Depends on: Story 12.9; the capabilities of the release.
+- Status: READY to build incrementally. (Added 2026-10-06 by the production-readiness program reconciliation (`_bmad-output/planning-artifacts/release-readiness-program.md`): RR-9.)
 
 ## Epic 13: Deferred and blocked product scope (placeholders)
 
@@ -2010,7 +2101,7 @@ So that the pilot's sales figures follow the decided definition.
 
 ## Epic 17: Native Android platform foundation (post-pilot track)
 
-The four native applications share one approved engineering baseline (O-10), secure device enrollment and credential storage, and a Core realtime client. This is permanent target architecture, off the first-pilot critical path (ADR 0002; D-1; O-1 open). O-10 is approved; no version is pinned by planning.
+The four native applications share one approved engineering baseline (O-10), secure device enrollment and credential storage, and a Core realtime client. This is permanent target architecture, off the first-pilot critical path (ADR 0002; D-1; O-1 open). O-10 is approved; no version is pinned by planning. **Production completion (2026-10-06):** on the G5 critical path, because it precedes Epics 18 and 19 (`_bmad-output/planning-artifacts/release-readiness-program.md`).
 
 ### Story 17.1: Android engineering baseline per O-10
 
@@ -2049,7 +2140,7 @@ So that native apps authenticate as revocable, venue-bound devices and stay curr
 
 ## Epic 18: Native Android KDS (post-pilot; permanent KDS replacement)
 
-The kitchen runs on `apps/android/kds`, the permanent KDS. It is the first native surface, a time-boxed platform pathfinder on the lowest-risk surface, and replaces the transitional web KDS after parity (D-1 steps 3–6). It is not a first-pilot blocker under D-1.
+The kitchen runs on `apps/android/kds`, the permanent KDS. It is the first native surface, a time-boxed platform pathfinder on the lowest-risk surface, and replaces the transitional web KDS after parity (D-1 steps 3–6). It is not a first-pilot blocker under D-1. **Production completion (2026-10-06):** this epic is required for G5 (Servvia production ready) in `_bmad-output/planning-artifacts/release-readiness-program.md`: the transitional web surface it replaces may serve the first pilot (ADR 0002), but it is not the production-complete surface.
 
 ### Story 18.1: Native KDS tickets and transitions on Core with a D8 identity
 
@@ -2117,7 +2208,7 @@ So that the transitional surface is removed without loss of function, security o
 
 ## Epic 19: Native Waiter Tablet Staff Mode (post-pilot; primary transitional-retirement target)
 
-Waitstaff use `apps/android/waiter-tablet` in Staff Mode. It replaces the transitional web Order Tablet, the DL-081 Nest tablet identity and the ADR 0002 settlement exception, and reuses the foundation proven by Epic 18 (it may start once Story 17.2 is proven, without waiting for Story 18.4). Whether it is required for the first pilot is O-1 (open; ADR 0002 default is no). Guest Mode (Story 13.2) is a follow-on.
+Waitstaff use `apps/android/waiter-tablet` in Staff Mode. It replaces the transitional web Order Tablet, the DL-081 Nest tablet identity and the ADR 0002 settlement exception, and reuses the foundation proven by Epic 18 (it may start once Story 17.2 is proven, without waiting for Story 18.4). Whether it is required for the first pilot is O-1 (open; ADR 0002 default is no). Guest Mode (Story 13.2) is a follow-on. **Production completion (2026-10-06):** this epic is required for G5 (Servvia production ready) in `_bmad-output/planning-artifacts/release-readiness-program.md`: the transitional web surface it replaces may serve the first pilot (ADR 0002), but it is not the production-complete surface.
 
 ### Story 19.1: Native Staff Mode elevation per O-20
 
@@ -2167,6 +2258,95 @@ So that the ADR 0002 transitional settlement surface is removed safely.
 - Traceability: ADR 0002 item 8, PR-8, PAY-1, PAY-7.
 - Depends on: Stories 19.2 and Epic 9.
 - Status: READY after its dependencies. Retirement needs separate operational authorization.
+
+## Epic 20: Governed autonomous improvement loop (development lifecycle)
+
+The governed evaluator (`tooling/evaluator`, Phases 1 and 2) judges candidates deterministically against frozen objectives. This epic makes the loop part of the development lifecycle rather than a local, per-story tool: evaluator runs in CI (20.1), reusable objective-preparation tooling (20.2), program telemetry and retrospective feedback (20.3), durable evidence and stronger evaluator isolation (20.4), and lesson extraction and promotion once genuine correction evidence exists (20.5). Natural correction evidence (the TAP residual) is an evidence requirement, never manufactured. Planning and sequencing: `_bmad-output/planning-artifacts/release-readiness-program.md` (AIL-1…AIL-6). Changes to `tooling/evaluator/**` are governance changes: each is reviewed and accepted by the orchestrator and is never made by a candidate of another story.
+
+### Story 20.1: Governed evaluator in CI
+
+As the orchestrator,
+I want anchored evaluations to run in CI on pushed candidates,
+So that a story's verdict does not depend on one developer machine and every evaluation leaves durable evidence.
+
+**Acceptance Criteria:**
+
+**Given** a frozen objective anchor and a pushed candidate commit
+**When** the CI evaluation job runs
+**Then** it exports the evaluator from the anchor, provisions the pinned toolchain and disposable PostgreSQL and Redis, runs the evaluation and publishes the verdict and the redacted evidence record as CI artifacts
+**And** it cannot be reconfigured by the candidate (the job definition and evaluator come from the anchor or from protected configuration), and a candidate change to the job is an integrity violation.
+
+- Traceability: TEST-21; REL-24 (explicit release evidence); DOD-26.
+- Depends on: Story 1.6 (protected `main`; NEEDS AUTHORIZATION) for enforcement; the job itself depends on none.
+- Status: READY. Enforcement as a required check needs GitHub administration (NEEDS AUTHORIZATION).
+
+### Story 20.2: Reusable objective-preparation tooling
+
+As the orchestrator,
+I want objective generation, positive and negative controls, adversarial probes and provisioning as shared, tested tools,
+So that preparing a governed story is cheaper and every objective is proven the same way.
+
+**Acceptance Criteria:**
+
+**Given** the per-story generators, control runners, adversarial probe harnesses and provisioning scripts of Stories 1.9 and 15.1
+**When** they are generalised into shared tooling under `tooling/`
+**Then** a new objective can be generated deterministically (`--check` byte-identical), its negative and positive controls and adversarial variants run with one command each, and the masked-variant count and determinism results are reported in a standard form
+**And** the evaluator's own trust model is unchanged: the tooling prepares and proves drafts; it never freezes, approves or relaxes an objective.
+
+- Traceability: TEST-21 (deterministic tests); DOD-26.
+- Depends on: none.
+- Status: READY.
+
+### Story 20.3: Program telemetry and retrospective feedback
+
+As the owner,
+I want engineering-program measurements of each governed story,
+So that forecasts improve from evidence and retrospectives feed planning.
+
+**Acceptance Criteria:**
+
+**Given** the governed lifecycle (preparation, freeze, implementation, evaluation, review, integration)
+**When** a story moves through it
+**Then** the program records, per story: objective-preparation elapsed effort, implementation elapsed effort, evaluator elapsed time, correction iterations, review and rework rounds, test-suite growth, defect escapes and reopens, and blocker or external waiting time kept separately
+**And** epic retrospectives consume these records and route their action items into planning; the measurements are about the engineering program, never surveillance of individuals.
+
+- Traceability: DOD-26; REL-24.
+- Depends on: none.
+- Status: READY.
+
+### Story 20.4: Durable evidence retention and stronger evaluator isolation
+
+As the orchestrator,
+I want evaluation evidence and ledgers retained durably off the developer host, and the evaluator isolated from the code it judges,
+So that release evidence survives and tampering is prevented, not only detected.
+
+**Acceptance Criteria:**
+
+**Given** evidence and ledgers kept today under `~/.servvia` and the same-account trust model (tooling/evaluator README, Limitations)
+**When** this story is complete
+**Then** evidence records and ledgers are retained in a durable store with integrity checks and a defined retention, and candidate code runs isolated from the evaluator's own files and evidence (for example a separate OS account, container or CI runner)
+**And** redaction rules are unchanged or stronger, and nothing secret is retained.
+
+- Traceability: REL-24 (explicit release evidence); SEC-16; SPRD §15 row M.
+- Depends on: Story 20.1.
+- Status: READY after its dependency. Retention beyond the minimum is an owner decision where it carries cost.
+
+### Story 20.5: Lesson extraction and promotion (Phase 3)
+
+As the orchestrator,
+I want recurring failure signatures turned into reviewed lessons and promoted into checks or policy,
+So that the loop improves the process, not only individual candidates.
+
+**Acceptance Criteria:**
+
+**Given** genuine correction evidence: naturally occurring failure packets, corrections and repeated signatures in real governed stories (never synthetic ones)
+**When** lessons are extracted
+**Then** each `LESSON CANDIDATE` is reviewed by the orchestrator, and an accepted lesson is promoted only as a versioned change to policy, checks or objective templates, with its evidence
+**And** no lesson is promoted automatically, and the TAP residual is closed only by a natural correction whose packet sufficiency was assessed.
+
+- Traceability: DOD-26; TEST-21.
+- Depends on: natural correction evidence (the TAP residual); Story 20.3.
+- Status: BLOCKED: no natural correction evidence yet (7 governed stories, 7 first-iteration passes, 0 lesson candidates as of 2026-10-06). Never manufactured.
 
 ## Readiness Gate Record (bmad-sprint-planning, 2026-10-03)
 
