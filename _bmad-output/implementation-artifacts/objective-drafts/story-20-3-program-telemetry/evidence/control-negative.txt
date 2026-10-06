@@ -1,0 +1,47 @@
+# negative control (disposable; evaluate.mjs, no ledger)
+verdict FAIL
+objective 9dccbd0080b94276639e690a25a412fdf4b6f2ae917809401bf64a2bad3ca2fc
+anchor eae2e3bb89a6e4e6cd0aabed2250b74f221f3796 (simulated, disposable)
+candidate eae2e3bb89a6e4e6cd0aabed2250b74f221f3796
+environment v22.23.3
+check node-tests exit 0 tests 115 skipped 0
+check telemetry-contract exit 1 tests 0 skipped 0
+check telemetry-boundaries exit 1 tests 0 skipped 0
+check telemetry-backfill exit 1 tests 0 skipped 0
+required RT-1 baseline NOT_FOUND None
+required RT-2 baseline NOT_FOUND None
+required RT-3 baseline NOT_FOUND None
+required RT-4 baseline NOT_FOUND None
+required RT-5 baseline NOT_FOUND None
+required RT-6 baseline NOT_FOUND None
+finding FAIL check-failed telemetry-contract exit code 1
+finding FAIL check-failed telemetry-boundaries exit code 1
+finding FAIL check-failed telemetry-backfill exit code 1
+finding FAIL required-test-missing node-tests RT-1: no test named "telemetry: the event log is append-only and hash-chained" ran
+finding FAIL required-test-missing node-tests RT-2: no test named "telemetry: unknown values stay unknown" ran
+finding FAIL required-test-missing node-tests RT-3: no test named "telemetry: blocked time is kept separate from effort" ran
+finding FAIL required-test-missing node-tests RT-4: no test named "telemetry: iterations and corrections are derived from the ledger" ran
+finding FAIL required-test-missing node-tests RT-5: no test named "telemetry: deriving never writes evaluator state" ran
+finding FAIL required-test-missing node-tests RT-6: no test named "telemetry: the summary is deterministic" ran
+integrity findings []
+
+## check-telemetry-contract.log (head and tail)
+FAIL the telemetry CLI tooling/telemetry/bin/telemetry.mjs does not exist
+
+FAIL the telemetry CLI tooling/telemetry/bin/telemetry.mjs does not exist
+
+--- stderr ---
+
+## check-telemetry-boundaries.log (head and tail)
+FAIL tooling/telemetry/bin/telemetry.mjs does not exist
+
+FAIL tooling/telemetry/bin/telemetry.mjs does not exist
+
+--- stderr ---
+
+## check-telemetry-backfill.log (head and tail)
+FAIL the telemetry log _bmad-output/implementation-artifacts/telemetry/events.jsonl does not exist
+
+FAIL the telemetry log _bmad-output/implementation-artifacts/telemetry/events.jsonl does not exist
+
+--- stderr ---

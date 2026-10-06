@@ -1,0 +1,427 @@
+package integration
+
+// EVALUATOR-OWNED (Story 15.1, checks audit-attribution-routes and
+// audit-actor-model). Written into
+// the candidate by the check, run, and removed; never part of the candidate.
+// It drives every audited Core write route through server.Routes, wired as
+// cmd/api wires it, with a staff member on a PIN-elevated tablet (tablet_staff,
+// tablet_manager) and with a staff login session, and reads back the AuditLog
+// rows: a staff action through a tablet names the staff member AND the tablet
+// it was performed on; a staff login names no device; nothing is attributed to
+// a device or the system; nothing the client sends besides its verified token
+// changes the recorded actor. It uses only surfaces that exist at the
+// baseline, so it runs there too.
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+
+	"servvia/services/core-platform/internal/checks"
+	"servvia/services/core-platform/internal/checks/checksapi"
+	evalStory151CheckStore "servvia/services/core-platform/internal/checks/pgstore"
+	"servvia/services/core-platform/internal/devices"
+	"servvia/services/core-platform/internal/devices/devicesapi"
+	evalStory151DeviceStore "servvia/services/core-platform/internal/devices/pgstore"
+	"servvia/services/core-platform/internal/health"
+	"servvia/services/core-platform/internal/identity"
+	"servvia/services/core-platform/internal/menu"
+	"servvia/services/core-platform/internal/orders"
+	"servvia/services/core-platform/internal/orders/ordersapi"
+	evalStory151OrderStore "servvia/services/core-platform/internal/orders/pgstore"
+	"servvia/services/core-platform/internal/payments"
+	"servvia/services/core-platform/internal/payments/paymentsapi"
+	evalStory151PaymentStore "servvia/services/core-platform/internal/payments/pgstore"
+	"servvia/services/core-platform/internal/platform/postgres"
+	"servvia/services/core-platform/internal/pricing/pgcatalog"
+	"servvia/services/core-platform/internal/promotions"
+	evalStory151PromotionStore "servvia/services/core-platform/internal/promotions/pgstore"
+	"servvia/services/core-platform/internal/promotions/promotionsapi"
+	"servvia/services/core-platform/internal/ratelimit"
+	"servvia/services/core-platform/internal/refunds"
+	"servvia/services/core-platform/internal/refunds/refundsapi"
+	"servvia/services/core-platform/internal/server"
+	"servvia/services/core-platform/internal/shifts"
+	evalStory151ShiftStore "servvia/services/core-platform/internal/shifts/pgstore"
+	"servvia/services/core-platform/internal/shifts/shiftsapi"
+	"servvia/services/core-platform/internal/tables"
+	evalStory151TableStore "servvia/services/core-platform/internal/tables/pgstore"
+	"servvia/services/core-platform/internal/tables/tablesapi"
+	"servvia/services/core-platform/internal/venues"
+	"servvia/services/core-platform/tests/testsupport"
+)
+
+const evalStory151Secret = "evaluator-story-15-1-secret-0123456789"
+
+type evalStory151Sessions struct{}
+
+func (evalStory151Sessions) StaffActive(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+func (evalStory151Sessions) SessionLive(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
+type evalStory151Limiter struct{}
+
+func (evalStory151Limiter) Eval(ctx context.Context, _ string, _ []string, _ ...any) *redis.Cmd {
+	cmd := redis.NewCmd(ctx)
+	cmd.SetVal([]any{int64(0), int64(1)})
+	return cmd
+}
+
+type evalStory151Harness struct {
+	f      testsupport.OrdersFixture
+	writer *pgxpool.Pool
+	routes http.Handler
+}
+
+// evalStory151Setup wires Core exactly as cmd/api/main.go does (read-write).
+func evalStory151Setup(t *testing.T) evalStory151Harness {
+	t.Helper()
+	url := testsupport.DisposableDatabaseURL(t)
+	ctx := context.Background()
+	writer, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(writer.Close)
+	f := testsupport.SeedOrdersFixture(t, ctx, writer)
+	pool, err := postgres.NewPool(ctx, postgres.Options{URL: url, MaxConns: 16, ReadOnly: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	onFail := func(err error) { t.Errorf("best-effort audit write failed: %v", err) }
+	venueStore := venues.NewPostgresStore(pool)
+	promotionStore := evalStory151PromotionStore.New(pool)
+	paymentStore := evalStory151PaymentStore.New(pool, onFail, evalStory151ShiftStore.Ledger{})
+	deviceService := devices.NewService(evalStory151DeviceStore.New(pool), true, evalStory151DeviceStore.NewID)
+	routes := server.Routes(server.Deps{
+		Logger: logger, Health: health.New(pool, time.Second),
+		Menu:          menu.NewHandler(menu.NewPostgresStore(pool), logger),
+		Venues:        venues.NewHandler(venueStore, logger),
+		TableSessions: tablesapi.NewHandler(tables.NewService(evalStory151TableStore.New(pool), true), venueStore, logger),
+		Orders: ordersapi.NewHandler(orders.NewService(evalStory151OrderStore.New(pool, onFail), pgcatalog.New(pool), true).
+			WithPromotions(promotionStore, time.Now), venueStore, logger),
+		Promotions: promotionsapi.NewHandler(promotions.NewService(promotionStore, true), venueStore, logger),
+		Checks:     checksapi.NewHandler(checks.NewService(evalStory151CheckStore.New(pool, onFail), true), venueStore, logger),
+		Payments:   paymentsapi.NewHandler(payments.NewService(paymentStore, true), venueStore, logger),
+		Shifts:     shiftsapi.NewHandler(shifts.NewService(evalStory151ShiftStore.New(pool), true), venueStore, logger),
+		Devices:    devicesapi.NewHandler(deviceService, venueStore, logger),
+		Refunds:    refundsapi.NewHandler(refunds.NewService(paymentStore.Adjustments(), true), venueStore, logger),
+		DeviceAuth: deviceService,
+		Verifier:   identity.NewVerifier(evalStory151Secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		VenueGrants:   identity.NewPostgresVenueGrants(pool),
+		StaffSessions: identity.StaffSessions{Staff: evalStory151Sessions{}, Sessions: evalStory151Sessions{}},
+		RateLimiter:   ratelimit.New(evalStory151Limiter{}, 0, logger),
+	})
+	return evalStory151Harness{f: f, writer: writer, routes: routes}
+}
+
+func (h evalStory151Harness) exec(t *testing.T, sql string, args ...any) {
+	t.Helper()
+	if _, err := h.writer.Exec(context.Background(), sql, args...); err != nil {
+		t.Fatalf("seed: %v\n%s", err, sql)
+	}
+}
+
+// staff adds a staff member of the fixture organization with venue access.
+func (h evalStory151Harness) staff(t *testing.T, role string) (id, email string) {
+	t.Helper()
+	id = testsupport.UUID()
+	email = "eval-" + id + "@example.test"
+	h.exec(t, `INSERT INTO "Staff"(id,"organizationId",email,name,"passwordHash",role,"updatedAt") VALUES($1,$2,$3,'Evaluator','x',$4,now())`,
+		id, h.f.Org, email, role)
+	testsupport.GrantVenueAccess(t, context.Background(), h.writer, h.f.Owner, []string{id}, []string{h.f.Venue})
+	return id, email
+}
+
+// tablet enrolls an active TabletDevice at the fixture venue.
+func (h evalStory151Harness) tablet(t *testing.T) string {
+	t.Helper()
+	enrollment, device := testsupport.UUID(), testsupport.UUID()
+	h.exec(t, `INSERT INTO "TabletEnrollment" (id, "organizationId", "venueId", "codeHash", "createdByStaffId", "expiresAt", "usedAt")
+		VALUES ($1, $2, $3, 'x', $4, now() + interval '1 hour', now())`, enrollment, h.f.Org, h.f.Venue, h.f.Owner)
+	h.exec(t, `INSERT INTO "TabletDevice" (id, "organizationId", "venueId", "enrollmentId", label, "secretHash", status, "updatedAt")
+		VALUES ($1, $2, $3, $4, 'Evaluator tablet', 'x', 'active', now())`, device, h.f.Org, h.f.Venue, enrollment)
+	t.Cleanup(func() {
+		ctx := context.Background()
+		_, _ = h.writer.Exec(ctx, `DELETE FROM "TabletDevice" WHERE id = $1`, device)
+		_, _ = h.writer.Exec(ctx, `DELETE FROM "TabletEnrollment" WHERE id = $1`, enrollment)
+	})
+	return device
+}
+
+type evalStory151Caller struct {
+	name, kind, staffID, email, role, deviceID string
+}
+
+func (c evalStory151Caller) token(t *testing.T, venue, org string) string {
+	t.Helper()
+	claims := jwt.MapClaims{"sub": c.staffID, "email": c.email, "role": c.role, "organizationId": org,
+		"exp": time.Now().Add(10 * time.Minute).Unix()}
+	if c.kind == "" {
+		claims["sid"] = testsupport.UUID()
+	} else {
+		claims["kind"], claims["venueId"], claims["deviceId"] = c.kind, venue, c.deviceID
+	}
+	s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(evalStory151Secret))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// forged is what a client could claim besides its token; it must not reach the record.
+const evalStory151Forged = "00000000-0000-4000-8000-0000000f0f6e"
+
+func (h evalStory151Harness) call(t *testing.T, c evalStory151Caller, path, body string, want int) map[string]any {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/venues/"+h.f.Venue+path+"?deviceId="+evalStory151Forged+"&actorType=device", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+c.token(t, h.f.Venue, h.f.Org))
+	req.Header.Set("Content-Type", "application/json")
+	for _, k := range []string{"X-Device-Id", "X-Servvia-Device-Id", "X-Tablet-Device-Id", "X-Actor-Id", "X-Staff-Id"} {
+		req.Header.Set(k, evalStory151Forged)
+	}
+	req.Header.Set("X-Actor-Type", "device")
+	rec := httptest.NewRecorder()
+	h.routes.ServeHTTP(rec, req)
+	if rec.Code != want {
+		t.Fatalf("%s POST %s: status %d, want %d: %s", c.name, path, rec.Code, want, rec.Body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("%s POST %s: %v", c.name, path, err)
+	}
+	return out
+}
+
+func evalStory151ID(t *testing.T, m map[string]any, path ...string) string {
+	t.Helper()
+	var v any = m
+	for _, k := range path {
+		o, ok := v.(map[string]any)
+		if !ok {
+			t.Fatalf("response has no %v: %v", path, m)
+		}
+		v = o[k]
+	}
+	s, ok := v.(string)
+	if !ok || s == "" {
+		t.Fatalf("response has no %v: %v", path, m)
+	}
+	return s
+}
+
+func evalStory151Key() string { return "eval151-" + testsupport.UUID() }
+
+type evalStory151Row struct {
+	resource, resourceID, actorType                                   string
+	actorID, actorEmail, actorRole, deviceKind, deviceID, systemActor *string
+}
+
+func evalStory151S(p *string) string {
+	if p == nil {
+		return "<null>"
+	}
+	return *p
+}
+
+func (h evalStory151Harness) rows(t *testing.T, resource, id string) []evalStory151Row {
+	t.Helper()
+	r, err := h.writer.Query(context.Background(), `SELECT resource, coalesce("resourceId", ''), "actorType"::text, "actorId", "actorEmail", "actorRole"::text,
+		"deviceKind", "deviceId", "systemActor" FROM "AuditLog" WHERE "organizationId" = $1 AND resource = $2 AND "resourceId" = $3`, h.f.Org, resource, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	var out []evalStory151Row
+	for r.Next() {
+		var x evalStory151Row
+		if err := r.Scan(&x.resource, &x.resourceID, &x.actorType, &x.actorID, &x.actorEmail, &x.actorRole, &x.deviceKind, &x.deviceID, &x.systemActor); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, x)
+	}
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// expect requires at least one AuditLog row for the resource, every one of
+// them naming exactly the caller (and its tablet, when it used one).
+func (h evalStory151Harness) expect(t *testing.T, c evalStory151Caller, resource, id string) {
+	t.Helper()
+	rs := h.rows(t, resource, id)
+	if len(rs) == 0 {
+		t.Errorf("%s: no AuditLog row for %s %s", c.name, resource, id)
+		return
+	}
+	wantKind, wantDevice := "<null>", "<null>"
+	if c.kind != "" {
+		wantKind, wantDevice = "tablet_device", c.deviceID
+	}
+	want := [7]string{"staff", c.staffID, c.email, c.role, wantKind, wantDevice, "<null>"}
+	for _, r := range rs {
+		got := [7]string{r.actorType, evalStory151S(r.actorID), evalStory151S(r.actorEmail), evalStory151S(r.actorRole),
+			evalStory151S(r.deviceKind), evalStory151S(r.deviceID), evalStory151S(r.systemActor)}
+		if got != want {
+			t.Errorf("%s: AuditLog %s %s: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = %v, want %v",
+				c.name, resource, id, got, want)
+		}
+	}
+}
+
+// visit runs one staff member's service through Core's audited routes and
+// checks each resource's AuditLog rows: shift, table session, order, check,
+// payment and, for a refund role, refund.
+func (h evalStory151Harness) visit(t *testing.T, c evalStory151Caller, table string, refund bool) {
+	t.Helper()
+	source := "pos_terminal"
+	if c.kind != "" {
+		source = "waiter_tablet"
+	}
+	shift := h.call(t, c, "/shifts", `{"openingFloatCents":10000,"idempotencyKey":"`+evalStory151Key()+`"}`, http.StatusCreated)
+	h.expect(t, c, "shift", evalStory151ID(t, shift, "id"))
+	session := h.call(t, c, "/tables/"+table+"/sessions", `{"covers":2,"idempotencyKey":"`+evalStory151Key()+`"}`, http.StatusCreated)
+	sessionID := evalStory151ID(t, session, "id")
+	h.expect(t, c, "table_session", sessionID)
+	order := h.call(t, c, "/orders", `{"source":"`+source+`","serviceMode":"dine_in","tableSessionId":"`+sessionID+`","idempotencyKey":"`+evalStory151Key()+
+		`","items":[{"menuItemId":"`+h.f.Plain+`","quantity":1,"expectedUnitPriceCents":550}]}`, http.StatusCreated)
+	orderID := evalStory151ID(t, order, "id")
+	h.expect(t, c, "order", orderID)
+	check := h.call(t, c, "/checks", `{"tableSessionId":"`+sessionID+`","idempotencyKey":"`+evalStory151Key()+`"}`, http.StatusCreated)
+	checkID := evalStory151ID(t, check, "id")
+	h.expect(t, c, "check", checkID)
+	total, _ := check["totalCents"].(float64)
+	if total <= 0 {
+		t.Fatalf("%s: check total %v", c.name, check["totalCents"])
+	}
+	payment := h.call(t, c, "/checks/"+checkID+"/payments", `{"amountCents":`+evalStory151Num(total)+`,"currency":"NZD","tenderType":"cash","idempotencyKey":"`+evalStory151Key()+`"}`, http.StatusCreated)
+	paymentID := evalStory151PaymentID(t, payment)
+	h.expect(t, c, "payment", paymentID)
+	if refund {
+		r := h.call(t, c, "/payments/"+paymentID+"/refunds", `{"amountCents":100,"currency":"NZD","reason":"evaluator refund","idempotencyKey":"`+evalStory151Key()+`"}`, http.StatusCreated)
+		h.expect(t, c, "refund", evalStory151ID(t, r, "id"))
+	}
+}
+
+func evalStory151Num(f float64) string { b, _ := json.Marshal(int64(f)); return string(b) }
+
+// evalStory151PaymentID accepts the payment or the {payment: ...} envelope.
+func evalStory151PaymentID(t *testing.T, m map[string]any) string {
+	t.Helper()
+	if p, ok := m["payment"].(map[string]any); ok {
+		return evalStory151ID(t, p, "id")
+	}
+	return evalStory151ID(t, m, "id")
+}
+
+// TestEvalStory151StaffThroughTablet: a staff member elevated on a tablet by
+// their PIN (tablet_staff) is recorded as that staff member acting through
+// that tablet, on every audited write route a tablet may use.
+func TestEvalStory151StaffThroughTablet(t *testing.T) {
+	h := evalStory151Setup(t)
+	id, email := h.staff(t, "cashier")
+	h.visit(t, evalStory151Caller{name: "tablet_staff", kind: "tablet_staff", staffID: id, email: email, role: "cashier", deviceID: h.tablet(t)}, h.f.TableA, false)
+}
+
+// TestEvalStory151ManagerThroughTablet: the same for a manager PIN
+// (tablet_manager), including a refund; a second tablet, so the recorded
+// device is the one in the verified credential.
+func TestEvalStory151ManagerThroughTablet(t *testing.T) {
+	h := evalStory151Setup(t)
+	h.tablet(t)
+	id, email := h.staff(t, "manager")
+	h.visit(t, evalStory151Caller{name: "tablet_manager", kind: "tablet_manager", staffID: id, email: email, role: "manager", deviceID: h.tablet(t)}, h.f.TableB, true)
+}
+
+// TestEvalStory151StaffSession: a staff login session names the staff member
+// and no device, on the same routes and on the staff-session-only
+// administration routes (device enrollment, promotion creation).
+func TestEvalStory151StaffSession(t *testing.T) {
+	h := evalStory151Setup(t)
+	id, email := h.staff(t, "manager")
+	c := evalStory151Caller{name: "staff session", staffID: id, email: email, role: "manager"}
+	h.visit(t, c, h.f.TableC, true)
+	d := h.call(t, c, "/devices", `{"kind":"kds","displayName":"Evaluator KDS","idempotencyKey":"`+evalStory151Key()+`"}`, http.StatusCreated)
+	h.expect(t, c, "device", evalStory151ID(t, d, "device", "id"))
+	p := h.call(t, c, "/promotions", `{"name":"Evaluator","kind":"percentage","basisPoints":1500,"target":"all_items","idempotencyKey":"`+evalStory151Key()+`"}`, http.StatusCreated)
+	h.expect(t, c, "promotion", evalStory151ID(t, p, "id"))
+}
+
+// TestEvalStory151NothingFabricated: across a full tablet service, no
+// AuditLog row is attributed to a device or the system, no staff row names a
+// staff member other than the caller, and no row names the forged device.
+func TestEvalStory151NothingFabricated(t *testing.T) {
+	h := evalStory151Setup(t)
+	id, email := h.staff(t, "manager")
+	device := h.tablet(t)
+	c := evalStory151Caller{name: "tablet_manager", kind: "tablet_manager", staffID: id, email: email, role: "manager", deviceID: device}
+	h.visit(t, c, h.f.TableA, true)
+	var total, other int
+	if err := h.writer.QueryRow(context.Background(), `SELECT count(*), count(*) FILTER (WHERE "actorType" <> 'staff' OR "actorId" IS DISTINCT FROM $2
+		OR "deviceId" IS DISTINCT FROM $3 OR "deviceKind" IS DISTINCT FROM 'tablet_device' OR "systemActor" IS NOT NULL)
+		FROM "AuditLog" WHERE "organizationId" = $1`, h.f.Org, id, device).Scan(&total, &other); err != nil {
+		t.Fatal(err)
+	}
+	if total < 6 || other != 0 {
+		t.Fatalf("AuditLog rows of the service: %d, of which %d not the caller through its tablet", total, other)
+	}
+	var forged int
+	if err := h.writer.QueryRow(context.Background(), `SELECT count(*) FROM "AuditLog" WHERE "deviceId" = $1 OR "actorId" = $1`, evalStory151Forged).Scan(&forged); err != nil {
+		t.Fatal(err)
+	}
+	if forged != 0 {
+		t.Fatalf("%d AuditLog rows name the forged identity", forged)
+	}
+}
+
+// TestEvalStory151DatabaseShapeIntact: the database still enforces the actor
+// shape and immutability (migration 20261010000000): a device row naming a
+// staff member and a staff row without one are refused, and rows cannot be
+// rewritten.
+func TestEvalStory151DatabaseShapeIntact(t *testing.T) {
+	h := evalStory151Setup(t)
+	ctx := context.Background()
+	insert := `INSERT INTO "AuditLog" (id, "organizationId", "venueId", "actorType", "actorId", "actorEmail", "actorRole", "deviceKind", "deviceId", "systemActor", action, resource)
+		VALUES ($1, $2, $3, $4::"AuditActorType", $5, $6, $7::"StaffRole", $8, $9, $10, 'EVAL_151', 'eval_story_15_1')`
+	t.Cleanup(func() {
+		_, _ = h.writer.Exec(context.Background(), `DELETE FROM "AuditLog" WHERE resource = 'eval_story_15_1'`)
+	})
+	email, role, kind := "x@example.test", "cashier", "tablet_device"
+	for _, bad := range []struct {
+		name                               string
+		actorType                          string
+		actorID, email, role, kind, system *string
+	}{
+		{"device naming a staff member", "device", &h.f.Cashier, &email, &role, &kind, nil},
+		{"staff without a staff member", "staff", nil, nil, nil, &kind, nil},
+		{"system naming a device", "system", nil, nil, nil, &kind, &email},
+	} {
+		_, err := h.writer.Exec(ctx, insert, testsupport.UUID(), h.f.Org, h.f.Venue, bad.actorType, bad.actorID, bad.email, bad.role, bad.kind, nil, bad.system)
+		if err == nil || !strings.Contains(err.Error(), "AuditLog_actor_shape_check") {
+			t.Errorf("%s: got %v, want AuditLog_actor_shape_check", bad.name, err)
+		}
+	}
+	id := testsupport.UUID()
+	if _, err := h.writer.Exec(ctx, insert, id, h.f.Org, h.f.Venue, "staff", h.f.Cashier, email, role, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.writer.Exec(ctx, `UPDATE "AuditLog" SET "deviceId" = 'x' WHERE id = $1`, id); err == nil {
+		t.Error("an AuditLog row was rewritten")
+	}
+}

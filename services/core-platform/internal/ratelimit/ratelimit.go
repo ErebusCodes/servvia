@@ -176,9 +176,12 @@ func IsTransient(err error) bool {
 		strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "connection refused")
 }
 
-// ClientIP is Express's req.ip with `trust proxy` set to a hop count
-// (proxy-addr): the socket address, then X-Forwarded-For from right to left,
-// taking the address `hops` steps back, or the furthest one available.
+// ClientIP is the Nest API's req.ip (apps/api/src/config/client-ip.ts): the
+// socket address, then X-Forwarded-For from right to left, believing a
+// forwarded address only from a loopback proxy and at most `hops` of them
+// (Express `trust proxy` with that rule, as proxy-addr walks it). A client
+// that reaches the service directly is named by its socket address, whatever
+// it sends; with hops 0 no header is believed.
 func ClientIP(r *http.Request, hops int) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -196,7 +199,18 @@ func ClientIP(r *http.Request, hops int) string {
 			addrs = append(addrs, forwarded[i])
 		}
 	}
-	return addrs[min(hops, len(addrs)-1)]
+	for i := 0; i < len(addrs)-1; i++ {
+		if i >= hops || !isLoopback(addrs[i]) {
+			return addrs[i]
+		}
+	}
+	return addrs[len(addrs)-1]
+}
+
+// isLoopback is 127.0.0.0/8 or ::1, also IPv4-mapped (::ffff:127.0.0.1).
+func isLoopback(addr string) bool {
+	ip := net.ParseIP(addr)
+	return ip != nil && ip.IsLoopback()
 }
 
 func writeGuardError(w http.ResponseWriter, status int, message string) {

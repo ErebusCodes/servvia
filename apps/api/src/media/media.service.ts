@@ -84,9 +84,8 @@ export class MediaService {
     }
 
     const destDirs = [
-      path.join(projectRoot, 'apps/admin-console/public/menu-images'),
-      path.join(projectRoot, 'apps/customer-website/public/menu-images'),
-      path.join(projectRoot, 'apps/window-display/public/menu-images'),
+      path.join(projectRoot, 'apps/web/admin-console/public/menu-images'),
+      path.join(projectRoot, 'apps/web/customer-website/public/menu-images'),
     ];
 
     for (const dir of destDirs) {
@@ -133,9 +132,8 @@ export class MediaService {
     }
 
     const destDirs = [
-      path.join(projectRoot, 'apps/admin-console/public/menu-images'),
-      path.join(projectRoot, 'apps/customer-website/public/menu-images'),
-      path.join(projectRoot, 'apps/window-display/public/menu-images'),
+      path.join(projectRoot, 'apps/web/admin-console/public/menu-images'),
+      path.join(projectRoot, 'apps/web/customer-website/public/menu-images'),
     ];
 
     for (const dir of destDirs) {

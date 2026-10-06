@@ -1,0 +1,122 @@
+{
+ "servvia/services/core-platform/internal/checks": {
+  "pass": 4,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/kitchen": {
+  "pass": 4,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/config": {
+  "pass": 8,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/devices": {
+  "pass": 4,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/platform/httpx": {
+  "pass": 9,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/pricing": {
+  "pass": 17,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/payments": {
+  "pass": 4,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/orders": {
+  "pass": 8,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/events": {
+  "pass": 3,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/menu": {
+  "pass": 10,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/health": {
+  "pass": 4,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/identity": {
+  "pass": 21,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/cmd/api": {
+  "pass": 2,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/promotions": {
+  "pass": 6,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/realtime": {
+  "pass": 7,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/refunds": {
+  "pass": 3,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/ratelimit": {
+  "pass": 5,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/shifts": {
+  "pass": 4,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/realtime/realtimeapi": {
+  "pass": 11,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/tables": {
+  "pass": 8,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/internal/venues": {
+  "pass": 1,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/tests/architecture": {
+  "pass": 2,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/tests/contract": {
+  "pass": 36,
+  "fail": 0,
+  "skip": 0
+ },
+ "servvia/services/core-platform/tests/integration": {
+  "pass": 125,
+  "fail": 0,
+  "skip": 0
+ }
+}

@@ -3,18 +3,23 @@ import { Request } from 'express';
 import { Staff, StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { MediaAssetsService } from './media-assets.service';
 import { RequestUploadDto } from './dto/request-upload.dto';
 import { AssociateMenuItemDto } from './dto/associate-menu-item.dto';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 @Controller('admin/media-assets')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
+@VenueScope({ resource: 'mediaAsset' })
 @Roles(StaffRole.admin, StaffRole.manager)
 export class MediaAssetsController {
   constructor(private readonly mediaAssets: MediaAssetsService) {}
 
   @Post('request-upload')
+  @VenueScope({ body: 'venueId' })
   async requestUpload(@Body() dto: RequestUploadDto, @Req() req: Request & { user: Staff }) {
     return this.mediaAssets.requestUpload(req.user.organizationId, req.user, dto);
   }

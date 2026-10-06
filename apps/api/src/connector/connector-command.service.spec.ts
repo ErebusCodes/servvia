@@ -238,6 +238,15 @@ describe('ConnectorCommandService', () => {
       expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'CONNECTOR_COMMAND_ACCEPTED', resourceId: 'cmd-1' }),
       );
+      // Story 12.15: the connector installation is the actor, not a Staff row.
+      expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorType: 'device',
+          deviceKind: 'venue_connector',
+          deviceId: identity.installationId,
+        }),
+      );
+      expect(mockPrisma.staff.upsert).not.toHaveBeenCalled();
     });
 
     it('is idempotent: repeating accept on an already-accepted command by the same installation succeeds silently', async () => {
@@ -446,8 +455,11 @@ describe('ConnectorCommandService', () => {
         expect.objectContaining({
           action: 'CONNECTOR_COMMAND_MARKED_UNKNOWN',
           resourceId: 'cmd-unknown-1',
+          actorType: 'system',
+          systemActor: 'connector-command-sweep',
         }),
       );
+      expect(mockPrisma.staff.upsert).not.toHaveBeenCalled();
     });
   });
 });

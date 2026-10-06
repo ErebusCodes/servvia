@@ -25,6 +25,7 @@ import { IdealposOrderDispatcherService } from '../src/pos-sync/idealpos-order-d
 import { IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE } from '../src/pos-sync/idealpos-order-dispatch.constants';
 import { ConnectorCommandService } from '../src/connector/connector-command.service';
 import { OrdersGateway } from '../src/orders/orders.gateway';
+import { deleteVenueGrants, grantVenues } from './venue-grants';
 
 describe('IdealPOS connector delivery (integration, real local Postgres)', () => {
   let app: INestApplication;
@@ -73,6 +74,7 @@ describe('IdealPOS connector delivery (integration, real local Postgres)', () =>
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const loginRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password })
@@ -217,6 +219,7 @@ describe('IdealPOS connector delivery (integration, real local Postgres)', () =>
     await prisma.menuItem.deleteMany({ where: { organizationId: orgId } });
     await prisma.table.deleteMany({ where: { venueId } });
     await prisma.category.deleteMany({ where: { organizationId: orgId } });
+    await deleteVenueGrants(prisma, orgId);
     await prisma.staff.deleteMany({ where: { organizationId: orgId } });
     await prisma.venue.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });

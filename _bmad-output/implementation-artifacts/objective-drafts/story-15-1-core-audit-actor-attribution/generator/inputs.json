@@ -1,0 +1,120 @@
+{
+  "schema": "servvia.story-15-1-generator-inputs/v1",
+  "status": "FREEZE CANDIDATE — NOT YET FROZEN. Generator inputs only; no authority.",
+  "baseline": "5d5772d8ad172a6374beb5892a22a389ac34c8af",
+  "measuredAt": "6526159916ea6d7ee843a20e1ab1d83dbbcf46cf",
+  "objectiveId": "story-15-1-core-audit-actor-attribution",
+  "storyId": "15.1",
+  "version": 1,
+  "title": "Core audit records the real actor class, and the device a staff action was taken on",
+  "specPath": "_bmad-output/implementation-artifacts/spec-15-1-core-audit-actor-attribution.md",
+  "epicContextPath": "_bmad-output/implementation-artifacts/epic-15-context.md",
+  "inheritedObjectivePath": "_bmad-output/implementation-artifacts/objectives/story-12-3a-core-database-timeouts/v1.objective.json",
+  "core": "services/core-platform",
+  "auditDir": "services/core-platform/internal/audit",
+  "migration": "apps/api/prisma/migrations/20261010000000_audit_actor_types/migration.sql",
+  "writers": {
+    "tabletReachable": [
+      "services/core-platform/internal/tables/pgstore/store.go",
+      "services/core-platform/internal/orders/pgstore/store.go",
+      "services/core-platform/internal/checks/pgstore/store.go",
+      "services/core-platform/internal/payments/pgstore/store.go",
+      "services/core-platform/internal/payments/pgstore/adjustments.go",
+      "services/core-platform/internal/shifts/pgstore/store.go"
+    ],
+    "staffSessionOnly": [
+      "services/core-platform/internal/devices/pgstore/store.go",
+      "services/core-platform/internal/promotions/pgstore/store.go"
+    ]
+  },
+  "actorFiles": [
+    "services/core-platform/internal/tables/service.go",
+    "services/core-platform/internal/orders/service.go",
+    "services/core-platform/internal/checks/service.go",
+    "services/core-platform/internal/shifts/shift.go",
+    "services/core-platform/internal/payments/service.go",
+    "services/core-platform/internal/refunds/service.go"
+  ],
+  "handlers": [
+    "services/core-platform/internal/tables/tablesapi/handler.go",
+    "services/core-platform/internal/orders/ordersapi/handler.go",
+    "services/core-platform/internal/checks/checksapi/handler.go",
+    "services/core-platform/internal/shifts/shiftsapi/handler.go",
+    "services/core-platform/internal/payments/paymentsapi/handler.go",
+    "services/core-platform/internal/refunds/refundsapi/handler.go"
+  ],
+  "requiredTests": [
+    {
+      "id": "RT-1",
+      "package": "internal/audit",
+      "name": "TestActorShapes",
+      "file": "services/core-platform/internal/audit/audit_test.go"
+    },
+    {
+      "id": "RT-2",
+      "package": "internal/audit",
+      "name": "TestInvalidActorsAreRefused",
+      "file": "services/core-platform/internal/audit/audit_test.go"
+    },
+    {
+      "id": "RT-3",
+      "package": "internal/audit",
+      "name": "TestDeviceOfPrincipal",
+      "file": "services/core-platform/internal/audit/audit_test.go"
+    },
+    {
+      "id": "RT-4",
+      "package": "tests/integration",
+      "name": "TestAuditActorRowsAgainstPostgres",
+      "file": "services/core-platform/tests/integration/audit_attribution_test.go"
+    },
+    {
+      "id": "RT-5",
+      "package": "tests/integration",
+      "name": "TestStaffViaTabletAuditRowAgainstPostgres",
+      "file": "services/core-platform/tests/integration/audit_attribution_test.go"
+    }
+  ],
+  "blackbox": {
+    "routes": {
+      "template": "attribution_routes_test.go.txt",
+      "file": "tests/integration/zz_eval_story151_routes_test.go",
+      "tests": [
+        "TestEvalStory151StaffThroughTablet",
+        "TestEvalStory151ManagerThroughTablet",
+        "TestEvalStory151StaffSession",
+        "TestEvalStory151NothingFabricated",
+        "TestEvalStory151DatabaseShapeIntact"
+      ]
+    },
+    "model": {
+      "template": "attribution_model_test.go.txt",
+      "file": "tests/integration/zz_eval_story151_model_test.go",
+      "tests": [
+        "TestEvalStory151ActorModelAgainstPostgres"
+      ]
+    }
+  },
+  "floors": {
+    "coreTests": 438,
+    "provenance": "Measured 2026-10-06 at 6526159 (Core, Prisma and evaluator trees identical to the baseline 5d5772d) under Node 22.23.3 (darwin-arm64), Go 1.27.1 (GOFLAGS=-mod=readonly, GOPROXY=off, GOTOOLCHAIN=local), disposable PostgreSQL 18.4 and Redis in UTC after prisma migrate deploy: gofmt and vet clean; go test -race -count=1 over ./cmd/... ./internal/... ./tests/architecture/... ./tests/contract/... ./tests/integration/... passed 306 top-level tests, 438 including subtests (the go-test runner's count), 0 failed, 0 skipped."
+  },
+  "toolchain": {
+    "node": {
+      "major": 22,
+      "validatedVersion": "22.23.3"
+    },
+    "npm": {
+      "version": "11.17.0",
+      "use": "provisioning only (npm ci --ignore-scripts of the unchanged baseline lockfile for prisma migrate deploy)"
+    },
+    "go": {
+      "version": "1.27.1",
+      "source": "services/core-platform/go.mod go directive"
+    },
+    "postgres": {
+      "major": 18,
+      "validatedVersion": "18.4"
+    }
+  }
+}

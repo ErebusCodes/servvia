@@ -240,21 +240,18 @@ func TestVenueTaxConfigParity(t *testing.T) {
 	pf := testsupport.SeedPricingFixture(t, context.Background(), writer, orgID, tok.ownerID)
 	mf := testsupport.SeedMenuFixture(t, context.Background(), writer)
 
-	staffClaims := jwt.MapClaims{}
-	_ = json.Unmarshal(claimsOf(t, tok.staff), &staffClaims)
+	// Each role is a real staff member of the organization with a live
+	// session and grants for both of its venues: a token whose role claim
+	// differs from its staff member's role is refused by both services
+	// (Story 2.8), so editing the owner's claims would only test that.
 	withRole := func(role string) string {
-		c := jwt.MapClaims{}
-		for k, v := range staffClaims {
-			c[k] = v
-		}
-		c["role"], c["exp"] = role, time.Now().Add(10*time.Minute).Unix()
-		return mint(t, e.secret, jwt.SigningMethodHS256, c)
+		return staffSessionToken(t, writer, e.secret, orgID, role, tok.ownerID, e.venue, pf.TaxlessVenue)
 	}
 	callers := map[string]string{
 		"owner session": tok.staff, "kds device": tok.kds, "tablet device": tok.device,
 		"tablet staff": tok.tabletStaff, "tablet manager": tok.manager, "admin": withRole("admin"),
 		"manager": withRole("manager"), "kitchen": withRole("kitchen"), "viewer": withRole("viewer"),
-		"unknown role": withRole("cashier"), "no token": "",
+		"cashier, not a tax-config role": withRole("cashier"), "no token": "",
 		"malformed payload": mint(t, e.secret, jwt.SigningMethodHS256, jwt.MapClaims{"sub": "x", "exp": time.Now().Add(time.Minute).Unix()}),
 	}
 	venueIDs := map[string]string{
@@ -599,7 +596,12 @@ func deleteOrdersOf(t *testing.T, db *pgxpool.Pool, venueIDs ...string) {
 	for _, q := range []struct {
 		sql string
 		ids []string
-	}{{`DELETE FROM "OrderItem" WHERE id = ANY($1)`, itemIDs}, {`DELETE FROM "Order" WHERE id = ANY($1)`, orderIDs}} {
+	}{
+		{`DELETE FROM "OrderItem" WHERE id = ANY($1)`, itemIDs},
+		{`DELETE FROM "Order" WHERE id = ANY($1)`, orderIDs},
+		// The facts Go's writes recorded (D13); their deliveries cascade.
+		{`DELETE FROM "DomainEvent" WHERE "venueId" = ANY($1)`, venueIDs},
+	} {
 		if _, err := db.Exec(ctx, q.sql, q.ids); err != nil {
 			t.Errorf("cleanup: %v", err)
 		}

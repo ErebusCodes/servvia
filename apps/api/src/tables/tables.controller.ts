@@ -5,18 +5,23 @@ import { UpdateTableDto } from './dto/update-table.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TabletTokenActiveGuard } from '../auth/guards/tablet-token-active.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 @Controller('venues/:venueId/tables')
 @UseGuards(JwtAuthGuard, RolesGuard)
+@VenueScope({ param: 'venueId' })
 export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
 
   @Post()
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
   @Roles(StaffRole.admin)
   async create(
     @Param('venueId') venueId: string,
@@ -41,7 +46,7 @@ export class TablesController {
   // naturally expired, the same class of gap OrdersController's staff-tier
   // routes were already fixed for.
   @Get()
-  @UseGuards(TabletTokenActiveGuard)
+  @UseGuards(TabletTokenActiveGuard, VenueAccessGuard)
   @Roles(StaffRole.admin, StaffRole.manager, StaffRole.kitchen, StaffRole.viewer)
   async findAll(
     @Param('venueId') venueId: string,
@@ -52,6 +57,7 @@ export class TablesController {
   }
 
   @Get(':id')
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
   @Roles(StaffRole.admin, StaffRole.manager, StaffRole.kitchen)
   async findOne(
     @Param('venueId') venueId: string,
@@ -63,6 +69,7 @@ export class TablesController {
   }
 
   @Patch(':id')
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
   @Roles(StaffRole.admin)
   async update(
     @Param('venueId') venueId: string,
@@ -74,6 +81,7 @@ export class TablesController {
   }
 
   @Delete(':id')
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
   @Roles(StaffRole.admin)
   async remove(
     @Param('venueId') venueId: string,

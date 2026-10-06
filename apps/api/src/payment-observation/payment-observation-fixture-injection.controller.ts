@@ -4,10 +4,14 @@ import { ConfigService } from '@nestjs/config';
 import { StaffRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
 import { PaymentObservationService } from './payment-observation.service';
+import { isProductionRuntime } from '../config/runtime-environment';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueScope } from '../auth/venue-access/venue-scope.decorator';
 
 type AuthedRequest = Request & { user: AuthenticatedUser };
 
@@ -30,7 +34,8 @@ type AuthedRequest = Request & { user: AuthenticatedUser };
  * even if it tried (the evidence tier is fixed at the call site below, not
  * caller-supplied).
  */
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, StaffSessionOnlyGuard, VenueAccessGuard)
+@VenueScope({ resource: 'order', idParam: 'orderId' })
 @Controller('admin/payment-observation-fixtures')
 export class PaymentObservationFixtureInjectionController {
   constructor(
@@ -39,7 +44,8 @@ export class PaymentObservationFixtureInjectionController {
   ) {}
 
   private assertNonProduction(): void {
-    if (this.config.get<string>('NODE_ENV') === 'production') {
+    // Fail closed: fixture injection only in an explicit development/test environment.
+    if (isProductionRuntime(this.config.get<string>('NODE_ENV'))) {
       throw new ForbiddenException(
         'Payment-observation fixture injection is not available in production',
       );

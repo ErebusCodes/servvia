@@ -137,15 +137,27 @@ func TestDefaultsForMissingMetadata(t *testing.T) {
 	}
 }
 
-func TestClientIPFollowsTrustProxyHops(t *testing.T) {
+func TestClientIPBelievesOnlyLoopbackProxies(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.RemoteAddr = "10.0.0.1:1234"
 	req.Header.Add("X-Forwarded-For", "198.51.100.1, 198.51.100.2")
-	req.Header.Add("X-Forwarded-For", "198.51.100.3")
-	for hops, want := range map[int]string{0: "10.0.0.1", 1: "198.51.100.3", 2: "198.51.100.2", 3: "198.51.100.1", 9: "198.51.100.1"} {
+	req.Header.Add("X-Forwarded-For", "127.0.0.2")
+	// Behind loopback proxies: walk back while the hop is loopback and in budget.
+	req.RemoteAddr = "127.0.0.1:1234"
+	for hops, want := range map[int]string{0: "127.0.0.1", 1: "127.0.0.2", 2: "198.51.100.2", 3: "198.51.100.2", 9: "198.51.100.2"} {
 		if got := ClientIP(req, hops); got != want {
-			t.Errorf("hops %d: %s, want %s", hops, got, want)
+			t.Errorf("loopback peer, hops %d: %s, want %s", hops, got, want)
 		}
+	}
+	// A client that connects directly is named by its socket, whatever it sends.
+	req.RemoteAddr = "10.0.0.1:1234"
+	for _, hops := range []int{0, 1, 5} {
+		if got := ClientIP(req, hops); got != "10.0.0.1" {
+			t.Errorf("direct client, hops %d: %s", hops, got)
+		}
+	}
+	req.RemoteAddr = "[::ffff:127.0.0.1]:80"
+	if got := ClientIP(req, 1); got != "127.0.0.2" {
+		t.Errorf("ipv4-mapped loopback: %s", got)
 	}
 	req.RemoteAddr = "[::1]:80"
 	if got := ClientIP(req, 0); got != "::1" {

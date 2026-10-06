@@ -1,6 +1,10 @@
 package tables
 
-import "context"
+import (
+	"context"
+
+	"servvia/services/core-platform/internal/audit"
+)
 
 // Scope is the tenancy every operation runs in. Repositories must match
 // both: a session or table outside it does not exist for the caller.
@@ -15,6 +19,9 @@ type Actor struct {
 	StaffID string
 	Email   string
 	Role    string
+	// Device is the device the staff member acted through, from the
+	// verified credential (audit.DeviceOf); the zero value is none.
+	Device audit.Device
 }
 
 // OpenCommand opens a table. RequestKey makes it idempotent: a retry with the

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import { ReservationEmailPayload } from '../queue/processors/email-job.types';
+import { escapeHtml } from '../common/utils/html-escape';
 
 function formatDate(isoDate: string): string {
   const [year, month, day] = isoDate.split('-');
@@ -22,17 +23,18 @@ function formatDate(isoDate: string): string {
   return `${day} ${months[parseInt(month, 10) - 1]} ${year}`;
 }
 
+// Every interpolated value is HTML-escaped: guestName is public input.
 function confirmationHtml(p: ReservationEmailPayload): string {
   return `<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a">
 <h2 style="color:#2d6a4f;margin-bottom:8px">Booking Confirmed</h2>
-<p>Hi ${p.guestName},</p>
-<p>Your reservation at <strong>${p.venueName}</strong> has been confirmed.</p>
+<p>Hi ${escapeHtml(p.guestName)},</p>
+<p>Your reservation at <strong>${escapeHtml(p.venueName)}</strong> has been confirmed.</p>
 <table style="border-collapse:collapse;width:100%;margin:16px 0">
-  <tr><td style="padding:6px 0;color:#555">Reference</td><td style="padding:6px 0;font-weight:600">${p.bookingRef}</td></tr>
-  <tr><td style="padding:6px 0;color:#555">Date</td><td style="padding:6px 0">${formatDate(p.reservationDate)}</td></tr>
-  <tr><td style="padding:6px 0;color:#555">Time</td><td style="padding:6px 0">${p.reservationTime}</td></tr>
-  <tr><td style="padding:6px 0;color:#555">Party size</td><td style="padding:6px 0">${p.partySize} guest${p.partySize !== 1 ? 's' : ''}</td></tr>
+  <tr><td style="padding:6px 0;color:#555">Reference</td><td style="padding:6px 0;font-weight:600">${escapeHtml(p.bookingRef)}</td></tr>
+  <tr><td style="padding:6px 0;color:#555">Date</td><td style="padding:6px 0">${escapeHtml(formatDate(p.reservationDate))}</td></tr>
+  <tr><td style="padding:6px 0;color:#555">Time</td><td style="padding:6px 0">${escapeHtml(p.reservationTime)}</td></tr>
+  <tr><td style="padding:6px 0;color:#555">Party size</td><td style="padding:6px 0">${escapeHtml(p.partySize)} guest${p.partySize !== 1 ? 's' : ''}</td></tr>
 </table>
 <p>See you soon!</p>
 <p style="color:#888;font-size:12px">Questions? Reply to this email or call us directly.</p>
@@ -43,12 +45,12 @@ function cancellationHtml(p: ReservationEmailPayload): string {
   return `<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a">
 <h2 style="color:#c0392b;margin-bottom:8px">Booking Cancelled</h2>
-<p>Hi ${p.guestName},</p>
-<p>Your reservation at <strong>${p.venueName}</strong> has been cancelled.</p>
+<p>Hi ${escapeHtml(p.guestName)},</p>
+<p>Your reservation at <strong>${escapeHtml(p.venueName)}</strong> has been cancelled.</p>
 <table style="border-collapse:collapse;width:100%;margin:16px 0">
-  <tr><td style="padding:6px 0;color:#555">Reference</td><td style="padding:6px 0;font-weight:600">${p.bookingRef}</td></tr>
-  <tr><td style="padding:6px 0;color:#555">Date</td><td style="padding:6px 0">${formatDate(p.reservationDate)}</td></tr>
-  <tr><td style="padding:6px 0;color:#555">Time</td><td style="padding:6px 0">${p.reservationTime}</td></tr>
+  <tr><td style="padding:6px 0;color:#555">Reference</td><td style="padding:6px 0;font-weight:600">${escapeHtml(p.bookingRef)}</td></tr>
+  <tr><td style="padding:6px 0;color:#555">Date</td><td style="padding:6px 0">${escapeHtml(formatDate(p.reservationDate))}</td></tr>
+  <tr><td style="padding:6px 0;color:#555">Time</td><td style="padding:6px 0">${escapeHtml(p.reservationTime)}</td></tr>
 </table>
 <p>We're sorry we couldn't accommodate you this time. Contact us to rebook.</p>
 <p style="color:#888;font-size:12px">Questions? Reply to this email or call us directly.</p>

@@ -12,6 +12,7 @@ import { Staff, StaffRole, TabletDevice } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit.service';
+import { AUDIT_DEVICE_KINDS } from '../audit/audit-actor';
 import { safeCompare } from '../common/utils/safe-compare';
 import { assertPinNotInsecureDefault } from '../auth/utils/insecure-default-pin.util';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -355,16 +356,14 @@ export class TabletAuthService {
     extra?: Record<string, unknown>,
   ): Promise<void> {
     try {
-      const systemActor = await this.resolveDeviceSystemActor(
-        device.organizationId,
-        device.deviceId,
-      );
+      // Story 12.15: the tablet is recorded as the device it is, never as a
+      // synthetic Staff row.
       await this.auditLogService.logAuthEvent({
         organizationId: device.organizationId,
         venueId: device.venueId,
-        actorId: systemActor.id,
-        actorEmail: systemActor.email,
-        actorRole: StaffRole.viewer,
+        actorType: 'device',
+        deviceKind: AUDIT_DEVICE_KINDS.tablet,
+        deviceId: device.deviceId,
         action,
         resource,
         resourceId: device.deviceId,
@@ -456,30 +455,54 @@ export class TabletAuthService {
    * limiting (controller-level) is the primary brute-force control on top
    * of it, not lookup speed.
    */
-  async elevateStaff(
+  /**
+   * The one active staff member, granted this tablet's venue (Story 2.2:
+   * venue access applies to every role) with their PIN enrolled there
+   * (Story 8.3), whose PIN this is. Every candidate
+   * is checked, so timing does not depend on which one matches. If the PIN
+   * matches more than one staff member, nobody is elevated (Story 8.1 keeps
+   * PINs unique per venue; this is the fail-closed backstop).
+   */
+  private async matchStaffPin(
     device: TabletDeviceIdentity,
-    staffPin: string,
-  ): Promise<{ token: string; staff: { id: string; name: string; role: StaffRole } }> {
+    pin: string,
+    roles?: StaffRole[],
+  ): Promise<Staff | null> {
     const candidates = await this.prisma.staff.findMany({
       where: {
         organizationId: device.organizationId,
         isActive: true,
         pinHash: { not: null },
         deletedAt: null,
+        // Story 8.3: only a PIN checked unique in this venue elevates here.
+        venueAccess: { some: { venueId: device.venueId, pinEnrolledAt: { not: null } } },
+        ...(roles ? { role: { in: roles } } : {}),
       },
     });
-
-    let matched: Staff | null = null;
+    const matches: Staff[] = [];
     for (const candidate of candidates) {
       try {
-        if (candidate.pinHash && (await argon2.verify(candidate.pinHash, staffPin))) {
-          matched = candidate;
-          break;
+        if (candidate.pinHash && (await argon2.verify(candidate.pinHash, pin))) {
+          matches.push(candidate);
         }
       } catch {
         // fall through — treat a malformed stored hash as no-match, never throw
       }
     }
+    if (matches.length > 1) {
+      await this.logDeviceAuditEventSafely(device, 'TABLET_STAFF_PIN_AMBIGUOUS', 'tablet_device', {
+        matches: matches.length,
+      });
+      return null;
+    }
+    return matches[0] ?? null;
+  }
+
+  async elevateStaff(
+    device: TabletDeviceIdentity,
+    staffPin: string,
+  ): Promise<{ token: string; staff: { id: string; name: string; role: StaffRole } }> {
+    const matched = await this.matchStaffPin(device, staffPin);
     if (!matched) {
       // Constant-shape decoy verify so "no candidates at all" and "PIN
       // didn't match any candidate" take comparable time.
@@ -518,27 +541,11 @@ export class TabletAuthService {
     managerPin: string,
     actingStaffId: string | undefined,
   ): Promise<{ token: string; manager: { id: string; name: string; role: StaffRole } }> {
-    const candidates = await this.prisma.staff.findMany({
-      where: {
-        organizationId: device.organizationId,
-        isActive: true,
-        pinHash: { not: null },
-        deletedAt: null,
-        role: { in: [StaffRole.manager, StaffRole.admin, StaffRole.owner] },
-      },
-    });
-
-    let matched: Staff | null = null;
-    for (const candidate of candidates) {
-      try {
-        if (candidate.pinHash && (await argon2.verify(candidate.pinHash, managerPin))) {
-          matched = candidate;
-          break;
-        }
-      } catch {
-        // no-op — treat as no-match
-      }
-    }
+    const matched = await this.matchStaffPin(device, managerPin, [
+      StaffRole.manager,
+      StaffRole.admin,
+      StaffRole.owner,
+    ]);
     if (!matched) {
       await argon2.verify(DUMMY_HASH, managerPin).catch(() => false);
       await this.logDeviceAuditEventSafely(device, 'TABLET_MANAGER_STEPUP_FAILED', 'tablet_device');

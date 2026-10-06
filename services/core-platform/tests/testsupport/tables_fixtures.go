@@ -48,6 +48,8 @@ func SeedTablesFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) Tabl
 	must(venue, f.Venue, f.Org)
 	must(venue, f.OtherVenue, f.Org)
 	must(venue, f.OtherOrgVenue, f.OtherOrg)
+	GrantVenueAccess(t, ctx, db, f.Owner, []string{f.Owner, f.Cashier}, []string{f.Venue, f.OtherVenue})
+	GrantVenueAccess(t, ctx, db, otherOrgStaff, []string{otherOrgStaff}, []string{f.OtherOrgVenue})
 	table := `INSERT INTO "Table"(id,"venueId","tableNumber",capacity,"isActive","sortOrder","updatedAt") VALUES($1,$2,$3,4,$4,$5,now())`
 	must(table, f.TableA, f.Venue, "1", true, 1)
 	must(table, f.TableB, f.Venue, "2", true, 2)
@@ -69,9 +71,11 @@ func SeedTablesFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) Tabl
 		}{
 			{`DELETE FROM "TableSession" WHERE "tableId" IN (SELECT id FROM "Table" WHERE "venueId" = ANY($1))`, venues},
 			{`DELETE FROM "RealtimeEvent" WHERE "venueId" = ANY($1)`, venues},
+			{`DELETE FROM "DomainEvent" WHERE "venueId" = ANY($1)`, venues}, // deliveries cascade
 			{`DELETE FROM "AuditLog" WHERE "organizationId" = ANY($1)`, orgs},
 			{`DELETE FROM "Order" WHERE "venueId" = ANY($1)`, venues},
 			{`DELETE FROM "Table" WHERE "venueId" = ANY($1)`, venues},
+			{`DELETE FROM "VenueAccess" WHERE "venueId" = ANY($1)`, venues},
 			{`DELETE FROM "Venue" WHERE id = ANY($1)`, venues},
 			{`DELETE FROM "Staff" WHERE "organizationId" = ANY($1)`, orgs},
 			{`DELETE FROM "Organization" WHERE id = ANY($1)`, orgs},

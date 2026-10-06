@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import * as Joi from 'joi';
 import { AppController } from './app.controller';
 import { PrismaModule } from './prisma/prisma.module';
+import { VenueAccessModule } from './auth/venue-access/venue-access.module';
 import { QueueModule } from './queue/queue.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
@@ -25,14 +26,22 @@ import { EmailModule } from './email/email.module';
 import { TabletModule } from './tablet/tablet.module';
 import { SecurityHeadersMiddleware } from './common/middleware/security-headers.middleware';
 import { CsrfMiddleware } from './common/middleware/csrf.middleware';
+import { validateEnvironment } from './config/environment.validation';
+import { QUEUE_PREFIX_PATTERN } from './queue/queue.constants';
+import { RequestContextMiddleware } from './observability/request-context';
 
 export const configValidationSchema = Joi.object({
-  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+  // Required, no default: an unset environment refuses to start rather than
+  // silently opening every development-only path (Story 1.5).
+  NODE_ENV: Joi.string().valid('development', 'production', 'test').required(),
   PORT: Joi.number().default(3000),
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(10).default(0),
   DATABASE_URL: Joi.string().required(),
   REDIS_HOST: Joi.string().default('127.0.0.1'),
   REDIS_PORT: Joi.number().default(6379),
+  // Story 12.14: BullMQ key prefix. Unset in production (BullMQ's default);
+  // the integration-test harness sets a unique one per spec file.
+  QUEUE_PREFIX: Joi.string().pattern(QUEUE_PREFIX_PATTERN).optional(),
   // Local filesystem media storage. All
   // optional — MediaService falls back to ./storage and http://localhost:PORT.
   MEDIA_STORAGE_PATH: Joi.string().optional(),
@@ -68,13 +77,6 @@ export const configValidationSchema = Joi.object({
   TABLET_DEVICE_TOKEN_EXPIRY: Joi.string().default('30d'),
   TABLET_STAFF_ELEVATION_EXPIRY: Joi.string().default('20m'),
   TABLET_MANAGER_STEPUP_EXPIRY: Joi.string().default('5m'),
-  // Admin console PIN login. Both values are required to enable the endpoint;
-  // when either is absent, PIN login fails closed.
-  ADMIN_CONSOLE_PIN: Joi.string()
-    .pattern(/^\d{3,12}$/)
-    .optional()
-    .allow(''),
-  ADMIN_CONSOLE_EMAIL: Joi.string().email().optional().allow(''),
   // Email — Resend (E5-S4): all optional; graceful no-op when absent
   RESEND_API_KEY: Joi.string().optional().allow(''),
   EMAIL_FROM: Joi.string().optional().default('Verdura Reservations <no-reply@verdura.co.nz>'),
@@ -163,9 +165,11 @@ export const configValidationSchema = Joi.object({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      validationSchema: configValidationSchema,
+      validate: (config: Record<string, unknown>) =>
+        validateEnvironment(configValidationSchema, config),
     }),
     PrismaModule,
+    VenueAccessModule,
     RedisModule,
     QueueModule,
     HealthModule,
@@ -193,7 +197,8 @@ export const configValidationSchema = Joi.object({
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
-      .apply(SecurityHeadersMiddleware, CsrfMiddleware)
+      // First, so every later middleware and handler logs with the request's IDs.
+      .apply(RequestContextMiddleware, SecurityHeadersMiddleware, CsrfMiddleware)
       .forRoutes({ path: '*path', method: RequestMethod.ALL });
   }
 }

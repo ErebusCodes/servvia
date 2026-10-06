@@ -29,6 +29,10 @@ var insecureDefaultSecrets = map[string]struct{}{
 // minSecretLength matches the NestJS Joi rule `JWT_ACCESS_SECRET: Joi.string().min(32)`.
 const minSecretLength = 32
 
+// maxSessionTimeoutMillis is the largest statement_timeout or lock_timeout
+// PostgreSQL accepts (INT_MAX milliseconds).
+const maxSessionTimeoutMillis = 2147483647
+
 type Config struct {
 	// Environment is NODE_ENV, shared with the NestJS API ("production" enables
 	// the insecure-secret refusal).
@@ -46,6 +50,14 @@ type Config struct {
 	DBReadOnly       bool
 	ReadinessTimeout time.Duration
 
+	// DBStatementTimeout and DBLockTimeout are SERVVIA_CORE_DB_STATEMENT_TIMEOUT
+	// and SERVVIA_CORE_DB_LOCK_TIMEOUT: operator-chosen bounds applied to every
+	// session of Core's pool. Zero means unset: Core sets nothing for that
+	// bound and the session keeps the server, role or DATABASE_URL value.
+	// There is deliberately no default.
+	DBStatementTimeout time.Duration
+	DBLockTimeout      time.Duration
+
 	JWTAccessSecret string
 
 	// Redis backs the rate limiter shared with the NestJS API. Same variables
@@ -53,8 +65,9 @@ type Config struct {
 	RedisHost string
 	RedisPort int
 
-	// TrustProxyHops is TRUST_PROXY_HOPS, Express's `trust proxy` hop count in
-	// the NestJS API. It decides the client IP in rate-limit keys.
+	// TrustProxyHops is TRUST_PROXY_HOPS: how many loopback proxies' forwarded
+	// addresses are believed, as in the NestJS API (config/client-ip.ts). It
+	// decides the client IP in rate-limit keys.
 	TrustProxyHops int
 
 	// KitchenPollInterval is how often the kitchen projector looks for new
@@ -62,10 +75,10 @@ type Config struct {
 	KitchenPollInterval time.Duration
 
 	// RealtimePollInterval is how often the realtime dispatcher tails the
-	// RealtimeEvent log (Phase D12). RealtimeRetention is how long a
+	// DomainEvent log (Phase D12/D13). EventRetention is how long a
 	// delivered event is kept before pruning (writes enabled only).
 	RealtimePollInterval time.Duration
-	RealtimeRetention    time.Duration
+	EventRetention       time.Duration
 
 	LogLevel slog.Level
 }
@@ -96,6 +109,25 @@ func load(getenv func(string) string) (Config, error) {
 		return d
 	}
 
+	// sessionTimeout reads an optional PostgreSQL session bound. Unset (missing
+	// or blank) returns zero. A set value must be a whole number of
+	// milliseconds within PostgreSQL's range for statement_timeout and
+	// lock_timeout; anything else is a configuration error.
+	sessionTimeout := func(key string) time.Duration {
+		raw := get(key, "")
+		if raw == "" {
+			return 0
+		}
+		d, err := time.ParseDuration(raw)
+		if err != nil || d < time.Millisecond || d%time.Millisecond != 0 || d/time.Millisecond > maxSessionTimeoutMillis {
+			errs = append(errs, fmt.Errorf(
+				"%s must be a whole number of milliseconds between 1ms and %dms, such as 5s or 750ms, got %q",
+				key, maxSessionTimeoutMillis, raw))
+			return 0
+		}
+		return d
+	}
+
 	cfg := Config{
 		Environment:          get("NODE_ENV", "development"),
 		HTTPAddr:             get("SERVVIA_CORE_HTTP_ADDR", "127.0.0.1:3100"),
@@ -107,7 +139,7 @@ func load(getenv func(string) string) (Config, error) {
 		ReadinessTimeout:     duration("SERVVIA_CORE_READINESS_TIMEOUT", 2*time.Second),
 		KitchenPollInterval:  duration("SERVVIA_CORE_KITCHEN_POLL_INTERVAL", time.Second),
 		RealtimePollInterval: duration("SERVVIA_CORE_REALTIME_POLL_INTERVAL", 250*time.Millisecond),
-		RealtimeRetention:    duration("SERVVIA_CORE_REALTIME_RETENTION", 24*time.Hour),
+		EventRetention:       duration("SERVVIA_CORE_EVENT_RETENTION", 7*24*time.Hour),
 		DatabaseURL:          getenv("DATABASE_URL"),
 		JWTAccessSecret:      getenv("JWT_ACCESS_SECRET"),
 		DBReadOnly:           true,
@@ -124,6 +156,9 @@ func load(getenv func(string) string) (Config, error) {
 		}
 		return n
 	}
+	cfg.DBStatementTimeout = sessionTimeout("SERVVIA_CORE_DB_STATEMENT_TIMEOUT")
+	cfg.DBLockTimeout = sessionTimeout("SERVVIA_CORE_DB_LOCK_TIMEOUT")
+
 	cfg.RedisPort = integer("REDIS_PORT", "6379", 0, 65535)
 	// Nest passes Number(TRUST_PROXY_HOPS ?? 0) to Express. A value that is
 	// not a whole number is refused here rather than silently trusting no proxy.

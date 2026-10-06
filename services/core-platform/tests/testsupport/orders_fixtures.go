@@ -58,6 +58,7 @@ func SeedOrdersFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) Orde
 	must(table, f.TableB, f.Venue, "2", 2)
 	must(table, f.TableC, f.Venue, "3", 3)
 	must(table, f.TaxlessTable, f.TaxlessVenue, "1", 1)
+	GrantVenueAccess(t, ctx, db, owner, []string{owner, cashier}, []string{f.Venue, f.TaxlessVenue})
 
 	// Registered last, so it runs first: everything that references the
 	// venues, tables and staff above.
@@ -88,6 +89,7 @@ func SeedOrdersFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) Orde
 			{`DELETE FROM "Category" WHERE id = $1`, []any{f.Drinks}},
 			{`DELETE FROM "OutboxEvent" WHERE "venueId" = ANY($1)`, []any{venues}},
 			{`DELETE FROM "RealtimeEvent" WHERE "venueId" = ANY($1)`, []any{venues}},
+			{`DELETE FROM "DomainEvent" WHERE "venueId" = ANY($1)`, []any{venues}}, // deliveries cascade
 			{`DELETE FROM "AuditLog" WHERE "organizationId" = $1`, []any{org}},
 			{`DELETE FROM "TableSession" WHERE "tableId" IN (SELECT id FROM "Table" WHERE "venueId" = ANY($1))`, []any{venues}},
 			{`DELETE FROM "Table" WHERE "venueId" = ANY($1)`, []any{venues}},

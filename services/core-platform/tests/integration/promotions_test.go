@@ -789,11 +789,11 @@ func TestPromotionHTTP(t *testing.T) {
 		Venues:     venues.NewHandler(venueStore, logger),
 		Orders:     ordersapi.NewHandler(h.porders, venueStore, logger),
 		Promotions: promotionsapi.NewHandler(h.promos, venueStore, logger),
-		Verifier:   identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier:   identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	sign := func(c jwt.MapClaims) string {
-		c["exp"] = time.Now().Add(time.Minute).Unix()
+		c["exp"], c["sid"] = time.Now().Add(time.Minute).Unix(), testsupport.UUID()
 		s, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString([]byte(secret))
 		return s
 	}

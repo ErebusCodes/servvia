@@ -8,8 +8,11 @@ import ms from 'ms';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { StaffService } from '../staff/staff.service';
 import { AuditLogService } from '../audit/audit.service';
-import { safeCompare } from '../common/utils/safe-compare';
-import { assertPinNotInsecureDefault } from './utils/insecure-default-pin.util';
+import { isProductionRuntime } from '../config/runtime-environment';
+import { StaffSessionService } from './staff-session.service';
+import { isStaffSessionKind } from './staff-session';
+import { LoginThrottleService } from './login-throttle.service';
+import { logSecurityEvent } from '../observability/security-events';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -23,6 +26,8 @@ export class AuthService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly staffService: StaffService,
     private readonly auditLogService: AuditLogService,
+    private readonly sessions: StaffSessionService,
+    private readonly loginThrottle: LoginThrottleService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -32,9 +37,11 @@ export class AuthService implements OnModuleInit {
   private getCookieOptions() {
     return {
       httpOnly: true,
-      secure: this.config.get<string>('NODE_ENV') === 'production',
+      secure: isProductionRuntime(this.config.get<string>('NODE_ENV')),
       sameSite: 'strict' as const,
-      path: '/api/auth/refresh',
+      // Story 2.5: /api/auth, not /api/auth/refresh, so the browser also sends
+      // the cookie to POST /api/auth/logout, which revokes its session.
+      path: '/api/auth',
     };
   }
 
@@ -44,6 +51,9 @@ export class AuthService implements OnModuleInit {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<Staff> {
+    // Story 2.4: at most LOGIN_ACCOUNT_ATTEMPT_LIMIT attempts per account per
+    // window, for every email alike, before anything is looked up.
+    await this.loginThrottle.reserveAttempt(email);
     const staff = await this.staffService.findByEmail(email);
     // Always verify against a hash regardless of whether staff was found.
     // This normalises response time and prevents email enumeration via timing.
@@ -54,69 +64,65 @@ export class AuthService implements OnModuleInit {
     const valid = await this.staffService.verifyPassword(hashToVerify, password);
     if (!valid || !staff || !staff.isActive) {
       if (staff) {
-        await this.auditLogService.logAuthEvent({
-          organizationId: staff.organizationId,
-          actorId: staff.id,
-          actorEmail: staff.email,
-          actorRole: staff.role,
-          action: 'login_failed',
-          resource: 'auth',
-          ipAddress,
-          userAgent,
+        logSecurityEvent('login_failed', 'staff sign-in refused', {
+          staff_id: staff.id,
+          organization_id: staff.organizationId,
+          reason: valid ? 'inactive' : 'wrong_password',
+          client_ip: ipAddress,
         });
+        // Not awaited: an unknown address writes no audit row, so waiting for
+        // this one would make a known account's refusal measurably slower
+        // (about 1 ms, locally) and reveal that the account exists. The row
+        // is still written; a failure to write it is itself reported, and
+        // the security event above already records the refusal.
+        void Promise.resolve()
+          .then(() =>
+            this.auditLogService.logAuthEvent({
+              organizationId: staff.organizationId,
+              actorId: staff.id,
+              actorEmail: staff.email,
+              actorRole: staff.role,
+              action: 'login_failed',
+              resource: 'auth',
+              ipAddress,
+              userAgent,
+            }),
+          )
+          .catch((err: unknown) =>
+            logSecurityEvent('audit_write_failed', 'audit record could not be written', {
+              action: 'login_failed',
+              staff_id: staff.id,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
       } else {
-        this.logger.warn(`Anonymous login failure: email: ${email}`);
+        // Never the address itself: it is user input, and personal data.
+        logSecurityEvent('login_failed_unknown_account', 'sign-in for no account', {
+          account: this.loginThrottle.fingerprint(email),
+          client_ip: ipAddress,
+        });
       }
       throw new UnauthorizedException('Invalid credentials');
     }
+    await this.loginThrottle.clear(email);
     return staff;
   }
 
-  async validateAdminPin(pin: string, ipAddress?: string, userAgent?: string): Promise<Staff> {
-    const configuredPin = this.config.get<string>('ADMIN_CONSOLE_PIN');
-    const configuredEmail = this.config.get<string>('ADMIN_CONSOLE_EMAIL');
-
-    if (!configuredPin || !configuredEmail) {
-      this.logger.warn('Admin console PIN login failed');
-      throw new UnauthorizedException('Invalid PIN');
-    }
-
-    assertPinNotInsecureDefault(configuredPin, 'ADMIN_CONSOLE_PIN');
-
-    if (!safeCompare(pin, configuredPin)) {
-      this.logger.warn('Admin console PIN login failed');
-      throw new UnauthorizedException('Invalid PIN');
-    }
-
-    const staff = await this.staffService.findByEmail(configuredEmail);
-    if (
-      !staff ||
-      !staff.isActive ||
-      (staff.role !== StaffRole.owner && staff.role !== StaffRole.admin)
-    ) {
-      this.logger.warn('Admin console PIN account is unavailable or lacks an admin role');
-      throw new UnauthorizedException('Invalid PIN');
-    }
-
-    await this.auditLogService.logAuthEvent({
-      organizationId: staff.organizationId,
-      actorId: staff.id,
-      actorEmail: staff.email,
-      actorRole: staff.role,
-      action: 'login',
-      resource: 'auth',
-      ipAddress,
-      userAgent,
-    });
-    return staff;
+  /**
+   * Starts a login session (Stories 2.5 and 2.8): a StaffSession row whose id
+   * every access and refresh token of the session carries as `sid`.
+   */
+  startSession(staff: Staff): Promise<string> {
+    return this.sessions.start(staff.id);
   }
 
-  signAccessToken(staff: Staff): string {
+  signAccessToken(staff: Staff, sessionId: string): string {
     const payload: Omit<JwtPayload, 'iat' | 'exp'> = {
       sub: staff.id,
       email: staff.email,
       role: staff.role,
       organizationId: staff.organizationId,
+      sid: sessionId,
     };
     return this.jwt.sign(payload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
@@ -156,15 +162,18 @@ export class AuthService implements OnModuleInit {
     try {
       return this.jwt.verify<JwtPayload>(token, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        // Pinned as in JwtStrategy (Story 2.6): jsonwebtoken would otherwise
+        // accept HS384/HS512 for a string secret.
+        algorithms: ['HS256'],
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
   }
 
-  signRefreshToken(staff: Staff): string {
+  signRefreshToken(staff: Staff, sessionId: string): string {
     return this.jwt.sign(
-      { sub: staff.id },
+      { sub: staff.id, sid: sessionId },
       {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
         expiresIn: this.config.get('JWT_REFRESH_EXPIRY', '7d'),
@@ -198,35 +207,70 @@ export class AuthService implements OnModuleInit {
     });
   }
 
-  async logout(token: string | undefined, ipAddress?: string, userAgent?: string): Promise<void> {
-    if (!token) {
-      this.logger.warn('Anonymous logout: no refresh token provided');
+  /**
+   * Ends a login session (Stories 2.5 and 2.8): its StaffSession row is
+   * revoked, so its refresh and access tokens are refused by Nest and by the
+   * Go Core. Idempotent. The session is named by the refresh cookie, or
+   * failing that by the caller's staff access token. A revocation that cannot
+   * be written fails (500) rather than reporting a logout that did not happen.
+   */
+  async logout(
+    refreshToken: string | undefined,
+    accessToken: string | undefined,
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<void> {
+    const session = this.sessionOf(refreshToken, accessToken);
+    if (!session) {
+      this.logger.warn('Anonymous logout: no valid refresh or access token provided');
       return;
     }
-    try {
-      const payload = this.jwt.verify<{ sub: string }>(token, {
-        secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+    await this.sessions.revoke(session.sessionId, session.staffId, 'logout');
+    const staff = await this.staffService.findById(session.staffId);
+    if (staff) {
+      await this.auditLogService.logAuthEvent({
+        organizationId: staff.organizationId,
+        actorId: staff.id,
+        actorEmail: staff.email,
+        actorRole: staff.role,
+        action: 'logout',
+        resource: 'auth',
+        ipAddress,
+        userAgent,
       });
-      const staffId = payload.sub;
-      const staff = await this.staffService.findById(staffId);
-      if (staff) {
-        await this.auditLogService.logAuthEvent({
-          organizationId: staff.organizationId,
-          actorId: staff.id,
-          actorEmail: staff.email,
-          actorRole: staff.role,
-          action: 'logout',
-          resource: 'auth',
-          ipAddress,
-          userAgent,
-        });
-      } else {
-        this.logger.warn(`Anonymous logout: staff record not found for id: ${staffId}`);
-      }
-    } catch (err) {
-      this.logger.warn(
-        `Anonymous logout: invalid or expired refresh token: ${(err as Error).message}`,
-      );
+    } else {
+      this.logger.warn(`Logout: staff record not found for id: ${session.staffId}`);
     }
+  }
+
+  private sessionOf(
+    refreshToken: string | undefined,
+    accessToken: string | undefined,
+  ): { staffId: string; sessionId: string } | null {
+    if (refreshToken) {
+      try {
+        const payload = this.jwt.verify<{ sub: string; sid?: string }>(refreshToken, {
+          secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
+          algorithms: ['HS256'],
+        });
+        if (payload.sub && payload.sid) return { staffId: payload.sub, sessionId: payload.sid };
+      } catch (err) {
+        this.logger.warn(`Logout: invalid or expired refresh token: ${(err as Error).message}`);
+      }
+    }
+    if (accessToken) {
+      try {
+        const payload = this.jwt.verify<JwtPayload>(accessToken, {
+          secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+          algorithms: ['HS256'],
+        });
+        if (isStaffSessionKind(payload.kind) && payload.sub && payload.sid) {
+          return { staffId: payload.sub, sessionId: payload.sid };
+        }
+      } catch (err) {
+        this.logger.warn(`Logout: invalid or expired access token: ${(err as Error).message}`);
+      }
+    }
+    return null;
   }
 }

@@ -1,0 +1,220 @@
+{
+  "schema": "servvia.objective/v2",
+  "objectiveId": "story-12-5-kiosk-off-in-production",
+  "storyId": "12.5",
+  "version": 1,
+  "title": "Kiosk off in production until fixed",
+  "baseline": "00e64adf9bd9c40501a817bf9831225a389c7725",
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-12-5-kiosk-off-in-production.md",
+      "intentContractSha256": "2d2fd0d411d6fcb37a10e62633ae6b53fc1a00fbed1a2227804b377ca7564a00"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-12-context.md",
+      "sha256": "6c26f1c661214f7007108e6ac361e503fea44f8fe1827fbadfaf92a344f683a4"
+    }
+  },
+  "requirementRefs": [
+    "_bmad-output/planning-artifacts/epics.md Story 12.5 (Traceability: PAY-3, KSK-4; audit P0-19, section 4.10; depends on Story 1.5)",
+    "PRD/product-requirements.md PAY-3: payment amount equals the server-computed total; missing provider configuration fails closed in production",
+    "PRD/product-requirements.md KSK-4: no card data stored or queued; submission requires durable acceptance",
+    "PRD/product-requirements.md PR-4: never fake success",
+    "PRD/product-requirements.md section 15 row N: stable, documented error contracts with safe messages",
+    "PRD/product-requirements.md section 16 items 10, 15, 16: abuse resistance, secure production configuration, safe error responses",
+    "docs/audits/production-readiness-2026-12.md P0-19 and section 4.10 (evidence and backlog input only)",
+    "Precedent for the 404 status: epics.md Story 2.3 acceptance criterion 'it does not exist (404)', implemented in apps/api/src/media/providers/local-media-availability.ts (commit fe3e98b)"
+  ],
+  "architectureConstraints": [
+    "fileRestructure.md section 7.1: the kiosk ordering path is transitional (Nest POST /api/kiosk/orders, web KioskOrderPage); the change stays in the transitional NestJS API (apps/api/src) and creates no new canonical owner",
+    "Go Core (services/core-platform) is not changed",
+    "Prisma (apps/api/prisma) stays the migration authority and is not changed: no schema or migration change",
+    "Production is decided per request from validated configuration (ConfigService NODE_ENV) and fails closed: any value other than exactly development or test is production (apps/api/src/config/runtime-environment.ts, Stories 1.5 and 2.3)",
+    "No client application is changed"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "given": "the API runs with production configuration (NODE_ENV=production)",
+      "when": "a request that gets past the existing CSRF middleware reaches POST /api/kiosk/orders, POST /api/kiosk/stripe/create-payment-intent or POST /api/kiosk/stripe/connection-token",
+      "then": "the response is 404 Not Found, as for a route that does not exist, with no kiosk, Stripe, configuration or environment detail in the body. The orders service, the database and Stripe are never reached."
+    },
+    {
+      "id": "AC-2",
+      "given": "production configuration",
+      "when": "any of the three entry points is requested",
+      "then": "the refusal happens before rate limiting: the rate-limit store is never consulted, so requests beyond the limit, or with the rate-limit store unavailable, still get 404 and never 429 or 503"
+    },
+    {
+      "id": "AC-3",
+      "given": "production configuration",
+      "when": "any of the three entry points is requested with an empty or invalid body",
+      "then": "the response is 404, not a validation error (400)"
+    },
+    {
+      "id": "AC-4",
+      "given": "NODE_ENV is unset, or is any value other than exactly development or test",
+      "when": "any of the three entry points is requested",
+      "then": "it behaves exactly as under production (404)"
+    },
+    {
+      "id": "AC-5",
+      "given": "development or test configuration",
+      "when": "the three entry points are requested",
+      "then": "their behaviour is unchanged from the baseline: the rate limiter is consulted, the body is validated, and the matching orders-service operation is called"
+    },
+    {
+      "id": "AC-6",
+      "given": "production configuration",
+      "when": "GET /api/kiosk/venues/:venueId/tables, GET /api/kiosk/venues/:venueId/menu or POST /api/kiosk/kds/auth is requested",
+      "then": "each reaches its handler and behaves as on the baseline"
+    },
+    {
+      "id": "AC-7",
+      "given": "contracts/openapi/orders.yaml",
+      "when": "a reader inspects the three kiosk mutation paths",
+      "then": "each documents the production 404 response"
+    },
+    {
+      "id": "AC-8",
+      "given": "the existing API unit suite, lint and typecheck",
+      "when": "they run on the candidate",
+      "then": "they pass, with no test removed, skipped or weakened and no lint or type suppression added"
+    }
+  ],
+  "completionCriteria": [
+    "Every mandatory check passes on the candidate",
+    "Every required test exists in apps/api/src/orders/kiosk-production-availability.spec.ts and passes. RT-1 to RT-6 fail on the baseline.",
+    "The candidate changes only the allowed surfaces and none of the forbidden ones",
+    "The orchestrator decides acceptance; nothing is merged or pushed by the run"
+  ],
+  "environment": {
+    "services": []
+  },
+  "setup": [
+    {
+      "id": "prisma-generate",
+      "run": ["node", "node_modules/prisma/build/index.js", "generate", "--schema", "apps/api/prisma/schema.prisma"]
+    }
+  ],
+  "checks": [
+    {
+      "id": "api-unit",
+      "category": "unit",
+      "runner": "jest",
+      "cwd": "apps/api",
+      "args": ["../../node_modules/jest/bin/jest.js"],
+      "mandatory": true,
+      "minTests": 1736,
+      "configFiles": ["apps/api/package.json", "apps/api/src/test-setup.ts"]
+    },
+    {
+      "id": "api-lint",
+      "category": "lint",
+      "runner": "command",
+      "cwd": "apps/api",
+      "args": ["node", "../../node_modules/eslint/bin/eslint.js", "{src,apps,libs,test}/**/*.ts"],
+      "mandatory": true,
+      "configFiles": ["apps/api/eslint.config.mjs"]
+    },
+    {
+      "id": "api-typecheck",
+      "category": "typecheck",
+      "runner": "command",
+      "cwd": "apps/api",
+      "args": ["node", "../../node_modules/typescript/bin/tsc", "--noEmit"],
+      "mandatory": true,
+      "configFiles": ["apps/api/tsconfig.json"]
+    }
+  ],
+  "requiredTests": [
+    {
+      "id": "RT-1",
+      "check": "api-unit",
+      "name": "in production, POST /api/kiosk/orders answers 404 before rate limiting and the service",
+      "files": ["apps/api/src/orders/kiosk-production-availability.spec.ts"],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-2",
+      "check": "api-unit",
+      "name": "in production, POST /api/kiosk/stripe/create-payment-intent answers 404 before rate limiting and the service",
+      "files": ["apps/api/src/orders/kiosk-production-availability.spec.ts"],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-3",
+      "check": "api-unit",
+      "name": "in production, POST /api/kiosk/stripe/connection-token answers 404 before rate limiting and the service",
+      "files": ["apps/api/src/orders/kiosk-production-availability.spec.ts"],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-4",
+      "check": "api-unit",
+      "name": "in production, an invalid body still answers 404",
+      "files": ["apps/api/src/orders/kiosk-production-availability.spec.ts"],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-5",
+      "check": "api-unit",
+      "name": "in production, an unavailable rate-limit store does not change the 404",
+      "files": ["apps/api/src/orders/kiosk-production-availability.spec.ts"],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-6",
+      "check": "api-unit",
+      "name": "an unset or unrecognised NODE_ENV is treated as production",
+      "files": ["apps/api/src/orders/kiosk-production-availability.spec.ts"],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-7",
+      "check": "api-unit",
+      "name": "in development and test, the kiosk order and payment routes keep their behaviour",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-8",
+      "check": "api-unit",
+      "name": "in production, kiosk menu and table reads and the KDS PIN exchange are unchanged",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    }
+  ],
+  "surfaces": {
+    "allowed": [
+      "apps/api/src/**",
+      "contracts/openapi/orders.yaml"
+    ],
+    "forbidden": [
+      "apps/api/prisma/**",
+      "apps/api/test/**",
+      "apps/api/src/common/middleware/csrf.middleware.ts",
+      "apps/api/src/auth/guards/rate-limit.guard.ts",
+      "apps/api/src/auth/kds-auth.controller.ts",
+      "apps/api/src/auth/kds-auth.service.ts",
+      "apps/api/src/kiosk/**",
+      "apps/api/src/orders/orders.service.ts",
+      "apps/api/src/config/runtime-environment.ts",
+      "apps/api/src/config/environment.validation.ts",
+      "apps/api/src/media/**",
+      "apps/window-display/**",
+      "apps/web/**",
+      "services/**",
+      "contracts/openapi/servvia-orders.yaml"
+    ]
+  },
+  "expectationChanges": [
+    {
+      "path": "apps/api/src/orders/orders.controller.spec.ts",
+      "reason": "Only if the production gate's dependencies stop the existing TestingModule from compiling: add the missing provider (for example ConfigService with NODE_ENV=test). Nothing else changes; no test is removed, skipped or weakened.",
+      "retiresTests": []
+    }
+  ],
+  "allowedSkips": [],
+  "allowedSuppressions": []
+}

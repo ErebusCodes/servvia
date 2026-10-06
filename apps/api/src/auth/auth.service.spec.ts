@@ -1,11 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpException, UnauthorizedException } from '@nestjs/common';
+import { setSecurityEventSink } from '../observability/security-events';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { StaffService } from '../staff/staff.service';
 import { AuditLogService } from '../audit/audit.service';
+import { StaffSessionService } from './staff-session.service';
+import { LoginThrottleService } from './login-throttle.service';
 import { StaffRole, Staff } from '@prisma/client';
 
 const mockJwtService = {
@@ -26,6 +29,17 @@ const mockStaffService = {
 
 const mockAuditLogService = {
   logAuthEvent: jest.fn(),
+};
+
+const mockSessions = {
+  start: jest.fn(),
+  revoke: jest.fn(),
+};
+
+const mockLoginThrottle = {
+  reserveAttempt: jest.fn(),
+  clear: jest.fn(),
+  fingerprint: jest.fn((email: string) => `fp(${email.length})`),
 };
 
 const fakeStaff: Staff = {
@@ -60,26 +74,29 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: mockConfigService },
         { provide: StaffService, useValue: mockStaffService },
         { provide: AuditLogService, useValue: mockAuditLogService },
+        { provide: StaffSessionService, useValue: mockSessions },
+        { provide: LoginThrottleService, useValue: mockLoginThrottle },
       ],
     }).compile();
     service = module.get<AuthService>(AuthService);
   });
 
-  it('signAccessToken calls JwtService.sign with sub, email, role, organizationId', () => {
-    service.signAccessToken(fakeStaff);
+  it('signAccessToken calls JwtService.sign with sub, email, role, organizationId, sid', () => {
+    service.signAccessToken(fakeStaff, 'session-uuid');
     expect(mockJwtService.sign).toHaveBeenCalledWith(
       {
         sub: fakeStaff.id,
         email: fakeStaff.email,
         role: fakeStaff.role,
         organizationId: fakeStaff.organizationId,
+        sid: 'session-uuid',
       },
       expect.any(Object),
     );
   });
 
   it('signAccessToken returns the signed token string', () => {
-    const result = service.signAccessToken(fakeStaff);
+    const result = service.signAccessToken(fakeStaff, 'session-uuid');
     expect(typeof result).toBe('string');
     expect(result).toBe('signed-token');
   });
@@ -120,9 +137,18 @@ describe('AuthService', () => {
     expect(() => service.verifyAccessToken('bad-token')).toThrow(UnauthorizedException);
   });
 
-  it('signRefreshToken calls JwtService.sign with sub only', () => {
-    service.signRefreshToken(fakeStaff);
-    expect(mockJwtService.sign).toHaveBeenCalledWith({ sub: fakeStaff.id }, expect.any(Object));
+  it('signRefreshToken calls JwtService.sign with sub and the session id only', () => {
+    service.signRefreshToken(fakeStaff, 'session-uuid');
+    expect(mockJwtService.sign).toHaveBeenCalledWith(
+      { sub: fakeStaff.id, sid: 'session-uuid' },
+      expect.any(Object),
+    );
+  });
+
+  it('startSession records a StaffSession row and returns its id as the sid', async () => {
+    mockSessions.start.mockResolvedValue('session-uuid');
+    await expect(service.startSession(fakeStaff)).resolves.toBe('session-uuid');
+    expect(mockSessions.start).toHaveBeenCalledWith(fakeStaff.id);
   });
 
   it('setRefreshCookie sets httpOnly cookie', () => {
@@ -147,14 +173,14 @@ describe('AuthService', () => {
     );
   });
 
-  it('setRefreshCookie scopes cookie to /api/auth/refresh', () => {
+  it('setRefreshCookie scopes cookie to /api/auth, so logout receives it', () => {
     const cookieFn = jest.fn();
     const mockRes = { cookie: cookieFn } as unknown as Response;
     service.setRefreshCookie(mockRes, 'refresh-token-value');
     expect(cookieFn).toHaveBeenCalledWith(
       'refresh_token',
       'refresh-token-value',
-      expect.objectContaining({ path: '/api/auth/refresh' }),
+      expect.objectContaining({ path: '/api/auth' }),
     );
   });
 
@@ -188,13 +214,13 @@ describe('AuthService', () => {
     );
   });
 
-  it('clearRefreshCookie calls res.clearCookie scoped to /api/auth/refresh', () => {
+  it('clearRefreshCookie calls res.clearCookie scoped to /api/auth', () => {
     const clearCookieFn = jest.fn();
     const mockRes = { clearCookie: clearCookieFn } as unknown as Response;
     service.clearRefreshCookie(mockRes);
     expect(clearCookieFn).toHaveBeenCalledWith(
       'refresh_token',
-      expect.objectContaining({ path: '/api/auth/refresh' }),
+      expect.objectContaining({ path: '/api/auth' }),
     );
   });
 
@@ -231,60 +257,102 @@ describe('AuthService', () => {
       );
     });
 
+    it('reserves a per-account attempt before looking anything up (Story 2.4)', async () => {
+      mockLoginThrottle.reserveAttempt.mockRejectedValueOnce(new HttpException('Too many', 429));
+      await expect(service.validateLogin('owner@verdura.co.nz', 'correct')).rejects.toThrow(
+        HttpException,
+      );
+      expect(mockLoginThrottle.reserveAttempt).toHaveBeenCalledWith('owner@verdura.co.nz');
+      expect(mockStaffService.findByEmail).not.toHaveBeenCalled();
+      expect(mockStaffService.verifyPassword).not.toHaveBeenCalled();
+    });
+
+    it('clears the account count only on success', async () => {
+      mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
+      mockStaffService.verifyPassword.mockResolvedValueOnce(false);
+      await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(mockLoginThrottle.clear).not.toHaveBeenCalled();
+      mockStaffService.verifyPassword.mockResolvedValueOnce(true);
+      await service.validateLogin('owner@verdura.co.nz', 'correct');
+      expect(mockLoginThrottle.clear).toHaveBeenCalledWith('owner@verdura.co.nz');
+    });
+
+    describe('enumeration resistance: a known and an unknown account look alike', () => {
+      it('does the same work for both: one lookup and one password verification', async () => {
+        for (const found of [fakeStaff, null]) {
+          jest.clearAllMocks();
+          mockStaffService.findByEmail.mockResolvedValue(found);
+          mockStaffService.verifyPassword.mockResolvedValue(false);
+          await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+            'Invalid credentials',
+          );
+          expect(mockStaffService.findByEmail).toHaveBeenCalledTimes(1);
+          expect(mockStaffService.verifyPassword).toHaveBeenCalledTimes(1);
+        }
+        // The unknown account is verified against a real Argon2id hash.
+        const [hash] = mockStaffService.verifyPassword.mock.calls[0] as [string, string];
+        expect(hash).toMatch(/^\$argon2id\$/);
+      });
+
+      it('answers a known account without waiting for its audit row (an unknown one writes none)', async () => {
+        mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
+        mockStaffService.verifyPassword.mockResolvedValue(false);
+        // If the refusal waited for this write, it would never settle.
+        mockAuditLogService.logAuthEvent.mockReturnValueOnce(new Promise(() => undefined));
+        await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+          'Invalid credentials',
+        );
+        expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
+          expect.objectContaining({ action: 'login_failed', actorId: fakeStaff.id }),
+        );
+      });
+
+      it('reports an audit row it could not write', async () => {
+        const lines: string[] = [];
+        const previous = setSecurityEventSink((line) => lines.push(line));
+        try {
+          mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
+          mockStaffService.verifyPassword.mockResolvedValue(false);
+          mockAuditLogService.logAuthEvent.mockRejectedValueOnce(new Error('database unavailable'));
+          await expect(service.validateLogin('owner@verdura.co.nz', 'wrong')).rejects.toThrow(
+            UnauthorizedException,
+          );
+          await new Promise((resolve) => setImmediate(resolve));
+        } finally {
+          setSecurityEventSink(previous);
+        }
+        expect(lines.map((l) => JSON.parse(l) as { event: string }).map((e) => e.event)).toEqual([
+          'login_failed',
+          'audit_write_failed',
+        ]);
+      });
+    });
+
+    it('never logs the submitted address of an unknown account', async () => {
+      const lines: string[] = [];
+      const previous = setSecurityEventSink((line) => lines.push(line));
+      try {
+        mockStaffService.findByEmail.mockResolvedValue(null);
+        mockStaffService.verifyPassword.mockResolvedValue(false);
+        await expect(service.validateLogin('someone.secret@example.com', 'x')).rejects.toThrow(
+          UnauthorizedException,
+        );
+      } finally {
+        setSecurityEventSink(previous);
+      }
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0])).toMatchObject({ event: 'login_failed_unknown_account' });
+      expect(lines[0]).not.toContain('someone.secret');
+    });
+
     it('uses the same error message for all failure modes', async () => {
       mockStaffService.findByEmail.mockResolvedValue(null);
       mockStaffService.verifyPassword.mockResolvedValue(false);
       await expect(service.validateLogin('nobody@verdura.co.nz', 'any')).rejects.toThrow(
         new UnauthorizedException('Invalid credentials'),
       );
-    });
-  });
-
-  describe('validateAdminPin', () => {
-    beforeEach(() => {
-      mockConfigService.get.mockImplementation((key: string, def: string): string => {
-        if (key === 'ADMIN_CONSOLE_PIN') return '108';
-        if (key === 'ADMIN_CONSOLE_EMAIL') return 'owner@verdura.co.nz';
-        return def;
-      });
-    });
-
-    it('returns the configured active owner for PIN 108 and audits the login', async () => {
-      mockStaffService.findByEmail.mockResolvedValue(fakeStaff);
-
-      await expect(service.validateAdminPin('108', '1.2.3.4', 'Mozilla')).resolves.toBe(fakeStaff);
-      expect(mockStaffService.findByEmail).toHaveBeenCalledWith('owner@verdura.co.nz');
-      expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
-        expect.objectContaining({ actorId: fakeStaff.id, action: 'login', resource: 'auth' }),
-      );
-    });
-
-    it('rejects an incorrect PIN before looking up an account', async () => {
-      await expect(service.validateAdminPin('999')).rejects.toThrow(
-        new UnauthorizedException('Invalid PIN'),
-      );
-      expect(mockStaffService.findByEmail).not.toHaveBeenCalled();
-    });
-
-    it('fails closed when PIN login is not configured', async () => {
-      mockConfigService.get.mockImplementation((_key: string, def: string): string => def);
-      await expect(service.validateAdminPin('108')).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('rejects a configured non-admin account', async () => {
-      mockStaffService.findByEmail.mockResolvedValue({ ...fakeStaff, role: StaffRole.cashier });
-      await expect(service.validateAdminPin('108')).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('fails closed in production when the configured PIN is still the insecure checked-in default ("108")', async () => {
-      const previousEnv = process.env.NODE_ENV;
-      process.env.NODE_ENV = 'production';
-      try {
-        await expect(service.validateAdminPin('108')).rejects.toThrow();
-        expect(mockStaffService.findByEmail).not.toHaveBeenCalled();
-      } finally {
-        process.env.NODE_ENV = previousEnv;
-      }
     });
   });
 
@@ -331,9 +399,9 @@ describe('AuthService', () => {
     });
 
     it('logout creates audit log record when token is valid', async () => {
-      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid' });
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
       mockStaffService.findById.mockResolvedValue(fakeStaff);
-      await service.logout('refresh-token-val', '1.2.3.4', 'Mozilla');
+      await service.logout('refresh-token-val', undefined, '1.2.3.4', 'Mozilla');
       expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith({
         organizationId: fakeStaff.organizationId,
         actorId: fakeStaff.id,
@@ -350,7 +418,62 @@ describe('AuthService', () => {
       mockJwtService.verify.mockImplementation(() => {
         throw new Error('invalid token');
       });
-      await service.logout('invalid-token-val', '1.2.3.4', 'Mozilla');
+      await service.logout('invalid-token-val', 'invalid-access-val', '1.2.3.4', 'Mozilla');
+      expect(mockAuditLogService.logAuthEvent).not.toHaveBeenCalled();
+      expect(mockSessions.revoke).not.toHaveBeenCalled();
+    });
+
+    it('logout revokes the refresh token’s session row (Stories 2.5, 2.8)', async () => {
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
+      mockStaffService.findById.mockResolvedValue(fakeStaff);
+      await service.logout('refresh-token-val', undefined);
+      expect(mockJwtService.verify).toHaveBeenCalledWith('refresh-token-val', {
+        secret: 'test-JWT_REFRESH_SECRET',
+        algorithms: ['HS256'],
+      });
+      expect(mockSessions.revoke).toHaveBeenCalledWith('session-uuid', 'staff-uuid', 'logout');
+    });
+
+    it('logout falls back to the staff access token when there is no refresh cookie', async () => {
+      mockJwtService.verify.mockReturnValue({
+        sub: 'staff-uuid',
+        role: StaffRole.owner,
+        organizationId: 'org-uuid',
+        sid: 'session-uuid',
+      });
+      mockStaffService.findById.mockResolvedValue(fakeStaff);
+      await service.logout(undefined, 'access-token-val');
+      expect(mockJwtService.verify).toHaveBeenCalledWith('access-token-val', {
+        secret: 'test-JWT_ACCESS_SECRET',
+        algorithms: ['HS256'],
+      });
+      expect(mockSessions.revoke).toHaveBeenCalledWith('session-uuid', 'staff-uuid', 'logout');
+    });
+
+    it('logout does not treat a device token as a staff session', async () => {
+      mockJwtService.verify.mockReturnValue({
+        sub: 'kds-device:venue-uuid',
+        role: StaffRole.kitchen,
+        organizationId: 'org-uuid',
+        kind: 'kds_device',
+        sid: 'session-uuid',
+      });
+      await service.logout(undefined, 'kds-token-val');
+      expect(mockSessions.revoke).not.toHaveBeenCalled();
+    });
+
+    it('logout without a session id (a token from before session ids) revokes nothing', async () => {
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid' });
+      await service.logout('legacy-refresh-token', undefined);
+      expect(mockSessions.revoke).not.toHaveBeenCalled();
+    });
+
+    it('logout fails, without auditing, when the revocation cannot be written', async () => {
+      mockJwtService.verify.mockReturnValue({ sub: 'staff-uuid', sid: 'session-uuid' });
+      mockSessions.revoke.mockRejectedValueOnce(new Error('connection refused'));
+      await expect(service.logout('refresh-token-val', undefined)).rejects.toThrow(
+        'connection refused',
+      );
       expect(mockAuditLogService.logAuthEvent).not.toHaveBeenCalled();
     });
   });

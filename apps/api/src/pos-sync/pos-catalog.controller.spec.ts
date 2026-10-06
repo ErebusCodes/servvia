@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Staff, StaffRole } from '@prisma/client';
 import { Request } from 'express';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
 
 const mockService = {
   listCandidates: jest.fn(),
@@ -32,6 +33,8 @@ describe('PosCatalogController', () => {
       .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(VenueAccessGuard)
       .useValue({ canActivate: () => true })
       .compile();
     controller = module.get<PosCatalogController>(PosCatalogController);

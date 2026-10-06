@@ -375,8 +375,11 @@ describe('POS Sync Outbox Dispatch (integration, real local Postgres + real Redi
         host: process.env.REDIS_HOST ?? '127.0.0.1',
         port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
       };
+      // This run's own BullMQ namespace (Story 12.14), like the app's queues.
+      const prefix = process.env.QUEUE_PREFIX;
       const testQueue = new Queue(queueName, {
         connection,
+        prefix,
         defaultJobOptions: {
           attempts: 2,
           backoff: { type: 'fixed', delay: 50 },
@@ -394,7 +397,7 @@ describe('POS Sync Outbox Dispatch (integration, real local Postgres + real Redi
           if (shouldFail) throw new Error('simulated transient infra failure');
           return Promise.resolve('resolved');
         },
-        { connection },
+        { connection, prefix },
       );
 
       try {

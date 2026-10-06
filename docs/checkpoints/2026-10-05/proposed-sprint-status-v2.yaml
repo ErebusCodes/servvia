@@ -1,0 +1,44 @@
+# PLANNING / EXECUTION-STATE EVIDENCE — NOT REQUIREMENTS AUTHORITY.
+# PROPOSED (not active) — REVISION 2 (frozen planning target), checkpoint 2026-10-05. To be applied by bmad-sprint-planning on the integrated baseline after Wave A (Story 14.2).
+# Source: SPRINT-CHANGE-PROPOSAL-2026-10-05.md. Requirements authority: PRD/product-requirements.md + volumes 00-09 (normative 2026-10-05).
+development_status:
+  epic-1: in-progress
+  1-1-api-lint-passes-so-the-api-ci-job-runs-to-completion: done
+  1-2-go-core-ci-job-with-real-postgresql-and-redis: done
+  1-3-venue-connector-ci-job-made-truthful: done            # accepted ff3e4d7 (tracking corrected)
+  1-4-nest-production-start-runs-the-built-entry-point: done
+  1-5-production-configuration-fails-closed: done
+  1-6-protect-the-main-branch: backlog                     # NEEDS AUTHORIZATION (GitHub admin); after Wave A
+  1-7-native-round-recovery-ci-truthfulness: done          # accepted 38bea30 (added)
+  1-8-native-round-recovery-host-override-safety: done     # accepted 38bea30 (added)
+  1-9-test-harness-loopback-binding: backlog               # REWRITE; Wave A; freeze objective only after proposal section 15 preconditions
+  1-10-ci-asserts-native-round-recovery-execution: backlog # KEEP, DEFER
+  epic-2: done                                             # 2.1-2.11 done; push-close residue -> 15.4
+  epic-3: backlog                                          # 3.1, 3.2 (NEEDS AUTHORIZATION; P7 for 3.2 acceptance)
+  epic-4: backlog                                          # 4.1, 4.2 (NEEDS AUTHORIZATION)
+  epic-14: backlog
+  14-1-integrate-normative-prd-and-retire-filerestructure: done      # Wave A, commit 5ee6474 (2026-10-05)
+  14-2-repoint-bmad-config-and-regenerate-planning: backlog         # NEXT; not started; needs fresh authorization
+  epic-15: backlog
+  15-1-core-audit-device-and-system-actors: backlog
+  15-2-o21-provenance-persistence: backlog                 # absorbs 12.16
+  15-3-credentials-carry-application-identity: backlog
+  15-4-event-triggered-realtime-revocation: backlog
+  15-5-core-kitchen-routes-accept-d8-kds-credentials: backlog
+  epic-16: backlog
+  8-2-venue-tax-and-table-settings-from-real-data: backlog # reordered into Wave C
+  16-1-p3-business-date: backlog
+  16-2-line-level-station-routing: backlog                 # supersedes 12.7
+  16-3-cancel-void-comp-in-core: backlog                   # rewrites 7.1; P6 values before pilot enablement
+  16-4-order-completion-and-uncertain-payment-resolution: backlog  # rewrites 7.2
+  16-5-p11-operational-sales-computation: backlog          # splits 13.5
+  epic-5: backlog    # 5.1 rewrite, 5.2, 5.3 after 15.2/15.3
+  epic-6: backlog    # D-1 APPROVED: transitional web KDS on Core for the pilot; 6.1 rewrite (per-device D8 via 15.5, D-3)
+  epic-9: backlog    # 9.1-9.6 after 15.2, 16.1
+  epic-10: backlog   # 10.5 split -> 10.5a, 10.5b; 10.6 BLOCKED O-3
+  epic-11: backlog   # BLOCKED O-4/O-5/O-6; 11.2 rewrite after 16.1/16.5
+  epic-12: backlog   # 12.3 split (12.3a done, 12.3b remains); 12.5, 12.14, 12.15 done; 12.7 superseded; 12.16 merged
+  epic-17: backlog   # post-pilot; O-10 APPROVED (Tier 2); exact pins verified in 17.1
+  epic-18: backlog   # post-pilot native KDS: platform pathfinder; retires web KDS (D-1 steps 3-6)
+  epic-19: backlog   # post-pilot native Waiter Tablet Staff Mode: primary transitional-retirement target
+  epic-13: deferred  # placeholders; 13.2 / 13.5 / 13.7 split per proposal

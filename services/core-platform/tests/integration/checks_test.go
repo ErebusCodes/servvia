@@ -164,7 +164,9 @@ func TestCheckBillsAVisitWithSeveralOrders(t *testing.T) {
 		{"no POS sync record", `SELECT count(*) FROM "POSSyncRecord" WHERE "orderId" = ANY($1)`, []any{[]string{a.ID, b.ID}}, 0},
 		{"no printer job", `SELECT count(*) FROM "PrinterJob" WHERE "orderId" = ANY($1)`, []any{[]string{a.ID, b.ID}}, 0},
 		{"no connector command", `SELECT count(*) FROM "ConnectorCommand" WHERE "venueId" = $1`, []any{h.f.Venue}, 0},
-		{"no outbox event for checks", `SELECT count(*) FROM "OutboxEvent" WHERE "venueId" = $1 AND "aggregateType" <> 'order'`, []any{h.f.Venue}, 0},
+		{"no legacy outbox rows", `SELECT count(*) FROM "OutboxEvent" WHERE "venueId" = $1`, []any{h.f.Venue}, 0},
+		{"no work deliveries for check facts", `SELECT count(*) FROM "EventDelivery" d JOIN "DomainEvent" e ON e.id = d."eventId"
+			WHERE e."venueId" = $1 AND e."aggregateType" = 'check'`, []any{h.f.Venue}, 0},
 	} {
 		if got := h.count(t, c2.sql, c2.args...); got != c2.want {
 			t.Errorf("%s: %d", c2.what, got)
@@ -636,11 +638,11 @@ func TestCheckAPIAgainstPostgres(t *testing.T) {
 		Menu:     menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:   venues.NewHandler(venueStore, logger),
 		Checks:   checksapi.NewHandler(h.checks, venueStore, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	token := func(c jwt.MapClaims) string {
-		c["organizationId"], c["exp"] = h.f.Org, time.Now().Add(time.Minute).Unix()
+		c["organizationId"], c["exp"], c["sid"] = h.f.Org, time.Now().Add(time.Minute).Unix(), testsupport.UUID()
 		s, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString([]byte(secret))
 		return s
 	}

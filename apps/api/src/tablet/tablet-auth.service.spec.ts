@@ -347,14 +347,31 @@ describe('TabletAuthService', () => {
       await expect(service.elevateStaff(device, '4242')).rejects.toThrow(UnauthorizedException);
     });
 
-    it('scopes the candidate query to active, org-matched, PIN-set staff only (org-wide, matching how staff-kind tokens are scoped everywhere else in the app)', async () => {
+    it('elevates nobody when a PIN matches two staff members (fail closed, Story 8.1)', async () => {
+      const pinHash = await argon2.hash('4242', { type: argon2.argon2id });
+      const candidate = (id: string) => ({
+        id,
+        name: id,
+        email: `${id}@x.com`,
+        role: StaffRole.cashier,
+        pinHash,
+        isActive: true,
+        organizationId: 'org-1',
+      });
+      prisma.staff.findMany.mockResolvedValue([candidate('staff-1'), candidate('staff-2')]);
+      await expect(service.elevateStaff(device, '4242')).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('scopes the candidate query to active, org-matched staff granted the tablet’s venue with their PIN enrolled there (Stories 2.2, 8.1, 8.3)', async () => {
       prisma.staff.findMany.mockResolvedValue([]);
       await service.elevateStaff(device, '4242').catch(() => undefined);
       const whereClause = firstCallArg(prisma.staff.findMany).where as Record<string, unknown>;
       expect(whereClause.organizationId).toBe('org-1');
       expect(whereClause.isActive).toBe(true);
       expect(whereClause.pinHash).toEqual({ not: null });
-      expect(whereClause.venueAccess).toBeUndefined();
+      expect(whereClause.venueAccess).toEqual({
+        some: { venueId: 'venue-1', pinEnrolledAt: { not: null } },
+      });
     });
   });
 

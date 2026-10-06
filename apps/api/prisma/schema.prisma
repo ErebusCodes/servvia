@@ -497,6 +497,9 @@ model Staff {
   venueAccess                   VenueAccess[]           @relation("StaffAccess")
   grantsGiven                   VenueAccess[]           @relation("GrantedBy")
   auditLogs                     AuditLog[]              @relation("ActorLogs")
+  sessions                      StaffSession[]
+  credentialTokens              StaffCredentialToken[]  @relation("CredentialTokenFor")
+  credentialTokensIssued        StaffCredentialToken[]  @relation("CredentialTokenIssuedBy")
   categoriesCreated             Category[]
   menuItemsCreated              MenuItem[]
   mediaAssetsCreated            MediaAsset[]
@@ -512,12 +515,66 @@ model Staff {
   promotionsUpdated             Promotion[]             @relation("PromotionUpdatedBy")
 }
 
+// A staff login session (Story 2.8). Its id is the `sid` claim carried by
+// the session's access and refresh tokens. This row, in the canonical
+// database, is the source of truth for whether the session is live: logout,
+// credential reset and removal of authority revoke it, and Nest and Go Core
+// both refuse a token whose session is revoked, expired or missing. No cache
+// can resurrect it. Rows are deleted once they can no longer authorize
+// anything (expiresAt passed); see StaffSessionCleanupService.
+model StaffSession {
+  id            String    @id @default(uuid())
+  staffId       String
+  createdAt     DateTime  @default(now())
+  // The refresh-token lifetime from login: no token of the session outlives it.
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  // logout | credential_reset | credential_setup | role_changed | deactivated | removed
+  revokedReason String?
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@index([expiresAt])
+}
+
+// A single-use code with which a staff member sets their own password
+// (Story 8.1): issued when an owner or admin creates the account or resets
+// its credential, or by the operator bootstrap command (Story 2.4), so no
+// administrator ever chooses or sees a staff member's password. Only an Argon2id hash of the secret is stored; the code
+// (`<id>.<secret>`) is shown once to the issuer. Issuing a new code ends the
+// staff member's earlier unused ones.
+model StaffCredentialToken {
+  id             String    @id @default(uuid())
+  staffId        String
+  tokenHash      String
+  expiresAt      DateTime
+  usedAt         DateTime?
+  // Set when a newer code replaced this one before it was used.
+  revokedAt      DateTime?
+  // Exactly one issuer (database CHECK): the owner or admin who issued the
+  // code, or the operator bootstrap command (Story 2.4) by its process name.
+  issuedById     String?
+  issuedBySystem String?
+  createdAt      DateTime  @default(now())
+
+  staff    Staff  @relation("CredentialTokenFor", fields: [staffId], references: [id], onDelete: Cascade)
+  issuedBy Staff? @relation("CredentialTokenIssuedBy", fields: [issuedById], references: [id], onDelete: Restrict)
+
+  @@index([staffId])
+}
+
 model VenueAccess {
   id          String   @id @default(uuid())
   staffId     String
   venueId     String
   grantedAt   DateTime @default(now())
   grantedById String
+  /// Story 8.3: when this staff member's tablet PIN was checked unique among
+  /// the venue's PIN holders and enrolled here. Null: the PIN does not
+  /// elevate a tablet in this venue (a grant made after the PIN was set, or
+  /// no PIN). Set and cleared only by StaffService.setTabletPin.
+  pinEnrolledAt DateTime?
 
   staff     Staff @relation("StaffAccess", fields: [staffId], references: [id])
   venue     Venue @relation(fields: [venueId], references: [id])
@@ -1661,13 +1718,37 @@ model KdsDeliveryRecord {
   @@index([status, dispatchExhaustedAt, createdAt])
 }
 
+// Story 12.15: who performed an audited action. Actor identity (a named
+// staff member, an authenticated device, or a system process), device
+// identity and provenance are separate columns; a device is never recorded
+// as a Staff row. A CHECK constraint (migration
+// 20261010000000_audit_actor_types) enforces the shape of each actor type,
+// and a trigger rejects UPDATE: audit rows are immutable.
+enum AuditActorType {
+  staff // a named staff member (actorId, actorEmail, actorRole), possibly acting on a device
+  device // an authenticated device or service credential (deviceKind; deviceId when one exists)
+  system // a background process of the platform itself (systemActor)
+}
+
 model AuditLog {
-  id             String    @id @default(uuid())
+  id             String         @id @default(uuid())
   organizationId String
   venueId        String?
-  actorId        String
-  actorEmail     String
-  actorRole      StaffRole
+  actorType      AuditActorType @default(staff)
+  // Staff.id: set exactly when actorType = staff.
+  actorId        String?
+  actorEmail     String?
+  // The staff member's role, or the role a device credential grants.
+  actorRole      StaffRole?
+  // The kind of device or credential that acted, or that a staff member
+  // acted through: kds_device (a KDS screen signed in with the venue PIN;
+  // no device record exists), tablet_device, venue_connector.
+  deviceKind     String?
+  // The device's own record ID where one exists (TabletDevice.id,
+  // ConnectorInstallation.id). No foreign key: devices live in several tables.
+  deviceId       String?
+  // Name of the system process, set exactly when actorType = system.
+  systemActor    String?
   action         String
   resource       String
   resourceId     String?
@@ -1675,11 +1756,15 @@ model AuditLog {
   after          Json?
   ipAddress      String?
   userAgent      String?
-  timestamp      DateTime  @default(now())
+  timestamp      DateTime       @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id])
-  venue        Venue?       @relation(fields: [venueId], references: [id])
-  actor        Staff        @relation("ActorLogs", fields: [actorId], references: [id])
+  // Restrict (was SetNull): deleting a venue must not rewrite the venue
+  // context of its immutable audit history (Story 12.15).
+  venue        Venue?       @relation(fields: [venueId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  // Restrict, as before: deleting a staff member must never erase or null
+  // the attribution of their audited actions.
+  actor        Staff?       @relation("ActorLogs", fields: [actorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 // ─── Story 2-9: Enterprise Venue Connector Identity ─────────────────────────
@@ -2834,4 +2919,78 @@ model RealtimeEvent {
 
   @@index([txId, sequence])
   @@index([occurredAt])
+}
+
+/// A canonical domain fact (Phase D13): one row per change, written in the
+/// SAME transaction as the change it announces, so the change and its fact
+/// commit together or not at all. It is not canonical state: PostgreSQL's
+/// domain tables are. It guarantees that every committed change can be
+/// observed asynchronously.
+///
+/// The envelope and the fact catalog are D12's (contracts/events/catalog.md).
+/// Consumer progress is NEVER on this row: work consumers track it per
+/// consumer in EventDelivery; broadcast readers (realtime) tail it with an
+/// in-memory (txId, sequence) cursor bounded by the snapshot xmin.
+/// Supersedes RealtimeEvent (no longer written) and, for new rounds, D4's
+/// single-consumer OutboxEvent. Hand-written CHECKs in migration
+/// 20261009000000_domain_events.
+model DomainEvent {
+  /// The envelope's eventId: consumers deduplicate by it.
+  id               String   @id
+  /// Allocation order within a transaction (not commit order).
+  sequence         BigInt   @unique @default(autoincrement())
+  /// The writing transaction (pg_current_xact_id()), for gap-free tailing.
+  txId             BigInt   @default(dbgenerated("((pg_current_xact_id())::text)::bigint"))
+  organizationId   String
+  venueId          String
+  eventType        String
+  aggregateType    String
+  aggregateId      String
+  aggregateVersion Int?
+  payload          Json
+  occurredAt       DateTime @default(now())
+
+  deliveries EventDelivery[]
+
+  @@index([txId, sequence])
+  @@index([occurredAt])
+}
+
+/// One work consumer's progress on one DomainEvent (Phase D13). Created in
+/// the event's transaction for every consumer subscribed to its type.
+/// Claimed with FOR UPDATE SKIP LOCKED and a lease; processed at least once;
+/// retried with bounded backoff; parked as failed (a dead letter) after its
+/// attempt limit or a permanent error, never deleted while failed. One
+/// consumer's outcome never touches another's.
+model EventDelivery {
+  id             String              @id
+  eventId        String
+  /// A registered consumer identity (internal/events), e.g. kitchen_projector.
+  consumer       String
+  status         EventDeliveryStatus @default(pending)
+  /// Claims so far (a crash that loses a lease still counts).
+  attempts       Int                 @default(0)
+  /// Not claimable before this instant (retry backoff).
+  availableAt    DateTime            @default(now())
+  /// The worker holding the claim, until leaseExpiresAt.
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  lastError      String?
+  succeededAt    DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now())
+
+  event DomainEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, consumer])
+  @@index([consumer, status, availableAt])
+}
+
+/// pending: to be processed (possibly leased, possibly backing off).
+/// succeeded: processed once. failed: a dead letter, waiting for an operator.
+enum EventDeliveryStatus {
+  pending
+  succeeded
+  failed
 }

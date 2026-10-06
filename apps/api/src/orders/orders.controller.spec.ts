@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { StaffRole } from '@prisma/client';
 import { Request } from 'express';
@@ -7,7 +8,9 @@ import { OrdersService } from './orders.service';
 import { RateLimitGuard } from '../auth/guards/rate-limit.guard';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { REDIS_CLIENT } from '../redis/redis.constants';
+import { ROLES_KEY } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { VenueAccessService } from '../auth/venue-access/venue-access.service';
 
 const mockOrdersService = {
   findAll: jest.fn(),
@@ -36,6 +39,8 @@ const kdsUser: AuthenticatedUser = {
   kind: 'kds_device',
 };
 
+const venueAccess = { listableVenueIds: jest.fn().mockResolvedValue(['venue-granted']) };
+
 describe('OrdersController venue scoping', () => {
   let controller: OrdersController;
 
@@ -45,8 +50,11 @@ describe('OrdersController venue scoping', () => {
       controllers: [OrdersController],
       providers: [
         { provide: OrdersService, useValue: mockOrdersService },
+        { provide: VenueAccessService, useValue: venueAccess },
         { provide: RateLimitGuard, useValue: { canActivate: () => true } },
         { provide: REDIS_CLIENT, useValue: { eval: jest.fn() } },
+        // KioskProductionAvailabilityGuard (Story 12.5) reads NODE_ENV from config.
+        { provide: ConfigService, useValue: { get: () => 'test' } },
         // TabletTokenActiveGuard (story 15-1, DL-081) is now part of this
         // controller's guard chain; it only touches Prisma for tablet_*
         // kind tokens (none of this file's fixtures are), but still needs
@@ -58,25 +66,32 @@ describe('OrdersController venue scoping', () => {
   });
 
   describe('findAll', () => {
-    it('lets a staff token query any venueId within its organization', () => {
-      void controller.findAll(reqWith(staffUser), 'venue-99', undefined);
+    // A staff token's venue filter was checked against its grants by
+    // VenueAccessGuard before the handler runs (Story 2.10).
+    it("passes a staff token's requested venueId through", async () => {
+      await controller.findAll(reqWith(staffUser), 'venue-99', undefined);
       expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', 'venue-99', false);
     });
 
-    it('forces a kds_device token onto its own venueId when none is requested', () => {
-      void controller.findAll(reqWith(kdsUser), undefined, 'true');
+    it('narrows a staff token without a venueId to its granted venues (Story 2.10)', async () => {
+      await controller.findAll(reqWith(staffUser), undefined, undefined);
+      expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', ['venue-granted'], false);
+    });
+
+    it('forces a kds_device token onto its own venueId when none is requested', async () => {
+      await controller.findAll(reqWith(kdsUser), undefined, 'true');
       expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', 'venue-1', true);
     });
 
-    it('allows a kds_device token to explicitly request its own venueId', () => {
-      void controller.findAll(reqWith(kdsUser), 'venue-1', undefined);
+    it('allows a kds_device token to explicitly request its own venueId', async () => {
+      await controller.findAll(reqWith(kdsUser), 'venue-1', undefined);
       expect(mockOrdersService.findAll).toHaveBeenCalledWith('org-1', 'venue-1', false);
     });
 
-    it('rejects a kds_device token requesting a different venueId', () => {
-      expect(() => controller.findAll(reqWith(kdsUser), 'someone-elses-venue', undefined)).toThrow(
-        ForbiddenException,
-      );
+    it('rejects a kds_device token requesting a different venueId', async () => {
+      await expect(
+        controller.findAll(reqWith(kdsUser), 'someone-elses-venue', undefined),
+      ).rejects.toThrow(ForbiddenException);
       expect(mockOrdersService.findAll).not.toHaveBeenCalled();
     });
   });
@@ -100,7 +115,8 @@ describe('OrdersController venue scoping', () => {
         'order-1',
         'org-1',
         { status: 'preparing' },
-        { id: kdsUser.id, email: kdsUser.email, role: kdsUser.role },
+        // Story 12.15: a KDS screen is audited as a device, never as a Staff row.
+        { actorType: 'device', deviceKind: 'kds_device', actorRole: kdsUser.role },
         'venue-1',
       );
     });
@@ -111,9 +127,71 @@ describe('OrdersController venue scoping', () => {
         'order-1',
         'org-1',
         { status: 'preparing' },
-        { id: staffUser.id, email: staffUser.email, role: staffUser.role },
+        {
+          actorType: 'staff',
+          actorId: staffUser.id,
+          actorEmail: staffUser.email,
+          actorRole: staffUser.role,
+        },
         undefined,
       );
     });
+  });
+});
+
+// Story 2.7: the kitchen role (KDS venue-PIN token) cannot create or cancel orders.
+describe('OrdersController kitchen-role least privilege', () => {
+  let controller: OrdersController;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [OrdersController],
+      providers: [
+        { provide: OrdersService, useValue: mockOrdersService },
+        { provide: VenueAccessService, useValue: venueAccess },
+        { provide: RateLimitGuard, useValue: { canActivate: () => true } },
+        { provide: REDIS_CLIENT, useValue: { eval: jest.fn() } },
+        // KioskProductionAvailabilityGuard (Story 12.5) reads NODE_ENV from config.
+        { provide: ConfigService, useValue: { get: () => 'test' } },
+        { provide: PrismaService, useValue: { tabletDevice: { findUnique: jest.fn() } } },
+      ],
+    }).compile();
+    controller = module.get<OrdersController>(OrdersController);
+  });
+
+  it('does not grant the kitchen role order creation', () => {
+    const handler = Object.getOwnPropertyDescriptor(OrdersController.prototype, 'createStaffOrder')
+      ?.value as object;
+    const roles = Reflect.getMetadata(ROLES_KEY, handler) as StaffRole[];
+    expect(roles).not.toContain(StaffRole.kitchen);
+    expect(roles).toEqual(
+      expect.arrayContaining([StaffRole.admin, StaffRole.manager, StaffRole.cashier]),
+    );
+  });
+
+  it.each(['cancelled', 'pending', 'confirmed'])(
+    'refuses a kitchen token setting %s (403), before the service',
+    (status) => {
+      expect(() =>
+        controller.updateStatus(reqWith(kdsUser), 'order-1', { status } as never),
+      ).toThrow(ForbiddenException);
+      expect(mockOrdersService.updateStatus).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['preparing', 'ready', 'completed'])(
+    'lets a kitchen token advance preparation to %s',
+    (status) => {
+      void controller.updateStatus(reqWith(kdsUser), 'order-1', { status } as never);
+      expect(mockOrdersService.updateStatus).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('lets a cashier cancel', () => {
+    void controller.updateStatus(reqWith({ ...staffUser, role: StaffRole.cashier }), 'order-1', {
+      status: 'cancelled',
+    } as never);
+    expect(mockOrdersService.updateStatus).toHaveBeenCalledTimes(1);
   });
 });

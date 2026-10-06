@@ -12,6 +12,7 @@ import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
+import { staffAuditActor } from '../audit/audit-actor';
 import { ConnectorCommandService } from '../connector/connector-command.service';
 import { PosStrategyResolver } from '../pos-sync/pos-strategy-resolver';
 import { LegacyExternalPosHandoff } from '../legacy-external-pos/legacy-external-pos-handoff';
@@ -474,7 +475,7 @@ describe('OrdersService', () => {
               idempotencyKey: 'occupancy-bridge-key-0001',
             } as never,
             mockVenue.organizationId,
-            { id: 'staff-1', email: 'staff@example.test', role: 'manager' as never },
+            { id: 'staff-1', email: 'staff@example.test', role: 'manager' },
           ),
         ).rejects.toThrow(ConflictException);
         expect(mockPrisma.tableSession.findFirst).toHaveBeenCalledTimes(2);
@@ -494,7 +495,7 @@ describe('OrdersService', () => {
               idempotencyKey: 'occupancy-bridge-key-0002',
             } as never,
             mockVenue.organizationId,
-            { id: 'staff-1', email: 'staff@example.test', role: 'manager' as never },
+            { id: 'staff-1', email: 'staff@example.test', role: 'manager' },
           )
           .catch(() => undefined);
         expect(mockPrisma.order.create).toHaveBeenCalled();
@@ -669,7 +670,11 @@ describe('OrdersService', () => {
       createdAt: new Date(),
     };
 
-    const staffActor = { id: 'staff-1', email: 'cook@verdura.co.nz', role: StaffRole.kitchen };
+    const staffActor = staffAuditActor({
+      id: 'staff-1',
+      email: 'cook@verdura.co.nz',
+      role: StaffRole.kitchen,
+    });
 
     it('successfully transitions from confirmed to preparing', async () => {
       mockPrisma.order.findFirst.mockResolvedValue(mockOrder);
@@ -758,9 +763,9 @@ describe('OrdersService', () => {
           'cmd-1',
           orgId,
           venueId,
-          staffActor.id,
-          staffActor.email,
-          staffActor.role,
+          staffActor.actorId,
+          staffActor.actorEmail,
+          staffActor.actorRole,
         );
         expect(mockPrisma.pOSSyncRecord.updateMany).toHaveBeenCalledWith({
           where: { id: 'sync-1', status: POSSyncStatus.queued_for_connector },
@@ -1441,7 +1446,7 @@ describe('OrdersService', () => {
 
     // DL-072's own worked example: a $70.00 GST-inclusive item stays
     // $70.00, never $80.50 (the additive-GST defect). Matches
-    // apps/admin-console/src/pages/order-tablet/billing.test.ts's
+    // apps/web/admin-console/src/pages/order-tablet/billing.test.ts's
     // identical worked example for the same $70.00 figure -- the closest
     // parity evidence available without a real shared cross-app package
     // (see computeTotals's own doc comment for why one wasn't built this

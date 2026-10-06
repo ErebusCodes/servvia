@@ -16,7 +16,6 @@ package pgstore
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -24,8 +23,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
+	coreaudit "servvia/services/core-platform/internal/audit"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/tables"
 )
 
@@ -363,15 +363,9 @@ func snapshot(s tables.Session) map[string]any {
 
 // audit records a change in the existing AuditLog, in the change's transaction.
 func audit(ctx context.Context, tx pgx.Tx, sc tables.Scope, a tables.Actor, action, sessionID string, before, after map[string]any) error {
-	var beforeJSON, afterJSON []byte
-	if before != nil {
-		beforeJSON, _ = json.Marshal(before)
-	}
-	afterJSON, _ = json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", before, after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'table_session', $8, $9, $10)`,
-		newID(), sc.OrganizationID, sc.VenueID, a.StaffID, a.Email, a.Role, action, sessionID, beforeJSON, afterJSON)
+	err := coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.VenueID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, a.Device), Action: action, Resource: "table_session", ResourceID: sessionID,
+		Before: before, After: after})
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgForeignKeyViolation {
@@ -393,8 +387,8 @@ func newID() string {
 // recordFact records a table-session fact in the transaction that made the
 // change (Phase D12).
 func recordFact(ctx context.Context, tx pgx.Tx, eventType string, s tables.Session) error {
-	_, err := realtimestore.Record(ctx, tx, s.VenueID, realtime.Fact{Type: eventType, AggregateType: "table_session",
-		AggregateID: s.ID, Version: realtime.V(s.Version), Payload: map[string]any{
+	_, err := eventstore.Record(ctx, tx, s.VenueID, events.Fact{Type: eventType, AggregateType: "table_session",
+		AggregateID: s.ID, Version: events.V(s.Version), Payload: map[string]any{
 			"tableSessionId": s.ID, "tableId": s.TableID, "tableNumber": s.TableNumber, "status": s.Status, "covers": s.Covers}})
 	return err
 }

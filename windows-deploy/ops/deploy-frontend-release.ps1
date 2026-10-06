@@ -62,11 +62,10 @@ $rel = Join-Path $ReleaseRoot $Stamp
 # repo-relative source -> release-relative destination, and the service that serves it
 $items = @(
     @{ Src = 'windows-deploy\static-proxy-server.mjs'; Dst = 'static-proxy-server.mjs';        Type = 'file'; Svc = $null;                    Port = $null }
-    @{ Src = 'apps\admin-console\dist-admin';          Dst = 'apps\admin-console\dist-admin';  Type = 'dir';  Svc = 'VerduraAdminConsole';    Port = 5177 }
-    @{ Src = 'apps\admin-console\dist-kds';            Dst = 'apps\admin-console\dist-kds';    Type = 'dir';  Svc = 'VerduraKitchenDisplay';  Port = 5175 }
-    @{ Src = 'apps\admin-console\dist';                Dst = 'apps\admin-console\dist';        Type = 'dir';  Svc = 'VerduraOrderTablet';     Port = 5176 }
-    @{ Src = 'apps\customer-website\dist';             Dst = 'apps\customer-website\dist';     Type = 'dir';  Svc = 'VerduraCustomerWebsite'; Port = 5173 }
-    @{ Src = 'apps\window-display\dist';               Dst = 'apps\window-display\dist';       Type = 'dir';  Svc = 'VerduraWindowDisplay';   Port = 5174 }
+    @{ Src = 'apps\web\admin-console\dist-admin';          Dst = 'apps\admin-console\dist-admin';  Type = 'dir';  Svc = 'VerduraAdminConsole';    Port = 5177 }
+    @{ Src = 'apps\web\admin-console\dist-kds';            Dst = 'apps\admin-console\dist-kds';    Type = 'dir';  Svc = 'VerduraKitchenDisplay';  Port = 5175 }
+    @{ Src = 'apps\web\admin-console\dist';                Dst = 'apps\admin-console\dist';        Type = 'dir';  Svc = 'VerduraOrderTablet';     Port = 5176 }
+    @{ Src = 'apps\web\customer-website\dist';             Dst = 'apps\customer-website\dist';     Type = 'dir';  Svc = 'VerduraCustomerWebsite'; Port = 5173 }
 )
 
 foreach ($i in $items) {

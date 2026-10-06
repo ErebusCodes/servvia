@@ -1,7 +1,0 @@
-﻿C:\ProgramData NT AUTHORITY\SYSTEM:(OI)(CI)(F)
-               BUILTIN\Administrators:(OI)(CI)(F)
-               CREATOR OWNER:(OI)(CI)(IO)(F)
-               BUILTIN\Users:(OI)(CI)(RX)
-               BUILTIN\Users:(CI)(WD,AD,WEA,WA)
-
-Successfully processed 1 files; Failed processing 0 files

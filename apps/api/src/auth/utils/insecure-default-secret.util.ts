@@ -1,3 +1,5 @@
+import { isProductionRuntime } from '../../config/runtime-environment';
+
 /**
  * The values checked into `.env.example` (`JWT_ACCESS_SECRET`/
  * `JWT_REFRESH_SECRET`/`INTERNAL_SERVICE_TOKEN`/`SEED_OWNER_PASSWORD`) and
@@ -38,15 +40,18 @@ export class InsecureDefaultSecretError extends Error {
   }
 }
 
+/** True when the value is one of the checked-in default secrets. */
+export function isInsecureDefaultSecret(value: string | undefined): boolean {
+  return value !== undefined && INSECURE_DEFAULT_SECRETS.has(value);
+}
+
 export function assertSecretNotInsecureDefault(
   configuredSecret: string | undefined,
   surface: string,
 ): void {
-  if (
-    process.env.NODE_ENV === 'production' &&
-    configuredSecret !== undefined &&
-    INSECURE_DEFAULT_SECRETS.has(configuredSecret)
-  ) {
+  // Fail closed: anything but an explicit development/test environment is
+  // treated as production (config/runtime-environment.ts).
+  if (isProductionRuntime() && isInsecureDefaultSecret(configuredSecret)) {
     throw new InsecureDefaultSecretError(surface);
   }
 }

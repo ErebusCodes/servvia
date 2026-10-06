@@ -27,7 +27,7 @@ func staffClaims() jwt.MapClaims {
 	return jwt.MapClaims{
 		"sub": "11111111-1111-4111-8111-111111111111", "email": "owner@example.test",
 		"role": "owner", "organizationId": "22222222-2222-4222-8222-222222222222",
-		"iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(),
+		"sid": "44444444-4444-4444-8444-444444444444", "iat": now.Unix(), "exp": now.Add(15 * time.Minute).Unix(),
 	}
 }
 
@@ -36,7 +36,8 @@ func TestVerifyStaffSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Kind != KindStaffSession || p.Kind.DeviceScoped() || p.Role != "owner" || p.VenueID != "" {
+	if p.Kind != KindStaffSession || p.Kind.DeviceScoped() || p.Role != "owner" || p.VenueID != "" ||
+		p.SessionID != "44444444-4444-4444-8444-444444444444" {
 		t.Fatalf("unexpected principal %+v", p)
 	}
 }

@@ -5,11 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'crypto';
-import * as argon2 from 'argon2';
-import { ConnectorCommand, ConnectorCommandStatus, Prisma, Staff, StaffRole } from '@prisma/client';
+import { ConnectorCommand, ConnectorCommandStatus, Prisma, StaffRole } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit.service';
+import { AUDIT_DEVICE_KINDS } from '../audit/audit-actor';
+import { LogAuthEventDto } from '../audit/dto/log-auth-event.dto';
+
+/** The system actor of the connector-command sweep (Story 12.15). */
+export const CONNECTOR_COMMAND_SWEEP_ACTOR = 'connector-command-sweep';
 import { ConnectorIdentity } from './connector.service';
 import { ConnectorCommandReportDto } from './dto/connector-command-report.dto';
 
@@ -70,7 +74,7 @@ export class ConnectorCommandService {
   /**
    * Takes a lazy factory, not a pre-built event object: the durable effect
    * this is called after has already committed, so building the event
-   * (which, for connector-triggered actions, includes resolving the
+   * (which, for connector-triggered actions, once included resolving a
    * synthetic system actor — itself a DB write) must happen INSIDE this
    * method's own try/catch too. An earlier version of this method took a
    * pre-built object, which meant `await this.systemAuditEvent(...)` was
@@ -95,25 +99,6 @@ export class ConnectorCommandService {
         auditError,
       );
     }
-  }
-
-  /** Mirrors ConnectorService#resolveConnectorSystemActor — see that method's doc comment. */
-  private async resolveCommandSystemActor(organizationId: string): Promise<Staff> {
-    const email = `connector-command-system+${organizationId}@verdura.internal`;
-    return this.prisma.staff.upsert({
-      where: { email },
-      create: {
-        organizationId,
-        email,
-        name: 'Connector Command System',
-        passwordHash: await argon2.hash(randomBytes(32).toString('base64url'), {
-          type: argon2.argon2id,
-        }),
-        role: StaffRole.viewer,
-        isActive: false,
-      },
-      update: {},
-    });
   }
 
   /**
@@ -670,39 +655,46 @@ export class ConnectorCommandService {
     };
   }
 
+  /**
+   * Story 12.15: an event caused by the venue's connector is attributed to
+   * its installation (a device), never to a synthetic Staff row.
+   */
   private async systemAuditEvent(
     identity: ConnectorIdentity,
     commandId: string,
     action: string,
     after?: Record<string, unknown>,
-  ) {
-    return this.systemAuditEventForVenue(
-      identity.organizationId,
-      identity.venueId,
-      commandId,
+  ): Promise<LogAuthEventDto> {
+    return Promise.resolve({
+      organizationId: identity.organizationId,
+      venueId: identity.venueId,
+      actorType: 'device',
+      deviceKind: AUDIT_DEVICE_KINDS.venueConnector,
+      deviceId: identity.installationId,
       action,
+      resource: 'connector_command',
+      resourceId: commandId,
       after,
-    );
+    });
   }
 
+  /** An event caused by the platform's own sweep: a system actor. */
   private async systemAuditEventForVenue(
     organizationId: string,
     venueId: string,
     commandId: string,
     action: string,
     after?: Record<string, unknown>,
-  ) {
-    const systemActor = await this.resolveCommandSystemActor(organizationId);
-    return {
+  ): Promise<LogAuthEventDto> {
+    return Promise.resolve({
       organizationId,
       venueId,
-      actorId: systemActor.id,
-      actorEmail: systemActor.email,
-      actorRole: StaffRole.viewer,
+      actorType: 'system',
+      systemActor: CONNECTOR_COMMAND_SWEEP_ACTOR,
       action,
       resource: 'connector_command',
       resourceId: commandId,
       after,
-    };
+    });
   }
 }

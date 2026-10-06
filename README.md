@@ -46,9 +46,9 @@ This repository is in an active migration. Servvia Core (Go) is becoming the can
 | D10 | Financially safe table-session close |
 | D11 | Promotions with immutable applied-discount snapshots |
 | D12 | Canonical realtime over WebSocket |
+| D13 | Generic domain-event log and workers (per-consumer delivery, leases, retries, dead letters) |
 
 **Still transitional or future:**
-- Generic outbox and workers (D13).
 - Servvia-native clients (the Windows POS and the Android device apps; see [Target clients](#target-clients)) and client cutover. Every existing web client still talks to the NestJS API.
 - Venue Edge (local hardware and resilience).
 - Retirement of the legacy migration components, including the IdealPOS compatibility integration.
@@ -65,7 +65,7 @@ Every surface is a client of Servvia Core. None of them owns canonical business 
 
 ```
   Servvia clients
-  Windows POS · Waiter Tablet · Order Tablet · Kiosk · KDS · Window Display
+  Windows POS · Waiter Tablet (Staff/Guest) · Kiosk · KDS · Window Display
   Admin Console · Customer Website
         |            REST (contracts/openapi)  ·  WebSocket realtime (/api/realtime)
         v
@@ -82,7 +82,7 @@ Every surface is a client of Servvia Core. None of them owns canonical business 
 | Permanent | Transitional (being retired) |
 |---|---|
 | Servvia Core (Go): canonical backend, REST and realtime | NestJS API (`apps/api`): serves today's clients while its domain ownership moves to Servvia Core |
-| PostgreSQL: canonical state | The current React implementations of venue-device surfaces (Order Tablet, KDS, Window Display/kiosk), until the native clients replace them |
+| PostgreSQL: canonical state | The current React implementations of venue-device surfaces (the admin console's Order Tablet and KDS modes), until the native clients replace them |
 | Prisma: the sole schema migration authority | The IdealPOS compatibility integration, POS sync and `ConnectorCommand` |
 | Servvia-owned clients (see [Target clients](#target-clients)) | Legacy bridge, harness and tracer tooling |
 | Servvia realtime (WebSocket) | The Socket.IO `orderUpdate` channel |
@@ -90,13 +90,12 @@ Every surface is a client of Servvia Core. None of them owns canonical business 
 
 ### Target clients
 
-These are the target implementations from ADR 0001. **The native clients are not implemented yet.**
+These are the target implementations from ADR 0001, as amended by CC-3 (now recorded in [`PRD/product-requirements.md`](PRD/product-requirements.md) section 36.2). **The native clients are not implemented yet.**
 
 | Surface | Target implementation |
 |---|---|
 | Windows POS terminal | C#/.NET |
-| Waiter Tablet | Kotlin/Android |
-| Order Tablet | Kotlin/Android |
+| Waiter Tablet (Staff Mode and Guest Mode; CC-3 merged the planned customer Order Tablet into it) | Kotlin/Android |
 | Kiosk | Kotlin/Android |
 | KDS | Kotlin/Android |
 | Window Display | Kotlin/Android |
@@ -105,7 +104,7 @@ These are the target implementations from ADR 0001. **The native clients are not
 
 ### How the code runs today
 
-Today's web clients (Admin Console, Order Tablet, KDS, Window Display, Customer Website) still call the transitional NestJS API over REST and Socket.IO. Servvia Core runs beside it on the same PostgreSQL schema. It verifies the NestJS-issued access tokens (same HS256 secret) and shares Redis for one rate-limit budget per client. Its APIs are ready for clients, but no client has been switched to them yet. The technology standard is [docs/architecture.md §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture).
+Today's web clients (Admin Console, Order Tablet, KDS, Customer Website) still call the transitional NestJS API over REST and Socket.IO. Servvia Core runs beside it on the same PostgreSQL schema. It verifies the NestJS-issued access tokens (same HS256 secret) and shares Redis for one rate-limit budget per client. Its APIs are ready for clients, but no client has been switched to them yet. The technology standard is [docs/architecture.md §10](docs/architecture.md#10--technology-standard-current-mvp-and-approved-target-architecture).
 
 ## Tenancy
 
@@ -141,10 +140,9 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 |---|---|
 | `services/core-platform/` | **Servvia Core (Go)**: canonical domains, HTTP and WebSocket API, tests ([README](services/core-platform/README.md)) |
 | `apps/api/` | NestJS API (transitional). Also holds **`prisma/schema.prisma` and `prisma/migrations/`**, the single migration authority for all services |
-| `apps/admin-console/` | React admin console. The same source builds the **Order Tablet** and **Kitchen Display** targets (`VITE_APP_MODE`) |
-| `apps/order-tablet/`, `apps/kitchen-display/` | READMEs describing those two build targets (no separate source) |
-| `apps/window-display/` | React window display (signage) and in-venue kiosk ordering |
-| `apps/customer-website/` | React public website: menu and table booking |
+| `apps/web/admin-console/` | React admin console. The same source builds the **Order Tablet** and **Kitchen Display** targets (`VITE_APP_MODE`) |
+| `apps/android/` | Native Android targets (`waiter-tablet`, `kds`, `window-display`, `kiosk`): structural scaffolds only, not yet built. The legacy `apps/order-tablet/`, `apps/kitchen-display/` and `apps/window-display/` directories were removed by owner decision on 2026-10-05 (`PRD/product-requirements.md` section 34.3); there is currently no window display (signage) or web kiosk client |
+| `apps/web/customer-website/` | React public website: menu and table booking |
 | `contracts/` | Language-neutral contracts: OpenAPI, realtime, events, JSON schemas ([README](contracts/README.md)) |
 | `docs/` | Architecture, ADRs, migration phase notes, integrations, deployment and environments |
 | `scripts/` | Local development orchestration, guards and checks (Node) |
@@ -152,7 +150,7 @@ Details are in the phase notes under [docs/migration/](docs/migration/README.md)
 | `docker/`, `docker-compose.yml` | Container images and the local/host compose setup |
 | `local-postgres/` | Optional native local PostgreSQL helper ([README](local-postgres/README.md)) |
 | `windows-deploy/` | Operational scripts for the Windows production host |
-| `_bmad/`, `_bmad-output/` | Project tooling, not application code: BMAD workflow configuration (used by `.claude/skills/bmad-*`), plus retained records such as legacy production runbooks, infrastructure migration evidence, GCS media migration records and the deferred-work log |
+| `_bmad/`, `_bmad-output/` | Not present. The old BMAD setup (workflow configuration, `.claude/skills/bmad-*`, and records such as legacy runbooks, migration evidence, GCS media records and the deferred-work log) was removed on 2026-10-01; it remains in git history at `a005642`. The fresh official BMAD install, after `PRD/` approval, creates its own layout |
 
 **Legacy migration and compatibility tooling.** These are scheduled for retirement and are not part of the target Servvia POS architecture:
 
@@ -213,7 +211,6 @@ npm run dev
 |---|---|---|
 | NestJS API | http://localhost:3000 | `npm run dev:api` |
 | Customer website | http://localhost:5173 | `npm run dev:customer-website` |
-| Window display | http://localhost:5174 | `npm run dev:window-display` |
 | Kitchen display | http://localhost:5175 | `npm run dev:kitchen-display` |
 | Order tablet | http://localhost:5176 | `npm run dev:order-tablet` |
 | Admin console | http://localhost:5177 | `npm run dev:admin-console` |
@@ -247,10 +244,11 @@ Every workspace has a tracked `.env.example`. Real `.env` files are per machine 
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection (Prisma) |
 | `REDIS_HOST`, `REDIS_PORT` | Redis for queues and the rate limiter |
-| `PORT`, `NODE_ENV`, `TRUST_PROXY_HOPS` | HTTP port, environment, trusted proxy hops |
+| `PORT`, `NODE_ENV`, `TRUST_PROXY_HOPS` | HTTP port, environment, and how many loopback proxies' `X-Forwarded-For` the API believes (0: none; 1 behind the venue's static proxy) |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `JWT_*_EXPIRY` | Token signing (**secret**). The access secret is shared with Go Core. |
 | `INTERNAL_SERVICE_TOKEN` | Service-to-service authentication (**secret**) |
-| `KDS_VENUE_PINS`, `ADMIN_CONSOLE_PIN`, `ADMIN_CONSOLE_EMAIL` | Device and console access (**secret** in production; the development defaults are refused in production) |
+| `KDS_VENUE_PINS` | KDS device access (**secret** in production; the development default is refused in production) |
+| `ADMIN_CONSOLE_PIN`, `ADMIN_CONSOLE_EMAIL` | **Removed** (Story 2.4): administrators sign in by name. A production API that still has either set refuses to start. |
 | `SEED_OWNER_EMAIL`, `SEED_OWNER_PASSWORD`, `SEED_BILLING_EMAIL` | Seed data (**secret** password) |
 | `STRIPE_SECRET_KEY` | Stripe (**secret**; optional; payment endpoints fail closed without it) |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_BOOKINGS_BCC` | Email (optional) |
@@ -329,14 +327,14 @@ Build and test details, test layers and the parity setup are in [services/core-p
 Servvia Core owns canonical realtime (D12): a raw WebSocket at `GET /api/realtime`.
 
 - **PostgreSQL remains the truth.** An event says what changed and which resource to refetch over HTTP.
-- **Durable publication.** Every canonical change records its fact in the same transaction, in the `RealtimeEvent` table, and delivery happens after commit. A delivery failure never affects the change. The table is a delivery log, not canonical state and not a queue.
+- **Durable publication.** Every canonical change records its fact in the same transaction, in the `DomainEvent` log (D13), and delivery happens after commit. A delivery failure never affects the change. The table is a delivery log, not canonical state and not a queue.
 - **One venue per connection.** The subscriber authenticates first. The server derives the organization and venue and grants the streams, so isolation is enforced by organization and venue. A kitchen display receives only kitchen-ticket facts, never financial ones.
 - **Delivery is at most once per connection:**
   - Duplicates are possible; deduplicate by `eventId`.
   - There is no global ordering. Per aggregate, `version` increases.
   - On reconnect, subscribe and then refetch over HTTP. There is no replay.
   - A subscriber that falls behind is disconnected.
-- **D4 outbox is separate.** The kitchen outbox (`OutboxEvent`) stays the kitchen projector's alone. Generic workers (D13) are not implemented yet.
+- **Workers are separate from realtime.** Background consumers such as the kitchen projector each keep their own at-least-once progress per event (`EventDelivery`, D13); realtime keeps none. The backlog per consumer is at `GET /api/admin/workers`.
 - **Legacy Socket.IO.** The NestJS `orderUpdate` channel still serves today's web clients until each one is cut over.
 
 Protocol and schemas: [contracts/realtime/](contracts/realtime/). Fact definitions: [contracts/events/](contracts/events/).
@@ -348,7 +346,7 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 - Uploads go through the API's `MediaAsset` pipeline: signed upload, server-side verification, then an explicit publish. The browser never receives a credential or a bucket name.
 - Local development uses `MEDIA_STORAGE_PROVIDER=local` and needs no cloud credentials.
 - Bundled application assets are fine: app icons, logos, favicons and required native resources.
-- Design and operational detail: [the GCS media architecture record](_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md).
+- Design and operational detail: the GCS media architecture record, `_bmad-output/implementation-artifacts/2026-08-17-gcs-media-architecture.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`).
 
 ## Testing and CI
 
@@ -361,7 +359,7 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 | NestJS integration | `npm run test:integration --workspace=apps/api` against a migrated, seeded disposable database. Leave `NODE_ENV` unset (Jest uses `test`), and set `SEED_OWNER_PASSWORD` to the seeded owner's password. |
 | Prisma | `cd apps/api && npx prisma format && npx prisma validate && npx prisma generate`, plus the migration checks in [Database and migrations](#database-and-migrations) |
 | Contracts and root scripts | `npm run test:dev-scripts` (includes the contract checker), `npm run check:nul-bytes`, `npm run check:bridge-governance` |
-| Web apps | `npm run lint:admin-console` (and `:customer-website`, `:window-display`), `npm test` (every workspace with tests) |
+| Web apps | `npm run lint:admin-console` (and `:customer-website`), `npm test` (every workspace with tests) |
 | Legacy venue connector (.NET, migration tooling) | `dotnet build apps/venue-connector/VerduraIdealposTracer.slnx`, then `dotnet test --no-build` on the same solution |
 
 **CI** (`.github/workflows/ci.yml`, on pushes to `main` and on pull requests) runs nine jobs:
@@ -369,7 +367,6 @@ Restaurant content — menu photographs, promotional imagery, signage content an
 - NestJS API: real-PostgreSQL integration tests
 - Admin console (including the Order Tablet and KDS targets): lint, typecheck, unit tests, build
 - Customer website: lint, typecheck, build
-- Window display: lint, typecheck, build
 - Root script tests, plus the NUL-byte and bridge-governance guards
 - Legacy migration tooling: venue connector (.NET) build, unit and crash/replay tests
 - Legacy migration tooling: venue connector (.NET) Windows-only projects build
@@ -440,7 +437,7 @@ Production deploys, migrations, data changes and cloud changes each need explici
 | Document | Contents |
 |---|---|
 | [ADR 0001](docs/adr/0001-servvia-is-the-operational-pos.md) | **Servvia is the operational POS**: the governing decision ([all ADRs](docs/adr/README.md)) |
-| [docs/migration/README.md](docs/migration/README.md) | Migration phases, per-phase results and known findings; phase notes `d4`–`d12` |
+| [docs/migration/README.md](docs/migration/README.md) | Migration phases, per-phase results and known findings; phase notes `d4`–`d13` |
 | [services/core-platform/README.md](services/core-platform/README.md) | Servvia Core: layout, configuration, toolchain, test layers, parity |
 | [contracts/README.md](contracts/README.md) | Contracts index: OpenAPI, realtime, events, schemas |
 | [docs/architecture.md](docs/architecture.md) | Architecture reference and the technology standard (§10) |

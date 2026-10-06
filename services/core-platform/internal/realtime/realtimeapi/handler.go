@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -76,6 +77,8 @@ type Handler struct {
 	verifier *identity.Verifier
 	tablets  identity.TabletDevices
 	devices  DeviceAuth
+	grants   identity.VenueGrants
+	staff    identity.StaffSessions
 	venues   VenueResolver
 	logger   *slog.Logger
 	cfg      Config
@@ -85,7 +88,13 @@ type Handler struct {
 }
 
 func NewHandler(hub *realtime.Hub, v *identity.Verifier, tablets identity.TabletDevices, dev DeviceAuth, venueStore VenueResolver,
-	logger *slog.Logger, cfg Config) *Handler {
+	grants identity.VenueGrants, staff identity.StaffSessions, logger *slog.Logger, cfg Config) *Handler {
+	if grants == nil {
+		panic("realtimeapi: VenueGrants is required (staff venue access is enforced on subscription)")
+	}
+	if staff.Staff == nil || staff.Sessions == nil {
+		panic("realtimeapi: StaffSessions is required (staff tokens are re-checked on subscription)")
+	}
 	// The same origins as the HTTP API's CORS allow-list. A native client
 	// (Kotlin, C#) sends no Origin and is not affected.
 	var origins []string
@@ -94,7 +103,8 @@ func NewHandler(hub *realtime.Hub, v *identity.Verifier, tablets identity.Tablet
 			origins = append(origins, u.Host)
 		}
 	}
-	return &Handler{hub: hub, verifier: v, tablets: tablets, devices: dev, venues: venueStore, logger: logger, cfg: cfg, origins: origins}
+	return &Handler{hub: hub, verifier: v, tablets: tablets, devices: dev, grants: grants, staff: staff, venues: venueStore, logger: logger, cfg: cfg,
+		origins: origins}
 }
 
 // Drain refuses new connections, ends every subscription (clients receive
@@ -150,13 +160,26 @@ func refuse(close websocket.StatusCode, code, msg string) *refusal {
 	return &refusal{close: close, code: code, msg: msg}
 }
 
+// errCredentialRevoked: a re-check found the credential revoked, unknown or
+// no longer valid for this venue. It is the only re-check outcome that
+// closes with 4401; any other error is a verification failure (1011).
+var errCredentialRevoked = errors.New("this device has been revoked or is unknown")
+
+// errStaffSessionEnded: a re-check found the staff member deactivated or the
+// login session revoked (Story 2.5). It also closes with 4401.
+var errStaffSessionEnded = errors.New("staff deactivated or session revoked")
+
 // subscriber is an authenticated, authorized identity at one venue.
 type subscriber struct {
 	organizationID, venueID string
 	granted                 []realtime.Audience
 	expiresAt               time.Time // zero: no expiry (device credential)
-	// stillValid re-checks revocation; nil when there is nothing to re-check.
-	stillValid func(context.Context) bool
+	// recheck verifies the credential again (revocation); nil when there is
+	// nothing to re-check. It returns nil when the credential is still
+	// valid, errCredentialRevoked when it is not, and any other error when
+	// it could not be verified. Verification failure fails closed: the
+	// subscription is refused or ended (PRD section 16, items 5 and 12).
+	recheck func(context.Context) error
 }
 
 // ServeHTTP serves GET /api/realtime.
@@ -241,8 +264,24 @@ func (h *Handler) stream(ctx context.Context, conn *websocket.Conn, s *realtime.
 			h.closeWith(ctx, conn, CloseUnauthenticated, "TOKEN_EXPIRED", "The credential expired; reconnect with a fresh one")
 			return
 		case <-revalidate.C:
-			if sub.stillValid != nil && !sub.stillValid(ctx) {
+			if sub.recheck == nil {
+				continue
+			}
+			switch err := sub.recheck(ctx); {
+			case err == nil:
+			case errors.Is(err, errCredentialRevoked):
 				h.closeWith(ctx, conn, CloseUnauthenticated, "UNAUTHENTICATED", "This device has been revoked or is unknown")
+				return
+			case errors.Is(err, errStaffSessionEnded):
+				h.closeWith(ctx, conn, CloseUnauthenticated, "UNAUTHENTICATED", identity.StaffSessionEndedMessage)
+				return
+			default:
+				// Not a revocation: the credential could not be verified. Fail
+				// closed with 1011 (reconnect), never 4401, so a transient
+				// server fault is not reported as a revoked credential.
+				h.logger.WarnContext(ctx, "realtime credential re-check failed",
+					"error", err, "request_id", httpx.RequestIDFrom(ctx))
+				h.closeWith(ctx, conn, websocket.StatusInternalError, "INTERNAL", "Internal server error")
 				return
 			}
 		case <-ping.C:
@@ -311,6 +350,25 @@ func (h *Handler) tokenSubscriber(ctx context.Context, token, requestedVenue str
 	if err != nil {
 		return subscriber{}, refuse(CloseUnauthenticated, "UNAUTHENTICATED", err.Error())
 	}
+	// A deactivated staff member or a revoked login session is refused
+	// (4401); a check that cannot be made fails closed (1011).
+	staffCheck := func(ctx context.Context) error {
+		admitted, err := h.staff.Admit(ctx, p)
+		switch {
+		case err != nil:
+			return err
+		case !admitted:
+			return errStaffSessionEnded
+		}
+		return nil
+	}
+	switch err := staffCheck(ctx); {
+	case errors.Is(err, errStaffSessionEnded):
+		identity.LogStaffSessionRefused(ctx, h.logger, p, "transport", "realtime")
+		return subscriber{}, refuse(CloseUnauthenticated, "UNAUTHENTICATED", identity.StaffSessionEndedMessage)
+	case err != nil:
+		return subscriber{}, err
+	}
 	var id realtime.Identity
 	switch p.Kind {
 	case identity.KindStaffSession:
@@ -343,16 +401,52 @@ func (h *Handler) tokenSubscriber(ctx context.Context, token, requestedVenue str
 	if !found {
 		return subscriber{}, refuse(CloseVenueNotFound, "VENUE_NOT_FOUND", "Venue not found")
 	}
+	// Staff act only in venues they have been granted (PRD section 16 item 3).
+	// A grant that cannot be checked fails closed (1011), never access.
+	if p.IsStaff() {
+		decision, err := h.grants.VenueAccess(ctx, p.ID, p.OrganizationID, v.ID)
+		if err != nil {
+			return subscriber{}, err
+		}
+		if decision != identity.VenueAccessGranted {
+			identity.LogVenueAccessDenied(ctx, h.logger, p, v.ID, "transport", "realtime")
+			return subscriber{}, refuse(CloseForbidden, "FORBIDDEN", identity.VenueAccessDeniedMessage)
+		}
+	}
 	sub := subscriber{organizationID: v.OrganizationID, venueID: v.ID, granted: granted, expiresAt: p.ExpiresAt}
 	if p.DeviceID != "" && (p.Kind == identity.KindTabletStaff || p.Kind == identity.KindTabletManager ||
 		p.Kind == identity.KindTabletDevice) {
 		deviceID := p.DeviceID
-		sub.stillValid = func(ctx context.Context) bool {
+		sub.recheck = func(ctx context.Context) error {
 			active, err := h.tablets.TabletDeviceActive(ctx, deviceID)
-			return err != nil || active // a lookup failure is not a revocation
+			switch {
+			case err != nil:
+				return fmt.Errorf("check tablet device: %w", err)
+			case !active:
+				return errCredentialRevoked
+			}
+			return nil
 		}
-		if !sub.stillValid(ctx) {
+		// Admission fails closed too: a lookup error is returned as an error
+		// (1011 INTERNAL), and a revoked or unknown device is refused (4401).
+		switch err := sub.recheck(ctx); {
+		case errors.Is(err, errCredentialRevoked):
 			return subscriber{}, refuse(CloseUnauthenticated, "UNAUTHENTICATED", "This device has been revoked or is unknown")
+		case err != nil:
+			return subscriber{}, err
+		}
+	}
+	// A staff subscription re-checks the staff member and the login session
+	// as well, so deactivation and logout end it (Story 2.5).
+	if p.IsStaff() {
+		deviceCheck := sub.recheck
+		sub.recheck = func(ctx context.Context) error {
+			if deviceCheck != nil {
+				if err := deviceCheck(ctx); err != nil {
+					return err
+				}
+			}
+			return staffCheck(ctx)
 		}
 	}
 	return sub, nil
@@ -383,10 +477,15 @@ func (h *Handler) deviceSubscriber(ctx context.Context, token, requestedVenue st
 	}
 	granted, _ := realtime.Grant(realtime.Identity{Kind: realtime.Device, DeviceKind: string(devices.KindKDS)})
 	return subscriber{organizationID: v.OrganizationID, venueID: v.ID, granted: granted,
-		stillValid: func(ctx context.Context) bool {
+		recheck: func(ctx context.Context) error {
 			_, err := h.devices.Authenticate(ctx, token, devices.KindKDS, v.ID)
-			return err == nil || !(errors.Is(err, devices.ErrUnauthenticated) || errors.Is(err, devices.ErrWrongKind) ||
-				errors.Is(err, devices.ErrWrongVenue))
+			switch {
+			case err == nil:
+				return nil
+			case errors.Is(err, devices.ErrUnauthenticated), errors.Is(err, devices.ErrWrongKind), errors.Is(err, devices.ErrWrongVenue):
+				return errCredentialRevoked
+			}
+			return fmt.Errorf("check kds device: %w", err)
 		}}, nil
 }
 

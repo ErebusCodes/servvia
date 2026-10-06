@@ -23,11 +23,12 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	coreaudit "servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/checks"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/orders"
 	"servvia/services/core-platform/internal/pricing"
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 type Store struct {
@@ -253,8 +254,8 @@ func (st *Store) Create(ctx context.Context, n checks.NewCheck) (checks.Check, e
 				billed = append(billed, l.orderID)
 			}
 		}
-		if _, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "check.created", AggregateType: "check",
-			AggregateID: checkID, Version: realtime.V(1), Payload: map[string]any{"checkId": checkID, "tableSessionId": sessionID,
+		if _, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: "check.created", AggregateType: "check",
+			AggregateID: checkID, Version: events.V(1), Payload: map[string]any{"checkId": checkID, "tableSessionId": sessionID,
 				"orderIds": billed, "status": checks.StatusOpen, "currency": n.Currency, "subtotalCents": totals.SubtotalCents,
 				"discountCents": totals.DiscountCents, "totalCents": totals.TotalCents}}); err != nil {
 			return err
@@ -423,8 +424,8 @@ func (st *Store) Void(ctx context.Context, cmd checks.VoidCommand) (checks.Check
 		if err != nil {
 			return err
 		}
-		if _, err := realtimestore.Record(ctx, tx, result.VenueID, realtime.Fact{Type: "check.voided", AggregateType: "check",
-			AggregateID: result.ID, Version: realtime.V(result.Version), Payload: map[string]any{"checkId": result.ID,
+		if _, err := eventstore.Record(ctx, tx, result.VenueID, events.Fact{Type: "check.voided", AggregateType: "check",
+			AggregateID: result.ID, Version: events.V(result.Version), Payload: map[string]any{"checkId": result.ID,
 				"tableSessionId": result.TableSessionID, "status": result.Status}}); err != nil {
 			return err
 		}
@@ -445,16 +446,9 @@ func (st *Store) Void(ctx context.Context, cmd checks.VoidCommand) (checks.Check
 // audit records a financial change in the existing AuditLog, in the change's
 // transaction: every check actor is a staff member.
 func audit(ctx context.Context, tx pgx.Tx, sc checks.Scope, a checks.Actor, action, checkID string, before, after map[string]any) error {
-	var beforeJSON []byte
-	if before != nil {
-		beforeJSON, _ = json.Marshal(before)
-	}
-	afterJSON, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", before, after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'check', $8, $9, $10)`,
-		newID(), sc.OrganizationID, sc.Venue.ID, a.StaffID, a.Email, a.Role, action, checkID, beforeJSON, afterJSON)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.Venue.ID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, a.Device), Action: action, Resource: "check", ResourceID: checkID,
+		Before: before, After: after})
 }
 
 // Audit writes a best-effort audit row outside any transaction.

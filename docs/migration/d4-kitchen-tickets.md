@@ -8,7 +8,7 @@ Status: implemented 2026-09-29, tested against disposable databases only. Not ap
 |---|---|---|
 | Kitchen state | `Order.status` (`OrderStatus`) | The KDS moves the whole order along the linear `pending → confirmed → preparing → ready → completed` chain, with `cancelled` from any non-terminal status (`orders.service.ts` `validateOrderStatusTransition`). There is no way back, so recall is impossible. |
 | KDS mutation | `PATCH /api/admin/orders/:id/status` | Roles admin, manager, cashier, kitchen (owner implied), so a `kds_device` token can change `Order.status` and can also cancel. |
-| Per-item state | none | `OrderItem` has no status. Both KDS UIs (`apps/window-display/src/pages/KdsPage.tsx`, `apps/admin-console/src/pages/kitchen/KitchenDisplayPage.tsx`) hold item readiness only in React memory. |
+| Per-item state | none | `OrderItem` has no status. Both KDS UIs (`apps/window-display/src/pages/KdsPage.tsx`, `apps/web/admin-console/src/pages/kitchen/KitchenDisplayPage.tsx`) hold item readiness only in React memory. |
 | Kitchen hand-off | `orders.service.ts` order transaction | Writes one `KdsDeliveryRecord` per order (a push backstop, swept every 5 s) and one `PrinterJob` per active `Printer`. The printer jobs are suppressed when IdealPOS prints the KOT. |
 | Routing | none | No station, course or prep model. `Category` and `MenuItem` have no kitchen or printer field. Every active printer gets the whole order. The admin-console "station" is a client-side regex on item names, for display only. |
 | Realtime | `orderUpdate` socket event | Carries the whole `Order` row. There are no item or ticket events. |

@@ -1,129 +1,204 @@
-# Verdura Sprint Status
-# Last updated: 2026-08-15
-# Normative contract: docs/target-operating-model.md
-# Historical done statuses below mean component/story completion only. They do
-# not constitute production, POS, payment, KDS or KOT readiness.
-#
 # STATUS DEFINITIONS:
-#   backlog        — story exists in epics.md but no story file created yet
-#   ready-for-dev  — story file created, awaiting dev-story execution
-#   in-progress    — dev-story is actively running
-#   done           — dev-story + code-review complete
-#   skipped        — intentionally deferred
-#   blocked        — cannot proceed without discovery, authority or dependency
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
 
-last_updated: "2026-08-16"
-implementation_readiness_gate: FAILED
-production_readiness: NOT_READY
-operating_model: "docs/target-operating-model.md"
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
 
-enterprise_delivery_gates:
-  vendor-discovery: blocked # DL-064 — Await Idealpos/Oolio/reseller confirmation and venue hardware audit
-  idealpos-live-windows-discovery: blocked # DL-065/066/068 — docs/discovery/idealpos-live-discovery-checklist.md expanded 2026-08-16 (session 2, §J added) but still not started (no item has live-observation or vendor-response evidence); gates DL-064, story 9-2's remaining scope, and the KDS/KOT decision. This is now the SOLE bottleneck on the Idealpos delivery sequence — see idealpos.md §21.
-  idealpos-uibridge-tracer: blocked # DL-068/DL-071 — story 9-2 rescoped 2026-08-16 (session 2) to a real-environment discovery-only tracer (no demo-clone assumption); its discovery-phase implementation (windows-connector/) is built and tested for every part achievable without live Windows/Idealpos access — see the story file. Blocked ONLY on REAL_WINDOWS_CONNECTOR + REAL_IDEALPOS_UI_DISCOVERY evidence (idealpos-live-windows-discovery below), unavailable this session (no Windows machine on hand). Connector-command-protocol dependency fully satisfied by stories 2-9/2-10 (both done).
-  idealpos-kot-suppression-decision: blocked # DL-067 — docs/integrations/idealpos.md §18; discovery item F
-  order-payment-idempotency-and-truthful-provider-state: done # Story 6-1 done 2026-08-15 (order idempotency/payment linkage); Story 8-1 done 2026-08-15 (truthful PrinterJob states); Story 9-1 done 2026-08-15 (truthful POS-sync states, IDEAL-* fabrication removed) — gate closed. Note: this closes the *truthfulness* portion of Idealpos integration only; a real Idealpos adapter remains BLOCKED ON DL-064 (E9-S3..S7)
-  canonical-order-transactional-outbox: backlog # write half done (story 6-1/9-1: Order+OrderItem+POSSyncRecord+PrinterJob in one transaction); dispatch half: pos-sync done via story 9-3 (DL-069, 2026-08-16), print-jobs dispatch still blocked pending connector — gate stays backlog overall since print-jobs dispatch (the other half of the outbox) remains unimplemented
-  venue-connector-identity-and-durable-queue: in-progress # Story 2-9 (identity/enrolment/auth/revocation/rotation, done 2026-08-16) AND story 2-10 (durable command/acceptance protocol + a real proof harness for persist-before-ack, done 2026-08-16) are both real-Postgres verified and independently reviewed. Gate stays in-progress, not done: the connector-SIDE encrypted durable queue (a genuine Windows-connector-process concern — story 2-10's harness proves the protocol, not a production connector) and real command TYPES beyond the synthetic self-test remain unbuilt.
-  idealpos-adapter-and-mapping-validation: blocked # DL-064
-  standard-idealpos-eftpos-journey: blocked # DL-064
-  preparation-station-kds-kot-routing: blocked
-  online-payment-prepaid-tender-journey: backlog
-  reconciliation-and-exception-casework: backlog
-  enterprise-security-observability-and-dr: backlog
-  real-venue-uat: blocked
-  order-tablet-production-journey: backlog # E15 (added 2026-08-16) — Order Tablet is real but partially-functional (fake payment confirmation, local-only print/notes, hardcoded promo/modifiers, fabricated on-screen service-charge line, inconsistent tablet-vs-admin auth); explicitly in scope for 11 Oct, not deferred. Converges on the same connector/Idealpos/EFTPOS/KDS-KOT critical path as venue-connector-identity-and-durable-queue and idealpos-uibridge-tracer above — see docs/epics.md E15.
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
 
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 10-03-2026 13:11
+last_updated: 10-06-2026 09:00
+project: servvia
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+# Re-anchored 2026-10-05 (Story 14.2). Planning tracking only, never requirements authority. Requirements: PRD/product-requirements.md + PRD/00-09.
+# NOTE: sprint_plan.py rebuilds development_status on every write and drops inline comments; re-apply annotations after any write run.
+# Denominator (2026-10-06, revised): 108 tracked stories (98 + 10 added by the release-readiness program; history 61 -> 70 -> 93 -> 98 -> 108). 'done' here is G1 (story complete) only, never production readiness: release gates G1-G5 in _bmad-output/planning-artifacts/release-readiness-program.md.
 development_status:
-  # ── Epic 1: Foundation ───────────────────────────────────────────────────────
   epic-1: in-progress
+  1-1-api-lint-passes-so-the-api-ci-job-runs-to-completion: done
+  1-2-go-core-ci-job-with-real-postgresql-and-redis: done
+  1-3-venue-connector-ci-job-made-truthful: done  # accepted ff3e4d7 (tracking corrected 2026-10-05)
+  1-4-nest-production-start-runs-the-built-entry-point: done
+  1-5-production-configuration-fails-closed: done
+  1-6-protect-the-main-branch: backlog  # NEEDS AUTHORIZATION (GitHub admin); after Wave A
+  1-7-native-round-recovery-integration-tests-run-truthfully-in-ci: done  # accepted 38bea30
+  1-8-native-round-recovery-tests-refuse-a-database_url-host-query: done  # accepted 38bea30
+  1-9-test-harness-loopback-binding: done  # accepted by the orchestrator 2026-10-06; frozen fc064b5 (objective dd4483c8); candidate f9110b7 governed PASS; integrated 963bd4c
+  1-10-ci-asserts-the-native-round-recovery-suite-executes: backlog  # DEFERRED (keep); not started; needs its own orchestrator authorization; does not follow Story 1.9 automatically
+  1-11-dependency-and-supply-chain-security-in-ci: backlog  # added 2026-10-06 (release-readiness program); RR-1
+  1-12-standing-regression-gate-in-ci: backlog  # added 2026-10-06 (release-readiness program); RR-5
+  epic-1-retrospective: optional
 
-  1-1-scaffold-verdura-api: done  # NestJS 11.x, Joi schema (MONGO_URI removed, Supabase vars added), commit 12e5680
-  1-2-prisma-schema: done  # 18 models, 9 enums, JSONB cols, UUID PKs; applied to Supabase via MCP, commit 12e5680
-  1-3-prisma-jsonb-fields: done  # JSONB on MenuItem/OrderItem/AuditLog/POSSyncRecord/Venue; merged into 1-2, commit 12e5680
-  1-4-bullmq-health-check: done  # PrismaService + QueueModule + GET /health; commits 1914e91+21ebbcd
-  1-5-ci-pipeline: backlog
-  1-6-scaffold-verdura-admin: done  # Absorbed by Story 2-6; admin-frontend/ workspace scaffolded
-  1-7-scaffold-verdura-kiosk: done  # React 18 + Vite + TS + Tailwind + Zustand; port 5174; typecheck+lint+build green 2026-06-20
-  1-8-scaffold-verdura-printer-service: backlog
-  1-9-scaffold-verdura-pos-agent: backlog
-  1-10-docker-compose-local: backlog
-  1-11-data-migration-script: backlog
+  epic-2: done
+  2-1-realtime-credential-revocation-fails-closed: done
+  2-2-staff-venue-access-is-enforced-by-core: done
+  2-3-remove-the-unauthenticated-local-file-write-endpoint-from-pr: done
+  2-4-named-staff-sign-in-replaces-the-shared-admin-pin: done
+  2-5-token-revocation-and-active-staff-re-checks: done
+  2-6-transitional-socket-io-authentication-and-cors-hardening: done
+  2-7-kitchen-role-cannot-create-or-cancel-orders-reservation-emai: done
+  2-8-durable-staff-sessions-in-postgresql: done
+  2-9-device-and-tablet-credentials-reach-only-the-routes-made-for: done
+  2-10-staff-venue-access-is-enforced-by-the-nest-api-too: done
+  2-11-a-real-installation-s-first-owner-comes-only-from-a-governed: done  # 2.9-2.11 keys re-derived from titles 2026-10-05; status carried over
+  epic-2-retrospective: optional
 
-  # ── Epic 2: Authentication ───────────────────────────────────────────────────
-  epic-2: in-progress
+  epic-3: backlog
+  3-1-rehearse-the-production-migration-baseline-on-a-copy: backlog
+  3-2-off-host-backups-with-a-scripted-rehearsed-restore: backlog
+  epic-3-retrospective: optional
 
-  2-1-staff-entity-password-hashing: done  # StaffService (Argon2id), StaffModule, seed script; commit 24db171
-  2-2-jwt-refresh-token: done  # AuthService (JWT issuance), JwtStrategy (HS256, shape guard), JwtAuthGuard; commits a1dbc62+c36cc4b
-  2-3-auth-endpoints: done
-  2-4-rbac-guard: done
-  2-5-rate-limiting: done
-  2-6-admin-login-page: done  # Code review patches applied; commit 112e482
-  2-7-cdn-edge-middleware: done  # Web-standard edge middleware, robust hasCookie parsing, typecheck and lint clean
-  2-8-audit-log-auth-events: done  # Log login/logout/failed_login/password_changes events to DB; 100% test & lint clean
-  2-9-internal-service-auth: done  # Phase 1 (identity tracer) done 2026-08-16: ConnectorEnrollment/ConnectorInstallation, Argon2id-hashed durable+bootstrap credentials, DB-enforced single-active-per-venue, revocation/rotation, tenant isolation, minimal self-report heartbeat. 26 unit + 13 real-Postgres integration tests (each re-executed and confirmed this session), 390/390 existing unit tests pass, 107/107 integration tests pass, zero regressions. Migration independently re-verified against both the populated dev DB and a from-zero disposable container. Independent review complete: 1 P1 (non-fatal audit-log handling) + 1 P2 (new-file lint) found and fixed, no unresolved P0/P1. Command/session protocol, durable local queue, full heartbeat reachability telemetry, and the printer/pos-sync ServiceTokenGuard migration remain explicitly out of Phase 1 scope (see deferred-work.md) — Phase 1 alone unblocks admin-facing enrolment/revocation UI and connector-identity-dependent work, but NOT Idealpos submission, which needed the command protocol — see 2-10 below.
-  2-10-connector-command-protocol: done  # Done 2026-08-16, same session as 2-9. Durable ConnectorCommand envelope + 8-state machine (pending/claimed/accepted/succeeded/failed/expired/unknown/cancelled), authenticated-HTTPS-polling transport (DL-070), claim/CONNECTOR_ACCEPTED/truthful-terminal-report protocol, reconciliation sweep, and a real dependency-free connector proof harness (backend/scripts/connector-command-harness.ts) demonstrating persist-before-ack via real SIGKILLs of a real separate OS process + real resume. Implements exactly one synthetic command type (connector.self_test.v1) — no Idealpos/EFTPOS/printer contact of any kind. Evidence: 20 new unit tests (410/410 total), 22 real-Postgres integration tests + 4 DURABLE_CONNECTOR_HARNESS tests (133/133 total across the full 9-suite integration run, 3 consecutive clean runs). Independent review: 1 P1 found+fixed (audit-log event construction outside its own try/catch — same bug class as 2-9's own fix, reintroduced here, now fixed at all 6 call sites via a lazy-factory signature), plus a real fix to the shared integration-suite login rate-limit bucket (this story's test volume alone now exceeds the 10/900s budget in a single full-suite run — fixed by broadening rate-limit clearing to self-heal regardless of file order). No unresolved P0/P1. REAL_WINDOWS_CONNECTOR/REAL_IDEALPOS/REAL_EFTPOS/REAL_KOT_PRINTER not attempted — explicit boundary. Unblocks story 9-2's and Epic 15's E15-S5/S6/S7's connector-command-protocol dependency only — does NOT unblock Idealpos submission itself, which still needs DL-064/live discovery plus a real command type built on this protocol.
+  epic-4: backlog
+  4-1-core-runs-as-a-managed-windows-service-with-explicit-configu: backlog
+  4-2-staging-environment-mirroring-the-venue-topology: backlog
+  4-3-reproducible-release-artifact-scripted-deployment-and-rollba: backlog  # added 2026-10-06 (release-readiness program); RR-4; production deploy NEEDS AUTHORIZATION
+  epic-4-retrospective: optional
 
-  # ── Epic 3: Venues & Tables ─────────────────────────────────────────────────
-  epic-3: in-progress
+  epic-5: backlog
+  5-1-guest-mode-is-off-for-the-first-pilot-and-staff-mode-require: backlog
+  5-2-order-tablet-staff-mode-submits-sessions-orders-and-rounds-t: backlog
+  5-3-order-tablet-consumes-core-realtime-and-resynchronises: backlog
+  epic-5-retrospective: optional
 
-  3-1-venue-crud-api: done # CRUD API, multi-tenant scoped, 100% tests & lint clean
-  3-2-table-crud-api: done # CRUD API, multi-tenant scoped, 100% tests & lint clean
-  3-3-admin-venue-settings-page: done # React Venue Settings form, TanStack Query integration, 100% build & lint clean
-  3-4-admin-table-management-page: done # React Table Management list/grid, CRUD operations modal, 100% build & lint clean
-  3-5-kiosk-table-selection: done  # Public kiosk tables API + table selection grid; review patches applied 2026-06-20
+  epic-6: backlog  # D-1: pilot = transitional web KDS on Core; D-3 per-device D8 credential (15.5)
+  6-1-kds-reads-and-advances-core-kitchen-tickets-with-an-authenti: backlog
+  6-2-kds-surfaces-delivery-failures-and-survives-backend-outages: backlog
+  6-3-ready-alert-and-age-colour-coding: backlog
+  epic-6-retrospective: optional
 
-  # ── Epics 4–13 ──────────────────────────────────────────────────────────────
-  epic-4: in-progress
+  epic-8: in-progress
+  8-1-staff-management-with-roles-and-venue-grants: done
+  8-3-staff-integrity-under-concurrency: done
+  8-2-venue-tax-and-table-settings-from-real-data: backlog  # Wave C, before 16.1 (P3 boundary configuration)
+  epic-8-retrospective: optional
 
-  4-1-category-crud-api: done  # Category CRUD API, RBAC, P2025 handling; 140 tests pass 2026-06-20
-  4-2-menu-item-crud-api: done  # Review patches applied: IDOR fix (updateMany/deleteMany), categoryId cross-tenant validation, ParseUUIDPipe, MaxLength/Max/IsNotEmpty validators, HTTP 204 on DELETE 2026-06-20
-  4-3-admin-category-management-page: done  # Category list + CRUD + Move Up/Down reorder; typecheck + lint clean; code review complete 2026-06-21; 9 patches + 4 defers logged
-  epic-5: in-progress
-
-  5-1-reservation-crud-api: done  # Code review complete; F-01 patch applied (status FSM removed — E5-S2 scope); 20/20 tests pass; 2 items deferred 2026-06-21
-  5-2-reservation-status-fsm-api: done  # Code review PASS; 27/27 tests; FSM table verified; lint clean on reservations/**; 2026-06-21
-  5-3-capacity-enforcement: done  # Implementation pre-existed E5-S1; 3 edge-case tests added; 30/30 pass 2026-06-21
-  5-4-email-confirmation-cancellation: review  # Implementation complete; 208/208 tests pass; lint clean; 2026-06-22
-  5-5-admin-reservations-list: done  # Interactive grid, query filters, search, quick status transitions, full CRUD; 100% build & test clean; 2026-06-22
-  epic-6: backlog
-  6-1-order-idempotency-and-payment-linkage: done  # Real-Postgres verification session 2026-08-15: 36/36 integration tests + AC7 migration-backfill + clean-DB-from-zero migration all executed and passing; independent review (round 4) found and fixed one in-scope test-cleanup defect, no unresolved P0/P1 remains. 289/289 unit tests pass. See story Dev Agent Record rounds 3-4 and VERIFY.md.
-  epic-7: backlog
-  epic-8: backlog
-  8-1-printer-truthful-states: done  # Implemented + 3 rounds of independent review complete 2026-08-15 (real-Postgres evidence: 55/55 integration, 327/327 unit); no unresolved P0/P1 — see story Dev Agent Record
   epic-9: backlog
-  9-1-pos-sync-truthful-states: done  # 2026-08-15: IDEAL-* fabrication removed; not_applicable/unsupported state machine (single-transaction, CAS-guarded); historical-row correction (migration + script, proven in sync); admin visibility API; 351/351 unit + 75/75 real-Postgres integration; independent review loop complete (1 P0 + 1 P1 found and fixed, no unresolved P0/P1). Real adapter work remains separately BLOCKED ON: DL-064 (E9-S3..S7) — unaffected by this story.
-  9-2-idealpos-uibridge-tracer: blocked  # 2026-08-16 (session 2): story rescoped at its source from a demo-clone order-entry tracer to a real-environment discovery-only tracer (no live Windows/Idealpos machine was available this session — the mission's own documented contingency applies). Implemented and tested: windows-connector/ (.NET 8 solution) — cross-platform state machine, Story 2-10 protocol client, durable fsync'd local persistence; 28/28 tests real and passing (22 state-machine unit tests covering every required failure case achievable without live access, using a clearly-labelled fake automation client; 2 connector-protocol wire-contract tests added during independent review; 4 real-process crash/replay tests spawning the tracer as a genuinely separate OS process with real Environment.FailFast kills at each persist-before-ack boundary — same rigor as story 2-10's own harness). Additional safety-compliant static evidence recorded (idealpos.md §12.4: version file, 3rd service executable, licensing-service SOAP namespace, ResDiary and "WebIt" vendor-integration surfaces). Integration route selected from evidence (DL-071: API-less UI Automation, discovery phase only — vendor-supported routes remain capability-evidence-only, not selectable). The real Windows-only implementation (VerduraIdealposTracer.Windows/.Cli) was written but NOT built or run — no Windows Desktop SDK available; exact reproducible build error recorded. Independent review complete: 1 P2 fixed (CLI unhandled-exception handling), 1 suspected P1 investigated and empirically disproven (not a real bug — recorded for traceability), no unresolved P0/P1. Blocked on REAL_WINDOWS_CONNECTOR + REAL_IDEALPOS_UI_DISCOVERY evidence — see windows-connector/docs/operator-runbook.md for the exact next step. Does not affect 9-1/9-3's done status.
-  9-3-pos-sync-outbox-dispatch: done  # 2026-08-16: implemented and independently reviewed. New PosSyncDispatcherService (backend/src/pos-sync/) makes the already-truthful, already-tested PosSyncProcessor (story 9-1, confirmed unchanged) actually reachable — cloud-internal only, zero network I/O, no connector dependency (DL-069). Additive migration (7 columns + 1 index on POSSyncRecord). One P0 found+fixed in independent review (BullMQ pos-sync queue lacked defaultJobOptions, breaking the AC17 safety net's failure-recovery path — fixed, proven via a dedicated real-Redis test). Evidence: 364/364 unit, 94/94 real-Postgres integration (19/19 own suite incl. a REAL_REDIS_OR_QUEUE_WORKER-tier end-to-end test), 6+ consecutive clean repeated runs, zero regressions, orders.service.ts and pos-sync.processor.ts both confirmed logic-unchanged. Does NOT wire print-jobs — that remains blocked pending a connector (story 2-9).
-  epic-10: backlog
-  epic-11: backlog
-  epic-12: backlog
-  epic-13: backlog
-  epic-14: backlog
+  9-1-staff-open-and-close-their-own-cash-shift-from-staff-mode: backlog
+  9-2-bill-the-visit-and-view-the-payable-check: backlog
+  9-3-record-a-cash-tender-and-observe-settlement: backlog
+  9-4-void-an-unpaid-check: backlog
+  9-5-cash-refund-under-the-manager-s-shift: backlog
+  9-6-close-the-visit-when-it-is-financially-complete: backlog
+  epic-9-retrospective: optional
 
-  # ── Epic 15: Order Tablet — Idealpos/EFTPOS/KOT Production Journey ──────────
-  # Added 2026-08-16 during story 2-9's scope-corrected handoff. The Order
-  # Tablet (tablet-frontend/ + admin-frontend/src/pages/order-tablet/) is a
-  # real, substantial implementation that previously had zero epic/story
-  # coverage (see _bmad-output/audits/repository-story-audit-2026-08-16.md
-  # §7). It is explicitly IN SCOPE for the 11 October 2026 critical path per
-  # this session's directive and must not be treated as deferred backlog.
-  # None of the stories below were implemented this session — see
-  # docs/epics.md's E15 banner for the verified current-state findings that
-  # ground each story (payment buttons, print bill, promo codes, modifiers,
-  # notes, GST/service-charge totals, and auth-model inconsistency were all
-  # independently re-confirmed against current source this session, not
-  # assumed from the prior audit).
-  epic-15: backlog
-  15-1-tablet-venue-and-auth-decision: done          # Stale line corrected 2026-08-23 (DL-101): the decision was ratified and implemented 2026-08-18 (docs/decisions-log.md DL-081 — device identity + restricted mode + staff elevation + manager step-up), including a same-day real-browser validation pass that found and fixed 3 defects. This YAML line had not been updated since 2026-08-16 and contradicted both the code (TabletAuthService/TabletDeviceGate carry "Story 15-1 / DL-081" doc comments) and decisions-log.md. Device auth logic itself remains PROVEN only for the environment it was actually browser-tested in (this Mac's local stack); a separate Windows validation pass is NOT YET VERIFIED — see DL-101.
-  15-2-tablet-real-table-order-lifecycle: backlog
-  15-3-tablet-menu-modifier-integrity: backlog
-  15-4-tablet-idempotent-submission-truthful-totals: done  # PROVENANCE CORRECTED 2026-08-25: the previously-cited commits (a4081a4/d32cc50/0855193) and branch (order-tablet-idealpos-reconciled) do not exist anywhere in this repository's history (`git rev-parse` fails on all three hashes; the branch exists neither locally nor on origin) and must not be treated as evidence — this is the same class of gap DL-094 itself flagged. The underlying claim is nonetheless true: independently re-verified this session by direct code inspection and test execution against `main` HEAD ba02e6a — billing.ts computes no service charge and discloses GST as contained (never added), idempotent Send to Kitchen is DB-enforced (Order_venueId_idempotencyKey_key unique constraint, TOCTOU-aware conflict handling in orders.service.ts), and no fake payment/bill-print path exists in OrderTabletPage.tsx. 127/127 admin-console tests and 758/758 + 266/266 (real Postgres) apps/api tests pass on this HEAD.
-  15-5-tablet-idealpos-handoff: blocked              # STILL BLOCKED ON: DL-064 (real Table 12/Windows/IdealPOS hardware evidence) — this remains true and is the correct status. PROVENANCE CORRECTED 2026-08-25: the previously-cited branch (order-tablet-idealpos-reconciled) and commits do not exist in this repository (see 15-4's note above) — do not cite them as evidence. The underlying software-path claim is nonetheless independently re-verified this session against `main` HEAD ba02e6a: MenuItem.posProductCode is a real, unique-per-org, staff-configured (never guessed/name-matched) field that fails closed when unmapped (idealpos-order-payload-mapper.ts: "cannot submit to IdealPOS without guessing" — unit- and integration-tested against real Postgres); the connector command lease/CAS claim protocol (connector-command.service.ts) and its .NET consumer (ConnectorPollingLoop.cs) are real and tested (18 real-Postgres integration suites incl. idealpos-order-dispatch, connector-command-harness, and the DL-092/093 retry/unknown-recovery describe blocks, all passing; apps/venue-connector: 75/75 .NET tests passing via `dotnet test`, cross-platform only). What remains genuinely NOT YET VERIFIED, unchanged from before: native IdealPOS consumption, KOT generation, and physical print — none of this can be proven without a real Windows host running IdealPOS + IdealposBridge, which was not available in this session either. Whether the uncommitted "competing" IdealposOrderReconciliationService mentioned in the old note still exists in a dirty tree was not re-checked this session — treat that specific claim as unverified, not confirmed.
-  15-6-tablet-eftpos-cash-truthful-payment: blocked  # card path BLOCKED ON 15-5; cash-confirmation path is not blocked and can land first
-  15-7-tablet-kds-kot-routing-dedup: blocked         # BLOCKED ON: story 9-2 (itself blocked) + DL-067
-  15-8-tablet-bill-settlement-closure: backlog
-  15-9-tablet-offline-retry-recovery: backlog
-  15-10-tablet-reconciliation-audit-visibility: backlog
-  15-11-tablet-automated-test-coverage: done         # STALE CLAIM CORRECTED 2026-08-25: this line said "zero test files exist for OrderTabletPage.tsx" — false as of `main` HEAD ba02e6a. OrderTabletPage.test.tsx (1,063 lines), TabletDeviceGate.test.tsx, and billing.test.ts exist and pass (127/127 across apps/admin-console's full vitest suite, independently re-run this session under both this session's Node version and a real Node 20 container matching CI). Not re-scoped against whatever specific acceptance criteria this story originally defined — only the literal "zero tests exist" claim is what's being corrected here.
-  15-12-tablet-real-e2e-acceptance: blocked          # terminal gate for the 11 Oct journey; BLOCKED ON every other E15 story + DL-064 + real on-site access; only story permitted to produce REAL_WINDOWS_CONNECTOR/REAL_IDEALPOS evidence
+  epic-10: backlog
+  10-1-provider-neutral-payment-adapter-contract: backlog
+  10-2-trusted-adapter-identity-and-result-ingestion-hardening: backlog
+  10-3-uncertain-outcomes-reconciliation-and-no-duplicate-charge: backlog
+  10-4-card-refunds-and-reversals-through-the-adapter: backlog
+  10-5a-venue-edge-service-foundation-identity-durable-queue-diagnos: backlog
+  10-5b-core-to-venue-edge-card-command-lease: backlog
+  10-6-provider-specific-terminal-adapter-and-certification: backlog  # BLOCKED: O-3 business part
+  epic-10-retrospective: optional
+
+  epic-11: backlog  # BLOCKED: O-4/O-5/O-6 business parts; 11.2 after 16.1/16.5
+  11-1-customer-receipt: backlog
+  11-2-minimum-service-day-close-report: backlog
+  11-3-receipt-and-conditional-kitchen-printing-through-venue-edge: backlog
+  epic-11-retrospective: optional
+
+  epic-12: in-progress
+  12-1-monitoring-and-alerting-for-outages-backups-dead-letters-and: backlog
+  12-2-request-ids-structured-logs-and-core-metrics: backlog
+  12-3a-core-database-statement-timeout-and-lock-timeout: done  # accepted 8a4d3ab (split of former 12.3)
+  12-3b-device-route-rate-limits-and-dead-letter-replay: backlog
+  12-4-legacy-decoupling-for-servvia-native-venues: backlog
+  12-5-kiosk-off-in-production-until-fixed: done  # accepted e575658 (tracking corrected 2026-10-05)
+  12-6-hide-or-relabel-mock-admin-pages: backlog
+  12-8-end-to-end-acceptance-and-failure-drills: backlog
+  12-9-runbooks-and-operational-rehearsal: backlog
+  12-10-security-review-and-penetration-test: backlog
+  12-11-performance-and-load-smoke-test: backlog  # runs against O-19 planning baseline; owner confirmation before release acceptance
+  12-12-real-device-lan-and-venue-validation-dry-run: backlog
+  12-13-durable-ingestion-and-retention-of-security-and-operational: backlog
+  12-14-isolated-queue-infrastructure-for-nest-integration-tests: done
+  12-15-kitchen-kds-device-status-changes-fail-on-the-audit-actor-fo: done
+  12-17-accessibility-and-ux-acceptance-of-the-release-surfaces: backlog  # added 2026-10-06 (release-readiness program); RR-3
+  12-18-production-documentation-set: backlog  # added 2026-10-06 (release-readiness program); RR-9
+  epic-12-retrospective: optional
+
+  epic-13: backlog  # DEFERRED/BLOCKED placeholders (no 'deferred' status exists in the tracker vocabulary)
+  13-1-windows-pos-terminal: backlog
+  13-2-guest-mode-on-core-and-the-native-waiter-tablet: backlog
+  13-3-menu-availability-and-admin-capabilities-move-to-their-decid: backlog
+  13-4-reservations-hardening-and-ownership: backlog
+  13-5-sales-and-reservation-reporting: backlog
+  13-6-public-web-and-online-ordering-scope: backlog
+  13-7-native-kiosk-and-window-display: backlog
+  epic-13-retrospective: optional
+
+  epic-14: done
+  14-1-integrate-the-normative-prd-into-the-accepted-lineage-and-re: done  # Wave A 5ee6474
+  14-2-re-anchor-bmad-configuration-and-active-planning-to-the-norm: done  # accepted 0d1e334 + governance closure (2026-10-05)
+  epic-14-retrospective: optional
+
+  epic-15: in-progress  # reconciled 2026-10-06 against dff753a; order in epics.md Epic 15; 15.1 done; no further Epic 15 story authorized
+  15-1-core-audit-records-device-and-system-actors-truthfully: done  # accepted by the orchestrator 2026-10-06; frozen e1dae66 (objective 06db19c2); candidate 453d07b governed PASS; integrated 4747043
+  15-3-core-derives-application-identity-operating-mode-and-actor-c: backlog  # re-scoped 2026-10-06: Core-derived from verified credential; no Nest token change (ADMIN-38)
+  15-2a-o-21-order-and-round-provenance-persistence: backlog  # split of former 15.2; after 15.3
+  15-2b-domain-events-carry-actor-correlation-and-causation: backlog  # split of former 15.2; after 15.2a
+  15-2c-device-originated-orders-carry-no-synthetic-staff-creator-tr: backlog  # former 12.16 (merged into 15.2), own slice
+  15-2d-check-payment-and-refund-provenance: backlog  # split of former 15.2; after 15.2a; before Epic 9 on Core
+  15-4a-core-closes-live-realtime-connections-when-a-credential-is-r: backlog  # split of former 15.4 (Core side); required before release acceptance
+  15-4b-nest-revocations-signal-core-push-close: backlog  # split of former 15.4 (Nest side); after 15.4a; required before release acceptance
+  15-5-core-kitchen-routes-accept-per-device-d8-kds-credentials: backlog  # after 15.1; D-3 / O-13
+  15-7-d8-single-use-enrollment-redemption-device-bootstrap: backlog  # new 2026-10-06 (O-13 item 3, D-3); needed by 6.1 and 17.2
+  epic-15-retrospective: optional
+
+  epic-16: backlog  # 16.3 pilot enablement needs P6 values; 7.1/7.2 rewritten as 16.3/16.4; 12.7 -> 16.2
+  16-1-p3-business-date: backlog
+  16-2-line-level-station-routing: backlog
+  16-3-cancel-void-and-comp-in-core: backlog
+  16-4-order-completion-and-uncertain-payment-resolution: backlog
+  16-5-p11-operational-sales-computation: backlog
+  epic-16-retrospective: optional
+
+  epic-17: backlog  # post-pilot; O-10 decided (Tier 2; SPRD s14, PRD/00 s00.10.7); versions pinned only in 17.1
+  17-1-android-engineering-baseline-per-o-10: backlog
+  17-2-native-device-enrollment-secure-credential-storage-and-core: backlog
+  epic-17-retrospective: optional
+
+  epic-18: backlog  # post-pilot permanent KDS replacement; not a first-pilot blocker (D-1)
+  18-1-native-kds-tickets-and-transitions-on-core-with-a-d8-identit: backlog
+  18-2-native-kds-outage-cache-and-reconnect: backlog
+  18-3-native-kds-ready-alert-and-age-colours: backlog
+  18-4-native-kds-parity-proof-venue-migration-and-web-kds-retireme: backlog
+  epic-18-retrospective: optional
+
+  epic-19: backlog  # post-pilot native Waiter Tablet Staff Mode; primary transitional-retirement target; O-1 open
+  19-1-native-staff-mode-elevation-per-o-20: backlog
+  19-2-native-staff-mode-ordering-on-core-with-o-21-provenance: backlog
+  19-3-native-settlement-parity-and-web-tablet-settlement-retiremen: backlog
+  epic-19-retrospective: optional
+
+  epic-20: in-progress  # added 2026-10-06: governed autonomous improvement loop (AIL-1..AIL-6); runs alongside product work
+  20-1-governed-evaluator-in-ci: backlog  # AIL-1; early
+  20-2-reusable-objective-preparation-tooling: backlog  # AIL-3; early
+  20-3-program-telemetry-and-retrospective-feedback: review  # AIL-5; frozen e5331d7 (objective 9dccbd00); candidate 1def3d1 governed PASS (CANDIDATE_READY_FOR_ACCEPTANCE); integrated c1e39d4; awaiting orchestrator acceptance
+  20-4-durable-evidence-retention-and-stronger-evaluator-isolation: backlog  # AIL-6; before production qualification (G3)
+  20-5-lesson-extraction-and-promotion-phase-3: backlog  # AIL-4; BLOCKED until natural correction evidence (AIL-2, TAP residual); never manufactured
+  epic-20-retrospective: optional

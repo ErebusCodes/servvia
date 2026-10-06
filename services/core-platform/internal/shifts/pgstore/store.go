@@ -13,7 +13,6 @@ package pgstore
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -21,8 +20,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
+	coreaudit "servvia/services/core-platform/internal/audit"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/shifts"
 )
 
@@ -251,16 +251,9 @@ func (Ledger) RecordCashSale(ctx context.Context, tx pgx.Tx, venueID, shiftID, p
 }
 
 func audit(ctx context.Context, tx pgx.Tx, sc shifts.Scope, a shifts.Actor, action, shiftID string, before, after map[string]any) error {
-	var beforeJSON []byte
-	if before != nil {
-		beforeJSON, _ = json.Marshal(before)
-	}
-	afterJSON, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", before, after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'shift', $8, $9, $10)`,
-		newID(), sc.OrganizationID, sc.VenueID, a.StaffID, a.Email, a.Role, action, shiftID, beforeJSON, afterJSON)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.VenueID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, a.Device), Action: action, Resource: "shift", ResourceID: shiftID,
+		Before: before, After: after})
 }
 
 // newID is a random v4 UUID, the form of every Prisma @default(uuid()) id.
@@ -274,7 +267,7 @@ func newID() string {
 // shiftFact records a shift fact in its transaction (Phase D12). Identity and
 // status only: cash figures are read over HTTP by those allowed to.
 func shiftFact(ctx context.Context, tx pgx.Tx, venueID, eventType, shiftID string, version int, status string, terminalID *string) error {
-	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: eventType, AggregateType: "shift", AggregateID: shiftID,
-		Version: realtime.V(version), Payload: map[string]any{"shiftId": shiftID, "status": status, "terminalId": terminalID}})
+	_, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: eventType, AggregateType: "shift", AggregateID: shiftID,
+		Version: events.V(version), Payload: map[string]any{"shiftId": shiftID, "status": status, "terminalId": terminalID}})
 	return err
 }

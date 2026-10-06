@@ -1,10 +1,12 @@
 # Events: starting inventory
 
 > **Phase D12:** the canonical facts are now defined once in
-> [`catalog.md`](catalog.md) and delivered by Servvia Core's realtime log
-> (`RealtimeEvent`, [`../realtime/servvia-realtime.md`](../realtime/servvia-realtime.md)).
-> The inventory below describes the NestJS-era mechanisms and the D3/D4
-> outbox, which remain as they are.
+> [`catalog.md`](catalog.md).
+> **Phase D13:** they are stored in Servvia Core's generic event log,
+> `DomainEvent`, with per-consumer progress in `EventDelivery`; see
+> [below](#servvia-core-domain-events-and-workers-phase-d13). The inventory
+> that follows describes the NestJS-era mechanisms, which remain as they are,
+> and the D3/D4 outbox, which is now legacy.
 
 **Servvia currently has no event bus.** A search of `apps/api/src` for `EventEmitter`, `@OnEvent`, `kafka`,
 `nats` and `pubsub` found nothing. `apps/api/package.json` has no event-emitter, Kafka or NATS dependency.
@@ -29,9 +31,15 @@ The four tables share these patterns:
 - **Honest statuses:** no status claims more than the evidence supports. For example, `pushed` and `delivered` do not mean received, and `accepted` does not mean executed.
 - **Timers:** each dispatcher runs on a `setInterval` that is disabled under `NODE_ENV=test`.
 
-The audit log (`AuditLog`, `action` strings such as `CONNECTOR_COMMAND_*` and `UPDATE_ORDER_STATUS`) is the other durable record of state changes. It is written best-effort and has no dispatcher.
+The audit log (`AuditLog`, `action` strings such as `CONNECTOR_COMMAND_*` and `UPDATE_ORDER_STATUS`) is the other durable record of state changes. It is written best-effort and has no dispatcher. Each row names its actor truthfully (Story 12.15): `actorType` is `staff` (a named staff member, with the device they acted through if any), `device` (`deviceKind`, plus `deviceId` when a device record exists; a KDS venue-PIN screen has none) or `system` (`systemActor`). A database CHECK constraint enforces each shape, and rows are immutable (a trigger rejects UPDATE; foreign keys restrict deletion of the staff member, venue and organization they name).
 
-## Servvia Core outbox (`OutboxEvent`, Phases D3 and D4)
+## Servvia Core outbox (`OutboxEvent`, Phases D3 and D4) — legacy since D13
+
+> **Since D13 nothing writes `OutboxEvent`.** New rounds are recorded in
+> `DomainEvent` and delivered to the `kitchen_projector` work consumer. The
+> legacy projector loop below only drains rows written before D13; the table
+> is retired (with approval) once none is left unprocessed. It is described
+> here as it was.
 
 The first canonical event table. It has no IdealPOS, connector or KDS transport fields. A row is written in the same transaction as the change it announces.
 
@@ -51,3 +59,21 @@ How the projector consumes an event:
 - **A second consumer** of an existing event type must not reuse those columns. It needs its own per-consumer progress record, added additively.
 - **Other event types** are not claimed by the projector.
 - **D5 checks and D6 payments and settlements write no outbox event.** Nothing consumes one yet, and PostgreSQL is the source of truth for them. Since D12 they record realtime facts (`catalog.md`) in a separate log, `RealtimeEvent`, which has no consumer-progress columns: each Core instance tails it with its own in-memory cursor. It is not a second use of `OutboxEvent`.
+
+## Servvia Core domain events and workers (Phase D13)
+
+One durable fact log with independent consumers. Decisions and audit: [`../../docs/migration/d13-outbox-workers.md`](../../docs/migration/d13-outbox-workers.md). Migration: `apps/api/prisma/migrations/20261009000000_domain_events`.
+
+- **`DomainEvent`** is the fact (envelope and catalog in [`catalog.md`](catalog.md)). It is written by `events/pgstore.Record` **in the transaction of the change**, organization and venue derived from `Venue`. It carries **no consumer progress**.
+- **`EventDelivery`** is one consumer's progress on one event: `status` (`pending`, `succeeded`, `failed`), `attempts`, `availableAt`, `leaseOwner` / `leaseExpiresAt`, `lastError`, `succeededAt` / `failedAt`. One row per (event, consumer) (unique), created with the event for every consumer subscribed to its type (`internal/events`). One consumer's success never marks another's.
+- **Work consumers** run in `internal/workers`. Claim: `FOR UPDATE SKIP LOCKED`, then a lease (default 1 min) and `attempts + 1`. Processing re-locks the delivery, **checks the lease is still this worker's**, runs the handler in the same transaction and marks success. A crashed worker's lease expires and the delivery is claimed again. Failure: backoff `min(1 s × 2^(attempts−1), 5 min)`; a permanent error or 10 attempts → `failed` (dead letter, kept and inspectable, `workers.Retry` resets it explicitly). Shutdown releases in-flight deliveries.
+- **Delivery is at least once**; a handler must be idempotent by `eventId` or by unique keys. No ordering is promised.
+- **Broadcast readers** (the realtime dispatcher) tail `DomainEvent` in commit-safe `(txId, sequence)` order with an in-memory cursor. They have no delivery rows.
+- **Retention:** an event older than `SERVVIA_CORE_EVENT_RETENTION` (7 days) is pruned only when every delivery succeeded.
+- **Backlog:** `GET /api/admin/workers` (owner or admin, staff login) returns per consumer pending, retrying, leased and failed counts and the oldest pending age, for the organization of the verified token only (across its venues). No payloads, errors or ids.
+
+| Consumer | Subscribes to | Handler | Idempotency |
+|---|---|---|---|
+| `kitchen_projector` | `order.round_submitted` | `internal/kitchen/pgstore.Projector.Handle` (D4 projection logic) | `KitchenTicket (roundId, station)`, `KitchenTicketLine (orderItemId)`; `sourceEventId` is the event id |
+
+**Not events.** `KdsDeliveryRecord`, printer jobs and BullMQ queues are unchanged and are not consumers.

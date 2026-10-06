@@ -1,7 +1,0 @@
-# Rollback/verification evidence: stored byte-for-byte, never normalized.
-#
-# The *.save.acl files are UTF-16LE `icacls /save` captures and are the
-# authoritative rollback artifacts; EOL conversion would corrupt them. The
-# rest is covered by MANIFEST-sha256.txt, which is only meaningful if the
-# bytes survive a clone unchanged.
-* -text

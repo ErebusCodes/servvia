@@ -27,6 +27,8 @@ import (
 
 	"servvia/services/core-platform/internal/checks"
 	"servvia/services/core-platform/internal/devices"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/health"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/kitchen"
@@ -67,7 +69,7 @@ func realtimeSetup(t *testing.T, cfg realtimeapi.Config, buffer int) *realtimeHa
 	t.Cleanup(pool.Close)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	hub := realtime.NewHub(buffer)
-	dispatcher := realtimestore.NewDispatcher(realtimestore.NewLog(pool), hub, logger, 20*time.Millisecond, 24*time.Hour, false)
+	dispatcher := realtimestore.NewDispatcher(eventstore.NewLog(pool), hub, logger, 20*time.Millisecond, 24*time.Hour, false)
 	if err := dispatcher.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +78,13 @@ func realtimeSetup(t *testing.T, cfg realtimeapi.Config, buffer int) *realtimeHa
 	go func() { defer close(done); dispatcher.Run(runCtx) }()
 	venueStore := venues.NewPostgresStore(pool)
 	handler := realtimeapi.NewHandler(hub, identity.NewVerifier(rtSecret), identity.NewPostgresTabletDevices(pool), h.devices,
-		venueStore, logger, cfg)
+		venueStore, identity.NewPostgresVenueGrants(pool), admitStaff, logger, cfg)
 	routes := server.Routes(server.Deps{
 		Logger: logger, Health: health.New(pool, time.Second),
 		Menu:     menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:   venues.NewHandler(venueStore, logger),
 		Verifier: identity.NewVerifier(rtSecret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger), DeviceAuth: h.devices, Realtime: handler,
 	})
 	srv := httptest.NewUnstartedServer(routes)
@@ -108,6 +111,9 @@ var fastConfig = realtimeapi.Config{AuthTimeout: 500 * time.Millisecond, PingInt
 func sign(c jwt.MapClaims) string {
 	if _, set := c["exp"]; !set {
 		c["exp"] = time.Now().Add(time.Hour).Unix()
+	}
+	if _, set := c["sid"]; !set {
+		c["sid"] = testsupport.UUID()
 	}
 	s, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString([]byte(rtSecret))
 	return s
@@ -428,18 +434,17 @@ func TestRealtimeCanonicalFacts(t *testing.T) {
 		t.Errorf("kds received %v", types(kGot))
 	}
 
-	// 13: the realtime order.round_submitted is the D4 fact: same fields
-	// and values as the outbox payload, minus the projector's lines.
-	var outbox map[string]any
-	var raw []byte
-	_ = h.writer.QueryRow(ctx, `SELECT payload FROM "OutboxEvent" WHERE "aggregateId" = $1 AND (payload->>'sequence')::int = 2`, o.ID).Scan(&raw)
-	_ = json.Unmarshal(raw, &outbox)
+	// 13 (D13): the realtime order.round_submitted is the kitchen's fact:
+	// the very event the kitchen_projector consumer projected (its id is the
+	// ticket's sourceEventId), with the same payload as the event row.
 	for _, e := range got {
 		if e.EventType == "order.round_submitted" && e.Payload["sequence"] == 2.0 {
-			for k, v := range e.Payload {
-				if !equalJSON(outbox[k], v) {
-					t.Errorf("round fact %s: realtime %v, outbox %v", k, v, outbox[k])
-				}
+			var raw []byte
+			_ = h.writer.QueryRow(ctx, `SELECT payload FROM "DomainEvent" WHERE id = $1`, e.EventID).Scan(&raw)
+			var stored map[string]any
+			_ = json.Unmarshal(raw, &stored)
+			if !equalJSON(stored, e.Payload) || h.count(t, `SELECT count(*) FROM "KitchenTicket" WHERE "sourceEventId" = $1`, e.EventID) != 1 {
+				t.Errorf("round fact %s is not the kitchen's: %v / %v", e.EventID, e.Payload, stored)
 			}
 			if _, has := e.Payload["lines"]; has || len(e.Payload) != 6 {
 				t.Errorf("round fact payload %v", e.Payload)
@@ -540,7 +545,7 @@ func TestRealtimeCanonicalFacts(t *testing.T) {
 		t.Errorf("versions: check %d/%d session %d/%d", lastVersion[c.ID], checkVersion, lastVersion[s.ID], sessionVersion)
 	}
 	// Every recorded fact of the venue reached the staff subscriber once.
-	if n := h.count(t, `SELECT count(*) FROM "RealtimeEvent" WHERE "venueId" = $1`, h.f.Venue); n != len(got) {
+	if n := h.count(t, `SELECT count(*) FROM "DomainEvent" WHERE "venueId" = $1`, h.f.Venue); n != len(got) {
 		t.Errorf("recorded %d facts, staff received %d", n, len(got))
 	}
 
@@ -584,14 +589,14 @@ func equalJSON(a, b any) bool {
 func TestRealtimeTransactionBoundary(t *testing.T) {
 	h := realtimeSetup(t, fastConfig, 64)
 	ctx := context.Background()
-	count := func() int { return h.count(t, `SELECT count(*) FROM "RealtimeEvent" WHERE "venueId" = $1`, h.f.Venue) }
+	count := func() int { return h.count(t, `SELECT count(*) FROM "DomainEvent" WHERE "venueId" = $1`, h.f.Venue) }
 
 	// A fact recorded in a transaction that rolls back never exists.
 	tx, err := h.writer.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := realtimestore.Record(ctx, tx, h.f.Venue, realtime.Fact{Type: "shift.opened", AggregateType: "shift", AggregateID: "x",
+	if _, err := eventstore.Record(ctx, tx, h.f.Venue, events.Fact{Type: "shift.opened", AggregateType: "shift", AggregateID: "x",
 		Payload: map[string]any{"shiftId": "x", "status": "open"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -609,14 +614,14 @@ func TestRealtimeTransactionBoundary(t *testing.T) {
 	// A fact that cannot be recorded fails its transaction: no change
 	// without its announcement.
 	err = pgx.BeginFunc(ctx, h.writer, func(tx pgx.Tx) error {
-		_, err := realtimestore.Record(ctx, tx, testsupport.UUID(), realtime.Fact{Type: "shift.opened", AggregateType: "shift",
+		_, err := eventstore.Record(ctx, tx, testsupport.UUID(), events.Fact{Type: "shift.opened", AggregateType: "shift",
 			AggregateID: "y", Payload: map[string]any{}})
 		return err
 	})
-	if !errors.Is(err, realtimestore.ErrUnknownVenue) {
+	if !errors.Is(err, eventstore.ErrUnknownVenue) {
 		t.Errorf("unknown venue: %v", err)
 	}
-	if _, err := realtimestore.Record(ctx, nil, h.f.Venue, realtime.Fact{Type: "nope.nope"}); !errors.Is(err, realtime.ErrInvalidFact) {
+	if _, err := eventstore.Record(ctx, nil, h.f.Venue, events.Fact{Type: "nope.nope"}); !errors.Is(err, events.ErrInvalidFact) {
 		t.Errorf("invalid fact: %v", err)
 	}
 
@@ -631,23 +636,31 @@ func TestRealtimeTransactionBoundary(t *testing.T) {
 	if got, err := h.porders.Get(ctx, h.scope(), o.ID); err != nil || got.ID != o.ID {
 		t.Fatalf("write with no delivery: %v", err)
 	}
-	if n := h.count(t, `SELECT count(*) FROM "RealtimeEvent" WHERE "aggregateId" = ANY($1)`, []string{s.ID, o.ID}); n != 3 {
+	if n := h.count(t, `SELECT count(*) FROM "DomainEvent" WHERE "aggregateId" = ANY($1)`, []string{s.ID, o.ID}); n != 3 {
 		t.Errorf("facts of the undelivered writes: %d", n)
 	}
 
-	// 31: realtime never reads or writes the outbox's consumer progress.
-	var pending int
-	_ = h.writer.QueryRow(ctx, `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1 AND "processedAt" IS NULL AND attempts = 0`, o.ID).Scan(&pending)
-	if pending != 1 {
-		t.Errorf("the round's outbox event was touched: %d pending", pending)
+	// 31 (D13): realtime keeps no durable progress. The round's
+	// kitchen_projector delivery is untouched by realtime delivery (nothing
+	// has processed it in this harness), no delivery row exists for realtime,
+	// and the event log has no progress columns.
+	if n := h.count(t, `SELECT count(*) FROM "EventDelivery" d JOIN "DomainEvent" e ON e.id = d."eventId"
+		WHERE e."aggregateId" = $1 AND d.consumer = 'kitchen_projector' AND d.status = 'pending' AND d.attempts = 0`, o.ID); n != 1 {
+		t.Errorf("the kitchen delivery was touched: %d pending", n)
+	}
+	if n := h.count(t, `SELECT count(*) FROM "EventDelivery" WHERE consumer <> 'kitchen_projector'`); n != 0 {
+		t.Errorf("%d deliveries for other consumers", n)
 	}
 	var cols []string
-	rows, _ := h.writer.Query(ctx, `SELECT column_name FROM information_schema.columns WHERE table_name = 'RealtimeEvent'`)
+	rows, _ := h.writer.Query(ctx, `SELECT column_name FROM information_schema.columns WHERE table_name = 'DomainEvent'`)
 	cols, _ = pgx.CollectRows(rows, pgx.RowTo[string])
 	for _, c := range cols {
-		if slices.Contains([]string{"processedAt", "attempts", "availableAt", "failedAt", "lastError"}, c) {
-			t.Errorf("RealtimeEvent has consumer-progress column %s", c)
+		if slices.Contains([]string{"processedAt", "attempts", "availableAt", "failedAt", "lastError", "leaseOwner", "status"}, c) {
+			t.Errorf("DomainEvent has consumer-progress column %s", c)
 		}
+	}
+	if n := h.count(t, `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1`, o.ID); n != 0 {
+		t.Errorf("a legacy outbox row was written: %d", n)
 	}
 }
 
@@ -661,7 +674,7 @@ func TestRealtimeLateCommitIsNotSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := realtimestore.Record(ctx, late, h.f.Venue, realtime.Fact{Type: "shift.opened", AggregateType: "shift",
+	if _, err := eventstore.Record(ctx, late, h.f.Venue, events.Fact{Type: "shift.opened", AggregateType: "shift",
 		AggregateID: "late-shift", Payload: map[string]any{"shiftId": "late-shift", "status": "open", "terminalId": nil}}); err != nil {
 		t.Fatal(err)
 	}
@@ -729,8 +742,8 @@ func TestRealtimeSlowSubscriber(t *testing.T) {
 	err = pgx.BeginFunc(ctx, h.writer, func(tx pgx.Tx) error {
 		for i := 0; i < 3000; i++ {
 			id := "burst-" + testsupport.UUID()
-			if _, err := realtimestore.Record(ctx, tx, h.f.Venue, realtime.Fact{Type: "shift.opened", AggregateType: "shift", AggregateID: id,
-				Version: realtime.V(1), Payload: map[string]any{"shiftId": id, "status": "open", "terminalId": strings.Repeat("t", 200)}}); err != nil {
+			if _, err := eventstore.Record(ctx, tx, h.f.Venue, events.Fact{Type: "shift.opened", AggregateType: "shift", AggregateID: id,
+				Version: events.V(1), Payload: map[string]any{"shiftId": id, "status": "open", "terminalId": strings.Repeat("t", 200)}}); err != nil {
 				return err
 			}
 		}

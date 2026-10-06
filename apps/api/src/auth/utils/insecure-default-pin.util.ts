@@ -1,10 +1,11 @@
 import { InternalServerErrorException } from '@nestjs/common';
+import { isProductionRuntime } from '../../config/runtime-environment';
 
 /**
  * The single value checked into `.env.example`/`docker-compose.yml` as the
  * default for every PIN-based auth surface in this repository
- * (`KDS_VENUE_PINS`, `ADMIN_CONSOLE_PIN`) — see docs/decisions-log.md DL-081
- * and the separate Admin Console `AdminPinGate` security finding. A
+ * (`KDS_VENUE_PINS`; the Admin Console PIN was removed in Story 2.4) — see
+ * docs/decisions-log.md DL-081. A
  * deployment that silently keeps this value in production grants
  * whoever-guesses-it real access, so every PIN-verification call site must
  * refuse to compare against it once `NODE_ENV=production`, rather than
@@ -15,7 +16,8 @@ import { InternalServerErrorException } from '@nestjs/common';
 export const INSECURE_DEFAULT_PIN = '108';
 
 export function assertPinNotInsecureDefault(configuredPin: string, surface: string): void {
-  if (process.env.NODE_ENV === 'production' && configuredPin === INSECURE_DEFAULT_PIN) {
+  // Fail closed: only an explicit development/test environment may use it.
+  if (isProductionRuntime() && configuredPin === INSECURE_DEFAULT_PIN) {
     throw new InternalServerErrorException(
       `${surface} is still configured with the checked-in default PIN — refusing to serve production auth requests until this is changed.`,
     );

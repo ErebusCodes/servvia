@@ -9,6 +9,9 @@ import { AppModule } from './app.module';
 import { PrismaService } from './prisma/prisma.service';
 import { resolveMediaStoragePath } from './media/media-storage.util';
 import { assertSecretNotInsecureDefault } from './auth/utils/insecure-default-secret.util';
+import { productionDataViolations } from './config/production-data.guard';
+import { isAllowedOrigin } from './config/allowed-origins';
+import { configureTrustProxy } from './config/client-ip';
 
 interface CorsRequest {
   headers: { origin?: string };
@@ -41,8 +44,8 @@ async function bootstrap() {
   }
 
   // Production must never boot with the checked-in dummy JWT secrets — same
-  // fail-closed discipline already applied per-request to KDS_VENUE_PINS/
-  // ADMIN_CONSOLE_PIN (insecure-default-pin.util.ts), extended here to the
+  // fail-closed discipline already applied per-request to KDS_VENUE_PINS
+  // (insecure-default-pin.util.ts), extended here to the
   // strictly higher-value target a forgeable JWT secret represents.
   try {
     assertSecretNotInsecureDefault(process.env.JWT_ACCESS_SECRET, 'JWT_ACCESS_SECRET');
@@ -74,7 +77,7 @@ async function bootstrap() {
   // Test.createTestingModule(...).compile() + app.init() (used by e2e/unit
   // specs with an intentionally fake DATABASE_URL) needs AppModule to
   // resolve without a live database. That same tolerance previously let a
-  // real `node dist/main` boot fully, bind its port, and serve every
+  // real `node dist/src/main` boot fully, bind its port, and serve every
   // Prisma-backed route as a misleading generic 500 while looking "up" — the
   // menu API included. Verify connectivity here, only on the real server
   // startup path (bootstrap() is never invoked by the test module compiler),
@@ -94,15 +97,24 @@ async function bootstrap() {
     process.exit(1);
   }
 
-  // Local-host mode exposes the API directly, so do not trust caller-supplied
-  // forwarding headers by default. Deployments behind a known reverse proxy
-  // can explicitly opt in with TRUST_PROXY_HOPS.
-  const expressApp = app.getHttpAdapter().getInstance() as unknown as {
-    set?: (name: string, value: number) => void;
-  };
-  if (typeof expressApp.set === 'function') {
-    expressApp.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 0));
+  // Production refuses to start with development-only data still active
+  // (Story 1.5); configuration is already checked by ConfigModule validation.
+  const dataViolations = await productionDataViolations(app.get(PrismaService));
+  if (dataViolations.length > 0) {
+    console.error('========================================================================');
+    console.error('FATAL ERROR: Unsafe production data — refusing to start:');
+    dataViolations.forEach((v) => console.error(`  - ${v}`));
+    console.error('========================================================================');
+    await app.close();
+    process.exit(1);
   }
+
+  // Forwarding headers are believed only from loopback proxies, at most
+  // TRUST_PROXY_HOPS of them (default 0: none). See config/client-ip.ts.
+  configureTrustProxy(
+    app.getHttpAdapter().getInstance() as { set?: (name: string, value: unknown) => void },
+    Number(process.env.TRUST_PROXY_HOPS ?? 0),
+  );
 
   app.use(cookieParser());
   app.enableCors(
@@ -111,35 +123,8 @@ async function bootstrap() {
       callback: (err: Error | null, options?: { origin: boolean; credentials?: boolean }) => void,
     ) => {
       const origin = req.headers.origin;
-      const allowedOrigins = [
-        'https://verdura.co.nz',
-        'https://admin.verdura.co.nz',
-        'https://kiosk.verdura.co.nz',
-        // Today's actual production topology for this venue is a single
-        // Windows box serving every frontend (Admin Console, Order Tablet,
-        // Window Display) directly off bare localhost ports — there are no
-        // real hostnames yet (Customer Website isn't even deployed). Gating
-        // these behind NODE_ENV !== 'production' meant a real browser
-        // opened at http://localhost:5177 in production had every fetch to
-        // the API silently CORS-blocked at the preflight stage: no
-        // Access-Control-Allow-Origin header, no proper HTTP status the
-        // frontend's error handling could see, just a generic "could not
-        // reach the server" — while any non-browser check (curl, a script,
-        // Invoke-WebRequest) never enforces CORS at all and saw the
-        // request succeed. Found 2026-08-30 chasing an Admin Console PIN
-        // login that worked from the backend but not from the browser.
-        // These are a fixed, enumerated, non-guessable set of ports (not
-        // "any localhost origin"), so always allowing them is a narrow
-        // addition, not a general CORS loosening.
-        'http://localhost:5173',
-        'http://localhost:5174',
-        'http://localhost:5175',
-        'http://localhost:5176',
-        'http://localhost:5177',
-      ];
-
       let corsOptions;
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         corsOptions = { origin: true, credentials: true };
       } else {
         corsOptions = { origin: false };

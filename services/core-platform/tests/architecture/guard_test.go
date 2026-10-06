@@ -41,7 +41,7 @@ var guarded = []string{"cmd", "internal"}
 
 // mustScan are the canonical domain packages the guard must be seeing; if one
 // moves out of a guarded tree, the guard fails instead of silently skipping it.
-var mustScan = []string{"internal/pricing", "internal/venues", "internal/tables", "internal/orders", "internal/kitchen", "internal/checks", "internal/payments", "internal/shifts", "internal/devices", "internal/refunds", "internal/promotions", "internal/realtime"}
+var mustScan = []string{"internal/pricing", "internal/venues", "internal/tables", "internal/orders", "internal/kitchen", "internal/checks", "internal/payments", "internal/shifts", "internal/devices", "internal/refunds", "internal/promotions", "internal/realtime", "internal/events", "internal/workers"}
 
 func TestGoCoreHasNoExternalPOSConcepts(t *testing.T) {
 	root := filepath.Join("..", "..")

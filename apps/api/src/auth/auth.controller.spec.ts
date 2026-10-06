@@ -4,8 +4,12 @@ import { Response, Request } from 'express';
 import { StaffRole, Staff } from '@prisma/client';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { CredentialSetupService } from '../staff/credential-setup.service';
+
+const mockCredentialSetup = { redeem: jest.fn() };
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
+import { StaffWithSession } from './strategies/jwt-refresh.strategy';
 
 const fakeStaff: Staff = {
   id: 'd866a2e8-460d-4560-bf65-f48bf2b61404',
@@ -28,9 +32,9 @@ const fakeStaff: Staff = {
 
 const mockAuthService = {
   validateLogin: jest.fn(),
-  validateAdminPin: jest.fn(),
   signAccessToken: jest.fn().mockReturnValue('access-token'),
   signRefreshToken: jest.fn().mockReturnValue('refresh-token'),
+  startSession: jest.fn().mockResolvedValue('session-uuid'),
   setRefreshCookie: jest.fn(),
   clearRefreshCookie: jest.fn(),
   logLoginSuccess: jest.fn(),
@@ -49,9 +53,13 @@ describe('AuthController', () => {
     jest.clearAllMocks();
     mockAuthService.signAccessToken.mockReturnValue('access-token');
     mockAuthService.signRefreshToken.mockReturnValue('refresh-token');
+    mockAuthService.startSession.mockResolvedValue('session-uuid');
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: mockAuthService }],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: CredentialSetupService, useValue: mockCredentialSetup },
+      ],
     })
       .overrideGuard(RateLimitGuard)
       .useValue({ canActivate: () => true })
@@ -78,6 +86,13 @@ describe('AuthController', () => {
         role: fakeStaff.role,
       });
       expect(mockAuthService.setRefreshCookie).toHaveBeenCalledWith(mockRes, 'refresh-token');
+    });
+
+    it('binds the access and refresh tokens to one new login session (Story 2.5)', async () => {
+      mockAuthService.validateLogin.mockResolvedValue(fakeStaff);
+      await controller.login({ email: 'owner@verdura.co.nz', password: 'correct' }, mockRes);
+      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
+      expect(mockAuthService.signRefreshToken).toHaveBeenCalledWith(fakeStaff, 'session-uuid');
     });
 
     it('throws UnauthorizedException on non-existent email', async () => {
@@ -112,35 +127,12 @@ describe('AuthController', () => {
   });
 
   describe('refresh', () => {
-    it('returns a new accessToken using req.user from the guard', () => {
-      const req = { user: fakeStaff } as Request & { user: Staff };
+    it('returns a new accessToken in the same session, using req.user from the guard', () => {
+      const user = { ...fakeStaff, sessionId: 'session-uuid' };
+      const req = { user } as Request & { user: StaffWithSession };
       const result = controller.refresh(req);
       expect(result.accessToken).toBe('access-token');
-      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff);
-    });
-  });
-
-  describe('admin PIN login', () => {
-    it('mints the normal staff session for a valid admin PIN', async () => {
-      mockAuthService.validateAdminPin.mockResolvedValue(fakeStaff);
-
-      const result = await controller.loginWithAdminPin({ pin: '108' }, mockRes);
-
-      expect(mockAuthService.validateAdminPin).toHaveBeenCalledWith('108', undefined, undefined);
-      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(fakeStaff);
-      expect(mockAuthService.signRefreshToken).toHaveBeenCalledWith(fakeStaff);
-      expect(mockAuthService.setRefreshCookie).toHaveBeenCalledWith(mockRes, 'refresh-token');
-      expect(result.user.role).toBe(StaffRole.owner);
-    });
-
-    it('does not mint tokens for an invalid PIN', async () => {
-      mockAuthService.validateAdminPin.mockRejectedValue(new UnauthorizedException('Invalid PIN'));
-
-      await expect(controller.loginWithAdminPin({ pin: '999' }, mockRes)).rejects.toThrow(
-        UnauthorizedException,
-      );
-      expect(mockAuthService.signAccessToken).not.toHaveBeenCalled();
-      expect(mockAuthService.setRefreshCookie).not.toHaveBeenCalled();
+      expect(mockAuthService.signAccessToken).toHaveBeenCalledWith(user, 'session-uuid');
     });
   });
 
@@ -149,6 +141,38 @@ describe('AuthController', () => {
       const logoutRes = { clearCookie: jest.fn() } as unknown as Response;
       await controller.logout(logoutRes);
       expect(mockAuthService.clearRefreshCookie).toHaveBeenCalledWith(logoutRes);
+    });
+
+    it('passes the refresh cookie and the bearer access token to logout', async () => {
+      const logoutRes = { clearCookie: jest.fn() } as unknown as Response;
+      const req = {
+        cookies: { refresh_token: 'refresh-token-val' },
+        headers: { authorization: 'Bearer access-token-val', 'user-agent': 'Mozilla' },
+        ip: '1.2.3.4',
+      } as unknown as Request;
+      await controller.logout(logoutRes, req);
+      expect(mockAuthService.logout).toHaveBeenCalledWith(
+        'refresh-token-val',
+        'access-token-val',
+        '1.2.3.4',
+        'Mozilla',
+      );
+    });
+  });
+
+  describe('credential setup (Story 8.1)', () => {
+    it('passes the code, the new password and the request context to the service', async () => {
+      const req = {
+        headers: { 'user-agent': 'Mozilla' },
+        ip: '1.2.3.4',
+      } as unknown as Request;
+      await controller.setupCredential({ code: 'id.secret', password: 'a long new password' }, req);
+      expect(mockCredentialSetup.redeem).toHaveBeenCalledWith(
+        'id.secret',
+        'a long new password',
+        '1.2.3.4',
+        'Mozilla',
+      );
     });
   });
 });

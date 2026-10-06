@@ -6,9 +6,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/payments"
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
 )
 
 // Realtime facts of money (Phase D12), recorded in the transaction that
@@ -25,9 +25,9 @@ func paymentFact(ctx context.Context, tx pgx.Tx, paymentID string, from *payment
 	var version int
 	if err := tx.QueryRow(ctx, `SELECT "venueId", "checkId", currency, "tenderType"::text, status::text, "amountCents", version
 		FROM "CheckPayment" WHERE id = $1`, paymentID).Scan(&venueID, &checkID, &currency, &tender, &status, &amount, &version); err != nil {
-		return fmt.Errorf("read payment for realtime: %w", err)
+		return fmt.Errorf("read payment for its event: %w", err)
 	}
-	f := realtime.Fact{AggregateType: "payment", AggregateID: paymentID, Version: realtime.V(version),
+	f := events.Fact{AggregateType: "payment", AggregateID: paymentID, Version: events.V(version),
 		Payload: map[string]any{"paymentId": paymentID, "checkId": checkID, "status": status}}
 	if from == nil {
 		f.Type = "payment.created"
@@ -36,7 +36,7 @@ func paymentFact(ctx context.Context, tx pgx.Tx, paymentID string, from *payment
 		f.Type = "payment.status_changed"
 		f.Payload["from"] = *from
 	}
-	_, err := realtimestore.Record(ctx, tx, venueID, f)
+	_, err := eventstore.Record(ctx, tx, venueID, f)
 	return err
 }
 
@@ -49,25 +49,25 @@ func adjustmentFact(ctx context.Context, tx pgx.Tx, adjustmentID string, from *p
 	if err := tx.QueryRow(ctx, `SELECT a."venueId", a."paymentId", p."checkId", a.kind::text, a.currency, a.status::text,
 		a."amountCents", a.version FROM "PaymentAdjustment" a JOIN "CheckPayment" p ON p.id = a."paymentId" WHERE a.id = $1`,
 		adjustmentID).Scan(&venueID, &paymentID, &checkID, &kind, &currency, &status, &amount, &version); err != nil {
-		return fmt.Errorf("read adjustment for realtime: %w", err)
+		return fmt.Errorf("read adjustment for its event: %w", err)
 	}
 	payload := map[string]any{"paymentId": paymentID, "checkId": checkID, "status": status}
-	var f realtime.Fact
+	var f events.Fact
 	switch {
 	case kind == "reversal" && from == nil:
 		payload["reversalId"], payload["amountCents"], payload["currency"] = adjustmentID, amount, currency
-		f = realtime.Fact{Type: "reversal.recorded", AggregateType: "reversal"}
+		f = events.Fact{Type: "reversal.recorded", AggregateType: "reversal"}
 	case kind == "reversal":
 		return nil // unreachable: a reversal is final when recorded
 	case from == nil:
 		payload["refundId"], payload["amountCents"], payload["currency"] = adjustmentID, amount, currency
-		f = realtime.Fact{Type: "refund.created", AggregateType: "refund"}
+		f = events.Fact{Type: "refund.created", AggregateType: "refund"}
 	default:
 		payload["refundId"], payload["from"] = adjustmentID, *from
-		f = realtime.Fact{Type: "refund.status_changed", AggregateType: "refund"}
+		f = events.Fact{Type: "refund.status_changed", AggregateType: "refund"}
 	}
-	f.AggregateID, f.Version, f.Payload = adjustmentID, realtime.V(version), payload
-	_, err := realtimestore.Record(ctx, tx, venueID, f)
+	f.AggregateID, f.Version, f.Payload = adjustmentID, events.V(version), payload
+	_, err := eventstore.Record(ctx, tx, venueID, f)
 	return err
 }
 
@@ -79,10 +79,10 @@ func settlementFact(ctx context.Context, tx pgx.Tx, checkID, eventType, settleme
 	var sessionID *string
 	if err := tx.QueryRow(ctx, `SELECT "venueId", status::text, version, "tableSessionId" FROM "Check" WHERE id = $1`, checkID).
 		Scan(&venueID, &status, &version, &sessionID); err != nil {
-		return fmt.Errorf("read check for realtime: %w", err)
+		return fmt.Errorf("read check for its event: %w", err)
 	}
-	_, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: eventType, AggregateType: "check", AggregateID: checkID,
-		Version: realtime.V(version), Payload: map[string]any{"checkId": checkID, "tableSessionId": sessionID, "status": status,
+	_, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: eventType, AggregateType: "check", AggregateID: checkID,
+		Version: events.V(version), Payload: map[string]any{"checkId": checkID, "tableSessionId": sessionID, "status": status,
 			"settlementId": settlementID, "cycle": cycle}})
 	return err
 }

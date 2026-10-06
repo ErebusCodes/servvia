@@ -11,17 +11,31 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/kitchen"
-	"servvia/services/core-platform/internal/realtime"
-	realtimestore "servvia/services/core-platform/internal/realtime/pgstore"
+	"servvia/services/core-platform/internal/workers"
 )
 
 // RoundSubmitted is the outbox event type the projector consumes (written by
 // orders/pgstore in the round's transaction).
 const RoundSubmitted = "order.round_submitted"
 
-// Projector turns order.round_submitted outbox events into kitchen tickets.
+// Projector turns order.round_submitted into kitchen tickets.
 //
+// Since Phase D13 it runs in two ways over one projection (project):
+//   - Handle: the generic kitchen_projector work consumer
+//     (internal/workers), for every round recorded as a DomainEvent. This
+//     is the path for all new rounds.
+//   - Next/Drain/Run below: the legacy D4 loop over OutboxEvent rows,
+//     kept only to drain rows written before D13. Orders no longer write
+//     OutboxEvent; the loop and the table retire once no unprocessed row
+//     remains (docs/migration/d13-outbox-workers.md).
+//
+// Both are idempotent on the same unique indexes, so a round projected by
+// both writes nothing twice.
+//
+// Legacy loop:
 // Each event is handled in one transaction: the event row is claimed with
 // FOR UPDATE SKIP LOCKED (so concurrent workers take different events), its
 // tickets and lines are written, and processedAt is stamped. A crash before
@@ -60,7 +74,23 @@ type roundSubmitted struct {
 	RoundID string `json:"roundId"`
 }
 
-// Next claims and handles one due event. It reports false when none is due.
+// Handle is the kitchen_projector consumer: it projects one
+// order.round_submitted domain event inside the delivery's transaction.
+// The event only names the round; the lines come from the canonical rows.
+// An event that can never be projected (its round is gone) is permanent.
+func (p *Projector) Handle(ctx context.Context, tx pgx.Tx, e events.Event) error {
+	if e.Type != RoundSubmitted {
+		return workers.Permanent(fmt.Errorf("kitchen projector does not handle %s", e.Type))
+	}
+	err := p.project(ctx, tx, e.ID, e.VenueID, e.Payload)
+	var perm permanentError
+	if errors.As(err, &perm) {
+		return workers.Permanent(err)
+	}
+	return err
+}
+
+// Next claims and handles one due legacy OutboxEvent (pre-D13 rows only). It reports false when none is due.
 // A projection failure is recorded on the event and is not returned; the
 // error is for failures to reach or update the database.
 func (p *Projector) Next(ctx context.Context) (bool, error) {
@@ -240,8 +270,8 @@ func (p *Projector) project(ctx context.Context, tx pgx.Tx, eventID, venueID str
 			// A new ticket (not a re-projection): announce it in the same
 			// transaction (Phase D12). The kitchen stream gets what a screen
 			// shows, never prices.
-			if _, err := realtimestore.Record(ctx, tx, venueID, realtime.Fact{Type: "kitchen_ticket.created",
-				AggregateType: "kitchen_ticket", AggregateID: ticketID, Version: realtime.V(1), Payload: map[string]any{
+			if _, err := eventstore.Record(ctx, tx, venueID, events.Fact{Type: "kitchen_ticket.created",
+				AggregateType: "kitchen_ticket", AggregateID: ticketID, Version: events.V(1), Payload: map[string]any{
 					"ticketId": ticketID, "orderId": ev.OrderID, "roundId": ev.RoundID, "roundSequence": sequence,
 					"station": station, "status": kitchen.StatusNew, "tableNumber": tableNumber, "takeawayReference": takeaway}}); err != nil {
 				return err

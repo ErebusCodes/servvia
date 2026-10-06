@@ -61,7 +61,7 @@ Both exist and are in active use by the running `VerduraPostgreSQL` service.
 Their migration is planned but **not executed** — see
 [§7](#7-postgresql-migration-maintenance-plan--draft-not-executed) below
 for the drafted maintenance plan and
-[`deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
+`deferred-work.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`)
 for the tracked item. PostgreSQL must not be stopped and neither directory
 may be moved without explicit, separate approval for a maintenance window.
 This is unaffected by the application-checkout consolidation in §1/§5.
@@ -84,7 +84,7 @@ one-time fact — see
 [`source-of-truth-and-environments.md` §3](./source-of-truth-and-environments.md#3-deployment-verification-gate)
 for the full rule and what counts as expected untracked state (this
 checkout's own expected untracked entries: the nested `verdura_MVP\`
-subtree, see §5, and build output such as `apps/admin-console/dist-admin\`
+subtree, see §5, and build output such as `apps/web/admin-console/dist-admin\`
 and `dist-kds\`, plus any timestamped `dist*.rollback-*\` copies kept from a
 redeploy — all gitignored, see §4).
 
@@ -99,10 +99,12 @@ this host's operation at all — it cannot even start here, because 3000/5176/
 | Service | Port | `dist` served | Build command |
 | --- | --- | --- | --- |
 | `VerduraCustomerWebsite` | 5173 | `apps\customer-website\dist` | `npm run build:customer-website` |
-| `VerduraWindowDisplay` | 5174 | `apps\window-display\dist` | `npm run build:window-display` |
+| `VerduraWindowDisplay` | 5174 | `apps\window-display\dist` | none since 2026-10-05 (see below) |
 | `VerduraKitchenDisplay` | 5175 | `apps\admin-console\dist-kds` | `npm run build:kitchen-display` |
 | `VerduraOrderTablet` | 5176 | `apps\admin-console\dist` | `npm run build:order-tablet` |
 | `VerduraAdminConsole` | 5177 | `apps\admin-console\dist-admin` | `npm run build:admin-console` |
+
+**`VerduraWindowDisplay` after 2026-10-05.** `apps/window-display/` was removed from the repository by owner decision (`PRD/product-requirements.md` section 34.3), so the repository no longer builds it and `deploy-frontend-release.ps1` no longer stages it. The service installed on this host was not changed by that removal: it keeps serving its last deployed `dist` until it is decommissioned, which is a separate operational action. The rest of this section describes the host as deployed.
 
 All five share one configuration: `Start SERVICE_AUTO_START`, `ObjectName
 LocalSystem`, `DependOnService :VerduraAPI`, `AppExit Default Restart` with
@@ -128,9 +130,9 @@ all are gitignored build output.
 
 ### Three apps, one workspace: the output directories are not interchangeable
 
-`apps/admin-console` builds three different products, selected by
+`apps/web/admin-console` builds three different products, selected by
 `VITE_APP_MODE` (`src/App.tsx` dispatches on it). Each mode writes to its own
-directory, and **that mapping lives in `apps/admin-console/vite.config.ts`
+directory, and **that mapping lives in `apps/web/admin-console/vite.config.ts`
 (`OUT_DIR_BY_APP_MODE`) — not in the caller**:
 
 | `VITE_APP_MODE` | Product | `outDir` |
@@ -202,7 +204,7 @@ checkout afterward.
 **Prior incidents this consolidation is downstream of:** this same
 checkout (prior to reconciliation) caused two real incidents — a stale
 `VITE_VENUE_ID` outage (documented in
-[`dl-107-dunedin-live-certification-runbook.md` §1c`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md)),
+`dl-107-dunedin-live-certification-runbook.md` §1c (removed with the old BMAD output on 2026-10-01; see git history at `a005642`)),
 and, separately, an unmanaged process serving the pre-reconciliation
 (stale) checkout's code exposed the "Imported from IdealPOS (pending
 review)" staging category on the public Window Display because that stale
@@ -213,14 +215,53 @@ corrected, and Window Display has exactly one managed launch path (§4).
 The underlying rule — "no second editable production clone" — is in
 [`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md#2-the-rule).
 
+## 5a. Cutover actions for the October 2026 security batch — NOT YET APPLIED
+
+The commits from `32e2aa9` onward (Stories 2.10, 2.11, 8.3 and follow-ups,
+2026-10-04) change what this host must be configured with. None of this has
+been done on the host; nothing has been deployed. In order:
+
+1. **Database.** Apply the new migrations (`20261014000000_tablet_pin_venue_enrollment`
+   and any earlier pending ones) only through
+   [`runbooks/migration-baseline.md`](./runbooks/migration-baseline.md), never a
+   bare `prisma migrate deploy`.
+2. **Staff venue grants (Story 2.10).** The API now refuses a staff member,
+   owner included, in a venue they have not been granted. Before deploying, list
+   active staff without a grant (read-only) and grant what is missing from the
+   Staff page afterwards, or the affected people lose access:
+   `SELECT s.email, s.role FROM "Staff" s WHERE s."deletedAt" IS NULL AND s."isActive"
+   AND NOT EXISTS (SELECT 1 FROM "VenueAccess" a WHERE a."staffId" = s.id);`
+3. **Admin sign-in (Story 2.4).** Confirm an owner or admin can sign in by name
+   (or issue one a code with `npm run staff:issue-setup-code`; with no owner at
+   all, `npm run staff:bootstrap-owner`, Story 2.11). Then remove
+   `ADMIN_CONSOLE_PIN` and `ADMIN_CONSOLE_EMAIL` from the API's environment: a
+   production API with either set refuses to start.
+4. **Client IP.** Redeploy `windows-deploy/static-proxy-server.mjs` (restart the
+   five frontend services) **first**: it now writes `X-Forwarded-For` itself and
+   drops whatever a client sent. **Then** set `TRUST_PROXY_HOPS=1` for
+   `VerduraAPI` and restart it. Until then every LAN client shares one rate-limit
+   bucket (127.0.0.1). The API believes a forwarded address only from a loopback
+   peer, so a client reaching port 3000 directly cannot forge one; still confirm
+   that no inbound firewall rule opens 3000 to the LAN.
+5. **PostgreSQL TimeZone.** Record `SHOW TimeZone;` on this host's PostgreSQL 18
+   (read-only). The API and Core now pin their sessions to UTC, so a non-UTC
+   server setting no longer skews them; record it for anything else that
+   connects.
+6. **Security events (Story 12.13).** The API writes them to stdout, which NSSM
+   captures to the `VerduraAPI` service's stdout file (its path is set in that
+   service's NSSM `AppStdout`; this document does not record it). Configure NSSM
+   log rotation for that file, and keep at least 90 days (the established minimum,
+   [`runbooks/security-events.md`](./runbooks/security-events.md)). A durable,
+   centralized sink is not chosen and does not exist yet.
+
 ## 6. Related documents
 
 - [`source-of-truth-and-environments.md`](./source-of-truth-and-environments.md) —
   environment roles and the rule this layout exists to satisfy.
-- [`../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md`](../_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md) —
+- `_bmad-output/implementation-artifacts/dl-107-dunedin-live-certification-runbook.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`) —
   the live-order certification runbook, including the historical path-layout
   investigations that predate this consolidation.
-- [`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md) —
+- `_bmad-output/implementation-artifacts/deferred-work.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`) —
   the PostgreSQL migration plan and other tracked deferred items.
 
 ## 7. PostgreSQL migration maintenance plan — DRAFT, NOT EXECUTED
@@ -440,5 +481,5 @@ been fixed in source. This section makes the outage far less likely and
 fully self-healing without human intervention — it does not make
 `/api/health` or guarded requests fail fast during the (now much shorter)
 window before Redis comes back. See
-[`../_bmad-output/implementation-artifacts/deferred-work.md`](../_bmad-output/implementation-artifacts/deferred-work.md)
+`_bmad-output/implementation-artifacts/deferred-work.md` (removed with the old BMAD output on 2026-10-01; see git history at `a005642`)
 for the tracked follow-up.

@@ -4,9 +4,9 @@ import {
   SEED_ITEMS as canonicalItems,
   sortMenuItemsAlphabetically,
 } from '../shared/menu/menuData.mjs';
-import { SEED_ITEMS as adminItems } from '../apps/admin-console/src/shared/menu/menuData.js';
-import { SEED_ITEMS as customerItems } from '../apps/customer-website/src/shared/menu/menuData.js';
-import { formatMenuForReservation } from '../apps/customer-website/src/shared/menu/menuClient.js';
+import { SEED_ITEMS as adminItems } from '../apps/web/admin-console/src/shared/menu/menuData.js';
+import { SEED_ITEMS as customerItems } from '../apps/web/customer-website/src/shared/menu/menuData.js';
+import { formatMenuForReservation } from '../apps/web/customer-website/src/shared/menu/menuClient.js';
 
 const normalizedCategories = canonicalCategories.map(category => ({
   id: category.id,

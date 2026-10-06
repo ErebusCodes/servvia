@@ -25,8 +25,10 @@
 // flag — an integration suite that writes has no legitimate reason to run
 // against a production database, and an override would eventually be set.
 
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { withUtcSession } from '../src/prisma/prisma.service';
 
 /**
  * Names that must never receive a write from this suite.
@@ -74,6 +76,13 @@ function databaseNameOf(url: string | undefined): string | null {
 
 loadDotEnv();
 
+// Story 12.14: every spec file gets its own BullMQ key namespace. A stale
+// API process left over from an earlier run, or a run in another terminal,
+// uses BullMQ's default prefix (or another run's), so it can never consume
+// this file's jobs. Always set, never inherited: isolation is not optional.
+// integration-rate-limit-reset.ts deletes the namespace when the file ends.
+process.env.QUEUE_PREFIX = `it-${randomUUID().replace(/-/g, '')}`;
+
 // An explicit integration URL wins, always. This is the supported way to run
 // the suite, and it is why no override flag is needed for the check below.
 const explicit = process.env[INTEGRATION_URL_KEY];
@@ -105,3 +114,8 @@ if (FORBIDDEN_DATABASE_NAMES.test(databaseName)) {
       'run against production, and a flag would eventually be set.',
   );
 }
+
+// Every client a spec builds, PrismaService or a PrismaClient of its own,
+// uses a UTC session (withUtcSession, as the API itself does), so fixtures
+// and the SQL under test agree on what now() means on any cluster.
+process.env.DATABASE_URL = withUtcSession(process.env.DATABASE_URL);

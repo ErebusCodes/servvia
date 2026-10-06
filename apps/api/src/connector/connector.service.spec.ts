@@ -190,6 +190,15 @@ describe('ConnectorService', () => {
       expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'CONNECTOR_ENROLLED', resourceId: 'installation-1' }),
       );
+      // Story 12.15: the new installation is the actor; no synthetic Staff row.
+      expect(mockAuditLogService.logAuthEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorType: 'device',
+          deviceKind: 'venue_connector',
+          deviceId: 'installation-1',
+        }),
+      );
+      expect(mockPrisma.staff.upsert).not.toHaveBeenCalled();
     });
 
     it('rejects when the enrollment expires between the outer check and the atomic CAS (TOCTOU close)', async () => {

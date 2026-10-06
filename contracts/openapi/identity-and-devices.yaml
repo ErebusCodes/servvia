@@ -12,6 +12,9 @@ info:
 
     Cross-cutting behaviour (applies to every operation below):
     - Global prefix `/api`. Source: apps/api/src/main.ts:151
+    - Audit `ipAddress` and security-event `client_ip` (sign-in, logout, credential setup)
+      are `req.ip`, the address the rate limiter counts, never a raw X-Real-IP or
+      X-Forwarded-For header. Source: apps/api/src/auth/auth.controller.ts
     - Global ValidationPipe `{ whitelist: true, transform: true }`: unknown body
       properties are silently stripped, not rejected. Validation failures return
       400 `{ statusCode: 400, message: string[], error: "Bad Request" }`. Pipes
@@ -31,7 +34,9 @@ info:
       403 `Invalid or missing CSRF token`. Source: apps/api/src/common/middleware/csrf.middleware.ts:7-83
     - RateLimitGuard (Redis sliding window) keys on `rate-limit:${req.ip}:${METHOD}:${req.path}`,
       so the bucket is per client IP and per concrete path (path params included). `req.ip`
-      honours `trust proxy = TRUST_PROXY_HOPS` (default 0). When the guard is applied
+      believes X-Forwarded-For only from loopback proxies, at most TRUST_PROXY_HOPS of them
+      (default 0: none); a client that connects directly is its socket address.
+      Source: apps/api/src/config/client-ip.ts. When the guard is applied
       without `@RateLimit` metadata it defaults to 10 requests per 900 s. Over the limit it
       returns 429 with a `Retry-After` header (seconds). If Redis faults twice it returns
       503 `Authentication is temporarily unavailable.` (fail closed).
@@ -49,7 +54,6 @@ info:
   x-known-issues:
     - "A mutating request to a staff-only endpoint sent WITHOUT an Authorization header fails with 403 `Invalid or missing CSRF token` (middleware) rather than 401, unless the browser also sends a matching x-csrf-token. Source: apps/api/src/common/middleware/csrf.middleware.ts:76"
     - "The CSRF bypass matches any path containing `/auth/` anywhere, not only /api/auth/*. Source: apps/api/src/common/middleware/csrf.middleware.ts:48"
-    - "Audit ipAddress for login/admin-pin/logout is taken from the raw x-real-ip / x-forwarded-for headers (client-spoofable), independent of TRUST_PROXY_HOPS. The rate-limit key uses req.ip instead. Source: apps/api/src/auth/auth.controller.ts:27"
 
 servers:
   - url: /api
@@ -100,50 +104,42 @@ paths:
         "429": { $ref: "#/components/responses/RateLimited" }
         "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
 
-  /auth/admin-pin:
+  /auth/credential-setup:
     post:
       tags: [staff-auth]
-      operationId: adminPinLogin
-      summary: Single shared PIN login that signs in as the configured ADMIN_CONSOLE_EMAIL staff account
+      operationId: staffCredentialSetup
+      summary: A staff member sets their own password with a single-use setup code
       description: |
-        Compares `pin` (constant-time) against the env var ADMIN_CONSOLE_PIN, then loads the Staff
-        row whose email is the env var ADMIN_CONSOLE_EMAIL. That row must be active and have role
-        `owner` or `admin`. On success it issues the same tokens and cookie as /auth/login.
-      x-source: apps/api/src/auth/auth.controller.ts:50
+        Story 8.1. An administrator never chooses or sees a password: creating an account or
+        resetting its credential issues a single-use setup code `<id>.<secret>` (24 hours; only
+        an Argon2id hash is stored; a newer code ends older unused ones), and the staff member
+        redeems it here. The code is consumed in the same transaction that sets the password,
+        revokes every session of the staff member and writes the audit row. There is no shared
+        sign-in: the shared Admin Console PIN (`/auth/admin-pin`) was removed by Story 2.4.
+      x-source: apps/api/src/auth/auth.controller.ts:71
       security: []
       x-guards: [RateLimitGuard]
-      x-rate-limit: { limit: 5, windowSeconds: 900, x-source: "apps/api/src/auth/auth.controller.ts:51" }
+      x-rate-limit: { limit: 10, windowSeconds: 900, x-source: "apps/api/src/auth/auth.controller.ts:72" }
       x-csrf: "bypassed (path contains /auth/)"
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AdminPinLoginRequest" }
+            schema: { $ref: "#/components/schemas/CredentialSetupRequest" }
       responses:
-        "200":
-          description: Authenticated as the configured admin account. The refresh cookie is set.
-          headers:
-            Set-Cookie:
-              $ref: "#/components/headers/SetRefreshCookie"
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/StaffLoginResponse" }
+        "204": { description: Password set; every session of the staff member is revoked. }
         "400": { $ref: "#/components/responses/ValidationError" }
         "401":
           description: |
-            `Invalid PIN`. Returned when ADMIN_CONSOLE_PIN or ADMIN_CONSOLE_EMAIL is unset, the PIN
-            is wrong, or the account is missing, inactive, or not owner/admin.
-            Source: apps/api/src/auth/auth.service.ts:79-99
+            `Invalid or expired setup code`, the same for an unknown, used, revoked or expired
+            code, a deactivated staff member, and a lost race for the same code.
+            Source: apps/api/src/staff/credential-setup.service.ts:18
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NestError" }
-              example: { statusCode: 401, message: "Invalid PIN", error: "Unauthorized" }
+              example: { statusCode: 401, message: "Invalid or expired setup code", error: "Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
-        "500": { $ref: "#/components/responses/InsecureDefaultPin" }
         "503": { $ref: "#/components/responses/RateLimiterUnavailable" }
-      x-known-issues:
-        - "A failed admin PIN attempt writes no audit event (only a logger warning), unlike /auth/login. Source: apps/api/src/auth/auth.service.ts:86-88"
-        - "The DTO allows 3-digit PINs even in production. Only the literal checked-in default '108' is refused in production (500). Source: apps/api/src/auth/dto/admin-pin-login.dto.ts:5, apps/api/src/auth/utils/insecure-default-pin.util.ts:17"
 
   /auth/refresh:
     post:
@@ -835,12 +831,14 @@ components:
       x-source: apps/api/src/auth/dto/login.dto.ts:3
       x-extra-properties: stripped (whitelist)
 
-    AdminPinLoginRequest:
+    CredentialSetupRequest:
       type: object
-      required: [pin]
+      required: [code, password]
       properties:
-        pin: { type: string, minLength: 3, maxLength: 12, pattern: "^\\d+$" }
-      x-source: apps/api/src/auth/dto/admin-pin-login.dto.ts:3
+        code: { type: string, description: "The single-use setup code, <id>.<secret>" }
+        password: { type: string, minLength: 12, maxLength: 128 }
+      x-source: apps/api/src/staff/dto/staff-account.dto.ts:53
+      x-extra-properties: stripped (whitelist)
 
     StaffLoginResponse:
       type: object

@@ -1,8 +1,9 @@
 package integration
 
-// Kitchen tickets (Phase D4) against real PostgreSQL: projection of
-// order.round_submitted, idempotency under replays and concurrent workers,
-// bounded retry and parking, ticket transitions under concurrency, the
+// Kitchen tickets (Phase D4, run as the D13 kitchen_projector consumer)
+// against real PostgreSQL: projection of order.round_submitted, idempotency
+// under redelivery and concurrent workers, bounded retry and dead letters,
+// the legacy outbox drain, ticket transitions under concurrency, the
 // database invariants of migration 20261001000000_kitchen_tickets, and the
 // API end to end.
 
@@ -18,7 +19,11 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/health"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/kitchen"
@@ -30,13 +35,18 @@ import (
 	"servvia/services/core-platform/internal/ratelimit"
 	"servvia/services/core-platform/internal/server"
 	"servvia/services/core-platform/internal/venues"
+	"servvia/services/core-platform/internal/workers"
 	"servvia/services/core-platform/tests/testsupport"
 )
 
 type kitchenHarness struct {
 	ordersHarness
 	projector *kitchenstore.Projector
-	kitchen   *kitchen.Service
+	// worker runs the kitchen_projector consumer (Phase D13), the path of
+	// every new round; projector's own loop only drains legacy OutboxEvent rows.
+	worker  *workers.Worker
+	kitchen *kitchen.Service
+	kpool   *pgxpool.Pool
 }
 
 func kitchenSetup(t *testing.T) kitchenHarness {
@@ -49,12 +59,18 @@ func kitchenSetup(t *testing.T) kitchenHarness {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	p := kitchenstore.NewProjector(pool, kitchen.SingleStation{Name: kitchen.DefaultStation}, logger)
 	p.BaseBackoff, p.MaxBackoff = time.Millisecond, 5*time.Millisecond
-	return kitchenHarness{ordersHarness: h, projector: p, kitchen: kitchen.NewService(kitchenstore.New(pool), true)}
+	w := workers.New(pool, events.KitchenProjector, p, logger)
+	w.BaseBackoff, w.MaxBackoff = time.Millisecond, 5*time.Millisecond
+	return kitchenHarness{ordersHarness: h, projector: p, worker: w, kitchen: kitchen.NewService(kitchenstore.New(pool), true), kpool: pool}
 }
 
-// drain projects every due event, including other fixtures' leftovers.
+// drain projects every due round: the kitchen_projector deliveries, then any
+// legacy OutboxEvent rows (including other fixtures' leftovers).
 func (h kitchenHarness) drain(t *testing.T) {
 	t.Helper()
+	if _, err := h.worker.Drain(context.Background(), 10_000); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := h.projector.Drain(context.Background(), 10_000); err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +85,38 @@ func (h kitchenHarness) tickets(t *testing.T, statuses ...kitchen.Status) []kitc
 	return ts
 }
 
+// event is the order.round_submitted domain event of round sequence of an order.
 func (h kitchenHarness) event(t *testing.T, orderID string, sequence int) string {
 	t.Helper()
 	var id string
-	if err := h.writer.QueryRow(context.Background(), `SELECT id FROM "OutboxEvent"
-		WHERE "aggregateId" = $1 AND (payload->>'sequence')::int = $2`, orderID, sequence).Scan(&id); err != nil {
+	if err := h.writer.QueryRow(context.Background(), `SELECT id FROM "DomainEvent"
+		WHERE "aggregateId" = $1 AND "eventType" = 'order.round_submitted' AND (payload->>'sequence')::int = $2`, orderID, sequence).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id
+}
+
+// delivery is the kitchen_projector delivery of an event.
+func (h kitchenHarness) delivery(t *testing.T, eventID string) string {
+	t.Helper()
+	var id string
+	if err := h.writer.QueryRow(context.Background(), `SELECT id FROM "EventDelivery" WHERE "eventId" = $1 AND consumer = 'kitchen_projector'`,
+		eventID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// reproject runs the consumer's handler on an event again, directly: the
+// equivalent of a duplicate delivery.
+func (h kitchenHarness) reproject(ctx context.Context, eventID string) error {
+	return pgx.BeginFunc(ctx, h.kpool, func(tx pgx.Tx) error {
+		e, err := eventstore.Get(ctx, tx, eventID)
+		if err != nil {
+			return err
+		}
+		return h.projector.Handle(ctx, tx, e)
+	})
 }
 
 var kds = kitchen.Actor{ID: "kds-device:venue", Kind: "kds_device", Role: "kitchen"}
@@ -119,7 +159,9 @@ func TestRoundProjectsToKitchenTicket(t *testing.T) {
 		sql  string
 		want int
 	}{
-		{"event processed once", `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1 AND "processedAt" IS NOT NULL AND attempts = 0`, 1},
+		{"delivered once to the kitchen projector", `SELECT count(*) FROM "EventDelivery" d JOIN "DomainEvent" e ON e.id = d."eventId"
+			WHERE e."aggregateId" = $1 AND d.consumer = 'kitchen_projector' AND d.status = 'succeeded' AND d.attempts = 1 AND d."leaseOwner" IS NULL`, 1},
+		{"no legacy outbox row (D13)", `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1`, 0},
 		{"order still confirmed", `SELECT count(*) FROM "Order" WHERE id = $1 AND status = 'confirmed' AND "preparingAt" IS NULL`, 1},
 		{"no printer job", `SELECT count(*) FROM "PrinterJob" WHERE "orderId" = $1`, 0},
 		{"no KDS delivery record", `SELECT count(*) FROM "KdsDeliveryRecord" WHERE "orderId" = $1`, 0},
@@ -179,8 +221,7 @@ func TestMultipleOrdersPerSessionGetSeparateTickets(t *testing.T) {
 	}
 }
 
-// Replaying events, re-projecting them and resetting processedAt never
-// duplicates kitchen work.
+// D13 15-17: duplicate handling and redelivery never duplicate kitchen work.
 func TestProjectionIsIdempotent(t *testing.T) {
 	h := kitchenSetup(t)
 	ctx := context.Background()
@@ -191,12 +232,12 @@ func TestProjectionIsIdempotent(t *testing.T) {
 	h.drain(t)
 	ev := h.event(t, o.ID, 1)
 	for i := 0; i < 3; i++ {
-		if err := h.projector.Reproject(ctx, ev); err != nil {
+		if err := h.reproject(ctx, ev); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// As if the commit of processedAt had been lost: the event is due again.
-	if _, err := h.writer.Exec(ctx, `UPDATE "OutboxEvent" SET "processedAt" = NULL WHERE id = $1`, ev); err != nil {
+	// As if the success had been lost: the same delivery is due again.
+	if _, err := h.writer.Exec(ctx, `UPDATE "EventDelivery" SET status = 'pending', "succeededAt" = NULL WHERE id = $1`, h.delivery(t, ev)); err != nil {
 		t.Fatal(err)
 	}
 	h.drain(t)
@@ -206,11 +247,14 @@ func TestProjectionIsIdempotent(t *testing.T) {
 	if n := h.count(t, `SELECT count(*) FROM "KitchenTicketLine" l JOIN "KitchenTicket" k ON k.id = l."ticketId" WHERE k."orderId" = $1`, o.ID); n != 2 {
 		t.Errorf("lines: %d", n)
 	}
+	if n := h.count(t, `SELECT count(*) FROM "EventDelivery" WHERE id = $1 AND status = 'succeeded' AND attempts = 2`, h.delivery(t, ev)); n != 1 {
+		t.Error("the redelivery was not recorded once")
+	}
 	// A partially projected ticket (a line lost) is completed, not duplicated.
 	if _, err := h.writer.Exec(ctx, `DELETE FROM "KitchenTicketLine" WHERE "orderItemId" = $1`, o.Lines[1].ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.projector.Reproject(ctx, ev); err != nil {
+	if err := h.reproject(ctx, ev); err != nil {
 		t.Fatal(err)
 	}
 	if ts := h.tickets(t); len(ts) != 1 || len(ts[0].Lines) != 2 || ts[0].Lines[1].OrderItemID != o.Lines[1].ID {
@@ -218,13 +262,14 @@ func TestProjectionIsIdempotent(t *testing.T) {
 	}
 }
 
-// Many orders, eight workers draining and sixteen re-projections racing them:
-// every round has exactly one ticket and every line exactly one ticket line.
+// Many orders, eight independent workers draining and sixteen duplicate
+// handlings racing them: every round has exactly one ticket, every line
+// one ticket line, and every delivery was claimed exactly once.
 func TestConcurrentWorkersProjectEachRoundOnce(t *testing.T) {
 	h := kitchenSetup(t)
 	ctx := context.Background()
 	const orderCount = 30
-	var events []string
+	var evs []string
 	for i := 0; i < orderCount; i++ {
 		o, _, err := h.orders.Create(ctx, orders.CreateCommand{Scope: h.scope(), Source: orders.SourcePOSTerminal,
 			ServiceMode: orders.ServiceTakeaway, IdempotencyKey: key(), Actor: orders.Actor{StaffID: h.f.Owner, Role: "owner"},
@@ -232,16 +277,17 @@ func TestConcurrentWorkersProjectEachRoundOnce(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		events = append(events, h.event(t, o.ID, 1))
+		evs = append(evs, h.event(t, o.ID, 1))
 	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	errs := make([]error, 24)
 	race(24, func(i int) {
 		if i < 8 {
-			_, errs[i] = h.projector.Drain(ctx, 10_000)
+			_, errs[i] = workers.New(h.kpool, events.KitchenProjector, h.projector, logger).Drain(ctx, 10_000)
 			return
 		}
-		for j := i; j < len(events); j += 16 {
-			if err := h.projector.Reproject(ctx, events[j]); err != nil {
+		for j := i; j < len(evs); j += 16 {
+			if err := h.reproject(ctx, evs[j]); err != nil {
 				errs[i] = err
 				return
 			}
@@ -259,8 +305,8 @@ func TestConcurrentWorkersProjectEachRoundOnce(t *testing.T) {
 	}{
 		"tickets":      {`SELECT count(*) FROM "KitchenTicket" WHERE "venueId" = $1`, orderCount},
 		"ticket lines": {`SELECT count(*) FROM "KitchenTicketLine" l JOIN "KitchenTicket" k ON k.id = l."ticketId" WHERE k."venueId" = $1`, 2 * orderCount},
-		"processed once, never failed": {`SELECT count(*) FROM "OutboxEvent" WHERE "venueId" = $1 AND "processedAt" IS NOT NULL
-			AND attempts = 0 AND "failedAt" IS NULL`, orderCount},
+		"claimed once, succeeded, never failed": {`SELECT count(*) FROM "EventDelivery" d JOIN "DomainEvent" e ON e.id = d."eventId"
+			WHERE e."venueId" = $1 AND d.consumer = 'kitchen_projector' AND d.status = 'succeeded' AND d.attempts = 1 AND d."lastError" IS NULL`, orderCount},
 	} {
 		if got := h.count(t, c.sql, h.f.Venue); got != c.want {
 			t.Errorf("%s: %d, want %d", what, got, c.want)
@@ -268,13 +314,13 @@ func TestConcurrentWorkersProjectEachRoundOnce(t *testing.T) {
 	}
 }
 
-// A failing event is retried with backoff, then parked; it never blocks the
-// events behind it, and it projects once its cause is fixed and an operator
-// releases it.
+// D13 10-14: a failing delivery is retried with backoff, then fails (a dead
+// letter); it never blocks the deliveries behind it, and it projects once
+// its cause is fixed and an operator retries it.
 func TestProjectionFailureRetriesThenParks(t *testing.T) {
 	h := kitchenSetup(t)
 	ctx := context.Background()
-	h.projector.MaxAttempts = 3
+	h.worker.MaxAttempts = 3
 	bad, _, err := h.orders.Create(ctx, h.dineIn(h.openSession(t, h.f.TableA).ID, line(h.f.Plain, 1)))
 	if err != nil {
 		t.Fatal(err)
@@ -306,64 +352,104 @@ func TestProjectionFailureRetriesThenParks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// First pass with a long backoff: one attempt, and the event is not due.
-	h.projector.BaseBackoff, h.projector.MaxBackoff = time.Hour, time.Hour
+	// First pass with a long backoff: one attempt, and the delivery is not due.
+	h.worker.BaseBackoff, h.worker.MaxBackoff = time.Hour, time.Hour
 	h.drain(t)
-	ev := h.event(t, bad.ID, 1)
+	d := h.delivery(t, h.event(t, bad.ID, 1))
 	var attempts int
 	var lastError *string
-	var due bool
-	if err := h.writer.QueryRow(ctx, `SELECT attempts, "lastError", "availableAt" > now() FROM "OutboxEvent" WHERE id = $1`, ev).
-		Scan(&attempts, &lastError, &due); err != nil {
+	var backoff float64
+	if err := h.writer.QueryRow(ctx, `SELECT attempts, "lastError", EXTRACT(EPOCH FROM "availableAt" - LOCALTIMESTAMP)
+		FROM "EventDelivery" WHERE id = $1 AND status = 'pending' AND "leaseOwner" IS NULL`, d).Scan(&attempts, &lastError, &backoff); err != nil {
 		t.Fatal(err)
 	}
-	if attempts != 1 || lastError == nil || !strings.Contains(*lastError, "injected kitchen fault") || !due {
-		t.Errorf("first failure recorded: attempts %d, error %v, backed off %v", attempts, lastError, due)
+	if attempts != 1 || lastError == nil || !strings.Contains(*lastError, "injected kitchen fault") || backoff < 3500 || backoff > 3600 {
+		t.Errorf("first failure recorded: attempts %d, error %v, backed off %.0fs", attempts, lastError, backoff)
 	}
 	if n := h.count(t, `SELECT count(*) FROM "KitchenTicket" WHERE "orderId" = $1`, good.ID); n != 1 {
-		t.Errorf("the next event was blocked: %d tickets", n)
+		t.Errorf("the next delivery was blocked: %d tickets", n)
 	}
 
-	// Then short backoffs until the attempt limit parks it.
-	h.projector.BaseBackoff, h.projector.MaxBackoff = time.Millisecond, 5*time.Millisecond
-	if _, err := h.writer.Exec(ctx, `UPDATE "OutboxEvent" SET "availableAt" = now() WHERE id = $1`, ev); err != nil {
+	// Then short backoffs until the attempt limit fails it.
+	h.worker.BaseBackoff, h.worker.MaxBackoff = time.Millisecond, 5*time.Millisecond
+	if _, err := h.writer.Exec(ctx, `UPDATE "EventDelivery" SET "availableAt" = LOCALTIMESTAMP WHERE id = $1`, d); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
-	for h.count(t, `SELECT count(*) FROM "OutboxEvent" WHERE id = $1 AND "failedAt" IS NOT NULL`, ev) == 0 {
+	for h.count(t, `SELECT count(*) FROM "EventDelivery" WHERE id = $1 AND status = 'failed'`, d) == 0 {
 		if time.Now().After(deadline) {
-			t.Fatal("the event was never parked")
+			t.Fatal("the delivery never failed")
 		}
 		time.Sleep(10 * time.Millisecond)
 		h.drain(t)
 	}
-	if n := h.count(t, `SELECT attempts FROM "OutboxEvent" WHERE id = $1 AND "processedAt" IS NULL`, ev); n != 3 {
-		t.Errorf("parked after %d attempts", n)
+	if n := h.count(t, `SELECT attempts FROM "EventDelivery" WHERE id = $1 AND "failedAt" IS NOT NULL AND "succeededAt" IS NULL`, d); n != 3 {
+		t.Errorf("failed after %d attempts", n)
 	}
-	h.drain(t) // a parked event is not retried
-	if n := h.count(t, `SELECT attempts FROM "OutboxEvent" WHERE id = $1`, ev); n != 3 {
-		t.Errorf("parked event retried: %d attempts", n)
+	h.drain(t) // a failed delivery is not retried
+	if n := h.count(t, `SELECT attempts FROM "EventDelivery" WHERE id = $1`, d); n != 3 {
+		t.Errorf("failed delivery retried: %d attempts", n)
+	}
+	if err := workers.Retry(ctx, h.kpool, h.delivery(t, h.event(t, good.ID, 1))); !errors.Is(err, workers.ErrNotFailed) {
+		t.Errorf("retrying a succeeded delivery: %v", err)
 	}
 
-	// Fixed and released by an operator: it projects.
+	// Fixed and retried by an operator: it projects.
 	drop()
-	if _, err := h.writer.Exec(ctx, `UPDATE "OutboxEvent" SET "failedAt" = NULL, "availableAt" = now() WHERE id = $1`, ev); err != nil {
+	if err := workers.Retry(ctx, h.kpool, d); err != nil {
 		t.Fatal(err)
 	}
 	h.drain(t)
 	if n := h.count(t, `SELECT count(*) FROM "KitchenTicket" WHERE "orderId" = $1`, bad.ID); n != 1 {
-		t.Errorf("released event: %d tickets", n)
+		t.Errorf("retried delivery: %d tickets", n)
 	}
 
-	// An event that can never succeed is parked at once.
-	if _, err := h.writer.Exec(ctx, `INSERT INTO "OutboxEvent" (id, "venueId", "aggregateType", "aggregateId", "eventType", payload)
-		VALUES ($1, $2, 'order', 'ORD-missing', 'order.round_submitted', '{"orderId":"ORD-missing","roundId":"nope"}')`,
-		testsupport.UUID(), h.f.Venue); err != nil {
+	// An event that can never succeed (its round does not exist) fails at once.
+	var ghost string
+	if err := pgx.BeginFunc(ctx, h.writer, func(tx pgx.Tx) error {
+		var err error
+		ghost, err = eventstore.Record(ctx, tx, h.f.Venue, events.Fact{Type: "order.round_submitted", AggregateType: "order",
+			AggregateID: "ORD-missing", Payload: map[string]any{"orderId": "ORD-missing", "roundId": "nope", "sequence": 1}})
+		return err
+	}); err != nil {
 		t.Fatal(err)
 	}
 	h.drain(t)
-	if n := h.count(t, `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = 'ORD-missing' AND attempts = 1 AND "failedAt" IS NOT NULL`); n != 1 {
-		t.Errorf("unprojectable event not parked at once")
+	if n := h.count(t, `SELECT count(*) FROM "EventDelivery" WHERE "eventId" = $1 AND attempts = 1 AND status = 'failed'`, ghost); n != 1 {
+		t.Errorf("unprojectable event not failed at once")
+	}
+}
+
+// D13 D4 compatibility: legacy OutboxEvent rows written before D13 are
+// still drained, and a round projected by both paths is projected once.
+func TestLegacyOutboxIsDrained(t *testing.T) {
+	h := kitchenSetup(t)
+	ctx := context.Background()
+	o, _, err := h.orders.Create(ctx, h.dineIn(h.openSession(t, h.f.TableA).ID, line(h.f.Plain, 1), line(h.f.Plain, 2)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.drain(t)
+	// A pre-D13 row for the same round, and one for a round that is gone.
+	legacy, missing := testsupport.UUID(), testsupport.UUID()
+	for _, row := range [][2]string{{legacy, `{"orderId":"` + o.ID + `","roundId":"` + o.Rounds[0].ID + `","sequence":1}`},
+		{missing, `{"orderId":"ORD-gone","roundId":"gone"}`}} {
+		if _, err := h.writer.Exec(ctx, `INSERT INTO "OutboxEvent" (id, "venueId", "aggregateType", "aggregateId", "eventType", payload)
+			VALUES ($1, $2, 'order', 'legacy', 'order.round_submitted', $3)`, row[0], h.f.Venue, row[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.projector.Drain(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	if n := h.count(t, `SELECT count(*) FROM "KitchenTicketLine" l JOIN "KitchenTicket" k ON k.id = l."ticketId" WHERE k."orderId" = $1`, o.ID); n != 2 {
+		t.Errorf("double projection wrote %d lines", n)
+	}
+	if n := h.count(t, `SELECT count(*) FROM "OutboxEvent" WHERE id = $1 AND "processedAt" IS NOT NULL`, legacy); n != 1 {
+		t.Error("the legacy row was not drained")
+	}
+	if n := h.count(t, `SELECT count(*) FROM "OutboxEvent" WHERE id = $1 AND attempts = 1 AND "failedAt" IS NOT NULL`, missing); n != 1 {
+		t.Error("an unprojectable legacy row was not parked at once")
 	}
 }
 
@@ -517,7 +603,7 @@ func TestKitchenAPIAgainstPostgres(t *testing.T) {
 		Menu:     menu.NewHandler(menu.NewPostgresStore(pool), logger),
 		Venues:   venues.NewHandler(venueStore, logger),
 		Kitchen:  kitchenapi.NewHandler(h.kitchen, venueStore, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier: identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	// A KDS device token, as POST /api/kiosk/kds/auth issues it.

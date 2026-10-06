@@ -56,7 +56,10 @@ type Principal struct {
 	Kind           Kind
 	DeviceID       string
 	ActingStaffID  string
-	ExpiresAt      time.Time
+	// SessionID is the `sid` claim of a staff login session, revoked on
+	// logout (Story 2.5). Other kinds do not carry it.
+	SessionID string
+	ExpiresAt time.Time
 }
 
 type claims struct {
@@ -67,6 +70,7 @@ type claims struct {
 	Kind           string `json:"kind,omitempty"`
 	DeviceID       string `json:"deviceId,omitempty"`
 	ActingStaffID  string `json:"actingStaffId,omitempty"`
+	SessionID      string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -114,6 +118,7 @@ func (v *Verifier) Verify(raw string) (Principal, error) {
 		Kind:           Kind(c.Kind),
 		DeviceID:       c.DeviceID,
 		ActingStaffID:  c.ActingStaffID,
+		SessionID:      c.SessionID,
 		ExpiresAt:      c.ExpiresAt.Time,
 	}, nil
 }

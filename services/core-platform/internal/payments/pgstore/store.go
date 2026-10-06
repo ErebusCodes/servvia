@@ -14,7 +14,6 @@ package pgstore
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -22,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	coreaudit "servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/payments"
 )
 
@@ -516,12 +516,8 @@ func transition(ctx context.Context, tx pgx.Tx, paymentID string, sequence int, 
 // action's transaction. Adapter results are recorded as transitions instead:
 // an adapter is not a staff member.
 func audit(ctx context.Context, tx pgx.Tx, sc payments.Scope, a payments.Staff, action, paymentID string, after map[string]any) error {
-	body, _ := json.Marshal(after)
-	_, err := tx.Exec(ctx, `INSERT INTO "AuditLog"
-		(id, "organizationId", "venueId", "actorId", "actorEmail", "actorRole", action, resource, "resourceId", after)
-		VALUES ($1, $2, $3, $4, $5, $6::"StaffRole", $7, 'payment', $8, $9)`,
-		newID(), sc.OrganizationID, sc.VenueID, a.StaffID, a.Email, a.Role, action, paymentID, body)
-	return err
+	return coreaudit.Write(ctx, tx, coreaudit.Entry{OrganizationID: sc.OrganizationID, VenueID: sc.VenueID,
+		Actor: coreaudit.Staff(a.StaffID, a.Email, a.Role, a.Device), Action: action, Resource: "payment", ResourceID: paymentID, After: after})
 }
 
 // Audit writes a best-effort audit row outside any transaction.

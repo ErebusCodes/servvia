@@ -1,0 +1,110 @@
+package integration
+
+// EVALUATOR-OWNED (Story 15.1, check audit-actor-model). Written into the
+// candidate beside the evaluator-owned routes test (whose harness it uses),
+// run, and removed; never part of the candidate. It writes every actor shape
+// through the audit package's API, fixed by the spec's intent contract, reads
+// the rows back, and requires every invalid actor to be refused with
+// audit.ErrInvalidActor before anything is written.
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/jackc/pgx/v5"
+
+	"servvia/services/core-platform/internal/audit"
+	"servvia/services/core-platform/internal/identity"
+	"servvia/services/core-platform/tests/testsupport"
+)
+
+// TestEvalStory151ActorModelAgainstPostgres: each actor class the model can
+// express is written by audit.Write with exactly its own identity, and an
+// invalid actor is refused (audit.ErrInvalidActor) with nothing written.
+func TestEvalStory151ActorModelAgainstPostgres(t *testing.T) {
+	h := evalStory151Setup(t)
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = h.writer.Exec(context.Background(), `DELETE FROM "AuditLog" WHERE resource = 'eval_story_15_1_model'`)
+	})
+	tablet := audit.Device{Kind: audit.DeviceKindTablet, ID: testsupport.UUID()}
+	email := "eval-model@example.test"
+	write := func(a audit.Actor) (string, error) {
+		id := testsupport.UUID()
+		return id, pgx.BeginFunc(ctx, h.writer, func(tx pgx.Tx) error {
+			return audit.Write(ctx, tx, audit.Entry{OrganizationID: h.f.Org, VenueID: h.f.Venue, Actor: a,
+				Action: "EVAL_151_MODEL", Resource: "eval_story_15_1_model", ResourceID: id, After: map[string]any{"eval": true}})
+		})
+	}
+	for _, c := range []struct {
+		name  string
+		actor audit.Actor
+		want  [7]string
+	}{
+		{"staff", audit.Staff(h.f.Cashier, email, "cashier", audit.Device{}),
+			[7]string{"staff", h.f.Cashier, email, "cashier", "<null>", "<null>", "<null>"}},
+		{"staff whose credential carries no email (recorded as given, never NULL)", audit.Staff(h.f.Cashier, "", "cashier", audit.Device{}),
+			[7]string{"staff", h.f.Cashier, "", "cashier", "<null>", "<null>", "<null>"}},
+		{"staff through a tablet", audit.Staff(h.f.Owner, email, "owner", tablet),
+			[7]string{"staff", h.f.Owner, email, "owner", audit.DeviceKindTablet, tablet.ID, "<null>"}},
+		{"device with its record", audit.ByDevice(audit.Device{Kind: "payment_adapter", ID: "eval-device"}, ""),
+			[7]string{"device", "<null>", "<null>", "<null>", "payment_adapter", "eval-device", "<null>"}},
+		{"device without a record, with its credential's role", audit.ByDevice(audit.Device{Kind: "kds_device"}, "kitchen"),
+			[7]string{"device", "<null>", "<null>", "kitchen", "kds_device", "<null>", "<null>"}},
+		{"system", audit.System("eval-story-15-1"),
+			[7]string{"system", "<null>", "<null>", "<null>", "<null>", "<null>", "eval-story-15-1"}},
+	} {
+		if err := c.actor.Validate(); err != nil {
+			t.Errorf("%s: Validate: %v", c.name, err)
+		}
+		id, err := write(c.actor)
+		if err != nil {
+			t.Errorf("%s: write: %v", c.name, err)
+			continue
+		}
+		rs := h.rows(t, "eval_story_15_1_model", id)
+		if len(rs) != 1 {
+			t.Errorf("%s: %d rows, want 1", c.name, len(rs))
+			continue
+		}
+		r := rs[0]
+		got := [7]string{r.actorType, evalStory151S(r.actorID), evalStory151S(r.actorEmail), evalStory151S(r.actorRole),
+			evalStory151S(r.deviceKind), evalStory151S(r.deviceID), evalStory151S(r.systemActor)}
+		if got != c.want {
+			t.Errorf("%s: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = %v, want %v", c.name, got, c.want)
+		}
+	}
+	for name, a := range map[string]audit.Actor{
+		"no actor":               {},
+		"staff without id":       audit.Staff("", email, "cashier", audit.Device{}),
+		"staff without role":     audit.Staff(h.f.Cashier, email, "", audit.Device{}),
+		"device id without kind": audit.Staff(h.f.Cashier, email, "cashier", audit.Device{ID: "eval-device"}),
+		"device without kind":    audit.ByDevice(audit.Device{ID: "eval-device"}, ""),
+		"system without name":    audit.System(""),
+	} {
+		if err := a.Validate(); !errors.Is(err, audit.ErrInvalidActor) {
+			t.Errorf("%s: Validate = %v, want audit.ErrInvalidActor", name, err)
+		}
+		id, err := write(a)
+		if !errors.Is(err, audit.ErrInvalidActor) {
+			t.Errorf("%s: Write = %v, want audit.ErrInvalidActor", name, err)
+		}
+		if n := len(h.rows(t, "eval_story_15_1_model", id)); n != 0 {
+			t.Errorf("%s: %d rows written", name, n)
+		}
+	}
+	// The device context of each verified principal: only a PIN-elevated
+	// tablet acts through a device.
+	for kind, want := range map[identity.Kind]audit.Device{
+		identity.KindStaffSession:  {},
+		identity.KindKDSDevice:     {},
+		identity.KindTabletDevice:  {},
+		identity.KindTabletStaff:   {Kind: audit.DeviceKindTablet, ID: tablet.ID},
+		identity.KindTabletManager: {Kind: audit.DeviceKindTablet, ID: tablet.ID},
+	} {
+		if got := audit.DeviceOf(identity.Principal{ID: h.f.Cashier, Kind: kind, DeviceID: tablet.ID, ActingStaffID: "eval-acting", SessionID: "eval-session"}); got != want {
+			t.Errorf("DeviceOf(%q) = %+v, want %+v", kind, got, want)
+		}
+	}
+}

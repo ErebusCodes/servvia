@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"servvia/services/core-platform/internal/checks"
 	"servvia/services/core-platform/internal/checks/checksapi"
 	checkstore "servvia/services/core-platform/internal/checks/pgstore"
@@ -19,6 +21,8 @@ import (
 	"servvia/services/core-platform/internal/devices"
 	"servvia/services/core-platform/internal/devices/devicesapi"
 	devicestore "servvia/services/core-platform/internal/devices/pgstore"
+	"servvia/services/core-platform/internal/events"
+	eventstore "servvia/services/core-platform/internal/events/pgstore"
 	"servvia/services/core-platform/internal/health"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/kitchen"
@@ -50,6 +54,8 @@ import (
 	"servvia/services/core-platform/internal/tables/pgstore"
 	"servvia/services/core-platform/internal/tables/tablesapi"
 	"servvia/services/core-platform/internal/venues"
+	"servvia/services/core-platform/internal/workers"
+	"servvia/services/core-platform/internal/workers/workersapi"
 )
 
 func main() {
@@ -57,6 +63,12 @@ func main() {
 		slog.Error("core platform stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// newPool builds the single pool every store, worker, the realtime
+// dispatcher and the readiness probe use, from Core's configuration.
+func newPool(ctx context.Context, cfg config.Config) (*pgxpool.Pool, error) {
+	return postgres.NewPool(ctx, postgres.OptionsFromConfig(cfg))
 }
 
 func run() error {
@@ -71,9 +83,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := postgres.NewPool(ctx, postgres.Options{
-		URL: cfg.DatabaseURL, MaxConns: cfg.DBMaxConns, ReadOnly: cfg.DBReadOnly,
-	})
+	pool, err := newPool(ctx, cfg)
 	if err != nil {
 		return err
 	}
@@ -99,18 +109,22 @@ func run() error {
 		logger.Warn("best-effort order audit write failed", "error", err)
 	}), pgcatalog.New(pool), !cfg.DBReadOnly).WithPromotions(promotionStore, time.Now)
 
-	// Kitchen tickets change under the same switch. Their projector consumes
-	// order.round_submitted from the outbox, so it runs only where orders
-	// can be written; it stops with the process (an interrupted event stays
-	// unprocessed and is projected again).
+	// Kitchen tickets change under the same switch. The kitchen projection
+	// is the kitchen_projector work consumer (D13): the generic worker
+	// processes its order.round_submitted deliveries at least once. The
+	// legacy D4 loop only drains OutboxEvent rows written before D13. Both
+	// run only where writes are enabled and stop with the process (an
+	// interrupted delivery rolls back and is released for another attempt).
 	kitchenService := kitchen.NewService(kitchenstore.New(pool), !cfg.DBReadOnly)
-	var workers sync.WaitGroup
+	var bg sync.WaitGroup
 	workerCtx, stopWorkers := context.WithCancel(context.Background())
-	defer func() { stopWorkers(); workers.Wait() }()
+	defer func() { stopWorkers(); bg.Wait() }()
 	if !cfg.DBReadOnly {
 		projector := kitchenstore.NewProjector(pool, kitchen.SingleStation{Name: kitchen.DefaultStation}, logger)
-		workers.Add(1)
-		go func() { defer workers.Done(); projector.Run(workerCtx, cfg.KitchenPollInterval) }()
+		kitchenWorker := workers.New(pool, events.KitchenProjector, projector, logger)
+		bg.Add(2)
+		go func() { defer bg.Done(); kitchenWorker.Run(workerCtx, cfg.KitchenPollInterval) }()
+		go func() { defer bg.Done(); projector.Run(workerCtx, cfg.KitchenPollInterval) }()
 	}
 
 	// Checks write under the same switch.
@@ -136,18 +150,24 @@ func run() error {
 	deviceService := devices.NewService(devicestore.New(pool), !cfg.DBReadOnly, devicestore.NewID)
 
 	// Realtime (D12): every committed canonical fact is tailed from the
-	// RealtimeEvent log and fanned out to this process's subscribers. It
+	// DomainEvent log (D13) and fanned out to this process's subscribers. It
 	// only reads, so it runs on a read-only pool too; pruning needs writes.
 	hub := realtime.NewHub(realtime.DefaultBuffer)
-	dispatcher := realtimestore.NewDispatcher(realtimestore.NewLog(pool), hub, logger,
-		cfg.RealtimePollInterval, cfg.RealtimeRetention, !cfg.DBReadOnly)
+	dispatcher := realtimestore.NewDispatcher(eventstore.NewLog(pool), hub, logger,
+		cfg.RealtimePollInterval, cfg.EventRetention, !cfg.DBReadOnly)
 	if err := dispatcher.Start(ctx); err != nil {
 		return err
 	}
-	workers.Add(1)
-	go func() { defer workers.Done(); dispatcher.Run(workerCtx) }()
+	bg.Add(1)
+	go func() { defer bg.Done(); dispatcher.Run(workerCtx) }()
+	venueGrants := identity.NewPostgresVenueGrants(pool)
+	// Staff tokens are re-checked on every request and subscription against
+	// PostgreSQL: the staff row and the login session (Story 2.8).
+	staffSessions := identity.StaffSessions{
+		Staff: identity.NewPostgresStaffStatus(pool), Sessions: identity.NewPostgresSessions(pool),
+	}
 	realtimeHandler := realtimeapi.NewHandler(hub, identity.NewVerifier(cfg.JWTAccessSecret), identity.NewPostgresTabletDevices(pool),
-		deviceService, venueStore, logger, realtimeapi.DefaultConfig)
+		deviceService, venueStore, venueGrants, staffSessions, logger, realtimeapi.DefaultConfig)
 
 	probes := health.New(pool, cfg.ReadinessTimeout)
 	srv := &http.Server{
@@ -167,9 +187,12 @@ func run() error {
 			Devices:       devicesapi.NewHandler(deviceService, venueStore, logger),
 			Refunds:       refundsapi.NewHandler(refundService, venueStore, logger),
 			Realtime:      realtimeHandler,
+			Workers:       workersapi.NewHandler(pool, logger),
 			DeviceAuth:    deviceService,
 			Verifier:      identity.NewVerifier(cfg.JWTAccessSecret),
 			TabletDevices: identity.NewPostgresTabletDevices(pool),
+			VenueGrants:   venueGrants,
+			StaffSessions: staffSessions,
 			RateLimiter:   ratelimit.New(rdb, cfg.TrustProxyHops, logger),
 			SecureCookies: cfg.IsProduction(),
 		}),

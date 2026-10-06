@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PrintJobStatus, PrinterConnectionType, Prisma } from '@prisma/client';
 import * as net from 'net';
+import { isProductionRuntime } from '../../config/runtime-environment';
 
 /**
  * Story 8-1: only these classified, sanitized strings are ever persisted as
@@ -46,7 +47,8 @@ export class PrintJobsProcessor extends WorkerHost {
   }
 
   private isProduction(): boolean {
-    return this.config.get<string>('NODE_ENV') === 'production';
+    // Fail closed: simulation only in an explicit development/test environment.
+    return isProductionRuntime(this.config.get<string>('NODE_ENV'));
   }
 
   async process(job: Job<{ printerJobId: string }>): Promise<void> {

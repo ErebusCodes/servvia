@@ -5,30 +5,47 @@ import { UpdateVenueDto } from './dto/update-venue.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { TabletTokenActiveGuard } from '../auth/guards/tablet-token-active.guard';
+import { StaffSessionOnlyGuard } from '../auth/guards/staff-session-only.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { StaffRole, Staff } from '@prisma/client';
 import { Request } from 'express';
 import { AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { resolveVenueScope } from '../auth/utils/resolve-venue-scope';
+import { VenueAccessGuard } from '../auth/venue-access/venue-access.guard';
+import { VenueAccessService } from '../auth/venue-access/venue-access.service';
+import { VenueScope, OrganizationScope } from '../auth/venue-access/venue-scope.decorator';
 
 @Controller('venues')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class VenuesController {
-  constructor(private readonly venuesService: VenuesService) {}
+  constructor(
+    private readonly venuesService: VenuesService,
+    private readonly venueAccess: VenueAccessService,
+  ) {}
 
   @Post()
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
+  // A new venue has no grants yet; its creator is granted it (VenuesService.create).
+  @OrganizationScope('creates a venue of the organization')
   @Roles(StaffRole.admin)
   async create(@Body() dto: CreateVenueDto, @Req() req: Request & { user: Staff }) {
-    return this.venuesService.create(req.user.organizationId, dto);
+    return this.venuesService.create(req.user.organizationId, dto, req.user.id);
   }
 
   @Get()
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
+  @VenueScope({ list: true })
   @Roles(StaffRole.admin, StaffRole.manager)
   async findAll(@Req() req: Request & { user: Staff }) {
-    return this.venuesService.findAll(req.user.organizationId);
+    return this.venuesService.findAll(
+      req.user.organizationId,
+      await this.venueAccess.listableVenueIds(req.user),
+    );
   }
 
   @Get(':id')
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
+  @VenueScope({ param: 'id' })
   @Roles(StaffRole.admin, StaffRole.manager)
   async findOne(@Param('id') id: string, @Req() req: Request & { user: Staff }) {
     return this.venuesService.findOne(id, req.user.organizationId);
@@ -56,7 +73,8 @@ export class VenuesController {
   // so a revoked device's bare token cannot keep reading tax config until
   // its JWT naturally expires.
   @Get(':id/tax-config')
-  @UseGuards(TabletTokenActiveGuard)
+  @UseGuards(TabletTokenActiveGuard, VenueAccessGuard)
+  @VenueScope({ param: 'id' })
   @Roles(StaffRole.admin, StaffRole.manager, StaffRole.kitchen, StaffRole.viewer)
   async getTaxConfig(@Param('id') id: string, @Req() req: Request & { user: AuthenticatedUser }) {
     const scopedVenueId = resolveVenueScope(req.user, id);
@@ -64,6 +82,8 @@ export class VenuesController {
   }
 
   @Patch(':id')
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
+  @VenueScope({ param: 'id' })
   @Roles(StaffRole.admin)
   async update(
     @Param('id') id: string,
@@ -74,6 +94,8 @@ export class VenuesController {
   }
 
   @Delete(':id')
+  @UseGuards(StaffSessionOnlyGuard, VenueAccessGuard)
+  @VenueScope({ param: 'id' })
   @Roles(StaffRole.admin)
   async remove(@Param('id') id: string, @Req() req: Request & { user: Staff }) {
     return this.venuesService.remove(id, req.user.organizationId);

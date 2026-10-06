@@ -146,7 +146,9 @@ func TestNativeOrderExistsWithoutAnyExternalPOSState(t *testing.T) {
 		{"the order", `SELECT count(*) FROM "Order" WHERE id = $1 AND source = 'pos_terminal' AND "posSyncStatus" = 'not_applicable'`, 1},
 		{"round 1", `SELECT count(*) FROM "OrderRound" WHERE "orderId" = $1 AND sequence = 1`, 1},
 		{"lines", `SELECT count(*) FROM "OrderItem" WHERE "orderId" = $1 AND "roundId" IS NOT NULL AND "nativeRoundId" IS NULL`, 2},
-		{"outbox event", `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1 AND "eventType" = 'order.round_submitted' AND "processedAt" IS NULL`, 1},
+		{"round event with a pending kitchen delivery", `SELECT count(*) FROM "DomainEvent" e JOIN "EventDelivery" d ON d."eventId" = e.id
+			WHERE e."aggregateId" = $1 AND e."eventType" = 'order.round_submitted' AND d.consumer = 'kitchen_projector' AND d.status = 'pending'`, 1},
+		{"no legacy outbox row (D13)", `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1`, 0},
 		{"audit", `SELECT count(*) FROM "AuditLog" WHERE "resourceId" = $1 AND action = 'CREATE_ORDER'`, 1},
 		{"no POSSyncRecord", `SELECT count(*) FROM "POSSyncRecord" WHERE "orderId" = $1`, 0},
 		{"no native round", `SELECT count(*) FROM "NativeTableRound" WHERE "orderId" = $1`, 0},
@@ -163,10 +165,12 @@ func TestNativeOrderExistsWithoutAnyExternalPOSState(t *testing.T) {
 	}
 	var payload map[string]any
 	var raw []byte
-	_ = h.writer.QueryRow(ctx, `SELECT payload FROM "OutboxEvent" WHERE "aggregateId" = $1`, o.ID).Scan(&raw)
+	_ = h.writer.QueryRow(ctx, `SELECT payload FROM "DomainEvent" WHERE "aggregateId" = $1 AND "eventType" = 'order.round_submitted'`, o.ID).Scan(&raw)
 	_ = json.Unmarshal(raw, &payload)
-	if payload["orderId"] != o.ID || payload["sequence"] != 1.0 || len(payload["lines"].([]any)) != 2 || payload["source"] != "pos_terminal" {
-		t.Errorf("outbox payload %v", payload)
+	// The event names the round; consumers read its lines from the rows.
+	if payload["orderId"] != o.ID || payload["roundId"] != o.Rounds[0].ID || payload["sequence"] != 1.0 ||
+		payload["source"] != "pos_terminal" || payload["lines"] != nil {
+		t.Errorf("round event payload %v", payload)
 	}
 }
 
@@ -221,8 +225,8 @@ func TestOrderOnTableSession(t *testing.T) {
 		Lines: []orders.LineInput{line(h.f.Plain, 3)}, Actor: h.waiter()}); !errors.As(err, &roundConflict) {
 		t.Errorf("round conflict: %v", err)
 	}
-	if n := h.count(t, `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1`, o.ID); n != 2 {
-		t.Errorf("%d outbox events, want one per round", n)
+	if n := h.count(t, `SELECT count(*) FROM "DomainEvent" WHERE "aggregateId" = $1 AND "eventType" = 'order.round_submitted'`, o.ID); n != 2 {
+		t.Errorf("%d round events, want one per round", n)
 	}
 
 	// A visit with orders cannot be cancelled, only closed.
@@ -496,8 +500,8 @@ func TestConcurrentRoundsAreNumberedAndTotalledExactly(t *testing.T) {
 	if len(final.Rounds) != n+1 || final.SubtotalCents != 1750 || final.TotalCents != 1750 || final.TaxCents != 228 {
 		t.Errorf("%d rounds, totals %d/%d/%d", len(final.Rounds), final.SubtotalCents, final.TaxCents, final.TotalCents)
 	}
-	if got := h.count(t, `SELECT count(*) FROM "OutboxEvent" WHERE "aggregateId" = $1`, o.ID); got != n+1 {
-		t.Errorf("%d outbox events", got)
+	if got := h.count(t, `SELECT count(*) FROM "DomainEvent" WHERE "aggregateId" = $1 AND "eventType" = 'order.round_submitted'`, o.ID); got != n+1 {
+		t.Errorf("%d round events", got)
 	}
 	// The same round request many times at once: one round.
 	rk := key()
@@ -579,12 +583,12 @@ func TestOrderAPIAgainstPostgres(t *testing.T) {
 		Venues:        venues.NewHandler(venueStore, logger),
 		TableSessions: tablesapi.NewHandler(tables.NewService(tablestore.New(pool), true), venueStore, logger),
 		Orders:        ordersapi.NewHandler(h.orders, venueStore, logger),
-		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool),
+		Verifier:      identity.NewVerifier(secret), TabletDevices: identity.NewPostgresTabletDevices(pool), VenueGrants: identity.NewPostgresVenueGrants(pool), StaffSessions: admitStaff,
 		RateLimiter: ratelimit.New(admitAll{}, 0, logger),
 	})
 	token, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": h.f.Cashier, "email": "waiter@example.test", "role": "cashier", "organizationId": h.f.Org,
-		"exp": time.Now().Add(time.Minute).Unix(),
+		"sid": testsupport.UUID(), "exp": time.Now().Add(time.Minute).Unix(),
 	}).SignedString([]byte(secret))
 	call := func(method, path string, body any) (int, map[string]any, []byte) {
 		raw, _ := json.Marshal(body)

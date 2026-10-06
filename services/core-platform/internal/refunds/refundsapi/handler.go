@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"time"
 
+	"servvia/services/core-platform/internal/audit"
 	"servvia/services/core-platform/internal/devices/devicesapi"
 	"servvia/services/core-platform/internal/identity"
 	"servvia/services/core-platform/internal/payments"
@@ -246,7 +247,7 @@ func (h *Handler) staffScope(w http.ResponseWriter, r *http.Request) (refunds.Sc
 		httpx.WriteError(w, http.StatusNotFound, "Venue not found")
 		return refunds.Scope{}, refunds.Staff{}, false
 	}
-	return refunds.Scope{OrganizationID: p.OrganizationID, VenueID: v.ID}, refunds.Staff{StaffID: p.ID, Email: p.Email, Role: p.Role}, true
+	return refunds.Scope{OrganizationID: p.OrganizationID, VenueID: v.ID}, refunds.Staff{StaffID: p.ID, Email: p.Email, Role: p.Role, Device: audit.DeviceOf(p)}, true
 }
 
 // adapterScope is the venue of the authenticated payment adapter device.

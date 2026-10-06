@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware, ForbiddenException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import * as crypto from 'crypto';
+import { isNonProductionRuntime, isProductionRuntime } from '../../config/runtime-environment';
 
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
@@ -15,7 +16,7 @@ export class CsrfMiddleware implements NestMiddleware {
       csrfToken = crypto.randomBytes(32).toString('hex');
       res.cookie('csrf_token', csrfToken, {
         httpOnly: false, // Must be readable by client JS to send in custom header
-        secure: process.env.NODE_ENV === 'production',
+        secure: isProductionRuntime(),
         sameSite: 'strict',
         path: '/',
       });
@@ -69,7 +70,11 @@ export class CsrfMiddleware implements NestMiddleware {
       // local provider from a real browser. The controller itself is
       // additionally NODE_ENV-gated (rejects in production) — see
       // LocalMediaUploadController.
-      if (path.includes('/media-assets/local-dev-upload/')) {
+      // Exact prefix, and only where the route exists at all (Story 2.3).
+      if (
+        path.startsWith('/api/admin/media-assets/local-dev-upload/') &&
+        isNonProductionRuntime()
+      ) {
         return next();
       }
 

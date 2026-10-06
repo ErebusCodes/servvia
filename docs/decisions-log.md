@@ -6,6 +6,36 @@
 
 > **Authority notice — 2026-08-15:** Early entries below document a different repository state. Their observations and file paths are historical unless a later entry revalidates them. Current product authority is PRD v5.2; implementation/readiness authority is [mvp.md](./mvp.md). A `NullAdapter`, mock UI, queued database row or simulated external ID never constitutes completed integration.
 
+## 2026-10-03 — DL-118: Reduced first pilot accepted (ADR 0002); web Order Tablet Staff Mode is the temporary settlement surface
+
+**Decision:** Recorded in full as [ADR 0002](./adr/0002-reduced-first-pilot.md), accepted 2026-10-03. Owner gates C and D were decided under the owner's delegation to engineering judgment.
+
+**First pilot:**
+- An **integrated card terminal through Venue Edge is required** (PILOT-CARD-3, H5-A).
+  - Card success comes only from the trusted payment adapter (D6 is unchanged).
+  - No staff-recorded external-card tender is introduced.
+  - The pilot waits for the certified integration. Provider selection (O-3) stays open.
+- The Windows POS, cash-drawer hardware and Guest Mode are not part of the first pilot. They are retained in the product architecture.
+- The KDS is in. Kitchen printing is required only if the venue requires it.
+- Every quality control and PRD section 11 release acceptance stays mandatory.
+
+**Settlement surface (H4):** for the reduced first pilot, staff settle checks against Servvia Core from the existing web Order Tablet in **Staff Mode**.
+- It covers only the minimum settlement workflow in ADR 0002. Core's financial guards and the elevated staff member's own role decide what is permitted.
+- **Guest Mode never receives settlement capability.**
+- The capability is **transitional**. The web Order Tablet does not become a canonical backend; Servvia Core stays the transactional authority.
+
+**Retirement (PR-7, PR-8):** the capability is removed when both of these hold:
+- an owner-approved permanent settlement surface (the Windows POS terminal or the native Waiter Tablet in Staff Mode) supports the same workflow against Core and has passed PRD section 11 release acceptance;
+- the venue has cut over to it under the PRD section 11 production-cutover rule.
+
+**Partially supersedes DL-087** (2026-08-20, "the Order Tablet never processes payment"), for Staff Mode during the reduced first pilot only.
+- DL-087 keeps governing Guest Mode.
+- DL-087 has no entry of its own in this log. It is recorded in code and tests (listed in ADR 0002, item 8), which implementation must change deliberately.
+
+**Numbering:**
+- DL-116 is not used, because an unaccepted draft outside this baseline uses it.
+- DL-117 is reserved for a separate decision that is pending owner approval.
+
 ## 2026-09-28 — DL-115: Servvia is the operational POS
 
 **Decision:** Recorded in full as [ADR 0001](./adr/0001-servvia-is-the-operational-pos.md).
@@ -532,7 +562,7 @@ Both were found only by actually running the full HTTP flow against a live local
 
 **Correction to prior record:** `docs/epics.md`'s E15 baseline banner (2026-08-16) and `_bmad-output/implementation-artifacts/deferred-work.md`'s corresponding entry both concluded that the tablet's additive 15% GST line was "already correct... consistent with the backend/kiosk convention... not a double-count bug," on the reasoning that `OrdersService.computeTotals` (`backend/src/orders/orders.service.ts:1033-1036`) already adds 15% on top of `MenuItem.priceCents` system-wide, so matching it was "not inventing a new convention." That reasoning is superseded by this decision: the existing backend/kiosk convention itself now conflicts with the confirmed business fact that customer-facing menu prices are GST-inclusive. **This decision does not fix `computeTotals` or the kiosk checkout** — that is backend/kiosk-shared infrastructure outside Epic 15's scope (`OrdersService.computeTotals` also serves non-tablet order sources) and is not addressed by this entry or by story `15-1`. It is flagged here as a materially significant, currently-unowned finding: if `MenuItem.priceCents` is meant to represent the GST-inclusive customer-facing price, then the kiosk checkout (`kiosk-frontend/src/pages/KioskOrderPage.tsx`, "GST (15%)" line) most likely exhibits the same additive-GST pattern this decision prohibits for the tablet, using the same shared `computeTotals` call. Confirming and, if confirmed, correcting this is a separate decision and story outside Epic 15's boundary and is not resolved here.
 
-**Required later payment flow** (target architecture, not this session's implementation): `Verdura provisional GST-inclusive cart → order submitted to Idealpos → Idealpos returns authoritative GST/rounding/final payable total → Verdura compares → customer/staff confirms any permitted change → Idealpos initiates EFTPOS → Verdura records the real result`. Until real Idealpos confirmation exists for a given order, any amount shown on the tablet must be truthfully labelled provisional or estimated, per this repository's standing truthful-state rule (`target-operating-model.md`, `mvp.md` Non-Negotiable Principle #1). ~~The current Card/Cash buttons marking an order paid/complete without authoritative payment evidence remain a known, separately-owned defect (`docs/epics.md` E15 baseline banner; owner `15-6`) — unaffected by, and not resolved by, this decision.~~ **Superseded 2026-08-20 by DL-087:** the Order Tablet never processes payment at all — the Card/Cash buttons referenced above were removed outright, not fixed or gated. The GST-inclusive pricing/totals rules in this decision remain unchanged and fully in force; only the payment-initiation framing above is superseded. "Customer/staff confirms any permitted change → Idealpos initiates EFTPOS" in the flow sketched above never happens on the Order Tablet — Idealpos/EFTPOS payment happens independently, outside Verdura's UI, per DL-087.
+**Required later payment flow** (target architecture, not this session's implementation): `Verdura provisional GST-inclusive cart → order submitted to Idealpos → Idealpos returns authoritative GST/rounding/final payable total → Verdura compares → customer/staff confirms any permitted change → Idealpos initiates EFTPOS → Verdura records the real result`. Until real Idealpos confirmation exists for a given order, any amount shown on the tablet must be truthfully labelled provisional or estimated, per this repository's standing truthful-state rule (`target-operating-model.md`, `mvp.md` Non-Negotiable Principle #1). ~~The current Card/Cash buttons marking an order paid/complete without authoritative payment evidence remain a known, separately-owned defect (`docs/epics.md` E15 baseline banner; owner `15-6`) — unaffected by, and not resolved by, this decision.~~ **Superseded 2026-08-20 by DL-087:** the Order Tablet never processes payment at all (partially superseded for Staff Mode during the reduced first pilot by DL-118, 2026-10-03) — the Card/Cash buttons referenced above were removed outright, not fixed or gated. The GST-inclusive pricing/totals rules in this decision remain unchanged and fully in force; only the payment-initiation framing above is superseded. "Customer/staff confirms any permitted change → Idealpos initiates EFTPOS" in the flow sketched above never happens on the Order Tablet — Idealpos/EFTPOS payment happens independently, outside Verdura's UI, per DL-087.
 
 **Story ownership (Epic 15):** this decision does not add a new story. Existing stories, corrected at the source (`docs/epics.md`):
 - `15-1` (venue and auth decision): establishes the venue tax/locale metadata above and must not introduce a new source of double GST. Does not touch cart-total, service-charge, or Idealpos-reconciliation logic.

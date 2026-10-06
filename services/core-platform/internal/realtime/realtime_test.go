@@ -3,6 +3,7 @@ package realtime
 import (
 	"encoding/json"
 	"errors"
+	"servvia/services/core-platform/internal/events"
 	"slices"
 	"strings"
 	"sync"
@@ -39,6 +40,21 @@ func TestGrantIsLeastPrivilege(t *testing.T) {
 }
 
 // The kitchen stream never carries a financial or configuration fact.
+// Every canonical fact type reaches some stream, and realtime knows no type
+// the catalog does not.
+func TestAudiencesCoverTheCatalog(t *testing.T) {
+	for _, typ := range events.Types() {
+		if len(AudiencesOf(typ)) == 0 {
+			t.Errorf("%s reaches no stream", typ)
+		}
+	}
+	for _, typ := range Types() {
+		if !events.Known(typ) {
+			t.Errorf("%s is not a canonical fact", typ)
+		}
+	}
+}
+
 func TestKitchenReceivesOnlyKitchenFacts(t *testing.T) {
 	kitchen := []Audience{Kitchen}
 	for _, typ := range Types() {
@@ -57,36 +73,6 @@ func TestKitchenReceivesOnlyKitchenFacts(t *testing.T) {
 	}
 	if Allowed([]Audience{Operations, Financial, Kitchen}, "made.up") {
 		t.Error("an unknown type reached someone")
-	}
-}
-
-func TestFactValidation(t *testing.T) {
-	good := Fact{Type: "check.created", AggregateType: "check", AggregateID: "c1", Version: V(1), Payload: map[string]any{"checkId": "c1"}}
-	if raw, err := good.Encode(); err != nil || string(raw) != `{"checkId":"c1"}` {
-		t.Fatalf("%s %v", raw, err)
-	}
-	for name, f := range map[string]Fact{
-		"unknown type":        {Type: "check.exploded", AggregateType: "check", AggregateID: "c1"},
-		"wrong aggregate":     {Type: "check.created", AggregateType: "order", AggregateID: "c1"},
-		"no aggregate id":     {Type: "check.created", AggregateType: "check"},
-		"version 0":           {Type: "check.created", AggregateType: "check", AggregateID: "c1", Version: V(0)},
-		"oversized payload":   {Type: "check.created", AggregateType: "check", AggregateID: "c1", Payload: map[string]any{"x": strings.Repeat("a", MaxPayloadBytes)}},
-		"unencodable payload": {Type: "check.created", AggregateType: "check", AggregateID: "c1", Payload: map[string]any{"f": func() {}}},
-	} {
-		if _, err := f.Encode(); !errors.Is(err, ErrInvalidFact) {
-			t.Errorf("%s: %v", name, err)
-		}
-	}
-}
-
-func TestEnvelopeJSON(t *testing.T) {
-	e := Event{ID: "e1", Type: "order.created", OccurredAt: time.Date(2026, 9, 30, 1, 2, 3, 4e6, time.FixedZone("NZ", 13*3600)),
-		OrganizationID: "o1", VenueID: "v1", AggregateType: "order", AggregateID: "ORD-1", Payload: json.RawMessage(`{"orderId":"ORD-1"}`)}
-	raw, _ := json.Marshal(e)
-	var m map[string]any
-	_ = json.Unmarshal(raw, &m)
-	if m["occurredAt"] != "2026-09-29T12:02:03.004Z" || m["eventId"] != "e1" || m["version"] != nil || len(m) != 9 {
-		t.Errorf("%s", raw)
 	}
 }
 

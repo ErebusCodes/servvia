@@ -15,6 +15,7 @@ import * as argon2 from 'argon2';
 import type Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { AuthService } from '../src/auth/auth.service';
 import { REDIS_CLIENT } from '../src/redis/redis.constants';
 
 describe('Orders API (integration, real local Postgres)', () => {
@@ -478,6 +479,7 @@ describe('Orders API (integration, real local Postgres)', () => {
       await prisma.printer.deleteMany({ where: { venueId: venue.id } });
       await prisma.menuItem.deleteMany({ where: { organizationId: org.id } });
       await prisma.category.deleteMany({ where: { organizationId: org.id } });
+      await prisma.auditLog.deleteMany({ where: { venueId: venue.id } });
       await prisma.venue.delete({ where: { id: venue.id } });
       const kioskSystemStaff = await prisma.staff.findMany({ where: { organizationId: org.id } });
       for (const s of kioskSystemStaff) {
@@ -573,6 +575,7 @@ describe('Orders API (integration, real local Postgres)', () => {
       await prisma.printer.deleteMany({ where: { venueId: venue.id } });
       await prisma.menuItem.deleteMany({ where: { organizationId: org.id } });
       await prisma.category.deleteMany({ where: { organizationId: org.id } });
+      await prisma.auditLog.deleteMany({ where: { venueId: venue.id } });
       await prisma.venue.delete({ where: { id: venue.id } });
       const kioskSystemStaff = await prisma.staff.findMany({ where: { organizationId: org.id } });
       for (const s of kioskSystemStaff) {
@@ -629,6 +632,95 @@ describe('Orders API (integration, real local Postgres)', () => {
         items: [{ menuItemId, quantity: 1 }],
       })
       .expect(400);
+  });
+
+  it('Story 2.7: a kitchen (KDS venue-PIN) token cannot create or cancel orders', async () => {
+    const kdsToken = app.get(AuthService).signKdsDeviceToken(venueId, organizationId);
+    const table = await freeTable();
+    const body = {
+      venueId,
+      tableId: table.id,
+      serviceMode: 'dine_in',
+      notes: noteTag('kitchen-role'),
+      items: [{ menuItemId, quantity: 1 }],
+    };
+
+    // Create: refused for the kitchen role.
+    await request(app.getHttpServer())
+      .post('/api/admin/orders')
+      .set('Authorization', `Bearer ${kdsToken}`)
+      .send({ ...body, idempotencyKey: `idem_integration_test_kitchen_create_${Date.now()}` })
+      .expect(403);
+
+    const created = await request(app.getHttpServer())
+      .post('/api/admin/orders')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ ...body, idempotencyKey: `idem_integration_test_kitchen_${Date.now()}` })
+      .expect(201);
+    try {
+      // Cancel: refused, and the order is unchanged.
+      await request(app.getHttpServer())
+        .patch(`/api/admin/orders/${created.body.id}/status`)
+        .set('Authorization', `Bearer ${kdsToken}`)
+        .send({ status: 'cancelled' })
+        .expect(403);
+      expect(
+        (await prisma.order.findUniqueOrThrow({ where: { id: created.body.id } })).status,
+      ).toBe(created.body.status);
+    } finally {
+      await cleanupOrder(created.body.id);
+    }
+  });
+
+  it('Story 12.15: a KDS status change succeeds and is audited as the device, not a Staff row', async () => {
+    const kdsToken = app.get(AuthService).signKdsDeviceToken(venueId, organizationId);
+    const table = await freeTable();
+    const created = await request(app.getHttpServer())
+      .post('/api/admin/orders')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        venueId,
+        tableId: table.id,
+        serviceMode: 'dine_in',
+        notes: noteTag('kds-audit'),
+        items: [{ menuItemId, quantity: 1 }],
+        idempotencyKey: `idem_integration_test_kds_audit_${Date.now()}`,
+      })
+      .expect(201);
+    try {
+      // Previously a 500: the audit row named "kds-device:<venue>" as a Staff
+      // actor and violated AuditLog_actorId_fkey.
+      for (const status of ['preparing', 'ready', 'completed']) {
+        const res = await request(app.getHttpServer())
+          .patch(`/api/admin/orders/${created.body.id}/status`)
+          .set('Authorization', `Bearer ${kdsToken}`)
+          .send({ status })
+          .expect(200);
+        expect(res.body.status).toBe(status);
+      }
+      const rows = await prisma.auditLog.findMany({
+        where: { action: 'UPDATE_ORDER_STATUS', resourceId: created.body.id as string },
+        orderBy: { timestamp: 'asc' },
+      });
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        expect(row).toMatchObject({
+          organizationId,
+          venueId,
+          actorType: 'device',
+          actorId: null,
+          actorEmail: null,
+          actorRole: 'kitchen',
+          deviceKind: 'kds_device',
+          deviceId: null,
+          systemActor: null,
+        });
+      }
+      // No Staff row was invented for the KDS screen.
+      expect(await prisma.staff.count({ where: { email: { startsWith: 'kds-device' } } })).toBe(0);
+    } finally {
+      await cleanupOrder(created.body.id);
+    }
   });
 
   it('13, 14, 15. valid status transitions succeed and persist; invalid transitions are rejected', async () => {
@@ -1029,7 +1121,10 @@ describe('Orders API (integration, real local Postgres)', () => {
         if (secondVenueMenuItem)
           await prisma.menuItem.delete({ where: { id: secondVenueMenuItem.id } });
         if (secondVenueTable) await prisma.table.delete({ where: { id: secondVenueTable.id } });
-        if (secondVenue) await prisma.venue.delete({ where: { id: secondVenue.id } });
+        if (secondVenue) {
+          await prisma.auditLog.deleteMany({ where: { venueId: secondVenue.id } });
+          await prisma.venue.delete({ where: { id: secondVenue.id } });
+        }
       }
     });
 

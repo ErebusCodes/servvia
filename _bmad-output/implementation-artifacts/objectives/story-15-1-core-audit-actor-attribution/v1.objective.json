@@ -1,0 +1,441 @@
+{
+  "schema": "servvia.objective/v2",
+  "objectiveId": "story-15-1-core-audit-actor-attribution",
+  "storyId": "15.1",
+  "version": 1,
+  "title": "Core audit records the real actor class, and the device a staff action was taken on",
+  "baseline": "5d5772d8ad172a6374beb5892a22a389ac34c8af",
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-15-1-core-audit-actor-attribution.md",
+      "intentContractSha256": "ed8b6d40288f3e7917ff08ddfb4a717e4249b8f4f5f9a6c358fc595c37632f97"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-15-context.md",
+      "sha256": "3692db6f884cc3b95bb1e83d0ecd9e66d4b6b6ad8cdb5a262ad37fc1d24ed004"
+    }
+  },
+  "requirementRefs": [
+    "PRD/00-overview-and-conventions.md INV-3: identity classes stay distinct (staff, guest, device, service, system); each action records which class acted",
+    "PRD/00-overview-and-conventions.md section 00.10.6, O-21 item 4: audit provenance identifies actor, actor class and device where applicable; device, service and system actors are first-class (resolves the mechanism of DEC-OPS-21); a system or worker action never borrows or fabricates a staff identity",
+    "PRD/00-overview-and-conventions.md INV-15 and NFR-AUD: every security-sensitive, financially significant and configuration mutation emits an append-only, attributable audit record; DEC-X-6: audit history is append-only from application behaviour",
+    "PRD/07-finance.md FIN-36: every staff financial mutation writes an audit record in the same transaction; adapter results are recorded in the append-only transition histories with the device identity, never as an invented staff actor",
+    "PRD/product-requirements.md Part C section 30.3: internal/audit/ is a target Core package",
+    "_bmad-output/implementation-artifacts/epic-15-context.md: Goal and Requirements (identity classes, audit, the existing audit store is reused, transitional credentials gain no capability)",
+    "_bmad-output/planning-artifacts/epics.md Epic 15, Story 15.1 (Core audit records device and system actors truthfully), as corrected 2026-10-06 at objective preparation (FIN-36 boundary; 15.2c does not depend on 15.1)"
+  ],
+  "architectureConstraints": [
+    "One Core audit write path: services/core-platform/internal/audit (new; Part C section 30.3) holds the actor model and the only INSERT INTO \"AuditLog\" in Core production Go; no other Core production file names the \"AuditLog\" table, and none updates, deletes or bulk-copies AuditLog rows (audit-writer-single-path)",
+    "The actor model (API fixed by the spec intent contract: audit.Device, DeviceKindTablet, DeviceOf, Actor, Staff, ByDevice, System, ErrInvalidActor, Actor.Validate, Entry, Write) expresses exactly the three shapes AuditLog_actor_shape_check enforces: a staff member (id and role required; email recorded as the verified credential carries it, never NULL, as at the baseline; optionally the device acted through: kind and id), a device (kind, optional id and role; never a staff id or email), a system process (name only). An actor is validated before the write; an invalid actor is refused with ErrInvalidActor, writes nothing and fails the mutation in its transaction",
+    "Writers in scope (derived from the baseline: every Core production file inserting AuditLog rows): tablet-reachable tables/pgstore/store.go, orders/pgstore/store.go, checks/pgstore/store.go, payments/pgstore/store.go, payments/pgstore/adjustments.go, shifts/pgstore/store.go (routes staffOnly / financial, which admit tablet_staff and tablet_manager); staff-session-only devices/pgstore/store.go, promotions/pgstore/store.go (routes admin / promotionAdmin, identity.RequireStaffSession). All eight delegate to the audit package and keep their actions, resources, resource ids, before and after values and transactions",
+    "Device context comes only from the verified principal: a tablet_staff or tablet_manager token records deviceKind 'tablet_device' (the value Nest records, apps/api/src/audit/audit-actor.ts) and its deviceId (the TabletDevice); every other principal records no device. No header, query parameter or body field changes the recorded actor, class or device",
+    "No device or system actor is manufactured: no Core audit writer is device- or system-initiated at the baseline (kitchen transitions use KitchenTicketTransition; payment-adapter results use transition histories), so production paths record staff actors only; the device and system shapes exist in the model and are proven against PostgreSQL by the evaluator-owned audit-actor-model check and the required tests",
+    "Payment-adapter boundary (FIN-36): payment result, refund result and reversal stay recorded in their append-only transition histories with the device id and actor kind payment_adapter (payments/pgstore/store.go, payments/pgstore/adjustments.go); Story 15.1 adds no AuditLog row for them and changes none of their paths",
+    "Schema: no migration. apps/api/prisma/migrations/20261010000000_audit_actor_types/migration.sql (AuditActorType staff/device/system, AuditLog_actor_shape_check, AuditLog_immutable, venue FK RESTRICT) is the contract; the latest migration at the baseline is 20261014000000_tablet_pin_venue_enrollment; apps/** is forbidden",
+    "Out of scope: Nest (apps/**, including Story 15.2c, which does not depend on 15.1), tokens and guards (internal/identity, internal/server; ADMIN-38), cmd/api wiring, application identity, mode and provenance (Stories 15.3, 15.2a-d), kitchen routes (15.5), contracts, CI and the evaluator",
+    "Allowed surfaces: services/core-platform/internal/audit/**, the eight writers, the six domain actor types (tables/service.go, orders/service.go, checks/service.go, shifts/shift.go, payments/service.go, refunds/service.go) and their six handlers, and the new integration test file; every existing Core test file, cmd/**, tests/testsupport/**, go.mod, go.sum, every Core package outside checks, devices, orders, payments, promotions, refunds, shifts, tables and the rest of the repository are forbidden",
+    "Evaluator-owned evidence: audit-attribution-routes writes tests/integration/zz_eval_story151_routes_test.go (under services/core-platform) into the candidate, runs only its tests against the evaluation database, and removes it; it uses only surfaces that exist at the baseline, so it also runs, and fails behaviourally, on the baseline. It wires server.Routes exactly as cmd/api/main.go does at the baseline (forbidden, so stable), seeds through tests/testsupport (forbidden) and SQL, and drives shift open, table session open, order, check, cash payment and refund with tablet_staff (cashier), tablet_manager (manager, a second tablet enrolled) and staff-session (manager) tokens, plus device enrollment and promotion creation with the staff session, sending forged device and actor headers and query parameters. It requires every row of each resource to name exactly the caller and its tablet (or no device), no device or system row and no forged identity, and the database still refusing malformed actor rows and updates. audit-actor-model places tests/integration/zz_eval_story151_model_test.go beside it, writes every actor shape through audit.Write and reads it back, requires each invalid actor to be refused with audit.ErrInvalidActor with nothing written, and checks DeviceOf for every credential kind",
+    "Baseline: 5d5772d8ad172a6374beb5892a22a389ac34c8af (integration/normative-prd-baseline after the Story 15.1 planning correction); its services, apps, contracts and tooling trees are those of 6526159916ea6d7ee843a20e1ab1d83dbbcf46cf, where the floor was measured: core-tests 438 (306 top-level), 0 skipped. Toolchain: Node 22 (validated 22.23.3), Go 1.27.1 offline (GOFLAGS=-mod=readonly, GOPROXY=off, GOTOOLCHAIN=local), PostgreSQL 18, Redis; node_modules provisioned from the unchanged lockfile with npm 11.17.0 under Node 22 (provisioning/README.md)"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "given": "a staff member on a PIN-elevated tablet (tablet_staff or tablet_manager token naming an active TabletDevice)",
+      "when": "they open a shift, open a table session, place an order, create a check, take a cash payment or request a refund through Core",
+      "then": "every AuditLog row of each action has actorType staff, that staff member's id, email and role, deviceKind 'tablet_device', deviceId equal to the token's TabletDevice, and no systemActor, whatever device or actor the request headers or query otherwise claim"
+    },
+    {
+      "id": "AC-2",
+      "given": "a staff login session",
+      "when": "the same actions, a device enrollment or a promotion creation run through Core",
+      "then": "every AuditLog row names the staff member (id, email, role) and no device or system actor"
+    },
+    {
+      "id": "AC-3",
+      "given": "the Core audit-actor model",
+      "when": "a staff, staff-through-device, device or system actor is written to PostgreSQL",
+      "then": "each row has exactly the identity of its class (a staff email exactly as given, never NULL); an invalid actor (none; staff without id or role; device id without kind; device without kind; system without name) is refused with audit.ErrInvalidActor and writes nothing; a raw device row naming a staff member is refused with 23514 AuditLog_actor_shape_check, and AuditLog rows cannot be updated"
+    },
+    {
+      "id": "AC-4",
+      "given": "Core production Go",
+      "when": "it is scanned",
+      "then": "the only INSERT INTO \"AuditLog\" is under services/core-platform/internal/audit, no other production file names the \"AuditLog\" table, and none of the 8 baseline writers keeps AuditLog SQL of its own"
+    },
+    {
+      "id": "AC-5",
+      "given": "the candidate",
+      "when": "Core's gofmt, vet and race-enabled full test suite run against PostgreSQL and Redis",
+      "then": "they pass with at least 438 tests, no skips, and RT-1 to RT-5 passing on the candidate and failing or not running on the baseline"
+    },
+    {
+      "id": "AC-6",
+      "given": "the candidate",
+      "when": "it is compared with the baseline",
+      "then": "nothing outside the authorized Core files and the story spec changes; no migration, Nest, contract, identity, server, cmd/api, testsupport or existing-test change; no test is removed, skipped or weakened and no suppression is added"
+    }
+  ],
+  "environment": {
+    "services": [
+      "postgres",
+      "redis"
+    ]
+  },
+  "setup": [
+    {
+      "id": "prisma-migrate-deploy",
+      "run": [
+        "node",
+        "node_modules/prisma/build/index.js",
+        "migrate",
+        "deploy",
+        "--schema",
+        "apps/api/prisma/schema.prisma"
+      ],
+      "failure": "harness",
+      "timeoutSeconds": 600
+    }
+  ],
+  "checks": [
+    {
+      "id": "core-gofmt",
+      "category": "lint",
+      "runner": "command",
+      "args": [
+        "sh",
+        "-c",
+        "test -z \"$(gofmt -l .)\""
+      ],
+      "cwd": "services/core-platform",
+      "mandatory": true,
+      "configFiles": []
+    },
+    {
+      "id": "core-vet",
+      "category": "lint",
+      "runner": "command",
+      "args": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "cwd": "services/core-platform",
+      "mandatory": true,
+      "configFiles": [
+        "services/core-platform/go.mod",
+        "services/core-platform/go.sum"
+      ]
+    },
+    {
+      "id": "core-tests",
+      "category": "integration",
+      "runner": "go-test",
+      "args": [
+        "-race",
+        "-count=1",
+        "./cmd/...",
+        "./internal/...",
+        "./tests/architecture/...",
+        "./tests/contract/...",
+        "./tests/integration/..."
+      ],
+      "cwd": "services/core-platform",
+      "mandatory": true,
+      "minTests": 438,
+      "timeoutSeconds": 1800,
+      "configFiles": [
+        "services/core-platform/go.mod",
+        "services/core-platform/go.sum"
+      ]
+    },
+    {
+      "id": "audit-writer-single-path",
+      "category": "architecture",
+      "runner": "command",
+      "cwd": ".",
+      "args": [
+        "node",
+        "-e",
+        "// audit-writer-single-path (Story 15.1). Core production Go (cmd/** and internal/**, test files\n// excluded) writes the AuditLog in exactly one place, the audit package: exactly one INSERT INTO\n// \"AuditLog\", under AUDIT_DIR, and the quoted \"AuditLog\" table identifier appears nowhere else; no\n// production code updates, deletes or copies AuditLog rows. Every writer of the baseline (WRITERS,\n// derived from the baseline: the files that inserted AuditLog rows) has no AuditLog SQL of its own left.\n// Generated constants: CORE, AUDIT_DIR, WRITERS.\nconst fs = require('node:fs'); const path = require('node:path');\nconst CORE = \"services/core-platform\";\nconst AUDIT_DIR = \"services/core-platform/internal/audit\";\nconst WRITERS = [\"services/core-platform/internal/checks/pgstore/store.go\",\"services/core-platform/internal/devices/pgstore/store.go\",\"services/core-platform/internal/orders/pgstore/store.go\",\"services/core-platform/internal/payments/pgstore/adjustments.go\",\"services/core-platform/internal/payments/pgstore/store.go\",\"services/core-platform/internal/promotions/pgstore/store.go\",\"services/core-platform/internal/shifts/pgstore/store.go\",\"services/core-platform/internal/tables/pgstore/store.go\"];\nconst walk = (d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];\nconst files = ['cmd', 'internal'].flatMap((d) => walk(path.join(CORE, d))).map((f) => f.split(path.sep).join('/'))\n  .filter((f) => f.endsWith('.go') && !f.endsWith('_test.go')).sort();\nconst IDENT = /\\\\?\"AuditLog\\\\?\"/g;\nconst INSERT = /INSERT\\s+INTO\\s+\\\\?\"AuditLog\\\\?\"/gi;\nconst OTHER = /(UPDATE|DELETE\\s+FROM|COPY|TRUNCATE(\\s+TABLE)?|ALTER\\s+TABLE|DROP\\s+TABLE)\\s+\\\\?\"AuditLog\\\\?\"|Identifier\\s*\\{\\s*\"AuditLog\"\\s*\\}/gi;\nconst bad = []; const inserts = [];\nfor (const f of files) {\n  const text = fs.readFileSync(f, 'utf8');\n  const inAudit = f.startsWith(AUDIT_DIR + '/');\n  for (const m of text.matchAll(INSERT)) inserts.push(f);\n  for (const m of text.matchAll(OTHER)) bad.push(`${f}: ${m[0]} (production code never rewrites, removes or bulk-copies AuditLog rows)`);\n  if (!inAudit && IDENT.test(text)) bad.push(`${f}: names the \"AuditLog\" table outside ${AUDIT_DIR}`);\n  IDENT.lastIndex = 0;\n}\nif (!files.some((f) => f.startsWith(AUDIT_DIR + '/'))) bad.push(`${AUDIT_DIR} has no production Go file`);\nif (inserts.length !== 1 || !inserts[0].startsWith(AUDIT_DIR + '/')) bad.push(`INSERT INTO \"AuditLog\" must occur exactly once, under ${AUDIT_DIR}; found ${inserts.length}: ${inserts.join(', ') || 'none'}`);\nfor (const w of WRITERS) {\n  if (!fs.existsSync(w)) { bad.push(`${w}: a baseline audit writer is missing`); continue; }\n  if (IDENT.test(fs.readFileSync(w, 'utf8'))) bad.push(`${w}: still holds AuditLog SQL of its own`);\n  IDENT.lastIndex = 0;\n}\nfor (const b of bad) console.log('FAIL ' + b);\nif (bad.length) process.exit(1);\nconsole.log(`ok   ${files.length} Core production Go files: the AuditLog is written only by ${inserts[0]}; the ${WRITERS.length} baseline writers delegate to it`);\n"
+      ],
+      "mandatory": true
+    },
+    {
+      "id": "audit-attribution-routes",
+      "category": "integration",
+      "runner": "command",
+      "cwd": "services/core-platform",
+      "args": [
+        "node",
+        "-e",
+        "// Evaluator-owned Story 15.1 Go tests (checks audit-attribution-routes and audit-actor-model). Writes\n// the evaluator's Go sources FILES ([path, source] pairs, paths relative to services/core-platform)\n// into the candidate's integration package, runs exactly the TESTS against the evaluation's\n// PostgreSQL, and removes the files. Every named test must pass; a skip (no database), a build\n// failure or a missing result fails, with the compiler's or the test's own diagnosis.\n// Generated constants: FILES, TESTS.\nconst { spawnSync } = require('node:child_process'); const fs = require('node:fs');\nconst FILES = [[\"tests/integration/zz_eval_story151_routes_test.go\",\"package integration\\n\\n// EVALUATOR-OWNED (Story 15.1, checks audit-attribution-routes and\\n// audit-actor-model). Written into\\n// the candidate by the check, run, and removed; never part of the candidate.\\n// It drives every audited Core write route through server.Routes, wired as\\n// cmd/api wires it, with a staff member on a PIN-elevated tablet (tablet_staff,\\n// tablet_manager) and with a staff login session, and reads back the AuditLog\\n// rows: a staff action through a tablet names the staff member AND the tablet\\n// it was performed on; a staff login names no device; nothing is attributed to\\n// a device or the system; nothing the client sends besides its verified token\\n// changes the recorded actor. It uses only surfaces that exist at the\\n// baseline, so it runs there too.\\n\\nimport (\\n\\t\\\"context\\\"\\n\\t\\\"encoding/json\\\"\\n\\t\\\"io\\\"\\n\\t\\\"log/slog\\\"\\n\\t\\\"net/http\\\"\\n\\t\\\"net/http/httptest\\\"\\n\\t\\\"strings\\\"\\n\\t\\\"testing\\\"\\n\\t\\\"time\\\"\\n\\n\\t\\\"github.com/golang-jwt/jwt/v5\\\"\\n\\t\\\"github.com/jackc/pgx/v5/pgxpool\\\"\\n\\t\\\"github.com/redis/go-redis/v9\\\"\\n\\n\\t\\\"servvia/services/core-platform/internal/checks\\\"\\n\\t\\\"servvia/services/core-platform/internal/checks/checksapi\\\"\\n\\tevalStory151CheckStore \\\"servvia/services/core-platform/internal/checks/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/devices\\\"\\n\\t\\\"servvia/services/core-platform/internal/devices/devicesapi\\\"\\n\\tevalStory151DeviceStore \\\"servvia/services/core-platform/internal/devices/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/health\\\"\\n\\t\\\"servvia/services/core-platform/internal/identity\\\"\\n\\t\\\"servvia/services/core-platform/internal/menu\\\"\\n\\t\\\"servvia/services/core-platform/internal/orders\\\"\\n\\t\\\"servvia/services/core-platform/internal/orders/ordersapi\\\"\\n\\tevalStory151OrderStore \\\"servvia/services/core-platform/internal/orders/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/payments\\\"\\n\\t\\\"servvia/services/core-platform/internal/payments/paymentsapi\\\"\\n\\tevalStory151PaymentStore \\\"servvia/services/core-platform/internal/payments/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/platform/postgres\\\"\\n\\t\\\"servvia/services/core-platform/internal/pricing/pgcatalog\\\"\\n\\t\\\"servvia/services/core-platform/internal/promotions\\\"\\n\\tevalStory151PromotionStore \\\"servvia/services/core-platform/internal/promotions/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/promotions/promotionsapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/ratelimit\\\"\\n\\t\\\"servvia/services/core-platform/internal/refunds\\\"\\n\\t\\\"servvia/services/core-platform/internal/refunds/refundsapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/server\\\"\\n\\t\\\"servvia/services/core-platform/internal/shifts\\\"\\n\\tevalStory151ShiftStore \\\"servvia/services/core-platform/internal/shifts/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/shifts/shiftsapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/tables\\\"\\n\\tevalStory151TableStore \\\"servvia/services/core-platform/internal/tables/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/tables/tablesapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/venues\\\"\\n\\t\\\"servvia/services/core-platform/tests/testsupport\\\"\\n)\\n\\nconst evalStory151Secret = \\\"evaluator-story-15-1-secret-0123456789\\\"\\n\\ntype evalStory151Sessions struct{}\\n\\nfunc (evalStory151Sessions) StaffActive(context.Context, string, string) (bool, error) {\\n\\treturn true, nil\\n}\\nfunc (evalStory151Sessions) SessionLive(context.Context, string, string) (bool, error) {\\n\\treturn true, nil\\n}\\n\\ntype evalStory151Limiter struct{}\\n\\nfunc (evalStory151Limiter) Eval(ctx context.Context, _ string, _ []string, _ ...any) *redis.Cmd {\\n\\tcmd := redis.NewCmd(ctx)\\n\\tcmd.SetVal([]any{int64(0), int64(1)})\\n\\treturn cmd\\n}\\n\\ntype evalStory151Harness struct {\\n\\tf      testsupport.OrdersFixture\\n\\twriter *pgxpool.Pool\\n\\troutes http.Handler\\n}\\n\\n// evalStory151Setup wires Core exactly as cmd/api/main.go does (read-write).\\nfunc evalStory151Setup(t *testing.T) evalStory151Harness {\\n\\tt.Helper()\\n\\turl := testsupport.DisposableDatabaseURL(t)\\n\\tctx := context.Background()\\n\\twriter, err := pgxpool.New(ctx, url)\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tt.Cleanup(writer.Close)\\n\\tf := testsupport.SeedOrdersFixture(t, ctx, writer)\\n\\tpool, err := postgres.NewPool(ctx, postgres.Options{URL: url, MaxConns: 16, ReadOnly: false})\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tt.Cleanup(pool.Close)\\n\\tlogger := slog.New(slog.NewTextHandler(io.Discard, nil))\\n\\tonFail := func(err error) { t.Errorf(\\\"best-effort audit write failed: %v\\\", err) }\\n\\tvenueStore := venues.NewPostgresStore(pool)\\n\\tpromotionStore := evalStory151PromotionStore.New(pool)\\n\\tpaymentStore := evalStory151PaymentStore.New(pool, onFail, evalStory151ShiftStore.Ledger{})\\n\\tdeviceService := devices.NewService(evalStory151DeviceStore.New(pool), true, evalStory151DeviceStore.NewID)\\n\\troutes := server.Routes(server.Deps{\\n\\t\\tLogger: logger, Health: health.New(pool, time.Second),\\n\\t\\tMenu:          menu.NewHandler(menu.NewPostgresStore(pool), logger),\\n\\t\\tVenues:        venues.NewHandler(venueStore, logger),\\n\\t\\tTableSessions: tablesapi.NewHandler(tables.NewService(evalStory151TableStore.New(pool), true), venueStore, logger),\\n\\t\\tOrders: ordersapi.NewHandler(orders.NewService(evalStory151OrderStore.New(pool, onFail), pgcatalog.New(pool), true).\\n\\t\\t\\tWithPromotions(promotionStore, time.Now), venueStore, logger),\\n\\t\\tPromotions: promotionsapi.NewHandler(promotions.NewService(promotionStore, true), venueStore, logger),\\n\\t\\tChecks:     checksapi.NewHandler(checks.NewService(evalStory151CheckStore.New(pool, onFail), true), venueStore, logger),\\n\\t\\tPayments:   paymentsapi.NewHandler(payments.NewService(paymentStore, true), venueStore, logger),\\n\\t\\tShifts:     shiftsapi.NewHandler(shifts.NewService(evalStory151ShiftStore.New(pool), true), venueStore, logger),\\n\\t\\tDevices:    devicesapi.NewHandler(deviceService, venueStore, logger),\\n\\t\\tRefunds:    refundsapi.NewHandler(refunds.NewService(paymentStore.Adjustments(), true), venueStore, logger),\\n\\t\\tDeviceAuth: deviceService,\\n\\t\\tVerifier:   identity.NewVerifier(evalStory151Secret), TabletDevices: identity.NewPostgresTabletDevices(pool),\\n\\t\\tVenueGrants:   identity.NewPostgresVenueGrants(pool),\\n\\t\\tStaffSessions: identity.StaffSessions{Staff: evalStory151Sessions{}, Sessions: evalStory151Sessions{}},\\n\\t\\tRateLimiter:   ratelimit.New(evalStory151Limiter{}, 0, logger),\\n\\t})\\n\\treturn evalStory151Harness{f: f, writer: writer, routes: routes}\\n}\\n\\nfunc (h evalStory151Harness) exec(t *testing.T, sql string, args ...any) {\\n\\tt.Helper()\\n\\tif _, err := h.writer.Exec(context.Background(), sql, args...); err != nil {\\n\\t\\tt.Fatalf(\\\"seed: %v\\\\n%s\\\", err, sql)\\n\\t}\\n}\\n\\n// staff adds a staff member of the fixture organization with venue access.\\nfunc (h evalStory151Harness) staff(t *testing.T, role string) (id, email string) {\\n\\tt.Helper()\\n\\tid = testsupport.UUID()\\n\\temail = \\\"eval-\\\" + id + \\\"@example.test\\\"\\n\\th.exec(t, `INSERT INTO \\\"Staff\\\"(id,\\\"organizationId\\\",email,name,\\\"passwordHash\\\",role,\\\"updatedAt\\\") VALUES($1,$2,$3,'Evaluator','x',$4,now())`,\\n\\t\\tid, h.f.Org, email, role)\\n\\ttestsupport.GrantVenueAccess(t, context.Background(), h.writer, h.f.Owner, []string{id}, []string{h.f.Venue})\\n\\treturn id, email\\n}\\n\\n// tablet enrolls an active TabletDevice at the fixture venue.\\nfunc (h evalStory151Harness) tablet(t *testing.T) string {\\n\\tt.Helper()\\n\\tenrollment, device := testsupport.UUID(), testsupport.UUID()\\n\\th.exec(t, `INSERT INTO \\\"TabletEnrollment\\\" (id, \\\"organizationId\\\", \\\"venueId\\\", \\\"codeHash\\\", \\\"createdByStaffId\\\", \\\"expiresAt\\\", \\\"usedAt\\\")\\n\\t\\tVALUES ($1, $2, $3, 'x', $4, now() + interval '1 hour', now())`, enrollment, h.f.Org, h.f.Venue, h.f.Owner)\\n\\th.exec(t, `INSERT INTO \\\"TabletDevice\\\" (id, \\\"organizationId\\\", \\\"venueId\\\", \\\"enrollmentId\\\", label, \\\"secretHash\\\", status, \\\"updatedAt\\\")\\n\\t\\tVALUES ($1, $2, $3, $4, 'Evaluator tablet', 'x', 'active', now())`, device, h.f.Org, h.f.Venue, enrollment)\\n\\tt.Cleanup(func() {\\n\\t\\tctx := context.Background()\\n\\t\\t_, _ = h.writer.Exec(ctx, `DELETE FROM \\\"TabletDevice\\\" WHERE id = $1`, device)\\n\\t\\t_, _ = h.writer.Exec(ctx, `DELETE FROM \\\"TabletEnrollment\\\" WHERE id = $1`, enrollment)\\n\\t})\\n\\treturn device\\n}\\n\\ntype evalStory151Caller struct {\\n\\tname, kind, staffID, email, role, deviceID string\\n}\\n\\nfunc (c evalStory151Caller) token(t *testing.T, venue, org string) string {\\n\\tt.Helper()\\n\\tclaims := jwt.MapClaims{\\\"sub\\\": c.staffID, \\\"email\\\": c.email, \\\"role\\\": c.role, \\\"organizationId\\\": org,\\n\\t\\t\\\"exp\\\": time.Now().Add(10 * time.Minute).Unix()}\\n\\tif c.kind == \\\"\\\" {\\n\\t\\tclaims[\\\"sid\\\"] = testsupport.UUID()\\n\\t} else {\\n\\t\\tclaims[\\\"kind\\\"], claims[\\\"venueId\\\"], claims[\\\"deviceId\\\"] = c.kind, venue, c.deviceID\\n\\t}\\n\\ts, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(evalStory151Secret))\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\treturn s\\n}\\n\\n// forged is what a client could claim besides its token; it must not reach the record.\\nconst evalStory151Forged = \\\"00000000-0000-4000-8000-0000000f0f6e\\\"\\n\\nfunc (h evalStory151Harness) call(t *testing.T, c evalStory151Caller, path, body string, want int) map[string]any {\\n\\tt.Helper()\\n\\treq := httptest.NewRequest(http.MethodPost, \\\"/api/venues/\\\"+h.f.Venue+path+\\\"?deviceId=\\\"+evalStory151Forged+\\\"&actorType=device\\\", strings.NewReader(body))\\n\\treq.Header.Set(\\\"Authorization\\\", \\\"Bearer \\\"+c.token(t, h.f.Venue, h.f.Org))\\n\\treq.Header.Set(\\\"Content-Type\\\", \\\"application/json\\\")\\n\\tfor _, k := range []string{\\\"X-Device-Id\\\", \\\"X-Servvia-Device-Id\\\", \\\"X-Tablet-Device-Id\\\", \\\"X-Actor-Id\\\", \\\"X-Staff-Id\\\"} {\\n\\t\\treq.Header.Set(k, evalStory151Forged)\\n\\t}\\n\\treq.Header.Set(\\\"X-Actor-Type\\\", \\\"device\\\")\\n\\trec := httptest.NewRecorder()\\n\\th.routes.ServeHTTP(rec, req)\\n\\tif rec.Code != want {\\n\\t\\tt.Fatalf(\\\"%s POST %s: status %d, want %d: %s\\\", c.name, path, rec.Code, want, rec.Body)\\n\\t}\\n\\tvar out map[string]any\\n\\tif err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {\\n\\t\\tt.Fatalf(\\\"%s POST %s: %v\\\", c.name, path, err)\\n\\t}\\n\\treturn out\\n}\\n\\nfunc evalStory151ID(t *testing.T, m map[string]any, path ...string) string {\\n\\tt.Helper()\\n\\tvar v any = m\\n\\tfor _, k := range path {\\n\\t\\to, ok := v.(map[string]any)\\n\\t\\tif !ok {\\n\\t\\t\\tt.Fatalf(\\\"response has no %v: %v\\\", path, m)\\n\\t\\t}\\n\\t\\tv = o[k]\\n\\t}\\n\\ts, ok := v.(string)\\n\\tif !ok || s == \\\"\\\" {\\n\\t\\tt.Fatalf(\\\"response has no %v: %v\\\", path, m)\\n\\t}\\n\\treturn s\\n}\\n\\nfunc evalStory151Key() string { return \\\"eval151-\\\" + testsupport.UUID() }\\n\\ntype evalStory151Row struct {\\n\\tresource, resourceID, actorType                                   string\\n\\tactorID, actorEmail, actorRole, deviceKind, deviceID, systemActor *string\\n}\\n\\nfunc evalStory151S(p *string) string {\\n\\tif p == nil {\\n\\t\\treturn \\\"<null>\\\"\\n\\t}\\n\\treturn *p\\n}\\n\\nfunc (h evalStory151Harness) rows(t *testing.T, resource, id string) []evalStory151Row {\\n\\tt.Helper()\\n\\tr, err := h.writer.Query(context.Background(), `SELECT resource, coalesce(\\\"resourceId\\\", ''), \\\"actorType\\\"::text, \\\"actorId\\\", \\\"actorEmail\\\", \\\"actorRole\\\"::text,\\n\\t\\t\\\"deviceKind\\\", \\\"deviceId\\\", \\\"systemActor\\\" FROM \\\"AuditLog\\\" WHERE \\\"organizationId\\\" = $1 AND resource = $2 AND \\\"resourceId\\\" = $3`, h.f.Org, resource, id)\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tdefer r.Close()\\n\\tvar out []evalStory151Row\\n\\tfor r.Next() {\\n\\t\\tvar x evalStory151Row\\n\\t\\tif err := r.Scan(&x.resource, &x.resourceID, &x.actorType, &x.actorID, &x.actorEmail, &x.actorRole, &x.deviceKind, &x.deviceID, &x.systemActor); err != nil {\\n\\t\\t\\tt.Fatal(err)\\n\\t\\t}\\n\\t\\tout = append(out, x)\\n\\t}\\n\\tif err := r.Err(); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\treturn out\\n}\\n\\n// expect requires at least one AuditLog row for the resource, every one of\\n// them naming exactly the caller (and its tablet, when it used one).\\nfunc (h evalStory151Harness) expect(t *testing.T, c evalStory151Caller, resource, id string) {\\n\\tt.Helper()\\n\\trs := h.rows(t, resource, id)\\n\\tif len(rs) == 0 {\\n\\t\\tt.Errorf(\\\"%s: no AuditLog row for %s %s\\\", c.name, resource, id)\\n\\t\\treturn\\n\\t}\\n\\twantKind, wantDevice := \\\"<null>\\\", \\\"<null>\\\"\\n\\tif c.kind != \\\"\\\" {\\n\\t\\twantKind, wantDevice = \\\"tablet_device\\\", c.deviceID\\n\\t}\\n\\twant := [7]string{\\\"staff\\\", c.staffID, c.email, c.role, wantKind, wantDevice, \\\"<null>\\\"}\\n\\tfor _, r := range rs {\\n\\t\\tgot := [7]string{r.actorType, evalStory151S(r.actorID), evalStory151S(r.actorEmail), evalStory151S(r.actorRole),\\n\\t\\t\\tevalStory151S(r.deviceKind), evalStory151S(r.deviceID), evalStory151S(r.systemActor)}\\n\\t\\tif got != want {\\n\\t\\t\\tt.Errorf(\\\"%s: AuditLog %s %s: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = %v, want %v\\\",\\n\\t\\t\\t\\tc.name, resource, id, got, want)\\n\\t\\t}\\n\\t}\\n}\\n\\n// visit runs one staff member's service through Core's audited routes and\\n// checks each resource's AuditLog rows: shift, table session, order, check,\\n// payment and, for a refund role, refund.\\nfunc (h evalStory151Harness) visit(t *testing.T, c evalStory151Caller, table string, refund bool) {\\n\\tt.Helper()\\n\\tsource := \\\"pos_terminal\\\"\\n\\tif c.kind != \\\"\\\" {\\n\\t\\tsource = \\\"waiter_tablet\\\"\\n\\t}\\n\\tshift := h.call(t, c, \\\"/shifts\\\", `{\\\"openingFloatCents\\\":10000,\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\th.expect(t, c, \\\"shift\\\", evalStory151ID(t, shift, \\\"id\\\"))\\n\\tsession := h.call(t, c, \\\"/tables/\\\"+table+\\\"/sessions\\\", `{\\\"covers\\\":2,\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\tsessionID := evalStory151ID(t, session, \\\"id\\\")\\n\\th.expect(t, c, \\\"table_session\\\", sessionID)\\n\\torder := h.call(t, c, \\\"/orders\\\", `{\\\"source\\\":\\\"`+source+`\\\",\\\"serviceMode\\\":\\\"dine_in\\\",\\\"tableSessionId\\\":\\\"`+sessionID+`\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+\\n\\t\\t`\\\",\\\"items\\\":[{\\\"menuItemId\\\":\\\"`+h.f.Plain+`\\\",\\\"quantity\\\":1,\\\"expectedUnitPriceCents\\\":550}]}`, http.StatusCreated)\\n\\torderID := evalStory151ID(t, order, \\\"id\\\")\\n\\th.expect(t, c, \\\"order\\\", orderID)\\n\\tcheck := h.call(t, c, \\\"/checks\\\", `{\\\"tableSessionId\\\":\\\"`+sessionID+`\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\tcheckID := evalStory151ID(t, check, \\\"id\\\")\\n\\th.expect(t, c, \\\"check\\\", checkID)\\n\\ttotal, _ := check[\\\"totalCents\\\"].(float64)\\n\\tif total <= 0 {\\n\\t\\tt.Fatalf(\\\"%s: check total %v\\\", c.name, check[\\\"totalCents\\\"])\\n\\t}\\n\\tpayment := h.call(t, c, \\\"/checks/\\\"+checkID+\\\"/payments\\\", `{\\\"amountCents\\\":`+evalStory151Num(total)+`,\\\"currency\\\":\\\"NZD\\\",\\\"tenderType\\\":\\\"cash\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\tpaymentID := evalStory151PaymentID(t, payment)\\n\\th.expect(t, c, \\\"payment\\\", paymentID)\\n\\tif refund {\\n\\t\\tr := h.call(t, c, \\\"/payments/\\\"+paymentID+\\\"/refunds\\\", `{\\\"amountCents\\\":100,\\\"currency\\\":\\\"NZD\\\",\\\"reason\\\":\\\"evaluator refund\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\t\\th.expect(t, c, \\\"refund\\\", evalStory151ID(t, r, \\\"id\\\"))\\n\\t}\\n}\\n\\nfunc evalStory151Num(f float64) string { b, _ := json.Marshal(int64(f)); return string(b) }\\n\\n// evalStory151PaymentID accepts the payment or the {payment: ...} envelope.\\nfunc evalStory151PaymentID(t *testing.T, m map[string]any) string {\\n\\tt.Helper()\\n\\tif p, ok := m[\\\"payment\\\"].(map[string]any); ok {\\n\\t\\treturn evalStory151ID(t, p, \\\"id\\\")\\n\\t}\\n\\treturn evalStory151ID(t, m, \\\"id\\\")\\n}\\n\\n// TestEvalStory151StaffThroughTablet: a staff member elevated on a tablet by\\n// their PIN (tablet_staff) is recorded as that staff member acting through\\n// that tablet, on every audited write route a tablet may use.\\nfunc TestEvalStory151StaffThroughTablet(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tid, email := h.staff(t, \\\"cashier\\\")\\n\\th.visit(t, evalStory151Caller{name: \\\"tablet_staff\\\", kind: \\\"tablet_staff\\\", staffID: id, email: email, role: \\\"cashier\\\", deviceID: h.tablet(t)}, h.f.TableA, false)\\n}\\n\\n// TestEvalStory151ManagerThroughTablet: the same for a manager PIN\\n// (tablet_manager), including a refund; a second tablet, so the recorded\\n// device is the one in the verified credential.\\nfunc TestEvalStory151ManagerThroughTablet(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\th.tablet(t)\\n\\tid, email := h.staff(t, \\\"manager\\\")\\n\\th.visit(t, evalStory151Caller{name: \\\"tablet_manager\\\", kind: \\\"tablet_manager\\\", staffID: id, email: email, role: \\\"manager\\\", deviceID: h.tablet(t)}, h.f.TableB, true)\\n}\\n\\n// TestEvalStory151StaffSession: a staff login session names the staff member\\n// and no device, on the same routes and on the staff-session-only\\n// administration routes (device enrollment, promotion creation).\\nfunc TestEvalStory151StaffSession(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tid, email := h.staff(t, \\\"manager\\\")\\n\\tc := evalStory151Caller{name: \\\"staff session\\\", staffID: id, email: email, role: \\\"manager\\\"}\\n\\th.visit(t, c, h.f.TableC, true)\\n\\td := h.call(t, c, \\\"/devices\\\", `{\\\"kind\\\":\\\"kds\\\",\\\"displayName\\\":\\\"Evaluator KDS\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\th.expect(t, c, \\\"device\\\", evalStory151ID(t, d, \\\"device\\\", \\\"id\\\"))\\n\\tp := h.call(t, c, \\\"/promotions\\\", `{\\\"name\\\":\\\"Evaluator\\\",\\\"kind\\\":\\\"percentage\\\",\\\"basisPoints\\\":1500,\\\"target\\\":\\\"all_items\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\th.expect(t, c, \\\"promotion\\\", evalStory151ID(t, p, \\\"id\\\"))\\n}\\n\\n// TestEvalStory151NothingFabricated: across a full tablet service, no\\n// AuditLog row is attributed to a device or the system, no staff row names a\\n// staff member other than the caller, and no row names the forged device.\\nfunc TestEvalStory151NothingFabricated(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tid, email := h.staff(t, \\\"manager\\\")\\n\\tdevice := h.tablet(t)\\n\\tc := evalStory151Caller{name: \\\"tablet_manager\\\", kind: \\\"tablet_manager\\\", staffID: id, email: email, role: \\\"manager\\\", deviceID: device}\\n\\th.visit(t, c, h.f.TableA, true)\\n\\tvar total, other int\\n\\tif err := h.writer.QueryRow(context.Background(), `SELECT count(*), count(*) FILTER (WHERE \\\"actorType\\\" <> 'staff' OR \\\"actorId\\\" IS DISTINCT FROM $2\\n\\t\\tOR \\\"deviceId\\\" IS DISTINCT FROM $3 OR \\\"deviceKind\\\" IS DISTINCT FROM 'tablet_device' OR \\\"systemActor\\\" IS NOT NULL)\\n\\t\\tFROM \\\"AuditLog\\\" WHERE \\\"organizationId\\\" = $1`, h.f.Org, id, device).Scan(&total, &other); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tif total < 6 || other != 0 {\\n\\t\\tt.Fatalf(\\\"AuditLog rows of the service: %d, of which %d not the caller through its tablet\\\", total, other)\\n\\t}\\n\\tvar forged int\\n\\tif err := h.writer.QueryRow(context.Background(), `SELECT count(*) FROM \\\"AuditLog\\\" WHERE \\\"deviceId\\\" = $1 OR \\\"actorId\\\" = $1`, evalStory151Forged).Scan(&forged); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tif forged != 0 {\\n\\t\\tt.Fatalf(\\\"%d AuditLog rows name the forged identity\\\", forged)\\n\\t}\\n}\\n\\n// TestEvalStory151DatabaseShapeIntact: the database still enforces the actor\\n// shape and immutability (migration 20261010000000): a device row naming a\\n// staff member and a staff row without one are refused, and rows cannot be\\n// rewritten.\\nfunc TestEvalStory151DatabaseShapeIntact(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tctx := context.Background()\\n\\tinsert := `INSERT INTO \\\"AuditLog\\\" (id, \\\"organizationId\\\", \\\"venueId\\\", \\\"actorType\\\", \\\"actorId\\\", \\\"actorEmail\\\", \\\"actorRole\\\", \\\"deviceKind\\\", \\\"deviceId\\\", \\\"systemActor\\\", action, resource)\\n\\t\\tVALUES ($1, $2, $3, $4::\\\"AuditActorType\\\", $5, $6, $7::\\\"StaffRole\\\", $8, $9, $10, 'EVAL_151', 'eval_story_15_1')`\\n\\tt.Cleanup(func() {\\n\\t\\t_, _ = h.writer.Exec(context.Background(), `DELETE FROM \\\"AuditLog\\\" WHERE resource = 'eval_story_15_1'`)\\n\\t})\\n\\temail, role, kind := \\\"x@example.test\\\", \\\"cashier\\\", \\\"tablet_device\\\"\\n\\tfor _, bad := range []struct {\\n\\t\\tname                               string\\n\\t\\tactorType                          string\\n\\t\\tactorID, email, role, kind, system *string\\n\\t}{\\n\\t\\t{\\\"device naming a staff member\\\", \\\"device\\\", &h.f.Cashier, &email, &role, &kind, nil},\\n\\t\\t{\\\"staff without a staff member\\\", \\\"staff\\\", nil, nil, nil, &kind, nil},\\n\\t\\t{\\\"system naming a device\\\", \\\"system\\\", nil, nil, nil, &kind, &email},\\n\\t} {\\n\\t\\t_, err := h.writer.Exec(ctx, insert, testsupport.UUID(), h.f.Org, h.f.Venue, bad.actorType, bad.actorID, bad.email, bad.role, bad.kind, nil, bad.system)\\n\\t\\tif err == nil || !strings.Contains(err.Error(), \\\"AuditLog_actor_shape_check\\\") {\\n\\t\\t\\tt.Errorf(\\\"%s: got %v, want AuditLog_actor_shape_check\\\", bad.name, err)\\n\\t\\t}\\n\\t}\\n\\tid := testsupport.UUID()\\n\\tif _, err := h.writer.Exec(ctx, insert, id, h.f.Org, h.f.Venue, \\\"staff\\\", h.f.Cashier, email, role, nil, nil, nil); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tif _, err := h.writer.Exec(ctx, `UPDATE \\\"AuditLog\\\" SET \\\"deviceId\\\" = 'x' WHERE id = $1`, id); err == nil {\\n\\t\\tt.Error(\\\"an AuditLog row was rewritten\\\")\\n\\t}\\n}\\n\"]];\nconst TESTS = [\"TestEvalStory151StaffThroughTablet\",\"TestEvalStory151ManagerThroughTablet\",\"TestEvalStory151StaffSession\",\"TestEvalStory151NothingFabricated\",\"TestEvalStory151DatabaseShapeIntact\"];\nfor (const [f] of FILES) if (fs.existsSync(f)) { console.log('FAIL the candidate already has ' + f + ': the evaluator-owned test cannot be placed'); process.exit(1); }\nif (!process.env.SERVVIA_CORE_TEST_DATABASE_URL) { console.log('FAIL SERVVIA_CORE_TEST_DATABASE_URL is not set: the evaluator-owned test needs the evaluation database'); process.exit(1); }\nlet r;\ntry {\n  for (const [f, source] of FILES) fs.writeFileSync(f, source);\n  r = spawnSync('go', ['test', '-count=1', '-json', '-run', '^(' + TESTS.join('|') + ')$', './tests/integration/'], { encoding: 'utf8', maxBuffer: 1 << 28, timeout: 900000 });\n} finally {\n  for (const [f] of FILES) fs.rmSync(f, { force: true });\n}\nconst events = (r.stdout || '').split('\\n').filter((l) => l.startsWith('{')).map((l) => { try { return JSON.parse(l); } catch { return {}; } });\nconst outcome = {}; const output = {};\nfor (const e of events) {\n  if (!e.Test || e.Test.includes('/')) continue;\n  if (['pass', 'fail', 'skip'].includes(e.Action)) outcome[e.Test] = e.Action;\n  if (e.Action === 'output' && /^\\s+\\S+\\.go:\\d+: |^\\s+--- SKIP|SKIP/.test(e.Output)) (output[e.Test] = output[e.Test] || []).push(e.Output.trim());\n}\nlet bad = 0;\nfor (const t of TESTS) {\n  const o = outcome[t] || 'no result';\n  if (o !== 'pass') bad += 1;\n  console.log((o === 'pass' ? 'ok   ' : 'FAIL ') + t + ': ' + o);\n  for (const line of (output[t] || []).slice(0, 12)) console.log('       ' + line.slice(0, 400));\n}\nif (!Object.keys(outcome).length) {\n  console.log('FAIL the evaluator-owned test did not run (go test exit ' + r.status + (r.error ? ', ' + r.error.message : '') + ')');\n  const build = events.filter((e) => e.Action === 'build-output' || (e.Action === 'output' && !e.Test)).map((e) => String(e.Output).trimEnd());\n  const other = `${r.stdout || ''}\\n${r.stderr || ''}`.split('\\n').filter((l) => l && !l.startsWith('{'));\n  for (const line of [...build, ...other].filter(Boolean).slice(0, 30)) console.log('       ' + line.slice(0, 400));\n  bad += 1;\n}\nprocess.exit(bad ? 1 : 0);\n"
+      ],
+      "mandatory": true,
+      "timeoutSeconds": 1200,
+      "configFiles": [
+        "services/core-platform/go.mod",
+        "services/core-platform/go.sum"
+      ]
+    },
+    {
+      "id": "audit-actor-model",
+      "category": "integration",
+      "runner": "command",
+      "cwd": "services/core-platform",
+      "args": [
+        "node",
+        "-e",
+        "// Evaluator-owned Story 15.1 Go tests (checks audit-attribution-routes and audit-actor-model). Writes\n// the evaluator's Go sources FILES ([path, source] pairs, paths relative to services/core-platform)\n// into the candidate's integration package, runs exactly the TESTS against the evaluation's\n// PostgreSQL, and removes the files. Every named test must pass; a skip (no database), a build\n// failure or a missing result fails, with the compiler's or the test's own diagnosis.\n// Generated constants: FILES, TESTS.\nconst { spawnSync } = require('node:child_process'); const fs = require('node:fs');\nconst FILES = [[\"tests/integration/zz_eval_story151_routes_test.go\",\"package integration\\n\\n// EVALUATOR-OWNED (Story 15.1, checks audit-attribution-routes and\\n// audit-actor-model). Written into\\n// the candidate by the check, run, and removed; never part of the candidate.\\n// It drives every audited Core write route through server.Routes, wired as\\n// cmd/api wires it, with a staff member on a PIN-elevated tablet (tablet_staff,\\n// tablet_manager) and with a staff login session, and reads back the AuditLog\\n// rows: a staff action through a tablet names the staff member AND the tablet\\n// it was performed on; a staff login names no device; nothing is attributed to\\n// a device or the system; nothing the client sends besides its verified token\\n// changes the recorded actor. It uses only surfaces that exist at the\\n// baseline, so it runs there too.\\n\\nimport (\\n\\t\\\"context\\\"\\n\\t\\\"encoding/json\\\"\\n\\t\\\"io\\\"\\n\\t\\\"log/slog\\\"\\n\\t\\\"net/http\\\"\\n\\t\\\"net/http/httptest\\\"\\n\\t\\\"strings\\\"\\n\\t\\\"testing\\\"\\n\\t\\\"time\\\"\\n\\n\\t\\\"github.com/golang-jwt/jwt/v5\\\"\\n\\t\\\"github.com/jackc/pgx/v5/pgxpool\\\"\\n\\t\\\"github.com/redis/go-redis/v9\\\"\\n\\n\\t\\\"servvia/services/core-platform/internal/checks\\\"\\n\\t\\\"servvia/services/core-platform/internal/checks/checksapi\\\"\\n\\tevalStory151CheckStore \\\"servvia/services/core-platform/internal/checks/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/devices\\\"\\n\\t\\\"servvia/services/core-platform/internal/devices/devicesapi\\\"\\n\\tevalStory151DeviceStore \\\"servvia/services/core-platform/internal/devices/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/health\\\"\\n\\t\\\"servvia/services/core-platform/internal/identity\\\"\\n\\t\\\"servvia/services/core-platform/internal/menu\\\"\\n\\t\\\"servvia/services/core-platform/internal/orders\\\"\\n\\t\\\"servvia/services/core-platform/internal/orders/ordersapi\\\"\\n\\tevalStory151OrderStore \\\"servvia/services/core-platform/internal/orders/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/payments\\\"\\n\\t\\\"servvia/services/core-platform/internal/payments/paymentsapi\\\"\\n\\tevalStory151PaymentStore \\\"servvia/services/core-platform/internal/payments/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/platform/postgres\\\"\\n\\t\\\"servvia/services/core-platform/internal/pricing/pgcatalog\\\"\\n\\t\\\"servvia/services/core-platform/internal/promotions\\\"\\n\\tevalStory151PromotionStore \\\"servvia/services/core-platform/internal/promotions/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/promotions/promotionsapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/ratelimit\\\"\\n\\t\\\"servvia/services/core-platform/internal/refunds\\\"\\n\\t\\\"servvia/services/core-platform/internal/refunds/refundsapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/server\\\"\\n\\t\\\"servvia/services/core-platform/internal/shifts\\\"\\n\\tevalStory151ShiftStore \\\"servvia/services/core-platform/internal/shifts/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/shifts/shiftsapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/tables\\\"\\n\\tevalStory151TableStore \\\"servvia/services/core-platform/internal/tables/pgstore\\\"\\n\\t\\\"servvia/services/core-platform/internal/tables/tablesapi\\\"\\n\\t\\\"servvia/services/core-platform/internal/venues\\\"\\n\\t\\\"servvia/services/core-platform/tests/testsupport\\\"\\n)\\n\\nconst evalStory151Secret = \\\"evaluator-story-15-1-secret-0123456789\\\"\\n\\ntype evalStory151Sessions struct{}\\n\\nfunc (evalStory151Sessions) StaffActive(context.Context, string, string) (bool, error) {\\n\\treturn true, nil\\n}\\nfunc (evalStory151Sessions) SessionLive(context.Context, string, string) (bool, error) {\\n\\treturn true, nil\\n}\\n\\ntype evalStory151Limiter struct{}\\n\\nfunc (evalStory151Limiter) Eval(ctx context.Context, _ string, _ []string, _ ...any) *redis.Cmd {\\n\\tcmd := redis.NewCmd(ctx)\\n\\tcmd.SetVal([]any{int64(0), int64(1)})\\n\\treturn cmd\\n}\\n\\ntype evalStory151Harness struct {\\n\\tf      testsupport.OrdersFixture\\n\\twriter *pgxpool.Pool\\n\\troutes http.Handler\\n}\\n\\n// evalStory151Setup wires Core exactly as cmd/api/main.go does (read-write).\\nfunc evalStory151Setup(t *testing.T) evalStory151Harness {\\n\\tt.Helper()\\n\\turl := testsupport.DisposableDatabaseURL(t)\\n\\tctx := context.Background()\\n\\twriter, err := pgxpool.New(ctx, url)\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tt.Cleanup(writer.Close)\\n\\tf := testsupport.SeedOrdersFixture(t, ctx, writer)\\n\\tpool, err := postgres.NewPool(ctx, postgres.Options{URL: url, MaxConns: 16, ReadOnly: false})\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tt.Cleanup(pool.Close)\\n\\tlogger := slog.New(slog.NewTextHandler(io.Discard, nil))\\n\\tonFail := func(err error) { t.Errorf(\\\"best-effort audit write failed: %v\\\", err) }\\n\\tvenueStore := venues.NewPostgresStore(pool)\\n\\tpromotionStore := evalStory151PromotionStore.New(pool)\\n\\tpaymentStore := evalStory151PaymentStore.New(pool, onFail, evalStory151ShiftStore.Ledger{})\\n\\tdeviceService := devices.NewService(evalStory151DeviceStore.New(pool), true, evalStory151DeviceStore.NewID)\\n\\troutes := server.Routes(server.Deps{\\n\\t\\tLogger: logger, Health: health.New(pool, time.Second),\\n\\t\\tMenu:          menu.NewHandler(menu.NewPostgresStore(pool), logger),\\n\\t\\tVenues:        venues.NewHandler(venueStore, logger),\\n\\t\\tTableSessions: tablesapi.NewHandler(tables.NewService(evalStory151TableStore.New(pool), true), venueStore, logger),\\n\\t\\tOrders: ordersapi.NewHandler(orders.NewService(evalStory151OrderStore.New(pool, onFail), pgcatalog.New(pool), true).\\n\\t\\t\\tWithPromotions(promotionStore, time.Now), venueStore, logger),\\n\\t\\tPromotions: promotionsapi.NewHandler(promotions.NewService(promotionStore, true), venueStore, logger),\\n\\t\\tChecks:     checksapi.NewHandler(checks.NewService(evalStory151CheckStore.New(pool, onFail), true), venueStore, logger),\\n\\t\\tPayments:   paymentsapi.NewHandler(payments.NewService(paymentStore, true), venueStore, logger),\\n\\t\\tShifts:     shiftsapi.NewHandler(shifts.NewService(evalStory151ShiftStore.New(pool), true), venueStore, logger),\\n\\t\\tDevices:    devicesapi.NewHandler(deviceService, venueStore, logger),\\n\\t\\tRefunds:    refundsapi.NewHandler(refunds.NewService(paymentStore.Adjustments(), true), venueStore, logger),\\n\\t\\tDeviceAuth: deviceService,\\n\\t\\tVerifier:   identity.NewVerifier(evalStory151Secret), TabletDevices: identity.NewPostgresTabletDevices(pool),\\n\\t\\tVenueGrants:   identity.NewPostgresVenueGrants(pool),\\n\\t\\tStaffSessions: identity.StaffSessions{Staff: evalStory151Sessions{}, Sessions: evalStory151Sessions{}},\\n\\t\\tRateLimiter:   ratelimit.New(evalStory151Limiter{}, 0, logger),\\n\\t})\\n\\treturn evalStory151Harness{f: f, writer: writer, routes: routes}\\n}\\n\\nfunc (h evalStory151Harness) exec(t *testing.T, sql string, args ...any) {\\n\\tt.Helper()\\n\\tif _, err := h.writer.Exec(context.Background(), sql, args...); err != nil {\\n\\t\\tt.Fatalf(\\\"seed: %v\\\\n%s\\\", err, sql)\\n\\t}\\n}\\n\\n// staff adds a staff member of the fixture organization with venue access.\\nfunc (h evalStory151Harness) staff(t *testing.T, role string) (id, email string) {\\n\\tt.Helper()\\n\\tid = testsupport.UUID()\\n\\temail = \\\"eval-\\\" + id + \\\"@example.test\\\"\\n\\th.exec(t, `INSERT INTO \\\"Staff\\\"(id,\\\"organizationId\\\",email,name,\\\"passwordHash\\\",role,\\\"updatedAt\\\") VALUES($1,$2,$3,'Evaluator','x',$4,now())`,\\n\\t\\tid, h.f.Org, email, role)\\n\\ttestsupport.GrantVenueAccess(t, context.Background(), h.writer, h.f.Owner, []string{id}, []string{h.f.Venue})\\n\\treturn id, email\\n}\\n\\n// tablet enrolls an active TabletDevice at the fixture venue.\\nfunc (h evalStory151Harness) tablet(t *testing.T) string {\\n\\tt.Helper()\\n\\tenrollment, device := testsupport.UUID(), testsupport.UUID()\\n\\th.exec(t, `INSERT INTO \\\"TabletEnrollment\\\" (id, \\\"organizationId\\\", \\\"venueId\\\", \\\"codeHash\\\", \\\"createdByStaffId\\\", \\\"expiresAt\\\", \\\"usedAt\\\")\\n\\t\\tVALUES ($1, $2, $3, 'x', $4, now() + interval '1 hour', now())`, enrollment, h.f.Org, h.f.Venue, h.f.Owner)\\n\\th.exec(t, `INSERT INTO \\\"TabletDevice\\\" (id, \\\"organizationId\\\", \\\"venueId\\\", \\\"enrollmentId\\\", label, \\\"secretHash\\\", status, \\\"updatedAt\\\")\\n\\t\\tVALUES ($1, $2, $3, $4, 'Evaluator tablet', 'x', 'active', now())`, device, h.f.Org, h.f.Venue, enrollment)\\n\\tt.Cleanup(func() {\\n\\t\\tctx := context.Background()\\n\\t\\t_, _ = h.writer.Exec(ctx, `DELETE FROM \\\"TabletDevice\\\" WHERE id = $1`, device)\\n\\t\\t_, _ = h.writer.Exec(ctx, `DELETE FROM \\\"TabletEnrollment\\\" WHERE id = $1`, enrollment)\\n\\t})\\n\\treturn device\\n}\\n\\ntype evalStory151Caller struct {\\n\\tname, kind, staffID, email, role, deviceID string\\n}\\n\\nfunc (c evalStory151Caller) token(t *testing.T, venue, org string) string {\\n\\tt.Helper()\\n\\tclaims := jwt.MapClaims{\\\"sub\\\": c.staffID, \\\"email\\\": c.email, \\\"role\\\": c.role, \\\"organizationId\\\": org,\\n\\t\\t\\\"exp\\\": time.Now().Add(10 * time.Minute).Unix()}\\n\\tif c.kind == \\\"\\\" {\\n\\t\\tclaims[\\\"sid\\\"] = testsupport.UUID()\\n\\t} else {\\n\\t\\tclaims[\\\"kind\\\"], claims[\\\"venueId\\\"], claims[\\\"deviceId\\\"] = c.kind, venue, c.deviceID\\n\\t}\\n\\ts, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(evalStory151Secret))\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\treturn s\\n}\\n\\n// forged is what a client could claim besides its token; it must not reach the record.\\nconst evalStory151Forged = \\\"00000000-0000-4000-8000-0000000f0f6e\\\"\\n\\nfunc (h evalStory151Harness) call(t *testing.T, c evalStory151Caller, path, body string, want int) map[string]any {\\n\\tt.Helper()\\n\\treq := httptest.NewRequest(http.MethodPost, \\\"/api/venues/\\\"+h.f.Venue+path+\\\"?deviceId=\\\"+evalStory151Forged+\\\"&actorType=device\\\", strings.NewReader(body))\\n\\treq.Header.Set(\\\"Authorization\\\", \\\"Bearer \\\"+c.token(t, h.f.Venue, h.f.Org))\\n\\treq.Header.Set(\\\"Content-Type\\\", \\\"application/json\\\")\\n\\tfor _, k := range []string{\\\"X-Device-Id\\\", \\\"X-Servvia-Device-Id\\\", \\\"X-Tablet-Device-Id\\\", \\\"X-Actor-Id\\\", \\\"X-Staff-Id\\\"} {\\n\\t\\treq.Header.Set(k, evalStory151Forged)\\n\\t}\\n\\treq.Header.Set(\\\"X-Actor-Type\\\", \\\"device\\\")\\n\\trec := httptest.NewRecorder()\\n\\th.routes.ServeHTTP(rec, req)\\n\\tif rec.Code != want {\\n\\t\\tt.Fatalf(\\\"%s POST %s: status %d, want %d: %s\\\", c.name, path, rec.Code, want, rec.Body)\\n\\t}\\n\\tvar out map[string]any\\n\\tif err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {\\n\\t\\tt.Fatalf(\\\"%s POST %s: %v\\\", c.name, path, err)\\n\\t}\\n\\treturn out\\n}\\n\\nfunc evalStory151ID(t *testing.T, m map[string]any, path ...string) string {\\n\\tt.Helper()\\n\\tvar v any = m\\n\\tfor _, k := range path {\\n\\t\\to, ok := v.(map[string]any)\\n\\t\\tif !ok {\\n\\t\\t\\tt.Fatalf(\\\"response has no %v: %v\\\", path, m)\\n\\t\\t}\\n\\t\\tv = o[k]\\n\\t}\\n\\ts, ok := v.(string)\\n\\tif !ok || s == \\\"\\\" {\\n\\t\\tt.Fatalf(\\\"response has no %v: %v\\\", path, m)\\n\\t}\\n\\treturn s\\n}\\n\\nfunc evalStory151Key() string { return \\\"eval151-\\\" + testsupport.UUID() }\\n\\ntype evalStory151Row struct {\\n\\tresource, resourceID, actorType                                   string\\n\\tactorID, actorEmail, actorRole, deviceKind, deviceID, systemActor *string\\n}\\n\\nfunc evalStory151S(p *string) string {\\n\\tif p == nil {\\n\\t\\treturn \\\"<null>\\\"\\n\\t}\\n\\treturn *p\\n}\\n\\nfunc (h evalStory151Harness) rows(t *testing.T, resource, id string) []evalStory151Row {\\n\\tt.Helper()\\n\\tr, err := h.writer.Query(context.Background(), `SELECT resource, coalesce(\\\"resourceId\\\", ''), \\\"actorType\\\"::text, \\\"actorId\\\", \\\"actorEmail\\\", \\\"actorRole\\\"::text,\\n\\t\\t\\\"deviceKind\\\", \\\"deviceId\\\", \\\"systemActor\\\" FROM \\\"AuditLog\\\" WHERE \\\"organizationId\\\" = $1 AND resource = $2 AND \\\"resourceId\\\" = $3`, h.f.Org, resource, id)\\n\\tif err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tdefer r.Close()\\n\\tvar out []evalStory151Row\\n\\tfor r.Next() {\\n\\t\\tvar x evalStory151Row\\n\\t\\tif err := r.Scan(&x.resource, &x.resourceID, &x.actorType, &x.actorID, &x.actorEmail, &x.actorRole, &x.deviceKind, &x.deviceID, &x.systemActor); err != nil {\\n\\t\\t\\tt.Fatal(err)\\n\\t\\t}\\n\\t\\tout = append(out, x)\\n\\t}\\n\\tif err := r.Err(); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\treturn out\\n}\\n\\n// expect requires at least one AuditLog row for the resource, every one of\\n// them naming exactly the caller (and its tablet, when it used one).\\nfunc (h evalStory151Harness) expect(t *testing.T, c evalStory151Caller, resource, id string) {\\n\\tt.Helper()\\n\\trs := h.rows(t, resource, id)\\n\\tif len(rs) == 0 {\\n\\t\\tt.Errorf(\\\"%s: no AuditLog row for %s %s\\\", c.name, resource, id)\\n\\t\\treturn\\n\\t}\\n\\twantKind, wantDevice := \\\"<null>\\\", \\\"<null>\\\"\\n\\tif c.kind != \\\"\\\" {\\n\\t\\twantKind, wantDevice = \\\"tablet_device\\\", c.deviceID\\n\\t}\\n\\twant := [7]string{\\\"staff\\\", c.staffID, c.email, c.role, wantKind, wantDevice, \\\"<null>\\\"}\\n\\tfor _, r := range rs {\\n\\t\\tgot := [7]string{r.actorType, evalStory151S(r.actorID), evalStory151S(r.actorEmail), evalStory151S(r.actorRole),\\n\\t\\t\\tevalStory151S(r.deviceKind), evalStory151S(r.deviceID), evalStory151S(r.systemActor)}\\n\\t\\tif got != want {\\n\\t\\t\\tt.Errorf(\\\"%s: AuditLog %s %s: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = %v, want %v\\\",\\n\\t\\t\\t\\tc.name, resource, id, got, want)\\n\\t\\t}\\n\\t}\\n}\\n\\n// visit runs one staff member's service through Core's audited routes and\\n// checks each resource's AuditLog rows: shift, table session, order, check,\\n// payment and, for a refund role, refund.\\nfunc (h evalStory151Harness) visit(t *testing.T, c evalStory151Caller, table string, refund bool) {\\n\\tt.Helper()\\n\\tsource := \\\"pos_terminal\\\"\\n\\tif c.kind != \\\"\\\" {\\n\\t\\tsource = \\\"waiter_tablet\\\"\\n\\t}\\n\\tshift := h.call(t, c, \\\"/shifts\\\", `{\\\"openingFloatCents\\\":10000,\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\th.expect(t, c, \\\"shift\\\", evalStory151ID(t, shift, \\\"id\\\"))\\n\\tsession := h.call(t, c, \\\"/tables/\\\"+table+\\\"/sessions\\\", `{\\\"covers\\\":2,\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\tsessionID := evalStory151ID(t, session, \\\"id\\\")\\n\\th.expect(t, c, \\\"table_session\\\", sessionID)\\n\\torder := h.call(t, c, \\\"/orders\\\", `{\\\"source\\\":\\\"`+source+`\\\",\\\"serviceMode\\\":\\\"dine_in\\\",\\\"tableSessionId\\\":\\\"`+sessionID+`\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+\\n\\t\\t`\\\",\\\"items\\\":[{\\\"menuItemId\\\":\\\"`+h.f.Plain+`\\\",\\\"quantity\\\":1,\\\"expectedUnitPriceCents\\\":550}]}`, http.StatusCreated)\\n\\torderID := evalStory151ID(t, order, \\\"id\\\")\\n\\th.expect(t, c, \\\"order\\\", orderID)\\n\\tcheck := h.call(t, c, \\\"/checks\\\", `{\\\"tableSessionId\\\":\\\"`+sessionID+`\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\tcheckID := evalStory151ID(t, check, \\\"id\\\")\\n\\th.expect(t, c, \\\"check\\\", checkID)\\n\\ttotal, _ := check[\\\"totalCents\\\"].(float64)\\n\\tif total <= 0 {\\n\\t\\tt.Fatalf(\\\"%s: check total %v\\\", c.name, check[\\\"totalCents\\\"])\\n\\t}\\n\\tpayment := h.call(t, c, \\\"/checks/\\\"+checkID+\\\"/payments\\\", `{\\\"amountCents\\\":`+evalStory151Num(total)+`,\\\"currency\\\":\\\"NZD\\\",\\\"tenderType\\\":\\\"cash\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\tpaymentID := evalStory151PaymentID(t, payment)\\n\\th.expect(t, c, \\\"payment\\\", paymentID)\\n\\tif refund {\\n\\t\\tr := h.call(t, c, \\\"/payments/\\\"+paymentID+\\\"/refunds\\\", `{\\\"amountCents\\\":100,\\\"currency\\\":\\\"NZD\\\",\\\"reason\\\":\\\"evaluator refund\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\t\\th.expect(t, c, \\\"refund\\\", evalStory151ID(t, r, \\\"id\\\"))\\n\\t}\\n}\\n\\nfunc evalStory151Num(f float64) string { b, _ := json.Marshal(int64(f)); return string(b) }\\n\\n// evalStory151PaymentID accepts the payment or the {payment: ...} envelope.\\nfunc evalStory151PaymentID(t *testing.T, m map[string]any) string {\\n\\tt.Helper()\\n\\tif p, ok := m[\\\"payment\\\"].(map[string]any); ok {\\n\\t\\treturn evalStory151ID(t, p, \\\"id\\\")\\n\\t}\\n\\treturn evalStory151ID(t, m, \\\"id\\\")\\n}\\n\\n// TestEvalStory151StaffThroughTablet: a staff member elevated on a tablet by\\n// their PIN (tablet_staff) is recorded as that staff member acting through\\n// that tablet, on every audited write route a tablet may use.\\nfunc TestEvalStory151StaffThroughTablet(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tid, email := h.staff(t, \\\"cashier\\\")\\n\\th.visit(t, evalStory151Caller{name: \\\"tablet_staff\\\", kind: \\\"tablet_staff\\\", staffID: id, email: email, role: \\\"cashier\\\", deviceID: h.tablet(t)}, h.f.TableA, false)\\n}\\n\\n// TestEvalStory151ManagerThroughTablet: the same for a manager PIN\\n// (tablet_manager), including a refund; a second tablet, so the recorded\\n// device is the one in the verified credential.\\nfunc TestEvalStory151ManagerThroughTablet(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\th.tablet(t)\\n\\tid, email := h.staff(t, \\\"manager\\\")\\n\\th.visit(t, evalStory151Caller{name: \\\"tablet_manager\\\", kind: \\\"tablet_manager\\\", staffID: id, email: email, role: \\\"manager\\\", deviceID: h.tablet(t)}, h.f.TableB, true)\\n}\\n\\n// TestEvalStory151StaffSession: a staff login session names the staff member\\n// and no device, on the same routes and on the staff-session-only\\n// administration routes (device enrollment, promotion creation).\\nfunc TestEvalStory151StaffSession(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tid, email := h.staff(t, \\\"manager\\\")\\n\\tc := evalStory151Caller{name: \\\"staff session\\\", staffID: id, email: email, role: \\\"manager\\\"}\\n\\th.visit(t, c, h.f.TableC, true)\\n\\td := h.call(t, c, \\\"/devices\\\", `{\\\"kind\\\":\\\"kds\\\",\\\"displayName\\\":\\\"Evaluator KDS\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\th.expect(t, c, \\\"device\\\", evalStory151ID(t, d, \\\"device\\\", \\\"id\\\"))\\n\\tp := h.call(t, c, \\\"/promotions\\\", `{\\\"name\\\":\\\"Evaluator\\\",\\\"kind\\\":\\\"percentage\\\",\\\"basisPoints\\\":1500,\\\"target\\\":\\\"all_items\\\",\\\"idempotencyKey\\\":\\\"`+evalStory151Key()+`\\\"}`, http.StatusCreated)\\n\\th.expect(t, c, \\\"promotion\\\", evalStory151ID(t, p, \\\"id\\\"))\\n}\\n\\n// TestEvalStory151NothingFabricated: across a full tablet service, no\\n// AuditLog row is attributed to a device or the system, no staff row names a\\n// staff member other than the caller, and no row names the forged device.\\nfunc TestEvalStory151NothingFabricated(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tid, email := h.staff(t, \\\"manager\\\")\\n\\tdevice := h.tablet(t)\\n\\tc := evalStory151Caller{name: \\\"tablet_manager\\\", kind: \\\"tablet_manager\\\", staffID: id, email: email, role: \\\"manager\\\", deviceID: device}\\n\\th.visit(t, c, h.f.TableA, true)\\n\\tvar total, other int\\n\\tif err := h.writer.QueryRow(context.Background(), `SELECT count(*), count(*) FILTER (WHERE \\\"actorType\\\" <> 'staff' OR \\\"actorId\\\" IS DISTINCT FROM $2\\n\\t\\tOR \\\"deviceId\\\" IS DISTINCT FROM $3 OR \\\"deviceKind\\\" IS DISTINCT FROM 'tablet_device' OR \\\"systemActor\\\" IS NOT NULL)\\n\\t\\tFROM \\\"AuditLog\\\" WHERE \\\"organizationId\\\" = $1`, h.f.Org, id, device).Scan(&total, &other); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tif total < 6 || other != 0 {\\n\\t\\tt.Fatalf(\\\"AuditLog rows of the service: %d, of which %d not the caller through its tablet\\\", total, other)\\n\\t}\\n\\tvar forged int\\n\\tif err := h.writer.QueryRow(context.Background(), `SELECT count(*) FROM \\\"AuditLog\\\" WHERE \\\"deviceId\\\" = $1 OR \\\"actorId\\\" = $1`, evalStory151Forged).Scan(&forged); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tif forged != 0 {\\n\\t\\tt.Fatalf(\\\"%d AuditLog rows name the forged identity\\\", forged)\\n\\t}\\n}\\n\\n// TestEvalStory151DatabaseShapeIntact: the database still enforces the actor\\n// shape and immutability (migration 20261010000000): a device row naming a\\n// staff member and a staff row without one are refused, and rows cannot be\\n// rewritten.\\nfunc TestEvalStory151DatabaseShapeIntact(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tctx := context.Background()\\n\\tinsert := `INSERT INTO \\\"AuditLog\\\" (id, \\\"organizationId\\\", \\\"venueId\\\", \\\"actorType\\\", \\\"actorId\\\", \\\"actorEmail\\\", \\\"actorRole\\\", \\\"deviceKind\\\", \\\"deviceId\\\", \\\"systemActor\\\", action, resource)\\n\\t\\tVALUES ($1, $2, $3, $4::\\\"AuditActorType\\\", $5, $6, $7::\\\"StaffRole\\\", $8, $9, $10, 'EVAL_151', 'eval_story_15_1')`\\n\\tt.Cleanup(func() {\\n\\t\\t_, _ = h.writer.Exec(context.Background(), `DELETE FROM \\\"AuditLog\\\" WHERE resource = 'eval_story_15_1'`)\\n\\t})\\n\\temail, role, kind := \\\"x@example.test\\\", \\\"cashier\\\", \\\"tablet_device\\\"\\n\\tfor _, bad := range []struct {\\n\\t\\tname                               string\\n\\t\\tactorType                          string\\n\\t\\tactorID, email, role, kind, system *string\\n\\t}{\\n\\t\\t{\\\"device naming a staff member\\\", \\\"device\\\", &h.f.Cashier, &email, &role, &kind, nil},\\n\\t\\t{\\\"staff without a staff member\\\", \\\"staff\\\", nil, nil, nil, &kind, nil},\\n\\t\\t{\\\"system naming a device\\\", \\\"system\\\", nil, nil, nil, &kind, &email},\\n\\t} {\\n\\t\\t_, err := h.writer.Exec(ctx, insert, testsupport.UUID(), h.f.Org, h.f.Venue, bad.actorType, bad.actorID, bad.email, bad.role, bad.kind, nil, bad.system)\\n\\t\\tif err == nil || !strings.Contains(err.Error(), \\\"AuditLog_actor_shape_check\\\") {\\n\\t\\t\\tt.Errorf(\\\"%s: got %v, want AuditLog_actor_shape_check\\\", bad.name, err)\\n\\t\\t}\\n\\t}\\n\\tid := testsupport.UUID()\\n\\tif _, err := h.writer.Exec(ctx, insert, id, h.f.Org, h.f.Venue, \\\"staff\\\", h.f.Cashier, email, role, nil, nil, nil); err != nil {\\n\\t\\tt.Fatal(err)\\n\\t}\\n\\tif _, err := h.writer.Exec(ctx, `UPDATE \\\"AuditLog\\\" SET \\\"deviceId\\\" = 'x' WHERE id = $1`, id); err == nil {\\n\\t\\tt.Error(\\\"an AuditLog row was rewritten\\\")\\n\\t}\\n}\\n\"],[\"tests/integration/zz_eval_story151_model_test.go\",\"package integration\\n\\n// EVALUATOR-OWNED (Story 15.1, check audit-actor-model). Written into the\\n// candidate beside the evaluator-owned routes test (whose harness it uses),\\n// run, and removed; never part of the candidate. It writes every actor shape\\n// through the audit package's API, fixed by the spec's intent contract, reads\\n// the rows back, and requires every invalid actor to be refused with\\n// audit.ErrInvalidActor before anything is written.\\n\\nimport (\\n\\t\\\"context\\\"\\n\\t\\\"errors\\\"\\n\\t\\\"testing\\\"\\n\\n\\t\\\"github.com/jackc/pgx/v5\\\"\\n\\n\\t\\\"servvia/services/core-platform/internal/audit\\\"\\n\\t\\\"servvia/services/core-platform/internal/identity\\\"\\n\\t\\\"servvia/services/core-platform/tests/testsupport\\\"\\n)\\n\\n// TestEvalStory151ActorModelAgainstPostgres: each actor class the model can\\n// express is written by audit.Write with exactly its own identity, and an\\n// invalid actor is refused (audit.ErrInvalidActor) with nothing written.\\nfunc TestEvalStory151ActorModelAgainstPostgres(t *testing.T) {\\n\\th := evalStory151Setup(t)\\n\\tctx := context.Background()\\n\\tt.Cleanup(func() {\\n\\t\\t_, _ = h.writer.Exec(context.Background(), `DELETE FROM \\\"AuditLog\\\" WHERE resource = 'eval_story_15_1_model'`)\\n\\t})\\n\\ttablet := audit.Device{Kind: audit.DeviceKindTablet, ID: testsupport.UUID()}\\n\\temail := \\\"eval-model@example.test\\\"\\n\\twrite := func(a audit.Actor) (string, error) {\\n\\t\\tid := testsupport.UUID()\\n\\t\\treturn id, pgx.BeginFunc(ctx, h.writer, func(tx pgx.Tx) error {\\n\\t\\t\\treturn audit.Write(ctx, tx, audit.Entry{OrganizationID: h.f.Org, VenueID: h.f.Venue, Actor: a,\\n\\t\\t\\t\\tAction: \\\"EVAL_151_MODEL\\\", Resource: \\\"eval_story_15_1_model\\\", ResourceID: id, After: map[string]any{\\\"eval\\\": true}})\\n\\t\\t})\\n\\t}\\n\\tfor _, c := range []struct {\\n\\t\\tname  string\\n\\t\\tactor audit.Actor\\n\\t\\twant  [7]string\\n\\t}{\\n\\t\\t{\\\"staff\\\", audit.Staff(h.f.Cashier, email, \\\"cashier\\\", audit.Device{}),\\n\\t\\t\\t[7]string{\\\"staff\\\", h.f.Cashier, email, \\\"cashier\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"<null>\\\"}},\\n\\t\\t{\\\"staff whose credential carries no email (recorded as given, never NULL)\\\", audit.Staff(h.f.Cashier, \\\"\\\", \\\"cashier\\\", audit.Device{}),\\n\\t\\t\\t[7]string{\\\"staff\\\", h.f.Cashier, \\\"\\\", \\\"cashier\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"<null>\\\"}},\\n\\t\\t{\\\"staff through a tablet\\\", audit.Staff(h.f.Owner, email, \\\"owner\\\", tablet),\\n\\t\\t\\t[7]string{\\\"staff\\\", h.f.Owner, email, \\\"owner\\\", audit.DeviceKindTablet, tablet.ID, \\\"<null>\\\"}},\\n\\t\\t{\\\"device with its record\\\", audit.ByDevice(audit.Device{Kind: \\\"payment_adapter\\\", ID: \\\"eval-device\\\"}, \\\"\\\"),\\n\\t\\t\\t[7]string{\\\"device\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"payment_adapter\\\", \\\"eval-device\\\", \\\"<null>\\\"}},\\n\\t\\t{\\\"device without a record, with its credential's role\\\", audit.ByDevice(audit.Device{Kind: \\\"kds_device\\\"}, \\\"kitchen\\\"),\\n\\t\\t\\t[7]string{\\\"device\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"kitchen\\\", \\\"kds_device\\\", \\\"<null>\\\", \\\"<null>\\\"}},\\n\\t\\t{\\\"system\\\", audit.System(\\\"eval-story-15-1\\\"),\\n\\t\\t\\t[7]string{\\\"system\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"<null>\\\", \\\"eval-story-15-1\\\"}},\\n\\t} {\\n\\t\\tif err := c.actor.Validate(); err != nil {\\n\\t\\t\\tt.Errorf(\\\"%s: Validate: %v\\\", c.name, err)\\n\\t\\t}\\n\\t\\tid, err := write(c.actor)\\n\\t\\tif err != nil {\\n\\t\\t\\tt.Errorf(\\\"%s: write: %v\\\", c.name, err)\\n\\t\\t\\tcontinue\\n\\t\\t}\\n\\t\\trs := h.rows(t, \\\"eval_story_15_1_model\\\", id)\\n\\t\\tif len(rs) != 1 {\\n\\t\\t\\tt.Errorf(\\\"%s: %d rows, want 1\\\", c.name, len(rs))\\n\\t\\t\\tcontinue\\n\\t\\t}\\n\\t\\tr := rs[0]\\n\\t\\tgot := [7]string{r.actorType, evalStory151S(r.actorID), evalStory151S(r.actorEmail), evalStory151S(r.actorRole),\\n\\t\\t\\tevalStory151S(r.deviceKind), evalStory151S(r.deviceID), evalStory151S(r.systemActor)}\\n\\t\\tif got != c.want {\\n\\t\\t\\tt.Errorf(\\\"%s: (actorType, actorId, actorEmail, actorRole, deviceKind, deviceId, systemActor) = %v, want %v\\\", c.name, got, c.want)\\n\\t\\t}\\n\\t}\\n\\tfor name, a := range map[string]audit.Actor{\\n\\t\\t\\\"no actor\\\":               {},\\n\\t\\t\\\"staff without id\\\":       audit.Staff(\\\"\\\", email, \\\"cashier\\\", audit.Device{}),\\n\\t\\t\\\"staff without role\\\":     audit.Staff(h.f.Cashier, email, \\\"\\\", audit.Device{}),\\n\\t\\t\\\"device id without kind\\\": audit.Staff(h.f.Cashier, email, \\\"cashier\\\", audit.Device{ID: \\\"eval-device\\\"}),\\n\\t\\t\\\"device without kind\\\":    audit.ByDevice(audit.Device{ID: \\\"eval-device\\\"}, \\\"\\\"),\\n\\t\\t\\\"system without name\\\":    audit.System(\\\"\\\"),\\n\\t} {\\n\\t\\tif err := a.Validate(); !errors.Is(err, audit.ErrInvalidActor) {\\n\\t\\t\\tt.Errorf(\\\"%s: Validate = %v, want audit.ErrInvalidActor\\\", name, err)\\n\\t\\t}\\n\\t\\tid, err := write(a)\\n\\t\\tif !errors.Is(err, audit.ErrInvalidActor) {\\n\\t\\t\\tt.Errorf(\\\"%s: Write = %v, want audit.ErrInvalidActor\\\", name, err)\\n\\t\\t}\\n\\t\\tif n := len(h.rows(t, \\\"eval_story_15_1_model\\\", id)); n != 0 {\\n\\t\\t\\tt.Errorf(\\\"%s: %d rows written\\\", name, n)\\n\\t\\t}\\n\\t}\\n\\t// The device context of each verified principal: only a PIN-elevated\\n\\t// tablet acts through a device.\\n\\tfor kind, want := range map[identity.Kind]audit.Device{\\n\\t\\tidentity.KindStaffSession:  {},\\n\\t\\tidentity.KindKDSDevice:     {},\\n\\t\\tidentity.KindTabletDevice:  {},\\n\\t\\tidentity.KindTabletStaff:   {Kind: audit.DeviceKindTablet, ID: tablet.ID},\\n\\t\\tidentity.KindTabletManager: {Kind: audit.DeviceKindTablet, ID: tablet.ID},\\n\\t} {\\n\\t\\tif got := audit.DeviceOf(identity.Principal{ID: h.f.Cashier, Kind: kind, DeviceID: tablet.ID, ActingStaffID: \\\"eval-acting\\\", SessionID: \\\"eval-session\\\"}); got != want {\\n\\t\\t\\tt.Errorf(\\\"DeviceOf(%q) = %+v, want %+v\\\", kind, got, want)\\n\\t\\t}\\n\\t}\\n}\\n\"]];\nconst TESTS = [\"TestEvalStory151ActorModelAgainstPostgres\"];\nfor (const [f] of FILES) if (fs.existsSync(f)) { console.log('FAIL the candidate already has ' + f + ': the evaluator-owned test cannot be placed'); process.exit(1); }\nif (!process.env.SERVVIA_CORE_TEST_DATABASE_URL) { console.log('FAIL SERVVIA_CORE_TEST_DATABASE_URL is not set: the evaluator-owned test needs the evaluation database'); process.exit(1); }\nlet r;\ntry {\n  for (const [f, source] of FILES) fs.writeFileSync(f, source);\n  r = spawnSync('go', ['test', '-count=1', '-json', '-run', '^(' + TESTS.join('|') + ')$', './tests/integration/'], { encoding: 'utf8', maxBuffer: 1 << 28, timeout: 900000 });\n} finally {\n  for (const [f] of FILES) fs.rmSync(f, { force: true });\n}\nconst events = (r.stdout || '').split('\\n').filter((l) => l.startsWith('{')).map((l) => { try { return JSON.parse(l); } catch { return {}; } });\nconst outcome = {}; const output = {};\nfor (const e of events) {\n  if (!e.Test || e.Test.includes('/')) continue;\n  if (['pass', 'fail', 'skip'].includes(e.Action)) outcome[e.Test] = e.Action;\n  if (e.Action === 'output' && /^\\s+\\S+\\.go:\\d+: |^\\s+--- SKIP|SKIP/.test(e.Output)) (output[e.Test] = output[e.Test] || []).push(e.Output.trim());\n}\nlet bad = 0;\nfor (const t of TESTS) {\n  const o = outcome[t] || 'no result';\n  if (o !== 'pass') bad += 1;\n  console.log((o === 'pass' ? 'ok   ' : 'FAIL ') + t + ': ' + o);\n  for (const line of (output[t] || []).slice(0, 12)) console.log('       ' + line.slice(0, 400));\n}\nif (!Object.keys(outcome).length) {\n  console.log('FAIL the evaluator-owned test did not run (go test exit ' + r.status + (r.error ? ', ' + r.error.message : '') + ')');\n  const build = events.filter((e) => e.Action === 'build-output' || (e.Action === 'output' && !e.Test)).map((e) => String(e.Output).trimEnd());\n  const other = `${r.stdout || ''}\\n${r.stderr || ''}`.split('\\n').filter((l) => l && !l.startsWith('{'));\n  for (const line of [...build, ...other].filter(Boolean).slice(0, 30)) console.log('       ' + line.slice(0, 400));\n  bad += 1;\n}\nprocess.exit(bad ? 1 : 0);\n"
+      ],
+      "mandatory": true,
+      "timeoutSeconds": 1200,
+      "configFiles": [
+        "services/core-platform/go.mod",
+        "services/core-platform/go.sum"
+      ]
+    }
+  ],
+  "requiredTests": [
+    {
+      "id": "RT-1",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/internal/audit TestActorShapes",
+      "files": [
+        "services/core-platform/internal/audit/audit_test.go"
+      ],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-2",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/internal/audit TestInvalidActorsAreRefused",
+      "files": [
+        "services/core-platform/internal/audit/audit_test.go"
+      ],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-3",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/internal/audit TestDeviceOfPrincipal",
+      "files": [
+        "services/core-platform/internal/audit/audit_test.go"
+      ],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-4",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/tests/integration TestAuditActorRowsAgainstPostgres",
+      "files": [
+        "services/core-platform/tests/integration/audit_attribution_test.go"
+      ],
+      "expectBaselineFailure": true
+    },
+    {
+      "id": "RT-5",
+      "check": "core-tests",
+      "name": "servvia/services/core-platform/tests/integration TestStaffViaTabletAuditRowAgainstPostgres",
+      "files": [
+        "services/core-platform/tests/integration/audit_attribution_test.go"
+      ],
+      "expectBaselineFailure": true
+    }
+  ],
+  "allowedSkips": [],
+  "surfaces": {
+    "allowed": [
+      "services/core-platform/internal/audit/**",
+      "services/core-platform/internal/checks/pgstore/store.go",
+      "services/core-platform/internal/devices/pgstore/store.go",
+      "services/core-platform/internal/orders/pgstore/store.go",
+      "services/core-platform/internal/payments/pgstore/adjustments.go",
+      "services/core-platform/internal/payments/pgstore/store.go",
+      "services/core-platform/internal/promotions/pgstore/store.go",
+      "services/core-platform/internal/shifts/pgstore/store.go",
+      "services/core-platform/internal/tables/pgstore/store.go",
+      "services/core-platform/internal/tables/service.go",
+      "services/core-platform/internal/orders/service.go",
+      "services/core-platform/internal/checks/service.go",
+      "services/core-platform/internal/shifts/shift.go",
+      "services/core-platform/internal/payments/service.go",
+      "services/core-platform/internal/refunds/service.go",
+      "services/core-platform/internal/tables/tablesapi/handler.go",
+      "services/core-platform/internal/orders/ordersapi/handler.go",
+      "services/core-platform/internal/checks/checksapi/handler.go",
+      "services/core-platform/internal/shifts/shiftsapi/handler.go",
+      "services/core-platform/internal/payments/paymentsapi/handler.go",
+      "services/core-platform/internal/refunds/refundsapi/handler.go",
+      "services/core-platform/tests/integration/audit_attribution_test.go"
+    ],
+    "forbidden": [
+      "**/.env",
+      "**/.env.*",
+      ".claude/**",
+      ".dockerignore",
+      ".env",
+      ".env.*",
+      ".gitattributes",
+      ".github/**",
+      ".gitignore",
+      ".nvmrc",
+      "DESIGN.md",
+      "PRD/**",
+      "PRODUCT.md",
+      "README.md",
+      "_bmad-output/implementation-artifacts/epic-1-context.md",
+      "_bmad-output/implementation-artifacts/epic-12-context.md",
+      "_bmad-output/implementation-artifacts/epic-15-context.md",
+      "_bmad-output/implementation-artifacts/objective-drafts/**",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/README.md",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/DRAFT-RECONCILIATION.md",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/EVIDENCE.md",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.mjs",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.out",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure-n22.txt",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure-n24.txt",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure.mjs",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/mechanism-forward.js",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/mechanism-reverse.js",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/mechanism.out",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/dependency-delta.js",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/endpoint-identity.js",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/explicit-loopback.js",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/harness-bounded.js",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/runtime-resolution.js",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/generate.mjs",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/inputs.json",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/manifest.json",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/README.md",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/fetch-npm.sh",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/provision.sh",
+      "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/v1.objective.json",
+      "_bmad-output/implementation-artifacts/spec-1-3-venue-connector-ci-job-made-truthful.md",
+      "_bmad-output/implementation-artifacts/spec-1-7-native-round-recovery-ci-truthfulness.md",
+      "_bmad-output/implementation-artifacts/spec-1-8-native-round-recovery-host-override-safety.md",
+      "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md",
+      "_bmad-output/implementation-artifacts/spec-12-3a-core-database-timeouts.md",
+      "_bmad-output/implementation-artifacts/spec-12-5-kiosk-off-in-production.md",
+      "_bmad-output/implementation-artifacts/sprint-status.yaml",
+      "_bmad-output/planning-artifacts/epics.md",
+      "_bmad/**",
+      "apps/**",
+      "contracts/**",
+      "data/**",
+      "database/**",
+      "docker-compose.yml",
+      "docker/**",
+      "docs/**",
+      "find_css_rules.py",
+      "infrastructure/**",
+      "local-postgres/**",
+      "package-lock.json",
+      "package.json",
+      "packages/**",
+      "scratchpad/**",
+      "scripts/**",
+      "services/core-platform/README.md",
+      "services/core-platform/cmd/**",
+      "services/core-platform/cmd/api/main_test.go",
+      "services/core-platform/go.mod",
+      "services/core-platform/go.sum",
+      "services/core-platform/internal/checks/check_test.go",
+      "services/core-platform/internal/config/**",
+      "services/core-platform/internal/config/config_test.go",
+      "services/core-platform/internal/config/database_timeouts_test.go",
+      "services/core-platform/internal/devices/device_test.go",
+      "services/core-platform/internal/events/**",
+      "services/core-platform/internal/events/event_test.go",
+      "services/core-platform/internal/health/**",
+      "services/core-platform/internal/health/health_test.go",
+      "services/core-platform/internal/identity/**",
+      "services/core-platform/internal/identity/guards_test.go",
+      "services/core-platform/internal/identity/staffsession_test.go",
+      "services/core-platform/internal/identity/token_test.go",
+      "services/core-platform/internal/identity/venueaccess_test.go",
+      "services/core-platform/internal/kitchen/**",
+      "services/core-platform/internal/kitchen/ticket_test.go",
+      "services/core-platform/internal/menu/**",
+      "services/core-platform/internal/menu/handler_test.go",
+      "services/core-platform/internal/menu/resolver_test.go",
+      "services/core-platform/internal/orders/orders_test.go",
+      "services/core-platform/internal/payments/payment_test.go",
+      "services/core-platform/internal/platform/**",
+      "services/core-platform/internal/platform/httpx/middleware_test.go",
+      "services/core-platform/internal/platform/httpx/nestcompat_test.go",
+      "services/core-platform/internal/pricing/**",
+      "services/core-platform/internal/pricing/discount_test.go",
+      "services/core-platform/internal/pricing/modifiers_test.go",
+      "services/core-platform/internal/pricing/pricing_test.go",
+      "services/core-platform/internal/promotions/promotion_test.go",
+      "services/core-platform/internal/ratelimit/**",
+      "services/core-platform/internal/ratelimit/ratelimit_test.go",
+      "services/core-platform/internal/realtime/**",
+      "services/core-platform/internal/realtime/realtime_test.go",
+      "services/core-platform/internal/realtime/realtimeapi/handler_test.go",
+      "services/core-platform/internal/refunds/refund_test.go",
+      "services/core-platform/internal/server/**",
+      "services/core-platform/internal/shifts/shift_test.go",
+      "services/core-platform/internal/tables/session_test.go",
+      "services/core-platform/internal/venues/**",
+      "services/core-platform/internal/venues/handler_test.go",
+      "services/core-platform/internal/workers/**",
+      "services/core-platform/tests/architecture/**",
+      "services/core-platform/tests/architecture/guard_test.go",
+      "services/core-platform/tests/contract/**",
+      "services/core-platform/tests/contract/checks_test.go",
+      "services/core-platform/tests/contract/contract_test.go",
+      "services/core-platform/tests/contract/contracts_compile_test.go",
+      "services/core-platform/tests/contract/devices_test.go",
+      "services/core-platform/tests/contract/event_catalog_test.go",
+      "services/core-platform/tests/contract/kitchen_test.go",
+      "services/core-platform/tests/contract/orders_test.go",
+      "services/core-platform/tests/contract/payments_test.go",
+      "services/core-platform/tests/contract/refunds_test.go",
+      "services/core-platform/tests/contract/shifts_test.go",
+      "services/core-platform/tests/contract/staff_session_test.go",
+      "services/core-platform/tests/contract/table_sessions_test.go",
+      "services/core-platform/tests/contract/venue_access_test.go",
+      "services/core-platform/tests/integration/checks_test.go",
+      "services/core-platform/tests/integration/d1_test.go",
+      "services/core-platform/tests/integration/database_timeouts_test.go",
+      "services/core-platform/tests/integration/devices_test.go",
+      "services/core-platform/tests/integration/kitchen_test.go",
+      "services/core-platform/tests/integration/menu_postgres_test.go",
+      "services/core-platform/tests/integration/orders_test.go",
+      "services/core-platform/tests/integration/payments_test.go",
+      "services/core-platform/tests/integration/promotions_test.go",
+      "services/core-platform/tests/integration/realtime_test.go",
+      "services/core-platform/tests/integration/refunds_test.go",
+      "services/core-platform/tests/integration/shifts_test.go",
+      "services/core-platform/tests/integration/staff_session_test.go",
+      "services/core-platform/tests/integration/table_sessions_test.go",
+      "services/core-platform/tests/integration/venue_access_test.go",
+      "services/core-platform/tests/integration/visit_close_test.go",
+      "services/core-platform/tests/integration/workers_test.go",
+      "services/core-platform/tests/integration/zz_eval_story151_model_test.go",
+      "services/core-platform/tests/integration/zz_eval_story151_routes_test.go",
+      "services/core-platform/tests/parity/**",
+      "services/core-platform/tests/parity/d1_parity_test.go",
+      "services/core-platform/tests/parity/d3_parity_test.go",
+      "services/core-platform/tests/parity/parity_test.go",
+      "services/core-platform/tests/parity/session_parity_test.go",
+      "services/core-platform/tests/testsupport/**",
+      "services/venue-edge/**",
+      "shared/**",
+      "tableMap.svg",
+      "tooling/**",
+      "windows-deploy/**"
+    ]
+  },
+  "expectationChanges": [],
+  "allowedSuppressions": [],
+  "completionCriteria": [
+    "Every mandatory check passes on the candidate; core-tests runs at least 438 tests with no skips",
+    "audit-attribution-routes passes: TestEvalStory151StaffThroughTablet, TestEvalStory151ManagerThroughTablet, TestEvalStory151StaffSession, TestEvalStory151NothingFabricated, TestEvalStory151DatabaseShapeIntact; audit-actor-model passes: TestEvalStory151ActorModelAgainstPostgres",
+    "audit-writer-single-path passes: one AuditLog INSERT, under services/core-platform/internal/audit",
+    "RT-1 to RT-5 pass on the candidate and fail or do not run on the baseline",
+    "The candidate changes only the allowed surfaces and the story spec; no forbidden surface, governance path or existing test changes",
+    "Technical completion is the evaluator decision CANDIDATE_READY_FOR_ACCEPTANCE only; acceptance, merging and pushing are the orchestrator's"
+  ]
+}

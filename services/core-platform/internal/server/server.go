@@ -23,6 +23,7 @@ import (
 	"servvia/services/core-platform/internal/shifts/shiftsapi"
 	"servvia/services/core-platform/internal/tables/tablesapi"
 	"servvia/services/core-platform/internal/venues"
+	"servvia/services/core-platform/internal/workers/workersapi"
 )
 
 type Deps struct {
@@ -41,11 +42,20 @@ type Deps struct {
 	Promotions    *promotionsapi.Handler
 	// Realtime is the canonical WebSocket endpoint (Phase D12).
 	Realtime *realtimeapi.Handler
+	// Workers reports the D13 worker backlog.
+	Workers *workersapi.Handler
 	// DeviceAuth authenticates device credentials (Phase D8), e.g. the
 	// payment adapter on its result route.
 	DeviceAuth    *devices.Service
 	Verifier      *identity.Verifier
 	TabletDevices identity.TabletDevices
+	// VenueGrants is the staff VenueAccess store. Required: every
+	// venue-scoped staff route refuses staff without a grant.
+	VenueGrants identity.VenueGrants
+	// StaffSessions re-checks staff tokens (active staff, unrevoked login
+	// session). Required: every authenticated route runs it directly after
+	// Authenticate.
+	StaffSessions identity.StaffSessions
 	RateLimiter   *ratelimit.Limiter
 	// SecureCookies is NODE_ENV=production: the csrf_token cookie gets Secure.
 	SecureCookies bool
@@ -64,6 +74,14 @@ func Routes(d Deps) http.Handler {
 	nestMiddleware := func(h http.Handler) http.Handler {
 		return httpx.Chain(h, httpx.SecurityHeaders, httpx.CSRF(d.SecureCookies))
 	}
+	if d.VenueGrants == nil {
+		panic("server: Deps.VenueGrants is required (staff venue access is enforced on every venue-scoped route)")
+	}
+	if d.StaffSessions.Staff == nil || d.StaffSessions.Sessions == nil {
+		panic("server: Deps.StaffSessions is required (staff tokens are re-checked on every authenticated route)")
+	}
+	venueAccess := identity.RequireVenueAccess(d.VenueGrants, "venueId", d.Logger)
+	activeStaff := identity.RequireActiveStaff(d.StaffSessions, d.Logger)
 	rt := httpx.NewRouter(nestMiddleware)
 	rt.Handle("/health", httpx.SecurityHeaders(http.HandlerFunc(d.Health.Live)))
 	rt.Handle("/ready", httpx.SecurityHeaders(http.HandlerFunc(d.Health.Ready)))
@@ -78,9 +96,10 @@ func Routes(d Deps) http.Handler {
 	// method's TabletTokenActiveGuard. No rate limit.
 	rt.Nest(http.MethodGet, "/api/venues/{id}/tax-config", httpx.Chain(
 		http.HandlerFunc(d.Venues.TaxConfig),
-		identity.Authenticate(d.Verifier),
+		identity.Authenticate(d.Verifier), activeStaff,
 		identity.RequireRoles(venues.TaxConfigRoles...),
 		identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+		identity.RequireVenueAccess(d.VenueGrants, "id", d.Logger),
 	))
 
 	// Table sessions (Phase D2): new Servvia-native API, no Nest equivalent
@@ -88,10 +107,11 @@ func Routes(d Deps) http.Handler {
 	// login or a tablet elevated by a staff PIN, with a floor role.
 	staffOnly := func(h http.HandlerFunc) http.Handler {
 		return httpx.Chain(h,
-			identity.Authenticate(d.Verifier),
+			identity.Authenticate(d.Verifier), activeStaff,
 			identity.RequireStaff,
 			identity.RequireRoles(tablesapi.Roles...),
 			identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+			venueAccess,
 		)
 	}
 	ts := d.TableSessions
@@ -116,10 +136,11 @@ func Routes(d Deps) http.Handler {
 	// kitchen or floor role; never an unelevated customer tablet.
 	kitchenCallers := func(h http.HandlerFunc) http.Handler {
 		return httpx.Chain(h,
-			identity.Authenticate(d.Verifier),
+			identity.Authenticate(d.Verifier), activeStaff,
 			identity.RequireStaffOrKDS,
 			identity.RequireRoles(kitchenapi.Roles...),
 			identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+			venueAccess,
 		)
 	}
 	kt := d.Kitchen
@@ -132,10 +153,11 @@ func Routes(d Deps) http.Handler {
 	// roles; voiding needs admin or manager. Never a KDS or kitchen identity.
 	financial := func(h http.HandlerFunc, roles []string) http.Handler {
 		return httpx.Chain(h,
-			identity.Authenticate(d.Verifier),
+			identity.Authenticate(d.Verifier), activeStaff,
 			identity.RequireStaff,
 			identity.RequireRoles(roles...),
 			identity.RequireActiveTabletDevice(d.TabletDevices, d.Logger),
+			venueAccess,
 		)
 	}
 	ck := d.Checks
@@ -186,9 +208,10 @@ func Routes(d Deps) http.Handler {
 	// login session (no tablet, even elevated); a cashier may read terminals.
 	admin := func(h http.HandlerFunc) http.Handler {
 		return httpx.Chain(h,
-			identity.Authenticate(d.Verifier),
+			identity.Authenticate(d.Verifier), activeStaff,
 			identity.RequireStaffSession,
 			identity.RequireRoles(devicesapi.AdminRoles...),
+			venueAccess,
 		)
 	}
 	dv := d.Devices
@@ -211,9 +234,10 @@ func Routes(d Deps) http.Handler {
 	// tablet. Applying one is part of placing an order or round.
 	promotionAdmin := func(h http.HandlerFunc) http.Handler {
 		return httpx.Chain(h,
-			identity.Authenticate(d.Verifier),
+			identity.Authenticate(d.Verifier), activeStaff,
 			identity.RequireStaffSession,
 			identity.RequireRoles(promotionsapi.AdminRoles...),
+			venueAccess,
 		)
 	}
 	pr := d.Promotions
@@ -223,6 +247,13 @@ func Routes(d Deps) http.Handler {
 	rt.Nest(http.MethodPatch, "/api/venues/{venueId}/promotions/{promotionId}", promotionAdmin(pr.Update))
 	rt.Nest(http.MethodPost, "/api/venues/{venueId}/promotions/{promotionId}/activate", promotionAdmin(pr.Activate))
 	rt.Nest(http.MethodPost, "/api/venues/{venueId}/promotions/{promotionId}/deactivate", promotionAdmin(pr.Deactivate))
+
+	// Worker backlog (Phase D13): owners and admins from a staff login
+	// session. Counts only, never payloads.
+	if d.Workers != nil {
+		rt.Nest(http.MethodGet, "/api/admin/workers", httpx.Chain(http.HandlerFunc(d.Workers.Backlog),
+			identity.Authenticate(d.Verifier), activeStaff, identity.RequireStaffSession, identity.RequireRoles(workersapi.Roles...)))
+	}
 
 	api := httpx.Chain(rt, httpx.RequestIDs, httpx.AccessLog(d.Logger), httpx.CORS, httpx.ETag)
 	if d.Realtime == nil {

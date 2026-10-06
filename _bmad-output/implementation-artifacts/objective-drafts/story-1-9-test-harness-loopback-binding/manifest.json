@@ -1,0 +1,95 @@
+{
+  "schema": "servvia.freeze-candidate-manifest/v1",
+  "status": "FREEZE CANDIDATE — NOT YET FROZEN",
+  "objectiveId": "story-1-9-test-harness-loopback-binding",
+  "version": 1,
+  "baseline": "e42edeb3c865737e919be8c1c8bebfc4bb7f279b",
+  "draftObjective": {
+    "path": "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/v1.objective.json",
+    "sha256": "dd4483c8751d1c341d7850be1e8f1481541b10c9c7a05dcedb6cf6198af77704"
+  },
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md",
+      "intentContractSha256": "5ab704b8a71f4b946816d0bdbe328d076d60a349dd0a4b437943e7bcab2ee217"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-1-context.md",
+      "sha256": "9519213b9535f8dd508ffbd9471be8311da7aac3206ddac2c646a04664fe7301"
+    }
+  },
+  "toolchain": {
+    "node": {
+      "major": 22
+    },
+    "npm": {
+      "version": "11.17.0",
+      "tarball": "https://registry.npmjs.org/npm/-/npm-11.17.0.tgz",
+      "integrity": "sha512-PurxiZexEHDTE4SSaLI3ZrnbAGiZfeyUcQcxcP5D+hfytNAze/D1IzDuInTn9XVLIbAQUnQuSPXJx02LHjLvQw=="
+    }
+  },
+  "derived": {
+    "ciWorkflowRestSha256": "955973ff239b0b58f99eb651d02c77f5dc2570ae22e9e5e995d1ddf2f5958226",
+    "story18CiWorkflowRestSha256": "8ce71293a82f992230e40b822888752b96f6bfadaa5fb13c04b411edb707887f",
+    "supertestImportingFiles": [
+      "apps/api/src/auth/guards/jwt-auth.guard.spec.ts",
+      "apps/api/src/orders/kiosk-production-availability.spec.ts",
+      "apps/api/test/auth-session.integration-spec.ts",
+      "apps/api/test/client-ip.integration-spec.ts",
+      "apps/api/test/connector-command-harness.integration-spec.ts",
+      "apps/api/test/connector-command.integration-spec.ts",
+      "apps/api/test/connector.integration-spec.ts",
+      "apps/api/test/idealpos-order-dispatch.integration-spec.ts",
+      "apps/api/test/idealpos-order-submission-bridge-e2e.integration-spec.ts",
+      "apps/api/test/menu-modifiers.integration-spec.ts",
+      "apps/api/test/menu.integration-spec.ts",
+      "apps/api/test/named-sign-in.integration-spec.ts",
+      "apps/api/test/orders.integration-spec.ts",
+      "apps/api/test/owner-bootstrap.integration-spec.ts",
+      "apps/api/test/payment-observation.integration-spec.ts",
+      "apps/api/test/pos-sync.integration-spec.ts",
+      "apps/api/test/printer-jobs.integration-spec.ts",
+      "apps/api/test/reservations.integration-spec.ts",
+      "apps/api/test/security-events.integration-spec.ts",
+      "apps/api/test/staff-administration.integration-spec.ts",
+      "apps/api/test/table19-validation.integration-spec.ts",
+      "apps/api/test/tables-pos-mapping.integration-spec.ts",
+      "apps/api/test/tablet-auth.integration-spec.ts",
+      "apps/api/test/token-scope.integration-spec.ts",
+      "apps/api/test/venue-access.integration-spec.ts"
+    ],
+    "harnessBaselineSha256": "8723e2d8136f4d508c1b9dd82d7ca4557c5c89433ac523fc29859f95c11650e3",
+    "harnessExpectedSha256": "02375620e2cae596ece0df17995737470e5241c52f949ca9cb0a3bbd3031f5fd",
+    "apiPackageRestSha256": "b23ecbc1ab7f1f6f78b7322e810d5747ca213a1c6128f0aee01bfd5fc7d2d575",
+    "lockfileRestSha256": "77e2e30f1a5f07f4be16eb8d6e3dde6d5b0be1fca2357d1f48cac0c6ac196e56",
+    "baselineLockfileMeta": {
+      "name": "verdura-monorepo",
+      "packages[\"\"].name": "verdura-monorepo"
+    },
+    "forbiddenSurfaceCount": 107
+  },
+  "files": {
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/README.md": "57a02494fb1169064543814677dd3b9d8cdc35ffd0fca80c8fb53a1c874dd7f7",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/DRAFT-RECONCILIATION.md": "85079a6f84a1217bf414586565cf238b8f52f94853f2a0a27d32ed0bd18c8db1",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/EVIDENCE.md": "a4a72aefdca8715140caf03c1afe54e4a7adf3d75323390f0fd23e856d60b27c",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.mjs": "17deecff93d1d561c6bfe656ac445744226290377ab618060be93b8f09b529d5",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/adversarial-probes.out": "17fa71500fadab3d6460ad904dca3c8fb438d1269ad8885d1a1d31143e99a45e",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure-n22.txt": "40017283e47d823155fc10ea7a42e5e56c9be5ec05eae94e786dee34ab31e22a",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure-n24.txt": "3d7ec032a282ea72c35a59d5fd681b82f6b1cd96605d66ca23194ebc2e40d7b0",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/baseline-measure.mjs": "6de5a511dcacab3652f2fee769af81b36d0a8d6cd714232d1ab4fb7bb8656c66",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/mechanism-forward.js": "4e60976974f8596b954e2edcabb4a24fe715be49bf93f659ff844cf29e457148",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/mechanism-reverse.js": "15d1f9beef61ae84d0137de3bca64496c90f5f4ce3d8667351bfb760f0261e36",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/evidence/mechanism.out": "f5ede8f3d15cfd94d37fe766a441455e0ef3d0d64b886a8c855898064a1fd264",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/dependency-delta.js": "3c239e838a4d24dadbe51fe2a68cb923356b425fde4916b0cc2b1d4a8878a6b4",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/endpoint-identity.js": "6d8ef8af5b7c0b69b9e58b05190892c8fcae2696b0808dbc0aeb3ec9840d5e83",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/explicit-loopback.js": "caa8614c3b9eb3776d9003b6851abf831b9765a0be0a376016cae4574169574e",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/harness-bounded.js": "a592b8b3d6226c8039c054ad2418a329e62f76c9dd3cfadc64a53494d1714037",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/checks/runtime-resolution.js": "c1113ef1005749ec4e4cee152ac68f2e2d5ebded47fcbc6698af47854c10bf69",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/generate.mjs": "7657abb9dfe691d238328551cc100e9d91129be254bf1d1b50c625b145373e53",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/generator/inputs.json": "06bb3400dfce491181d332e76a083fddfbe1acacd00a049811fb7886c3bfa08f",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/README.md": "dad32277e8da6da788e3d5c66cface68053ce780b04f28812cd6e514db28d8f7",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/fetch-npm.sh": "2f35884e8f1acc4d2148ea6d608f2ca6a01eb0eb61ad3f34b25dc3fd409288be",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-1-9-test-harness-loopback-binding/provisioning/provision.sh": "8819ba3b950fce668fc0563bd143a349eb771de1efb4a7fc04ba77bc5a388e7a",
+    "_bmad-output/implementation-artifacts/spec-1-9-test-harness-loopback-binding.md": "34f0c3ba945c35f21d7e97674ed08f8a553a569462528f210e711716563cef7f"
+  }
+}

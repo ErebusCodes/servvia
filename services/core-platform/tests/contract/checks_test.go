@@ -51,7 +51,7 @@ func checkRoutes(writable bool) http.Handler {
 		Menu:     menu.NewHandler(staticStore{}, logger),
 		Venues:   venues.NewHandler(venueStore{}, logger),
 		Checks:   checksapi.NewHandler(checks.NewService(noChecks{}, writable), venueStore{}, logger),
-		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{},
+		Verifier: identity.NewVerifier(secret), TabletDevices: activeDevices{}, VenueGrants: grantAll{}, StaffSessions: activeStaff,
 		RateLimiter: ratelimit.New(admit, 0, logger),
 	})
 }

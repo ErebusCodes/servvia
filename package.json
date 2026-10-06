@@ -3,9 +3,8 @@
   "private": true,
   "workspaces": [
     "apps/api",
-    "apps/customer-website",
-    "apps/admin-console",
-    "apps/window-display"
+    "apps/web/customer-website",
+    "apps/web/admin-console"
   ],
   "overrides": {
     "dompurify": "^3.4.13",
@@ -27,26 +26,26 @@
     "check:bridge-governance": "node scripts/check-bridge-governance.mjs",
     "test:dev-scripts": "node --test scripts/*.test.mjs",
     "dev:api": "npm run start:dev --workspace=apps/api",
-    "dev:customer-website": "npm run dev --workspace=apps/customer-website",
-    "dev:window-display": "npm run dev --workspace=apps/window-display",
-    "dev:admin-console": "npm run dev --workspace=apps/admin-console",
-    "dev:kitchen-display": "cross-env VITE_APP_MODE=kds npm run dev --workspace=apps/admin-console -- --port 5175",
-    "dev:order-tablet": "cross-env VITE_APP_MODE=tablet npm run dev --workspace=apps/admin-console -- --port 5176",
+    "dev:customer-website": "npm run dev --workspace=apps/web/customer-website",
+    "dev:admin-console": "npm run dev --workspace=apps/web/admin-console",
+    "dev:kitchen-display": "cross-env VITE_APP_MODE=kds npm run dev --workspace=apps/web/admin-console -- --port 5175",
+    "dev:order-tablet": "cross-env VITE_APP_MODE=tablet npm run dev --workspace=apps/web/admin-console -- --port 5176",
     "build:api": "npm run build --workspace=apps/api",
-    "build:customer-website": "npm run build --workspace=apps/customer-website",
-    "build:window-display": "npm run build --workspace=apps/window-display",
-    "build:admin-console": "npm run build --workspace=apps/admin-console",
-    "build:kitchen-display": "cross-env VITE_APP_MODE=kds npm run build --workspace=apps/admin-console",
-    "build:order-tablet": "cross-env VITE_APP_MODE=tablet npm run build --workspace=apps/admin-console",
+    "build:customer-website": "npm run build --workspace=apps/web/customer-website",
+    "build:admin-console": "npm run build --workspace=apps/web/admin-console",
+    "build:kitchen-display": "cross-env VITE_APP_MODE=kds npm run build --workspace=apps/web/admin-console",
+    "build:order-tablet": "cross-env VITE_APP_MODE=tablet npm run build --workspace=apps/web/admin-console",
     "test": "npm test --workspaces --if-present",
-    "preview": "npm run preview --workspace=apps/customer-website",
+    "preview": "npm run preview --workspace=apps/web/customer-website",
     "lint:api": "npm run lint --workspace=apps/api",
-    "lint:customer-website": "npm run lint --workspace=apps/customer-website",
-    "lint:admin-console": "npm run lint --workspace=apps/admin-console",
-    "lint:window-display": "npm run lint --workspace=apps/window-display"
+    "lint:customer-website": "npm run lint --workspace=apps/web/customer-website",
+    "lint:admin-console": "npm run lint --workspace=apps/web/admin-console"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
     "jsdom": "^29.1.1"
+  },
+  "engines": {
+    "node": ">=22 <23"
   }
 }

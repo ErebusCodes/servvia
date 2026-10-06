@@ -1,0 +1,52 @@
+objective sha256 9dccbd0080b94276639e690a25a412fdf4b6f2ae917809401bf64a2bad3ca2fc; anchor eae2e3bb89a6e4e6cd0aabed2250b74f221f3796; positive 1e5e2f149593a7734674552b3dd2ca51a48c13be
+CONTROL-PASS     PASS                 control-positive               the disposable positive control, unchanged
+    
+CAUGHT           FAIL                 unfixed-baseline               the anchor itself: no implementation
+    check-failed:telemetry-contract; check-failed:telemetry-boundaries; check-failed:telemetry-backfill; required-test-missing:node-tests
+CAUGHT           FAIL                 fabricated-historical-effort   a recorded preparation effort invented for Story 1.9
+    check-failed:telemetry-backfill
+CAUGHT           FAIL                 fabricated-historical-phase    a measured preparation start invented for Story 15.1
+    check-failed:telemetry-backfill
+CAUGHT           FAIL                 mutable-retract                retraction deletes the retracted line (mutable overwrite)
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 verify-ignores-chain           verify and summary accept a rewritten history
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 blocked-counted-as-effort      effective implementation time includes waiting
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 drops-corrections              only the final iteration is recorded; corrections disappear
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 writes-evaluator-state         derive touches the evaluator ledger
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 trusts-tampered-ledger         derive accepts a ledger whose chain or seal fails
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 hard-coded-history             derive only knows the seven historical stories
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 missing-phases                 the correction and review phases are not supported
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           FAIL                 unknown-as-zero                unknown values are reported as measured zeros
+    check-failed:node-tests; check-failed:telemetry-contract; check-failed:telemetry-backfill; required-test-failed:node-tests
+CAUGHT           FAIL                 no-provenance-distinction      back-dated and stated values are labelled measured
+    check-failed:telemetry-contract
+CAUGHT           FAIL                 invasive-capture               events carry the workstation host and user
+    check-failed:telemetry-boundaries
+CAUGHT           FAIL                 activity-probe                 a probe of the frontmost application
+    check-failed:telemetry-boundaries
+CAUGHT           FAIL                 network-upload                 summaries are sent to a third-party service
+    check-failed:telemetry-boundaries
+CAUGHT           FAIL                 nondeterministic-summary       the summary embeds the time it was produced
+    check-failed:node-tests; check-failed:telemetry-contract; required-test-failed:node-tests
+CAUGHT           INTEGRITY_VIOLATION  edits-evaluator-tests          an evaluator-owned test is edited
+    governance-modified:tooling/evaluator/test/glob.test.mjs
+CAUGHT           INTEGRITY_VIOLATION  edits-frozen-objective         the frozen objective is weakened
+    objective-modified:_bmad-output/implementation-artifacts/objectives/story-20-3-program-telemetry/v1.objective.json
+CAUGHT           INTEGRITY_VIOLATION  skips-required-test            a required test is skipped
+    skip-or-focus-added:tooling/telemetry/test/telemetry.test.mjs
+CAUGHT           NEEDS_REVIEW         vacuous-required-test          RT-5 no longer requires derive to succeed (passes without an implementation)
+    required-test-passes-on-baseline:node-tests
+CAUGHT           FAIL                 hand-written-backfill          the backfill omits a story (and breaks its chain)
+    check-failed:telemetry-backfill
+CAUGHT           INTEGRITY_VIOLATION  dependency-added               a third-party telemetry dependency is declared
+    forbidden-surface:tooling/telemetry/package.json
+CAUGHT           INTEGRITY_VIOLATION  log-outside-surface            telemetry data written outside the allowed surfaces
+    forbidden-surface:docs/telemetry-events.jsonl
+SUMMARY variants 24; caught 24; MASKED 0; control PASS

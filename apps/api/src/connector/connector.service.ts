@@ -6,10 +6,11 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import * as argon2 from 'argon2';
-import { ConnectorInstallation, Prisma, Staff, StaffRole } from '@prisma/client';
+import { ConnectorInstallation, Prisma, StaffRole } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../audit/audit.service';
+import { AUDIT_DEVICE_KINDS } from '../audit/audit-actor';
 import { ConnectorHeartbeatDto } from './dto/connector-heartbeat.dto';
 
 /**
@@ -85,32 +86,6 @@ export class ConnectorService {
     const separatorIndex = token.indexOf('.');
     if (separatorIndex <= 0 || separatorIndex === token.length - 1) return [undefined, undefined];
     return [token.slice(0, separatorIndex), token.slice(separatorIndex + 1)];
-  }
-
-  /**
-   * A synthetic, non-loginable Staff row used only as the required
-   * actorId FK on audit events triggered by the connector itself (not by
-   * an authenticated human admin) — mirrors the established
-   * resolveKioskSystemActor pattern in orders.service.ts exactly, so the
-   * audit schema's required actor FK stays honest rather than gaining a
-   * nullable/system-actor special case.
-   */
-  private async resolveConnectorSystemActor(organizationId: string): Promise<Staff> {
-    const email = `connector-system+${organizationId}@verdura.internal`;
-    return this.prisma.staff.upsert({
-      where: { email },
-      create: {
-        organizationId,
-        email,
-        name: 'Connector System',
-        passwordHash: await argon2.hash(randomBytes(32).toString('base64url'), {
-          type: argon2.argon2id,
-        }),
-        role: StaffRole.viewer,
-        isActive: false,
-      },
-      update: {},
-    });
   }
 
   async createEnrollment(
@@ -253,18 +228,19 @@ export class ConnectorService {
       });
 
       // The durable installation above has already committed. A transient
-      // failure resolving the synthetic audit actor or writing the audit
+      // failure writing the audit
       // row must not turn an already-successful enrolment into a 500 that
       // strands the connector without its now-unrecoverable (single-use)
       // credential — see logAuditEventSafely's doc comment.
       try {
-        const systemActor = await this.resolveConnectorSystemActor(enrollment.organizationId);
+        // Story 12.15: the connector redeemed its own enrolment, so the
+        // actor is the new installation (a device), not a synthetic Staff row.
         await this.auditLogService.logAuthEvent({
           organizationId: enrollment.organizationId,
           venueId: enrollment.venueId,
-          actorId: systemActor.id,
-          actorEmail: systemActor.email,
-          actorRole: StaffRole.viewer,
+          actorType: 'device',
+          deviceKind: AUDIT_DEVICE_KINDS.venueConnector,
+          deviceId: installation.id,
           action: 'CONNECTOR_ENROLLED',
           resource: 'connector_installation',
           resourceId: installation.id,

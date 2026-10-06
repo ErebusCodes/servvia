@@ -2,7 +2,7 @@ name: verdura
 
 # DEVELOPMENT ONLY. Every `${VAR:-default}` below (JWT_ACCESS_SECRET,
 # JWT_REFRESH_SECRET, INTERNAL_SERVICE_TOKEN, SEED_OWNER_PASSWORD,
-# ADMIN_CONSOLE_PIN, POSTGRES_PASSWORD, etc.) falls back to a checked-in,
+# POSTGRES_PASSWORD, etc.) falls back to a checked-in,
 # publicly-readable value the moment the real env var isn't set — that is
 # fine for a disposable local stack, never for anything reachable from the
 # internet. The API itself refuses to boot in production
@@ -63,8 +63,6 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-local-docker-service-token-change-me}
       KDS_VENUE_PINS: '${KDS_VENUE_PINS:-{"10000000-0000-4000-8000-000000000001":"108"}}'
       KDS_TOKEN_EXPIRY: ${KDS_TOKEN_EXPIRY:-12h}
-      ADMIN_CONSOLE_PIN: ${ADMIN_CONSOLE_PIN:-108}
-      ADMIN_CONSOLE_EMAIL: ${ADMIN_CONSOLE_EMAIL:-owner@verdura.co.nz}
       SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-owner@verdura.co.nz}
       SEED_OWNER_PASSWORD: ${SEED_OWNER_PASSWORD:-change-me-in-production}
       SEED_BILLING_EMAIL: ${SEED_BILLING_EMAIL:-admin@verdura.co.nz}
@@ -87,36 +85,21 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/customer-website
+        WORKSPACE: apps/web/customer-website
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
     ports: ['5173:80']
     depends_on: [api]
 
-  # Formerly "kiosk" (kiosk-frontend). Read-only signage today plus a
-  # legacy, still-reachable self-service ordering flow and an embedded KDS
-  # duplicate — see apps/window-display/README.md.
-  window-display:
-    profiles: [host]
-    build:
-      context: .
-      dockerfile: docker/frontend.Dockerfile
-      args:
-        WORKSPACE: apps/window-display
-        VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
-    restart: unless-stopped
-    ports: ['5174:80']
-    depends_on: [api]
-
   # Formerly "kds". Canonical Kitchen Display — a device-mode build of
-  # admin-console. See apps/kitchen-display/README.md.
+  # admin-console. See apps/web/admin-console/README.md.
   kitchen-display:
     profiles: [host]
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/admin-console
+        WORKSPACE: apps/web/admin-console
         VITE_APP_MODE: kds
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
@@ -130,7 +113,7 @@ services:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/admin-console
+        WORKSPACE: apps/web/admin-console
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped
     ports: ['5177:80']  # must match CANONICAL_PORTS['admin-console'] in scripts/dev-lock.mjs
@@ -139,14 +122,14 @@ services:
   # Formerly "tablet" (tablet-frontend, an empty/abandoned scaffold — see
   # docs/decisions/2026-08-17-repository-restructure.md). The canonical
   # Order Tablet is a device-mode build of admin-console. See
-  # apps/order-tablet/README.md.
+  # apps/web/admin-console/README.md.
   order-tablet:
     profiles: [host]
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
       args:
-        WORKSPACE: apps/admin-console
+        WORKSPACE: apps/web/admin-console
         VITE_APP_MODE: tablet
         VITE_VENUE_ID: ${VITE_VENUE_ID:-10000000-0000-4000-8000-000000000001}
     restart: unless-stopped

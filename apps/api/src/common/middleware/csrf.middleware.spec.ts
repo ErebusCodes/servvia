@@ -29,6 +29,28 @@ describe('CsrfMiddleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
+  it('does not bypass CSRF for the local upload route in production (Story 2.3)', () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const next = jest.fn();
+      expect(() => middleware.use(makeReq(), makeRes(), next)).toThrow(ForbiddenException);
+      expect(next).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it('does not bypass CSRF for a path that merely contains the upload segment (Story 2.3)', () => {
+    const next = jest.fn();
+    const req = makeReq({
+      method: 'POST',
+      path: '/api/orders/x/media-assets/local-dev-upload/y',
+    } as Partial<Request>);
+    expect(() => middleware.use(req, makeRes(), next)).toThrow(ForbiddenException);
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('bypasses CSRF for the Venue Connector device enrollment endpoint (fresh device, no session yet)', () => {
     const next = jest.fn();
     middleware.use(makeReq({ path: '/api/connector/enroll' }), makeRes(), next);

@@ -153,6 +153,35 @@ describe('PrinterJobsService', () => {
       expect(result.id).toBe('job-2');
     });
 
+    it('records the tablet a staff member requested the reprint through (Story 12.15)', async () => {
+      const original = {
+        id: 'job-1',
+        printerId: 'printer-1',
+        orderId: 'order-1',
+        venueId,
+        status: PrintJobStatus.printed,
+        payload: 'x',
+        payloadFormat: 'raw_text',
+      };
+      mockPrisma.printerJob.findFirst.mockResolvedValueOnce(original).mockResolvedValueOnce(null);
+      mockPrisma.printerJob.findUniqueOrThrow.mockResolvedValueOnce(original);
+      mockPrisma.printerJob.create.mockResolvedValue({ ...original, id: 'job-2' });
+
+      await service.requestReprint('printer-1', 'job-1', orgId, venueId, {
+        ...actor,
+        deviceKind: 'tablet_device',
+        deviceId: 'tablet-1',
+      });
+
+      expect(mockAuditLog.logAuthEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: 'staff-1',
+          deviceKind: 'tablet_device',
+          deviceId: 'tablet-1',
+        }),
+      );
+    });
+
     it('a transient audit-log failure does not fail the reprint request itself', async () => {
       const original = {
         id: 'job-1',

@@ -9,6 +9,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { isProductionRuntime } from '../config/runtime-environment';
 import * as argon2 from 'argon2';
 import Stripe from 'stripe';
 import {
@@ -31,6 +32,7 @@ import { CreateStaffOrderDto } from './dto/create-staff-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrdersGateway } from './orders.gateway';
 import { AuditLogService } from '../audit/audit.service';
+import { AuditActor } from '../audit/audit-actor';
 import {
   LEGACY_EXTERNAL_POS_ORDER_INCLUDE,
   LegacyExternalPosHandoff,
@@ -836,11 +838,20 @@ export class OrdersService {
     throw error;
   }
 
-  async findAll(organizationId: string, venueId?: string, activeOnly = false): Promise<Order[]> {
+  /**
+   * `venues` narrows the list: one venue, or (Story 2.10) the venues a staff
+   * member has been granted when no venue was asked for.
+   */
+  async findAll(
+    organizationId: string,
+    venues?: string | string[],
+    activeOnly = false,
+  ): Promise<Order[]> {
     return this.prisma.order.findMany({
       where: {
         venue: { organizationId },
-        ...(venueId ? { venueId } : {}),
+        ...(typeof venues === 'string' ? { venueId: venues } : {}),
+        ...(Array.isArray(venues) ? { venueId: { in: venues } } : {}),
         ...(activeOnly
           ? { status: { in: [OrderStatus.confirmed, OrderStatus.preparing, OrderStatus.ready] } }
           : {}),
@@ -870,7 +881,7 @@ export class OrdersService {
     id: string,
     organizationId: string,
     dto: UpdateOrderStatusDto,
-    actor: { id: string; email: string; role: StaffRole },
+    actor: AuditActor,
     venueId?: string,
   ): Promise<Order> {
     const order = await this.prisma.order.findFirst({
@@ -900,10 +911,15 @@ export class OrdersService {
     // dispatch-stop attempt silently skipped.
     let posDispatchStopped: boolean | null = null;
     if (newStatus === OrderStatus.cancelled && oldStatus !== OrderStatus.cancelled) {
+      // Only a named staff member cancels (the kitchen role and devices are
+      // refused by the controller); the connector cancel is attributed to them.
+      if (actor.actorType === 'device' || actor.actorType === 'system') {
+        throw new ForbiddenException('Only a staff member may cancel an order');
+      }
       posDispatchStopped = await this.legacyExternalPos.stopHandoffForCancelledOrder(
         order,
         organizationId,
-        actor,
+        { id: actor.actorId, email: actor.actorEmail, role: actor.actorRole },
       );
     }
 
@@ -926,13 +942,12 @@ export class OrdersService {
       include: { items: true, table: true, ...LEGACY_EXTERNAL_POS_ORDER_INCLUDE },
     });
 
-    // Audit log state transition
+    // Audit log state transition, attributed to the real actor (Story 12.15):
+    // a KDS screen is recorded as a device, never as a Staff row.
     await this.auditLogService.logAuthEvent({
       organizationId,
       venueId: order.venueId,
-      actorId: actor.id,
-      actorEmail: actor.email,
-      actorRole: actor.role,
+      ...actor,
       action: 'UPDATE_ORDER_STATUS',
       resource: 'order',
       resourceId: order.id,
@@ -1444,7 +1459,7 @@ export class OrdersService {
   /**
    * The only venue tax configuration this method's arithmetic is correct
    * for (DL-072): NZ, GST-inclusive menu prices. Mirrors
-   * `apps/admin-console/src/pages/order-tablet/billing.ts`'s
+   * `apps/web/admin-console/src/pages/order-tablet/billing.ts`'s
    * `SUPPORTED_TAX_PROFILE`/`containedGstCents` exactly — this is a
    * deliberate parity duplication, not an independent formula. If either
    * the supported profile or the `3/23` extraction formula ever changes,
@@ -1453,7 +1468,7 @@ export class OrdersService {
    * again (see 2026-08-20 GST reconciliation fix and its regression
    * tests, `orders.service.spec.ts` "computeTotals (GST correction)").
    * A real cross-app shared package was considered and deliberately not
-   * built this session (apps/api is CommonJS/ts-node, apps/admin-console
+   * built this session (apps/api is CommonJS/ts-node, apps/web/admin-console
    * is Vite/ESM — wiring a dual-consumable workspace package safely was
    * judged disproportionate risk for this fix); flagged as a follow-up.
    */
@@ -1486,7 +1501,7 @@ export class OrdersService {
    * see the call site's own comment for why a replay must never re-run it.
    */
   private isTable19ValidationModeActiveForVenue(venue: Venue): boolean {
-    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || process.env.NODE_ENV === 'production') {
+    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || isProductionRuntime()) {
       return false;
     }
     return venue.id === process.env.TABLE19_LIVE_TEST_VENUE_ID;
@@ -1496,7 +1511,7 @@ export class OrdersService {
     venue: Venue,
     resolvedTableNumber: string | null,
   ): Promise<void> {
-    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || process.env.NODE_ENV === 'production') {
+    if (process.env.TABLE19_LIVE_TEST_ENABLED !== 'true' || isProductionRuntime()) {
       return;
     }
     const configuredVenueId = process.env.TABLE19_LIVE_TEST_VENUE_ID;

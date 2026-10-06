@@ -35,13 +35,43 @@ beforeAll(async () => {
   });
   try {
     await redis.connect();
-    const keys = await redis.keys('rate-limit:*');
+    // Per-address buckets, and Story 2.4's per-account sign-in counts, which
+    // earlier files' deliberate failed sign-ins would otherwise carry over.
+    const keys = [...(await redis.keys('rate-limit:*')), ...(await redis.keys('login-account:*'))];
     if (keys.length > 0) await redis.del(...keys);
   } catch {
     // Best-effort only: if Redis isn't reachable at all, the test file's
     // own real requests will surface that failure clearly on their own —
     // this hook exists to prevent cross-file bucket exhaustion, not to be
     // the sole source of truth about Redis availability.
+  } finally {
+    redis.disconnect();
+  }
+});
+
+// Story 12.14: remove this spec file's BullMQ namespace (see
+// integration-setup.ts) once the file is done, so runs leave no queue keys
+// behind. Only keys under this file's own unique prefix are touched; another
+// run's namespace, or a deployed queue, is never matched.
+afterAll(async () => {
+  const prefix = process.env.QUEUE_PREFIX;
+  if (!prefix || !/^it-[0-9a-f]{32}$/.test(prefix)) return;
+  const redis = new Redis({
+    host: process.env.REDIS_HOST ?? '127.0.0.1',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
+  });
+  try {
+    await redis.connect();
+    let cursor = '0';
+    do {
+      const [next, keys] = await redis.scan(cursor, 'MATCH', `${prefix}:*`, 'COUNT', 500);
+      cursor = next;
+      if (keys.length > 0) await redis.del(...keys);
+    } while (cursor !== '0');
+  } catch {
+    // Best-effort, as above: an unreachable Redis already failed the file.
   } finally {
     redis.disconnect();
   }

@@ -1,0 +1,416 @@
+{
+  "schema": "servvia.objective/v2",
+  "objectiveId": "story-1-8-native-round-recovery-host-override-safety",
+  "storyId": "1.8",
+  "version": 1,
+  "title": "Native-round-recovery integration tests refuse a DATABASE_URL host query override",
+  "baseline": "0b89494821fe6a1def9dd1af0d2d30071325b957",
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-1-8-native-round-recovery-host-override-safety.md",
+      "intentContractSha256": "3f34207e49ee83006bb133663ebcec70085e877317e1771f52e874cac49c0b3b"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-1-context.md",
+      "sha256": "fe1bdbc4f19ba644bef87cefa3828bc3b9e9738d34a1ce5bfb7c528e4e6bb1b2"
+    }
+  },
+  "requirementRefs": [
+    "_bmad-output/implementation-artifacts/epic-1-context.md Goal: 'what passes CI is what actually runs'; the build and release line is trustworthy",
+    "_bmad-output/implementation-artifacts/epic-1-context.md Requirements: 'Real dependencies' (database and integration tests run on disposable environments) and 'Green honestly' (no test skipped or weakened)",
+    "_bmad-output/planning-artifacts/epics.md Epic 1 NFR TEST-21 (test quality, PRD section 21); this story is Story 1.8, continuing Story 1.7, recorded only in its story spec (epics.md is not edited)",
+    "PRD/product-requirements.md section 21: database and integration tests run on disposable environments; PostgreSQL integration and concurrency tests",
+    "PRD/product-requirements.md section 15 row I: concurrency safety proven with tests on real PostgreSQL",
+    "PRD/product-requirements.md section 16 (security standard): least privilege and fail closed; a destructive test suite must not reach a database it was not pointed at",
+    "PRD/product-requirements.md section 24 gate 3: tests passing, with explicit evidence",
+    "Orchestrator investigation 2026-10-04 (TEST-PROVEN locally, no remote connection): Prisma 5.22 prisma-client-js (Rust query engine, no driver adapter) honours a host query parameter in DATABASE_URL in preference to the URL authority; with ?host=db.invalid and a matching opt-in, all 16 destructive recovery tests executed against the alternate target through integration-setup.ts, the Story 1.7 guard and PrismaService"
+  ],
+  "architectureConstraints": [
+    "Test-only scope: the implementation surface is apps/api/test/native-round-recovery.integration-spec.ts, limited to its safety guard and the directly relevant header comment; everything from describeOrSkip('native round recovery, against real PostgreSQL' to the end of the file is unchanged (native-round-recovery-suite-unchanged hashes it against the accepted Story 1.7 candidate)",
+    "Production code, Prisma configuration, schema and migrations (apps/api/prisma stays the migration authority, unchanged), PrismaService and withUtcSession, auth, API contracts, Go Core and staff/customer workflows do not change",
+    "apps/api/test/integration-setup.ts is unchanged: its INTEGRATION_DATABASE_URL precedence, production-name refusal on the path database name and withUtcSession rewrite stay as they are. It enforces no host locality, and dbname/database query parameters did not override the database in this stack; that is recorded and no change is authorized there",
+    "CI is forbidden: .github/** does not change. Follow-up finding recorded, not in scope: CI DRIFT COULD FALSE-GREEN (api-integration stays green if the guard falls back to skipping); a separate CI-hardening story is required",
+    "The evaluator (tooling/**) and Story 1.7 evidence are immutable: Story 1.7's objective, anchor, spec, candidate, ledger and evidence are historical evidence, and its spec file is a forbidden surface",
+    "Fail-closed decision (orchestrator, binding): DATABASE_URL must not contain a host query parameter at all, whatever its value; the DECODED parameter name is compared case-insensitively, a strict superset of the engine's exact-name behaviour that also fails closed against a future case-insensitive driver. The guard does not reproduce the engine's effective-host algorithm",
+    "Evidence for the decision (orchestrator, 2026-10-04, measured in this runtime): authority db.invalid + ?host=127.0.0.1 connected to 127.0.0.1; authority localhost + ?host=db.invalid targeted db.invalid; the engine honours only the exact decoded name host (HOST/Host ignored; %68ost decoded and honoured); with repeated host the engine uses the LAST value while URLSearchParams.get returns the first; an empty host= still overrides; hostaddr, dbname and database are not honoured (the database always comes from the path); integration-setup.ts re-serializes the query through withUtcSession, so %68ost= reaches the guard as host=",
+    "Baseline rationale: the baseline is the accepted Story 1.7 candidate 0b89494821fe6a1def9dd1af0d2d30071325b957. The 16 recovery tests already run and pass there in the safe configuration, so RT-01 to RT-16 are regression characterizations, not baseline failures. The vulnerability is proven mechanically by native-round-recovery-fail-safe failing on the baseline: its six Story 1.7 cases pass, but every host-query case executes all 16 recovery tests and ?host=db.invalid attempts the alternate target"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-1",
+      "given": "a DATABASE_URL whose URL authority is localhost or 127.0.0.1, whose path database is non-production and equals NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE, but which carries a query parameter whose decoded name is host in any letter case (a remote value, a local value, an empty value, a repeated parameter, or a percent-encoded name)",
+      "when": "the API integration suite runs the native-round-recovery file",
+      "then": "the file is discovered, no native-round-recovery test executes, the output carries the explicit refusal (the tag [native-round-recovery.integration-spec] SKIPPED. followed by NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE), and no connection to an alternate target is attempted"
+    },
+    {
+      "id": "AC-2",
+      "given": "the opt-in is absent, empty or names another database, or the URL authority is not local, or the path database is production-named, or DATABASE_URL cannot be parsed",
+      "when": "the API integration suite runs the native-round-recovery file",
+      "then": "the file is discovered and no native-round-recovery test executes, with the same explicit refusal or the existing refusal of apps/api/test/integration-setup.ts, exactly as under Story 1.7"
+    },
+    {
+      "id": "AC-3",
+      "given": "the safe configuration: a local URL authority, no host query parameter, a non-production path database migrated and seeded as CI does, and the opt-in equal to its name",
+      "when": "the full API integration suite runs",
+      "then": "the same 16 native-round-recovery tests execute under their exact names and pass, none of them is skipped, and the only integration skips are the 5 GcsStorageProvider tests"
+    },
+    {
+      "id": "AC-4",
+      "given": "the candidate",
+      "when": "its native-round-recovery spec file is compared with the accepted Story 1.7 candidate",
+      "then": "the recovery suite from its describeOrSkip to the end of the file is byte-identical; no test is added, removed, renamed, skipped, focused or weakened, and no lint or type suppression is added"
+    },
+    {
+      "id": "AC-5",
+      "given": "the candidate",
+      "when": "it is compared with the baseline",
+      "then": "nothing outside the guard and its header comment in apps/api/test/native-round-recovery.integration-spec.ts changes (apart from the story spec): production code, Prisma, schema, migrations, auth, API contracts, apps/api/test/integration-setup.ts, CI and the evaluator are unchanged, and the API unit suite, lint and typecheck pass"
+    }
+  ],
+  "completionCriteria": [
+    "Every mandatory check passes on the candidate with at least its minimum test count",
+    "native-round-recovery-fail-safe passes all fourteen cases: the six Story 1.7 cases and the eight host-query cases, each discovering the file and executing 0 recovery tests with its required evidence (for the host-query cases, the guard warning and no connection attempt)",
+    "native-round-recovery-suite-unchanged passes: the recovery suite is byte-identical to the accepted Story 1.7 candidate",
+    "RT-01 to RT-16 (the 16 native-round-recovery tests, by their exact Jest full names) run and pass on the candidate in api-integration; they also pass on the baseline, as regression characterizations",
+    "ci-workflow-opt-in, api-unit, api-lint and api-typecheck pass as frozen for Story 1.7",
+    "The only skips are the 5 GcsStorageProvider tests; the candidate changes only apps/api/test/native-round-recovery.integration-spec.ts (guard and header comment) and the story spec",
+    "Technical completion is the evaluator decision CANDIDATE_READY_FOR_ACCEPTANCE only; acceptance, merging and pushing are the orchestrator's"
+  ],
+  "environment": {
+    "services": [
+      "postgres",
+      "redis"
+    ]
+  },
+  "setup": [
+    {
+      "id": "prisma-migrate-deploy",
+      "run": [
+        "node",
+        "node_modules/prisma/build/index.js",
+        "migrate",
+        "deploy",
+        "--schema",
+        "apps/api/prisma/schema.prisma"
+      ]
+    },
+    {
+      "id": "prisma-generate",
+      "run": [
+        "node",
+        "node_modules/prisma/build/index.js",
+        "generate",
+        "--schema",
+        "apps/api/prisma/schema.prisma"
+      ]
+    },
+    {
+      "id": "seed",
+      "cwd": "apps/api",
+      "run": [
+        "node",
+        "../../node_modules/ts-node/dist/bin.js",
+        "-r",
+        "tsconfig-paths/register",
+        "prisma/seed.ts"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "id": "api-integration",
+      "category": "integration",
+      "runner": "jest",
+      "cwd": "apps/api",
+      "args": [
+        "../../node_modules/jest/bin/jest.js",
+        "--config",
+        "./test/jest-integration.json",
+        "--runInBand"
+      ],
+      "env": {
+        "NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE": "eval_candidate"
+      },
+      "minTests": 362,
+      "timeoutSeconds": 1800,
+      "configFiles": [
+        "apps/api/test/jest-integration.json",
+        "apps/api/test/integration-setup.ts",
+        "apps/api/test/integration-rate-limit-reset.ts"
+      ]
+    },
+    {
+      "id": "native-round-recovery-fail-safe",
+      "category": "integration",
+      "runner": "command",
+      "cwd": "apps/api",
+      "args": [
+        "node",
+        "-e",
+        "const { spawnSync } = require('node:child_process'); const fs = require('node:fs'); const path = require('node:path');\nconst V = 'NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE';\nconst TAG = '[native-round-recovery.integration-spec] SKIPPED.';\nconst base = process.env.DATABASE_URL; const db = new URL(base).pathname.slice(1);\nconst at = (host, name) => { const u = new URL(base); if (host) u.hostname = host; if (name) u.pathname = '/' + name; return u.toString(); };\nconst guard = (out) => out.includes(TAG) && out.split(TAG).slice(1).some((rest) => rest.slice(0, 600).includes(V));\nconst refused = (phrase) => (out) => out.includes(phrase);\nconst q = (query) => base + (base.includes('?') ? '&' : '?') + query;\nconst NO_ATTEMPT = /reach database server|database server is running at|db\\.invalid:\\d/;\nconst hostRefusal = (out) => guard(out) && !NO_ATTEMPT.test(out);\nconst HOST_EVIDENCE = 'the guard warning (tag and opt-in name) and no connection attempt';\nconst cases = [\n  ['opt-in absent', base, null, guard, 'the guard warning (tag and opt-in name)'],\n  ['opt-in empty', base, '', guard, 'the guard warning (tag and opt-in name)'],\n  ['opt-in names another database', base, db + '_other', guard, 'the guard warning (tag and opt-in name)'],\n  ['non-local host', at('db.invalid', null), db, guard, 'the guard warning (tag and opt-in name)'],\n  ['production-named database', at(null, 'verdura_production'), 'verdura_production', refused('Integration tests refuse to run against a database named'), 'the integration-setup refusal'],\n  ['unparsable DATABASE_URL', 'not a url', 'not a url', refused('Integration tests have no readable DATABASE_URL'), 'the integration-setup refusal'],\n  // A host query parameter overrides the URL authority in the database engine (Prisma 5.22 uses the\n  // last decoded `host` value): any such parameter refuses execution, whatever its value or casing.\n  ['?host=db.invalid', q('host=db.invalid'), db, hostRefusal, HOST_EVIDENCE],\n  ['?host=127.0.0.1', q('host=127.0.0.1'), db, hostRefusal, HOST_EVIDENCE],\n  ['?host=localhost', q('host=localhost'), db, hostRefusal, HOST_EVIDENCE],\n  ['?host= (empty)', q('host='), db, hostRefusal, HOST_EVIDENCE],\n  ['?host=127.0.0.1&host=db.invalid (repeated)', q('host=127.0.0.1&host=db.invalid'), db, hostRefusal, HOST_EVIDENCE],\n  ['?%68ost=db.invalid (percent-encoded name)', q('%68ost=db.invalid'), db, hostRefusal, HOST_EVIDENCE],\n  ['?HOST=db.invalid', q('HOST=db.invalid'), db, hostRefusal, HOST_EVIDENCE],\n  ['?Host=db.invalid', q('Host=db.invalid'), db, hostRefusal, HOST_EVIDENCE],\n];\nlet bad = 0;\ncases.forEach(([label, url, optIn, evidence, what], i) => {\n  const out = path.join(process.env.HOME, 'nrr-failsafe-' + i + '.json'); fs.rmSync(out, { force: true });\n  const env = { ...process.env, DATABASE_URL: url }; delete env.INTEGRATION_DATABASE_URL; delete env[V]; if (optIn !== null) env[V] = optIn;\n  const r = spawnSync(process.execPath, ['../../node_modules/jest/bin/jest.js', '--config', './test/jest-integration.json', '--runInBand', '--ci', '--json', '--outputFile=' + out, 'native-round-recovery'], { env, encoding: 'utf8', timeout: 300000 });\n  const files = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, 'utf8')).testResults.filter((f) => f.name.endsWith('native-round-recovery.integration-spec.ts')) : [];\n  const executed = files.flatMap((f) => f.assertionResults).filter((a) => a.status === 'passed' || a.status === 'failed').length;\n  const warned = evidence(`${r.stdout}\\n${r.stderr}`);\n  const ok = files.length === 1 && executed === 0 && warned;\n  if (!ok) bad += 1;\n  console.log((ok ? 'ok   ' : 'FAIL ') + label + ': discovered ' + files.length + ' file(s), executed ' + executed + ' recovery test(s), ' + what + (warned ? ' present' : ' MISSING'));\n});\nprocess.exit(bad ? 1 : 0);\n"
+      ],
+      "timeoutSeconds": 1200
+    },
+    {
+      "id": "native-round-recovery-suite-unchanged",
+      "category": "other",
+      "runner": "command",
+      "cwd": ".",
+      "args": [
+        "node",
+        "-e",
+        "const fs = require('node:fs'); const { createHash } = require('node:crypto');\nconst text = fs.readFileSync('apps/api/test/native-round-recovery.integration-spec.ts', 'utf8');\nconst marker = \"describeOrSkip('native round recovery, against real PostgreSQL'\";\nconst at = text.indexOf(marker);\nconst ok = at >= 0 && text.indexOf(marker, at + 1) < 0 && createHash('sha256').update(text.slice(at)).digest('hex') === process.argv[1];\nconsole.log(ok ? 'ok   the recovery suite (from its describeOrSkip to the end of the file) is byte-identical to the accepted Story 1.7 candidate' : 'FAIL the recovery suite differs from the accepted Story 1.7 candidate (or its describeOrSkip marker is missing or repeated)');\nprocess.exit(ok ? 0 : 1);\n",
+        "f99f78cc8974a7315ee848ef02044a34e81968d34faec76fbe4f68926f9008f0"
+      ]
+    },
+    {
+      "id": "ci-workflow-opt-in",
+      "category": "other",
+      "runner": "command",
+      "cwd": ".",
+      "args": [
+        "node",
+        "-e",
+        "const y = require('js-yaml'); const fs = require('node:fs'); const { createHash } = require('node:crypto');\nconst V = 'NATIVE_ROUND_RECOVERY_INTEGRATION_TEST_DATABASE';\nconst w = y.load(fs.readFileSync('.github/workflows/ci.yml', 'utf8')); const job = w.jobs['api-integration'];\nconst pgDb = job.services.postgres.env.POSTGRES_DB; const urlDb = new URL(job.env.DATABASE_URL).pathname.slice(1);\nconst problems = [];\nif (job.env[V] !== pgDb || pgDb !== urlDb) problems.push('api-integration env ' + V + '=' + job.env[V] + ' must equal its PostgreSQL service database ' + pgDb + ' (DATABASE_URL names ' + urlDb + ')');\ndelete job.env[V];\nconst rest = createHash('sha256').update(JSON.stringify(w)).digest('hex');\nif (rest !== process.argv[1]) problems.push('ci.yml differs from the baseline in more than the ' + V + ' entry of api-integration env (' + rest + ')');\nfor (const p of problems) console.log('FAIL ' + p);\nif (!problems.length) console.log('ok   ci.yml: the only change is api-integration env ' + V + '=' + pgDb);\nprocess.exit(problems.length ? 1 : 0);\n",
+        "8ce71293a82f992230e40b822888752b96f6bfadaa5fb13c04b411edb707887f"
+      ]
+    },
+    {
+      "id": "api-unit",
+      "category": "unit",
+      "runner": "jest",
+      "cwd": "apps/api",
+      "args": [
+        "../../node_modules/jest/bin/jest.js"
+      ],
+      "minTests": 1736,
+      "mandatory": true,
+      "configFiles": [
+        "apps/api/package.json",
+        "apps/api/src/test-setup.ts"
+      ]
+    },
+    {
+      "id": "api-lint",
+      "category": "lint",
+      "runner": "command",
+      "cwd": "apps/api",
+      "args": [
+        "node",
+        "../../node_modules/eslint/bin/eslint.js",
+        "{src,apps,libs,test}/**/*.ts"
+      ],
+      "mandatory": true,
+      "configFiles": [
+        "apps/api/eslint.config.mjs"
+      ]
+    },
+    {
+      "id": "api-typecheck",
+      "category": "typecheck",
+      "runner": "command",
+      "cwd": "apps/api",
+      "args": [
+        "node",
+        "../../node_modules/typescript/bin/tsc",
+        "--noEmit"
+      ],
+      "mandatory": true,
+      "configFiles": [
+        "apps/api/tsconfig.json"
+      ]
+    }
+  ],
+  "requiredTests": [
+    {
+      "id": "RT-01",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the recovery race, under genuine concurrency two workers sweeping the same orphan settle it exactly once",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-02",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the recovery race, under genuine concurrency release is ATOMIC: the state change and the line release commit together",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-03",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the recovery race, under genuine concurrency sweeping repeatedly is idempotent",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-04",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the recovery race, under genuine concurrency escalates rather than releasing when an attempt says bytes went out",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-05",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the recovery race, under genuine concurrency escalates when the attempt exists but its outcome was never written",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-06",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL constraints the database enforces, not the code two rounds cannot share a requestKey, even concurrently",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-07",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL constraints the database enforces, not the code two rounds cannot share a sequence on one order",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-08",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL constraints the database enforces, not the code a line can belong to only one round, and a released one to none",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-09",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL constraints the database enforces, not the code deleting a round frees its lines rather than deleting them",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-10",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL openRound, the claim everything else rests on claims every unclaimed line into exactly one round",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-11",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL openRound, the claim everything else rests on two concurrent presses cannot both claim the same lines",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-12",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL openRound, the claim everything else rests on refuses a second round while one is in flight",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-13",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the age gate, against real timestamps leaves a freshly-updated round alone when a minimum age is configured",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-14",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the age gate, against real timestamps the pure decision agrees with what the sweep did",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-15",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the age gate, against real timestamps brackets the real gate on real timestamps: just under is held, just over is judged",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    },
+    {
+      "id": "RT-16",
+      "check": "api-integration",
+      "name": "native round recovery, against real PostgreSQL the age gate, against real timestamps still honours a caller that supplies its own clock",
+      "expectBaselineFailure": false,
+      "baselineException": "regression-characterization"
+    }
+  ],
+  "allowedSkips": [
+    {
+      "check": "api-integration",
+      "test": "GcsStorageProvider (real GCS integration)",
+      "reason": "Real Google Cloud Storage coverage: runs only with GCS_INTEGRATION_TEST_* credentials, which neither CI nor the evaluator has. Skipped identically on the baseline e575658 (5 tests); not part of this story."
+    }
+  ],
+  "surfaces": {
+    "allowed": [
+      "apps/api/test/native-round-recovery.integration-spec.ts"
+    ],
+    "forbidden": [
+      "apps/api/src/**",
+      "apps/api/prisma/**",
+      "services/**",
+      "contracts/**",
+      "apps/web/**",
+      "apps/venue-connector/**",
+      "apps/api/test/app.e2e-spec.ts",
+      "apps/api/test/audit-attribution.integration-spec.ts",
+      "apps/api/test/auth-session.integration-spec.ts",
+      "apps/api/test/channel-menu-resolver.integration-spec.ts",
+      "apps/api/test/client-ip.integration-spec.ts",
+      "apps/api/test/connector-command-harness.integration-spec.ts",
+      "apps/api/test/connector-command.integration-spec.ts",
+      "apps/api/test/connector.integration-spec.ts",
+      "apps/api/test/gcs-storage-provider.integration-spec.ts",
+      "apps/api/test/idealpos-order-dispatch.integration-spec.ts",
+      "apps/api/test/idealpos-order-submission-bridge-e2e.integration-spec.ts",
+      "apps/api/test/integration-rate-limit-reset.ts",
+      "apps/api/test/integration-setup.ts",
+      "apps/api/test/jest-e2e.json",
+      "apps/api/test/jest-integration.json",
+      "apps/api/test/kds-dispatcher.integration-spec.ts",
+      "apps/api/test/menu-modifiers.integration-spec.ts",
+      "apps/api/test/menu.integration-spec.ts",
+      "apps/api/test/migrate-authoritative-menu.integration-spec.ts",
+      "apps/api/test/named-sign-in.integration-spec.ts",
+      "apps/api/test/orders.integration-spec.ts",
+      "apps/api/test/owner-bootstrap.integration-spec.ts",
+      "apps/api/test/payment-observation.integration-spec.ts",
+      "apps/api/test/pos-sync-dispatcher.integration-spec.ts",
+      "apps/api/test/pos-sync.integration-spec.ts",
+      "apps/api/test/printer-dispatcher.integration-spec.ts",
+      "apps/api/test/printer-jobs.integration-spec.ts",
+      "apps/api/test/queue-isolation.integration-spec.ts",
+      "apps/api/test/reservations.integration-spec.ts",
+      "apps/api/test/security-events.integration-spec.ts",
+      "apps/api/test/staff-administration.integration-spec.ts",
+      "apps/api/test/staff-integrity.integration-spec.ts",
+      "apps/api/test/sync-pos-catalog.integration-spec.ts",
+      "apps/api/test/table19-validation.integration-spec.ts",
+      "apps/api/test/tables-pos-mapping.integration-spec.ts",
+      "apps/api/test/tablet-auth.integration-spec.ts",
+      "apps/api/test/token-scope.integration-spec.ts",
+      "apps/api/test/venue-access.integration-spec.ts",
+      "apps/api/test/venue-grants.ts",
+      "apps/api/test/*/**",
+      "**/package.json",
+      "**/package-lock.json",
+      "tooling/**",
+      "_bmad/**",
+      ".claude/**",
+      "docs/**",
+      "PRD/**",
+      "_bmad-output/planning-artifacts/**",
+      ".github/**",
+      "_bmad-output/implementation-artifacts/spec-1-7-native-round-recovery-ci-truthfulness.md"
+    ]
+  },
+  "expectationChanges": [
+    {
+      "path": "apps/api/test/native-round-recovery.integration-spec.ts",
+      "reason": "Safety guard and its directly relevant header comment only: the suite also refuses when DATABASE_URL carries any host query parameter (decoded name host, compared case-insensitively). Everything from describeOrSkip('native round recovery, against real PostgreSQL' to the end of the file is unchanged.",
+      "retiresTests": []
+    }
+  ],
+  "allowedSuppressions": []
+}

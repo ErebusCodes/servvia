@@ -19,6 +19,7 @@ import Redis from 'ioredis';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { REDIS_CLIENT } from '../src/redis/redis.constants';
+import { grantVenues } from './venue-grants';
 
 describe('Order Tablet device identity, elevation & manager step-up (integration, real local Postgres)', () => {
   let app: INestApplication;
@@ -76,6 +77,7 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const loginRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password })
@@ -212,7 +214,14 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
     cashierId = cashier.id;
     await prisma.venueAccess.create({
-      data: { staffId: cashierId, venueId, grantedById: primary.ownerId },
+      // The fixture writes the PIN directly; the grant carries the enrolment
+      // setTabletPin would record (Story 8.3).
+      data: {
+        staffId: cashierId,
+        venueId,
+        grantedById: primary.ownerId,
+        pinEnrolledAt: new Date(),
+      },
     });
 
     const manager = await prisma.staff.create({
@@ -228,7 +237,14 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
     managerId = manager.id;
     await prisma.venueAccess.create({
-      data: { staffId: managerId, venueId, grantedById: primary.ownerId },
+      // The fixture writes the PIN directly; the grant carries the enrolment
+      // setTabletPin would record (Story 8.3).
+      data: {
+        staffId: managerId,
+        venueId,
+        grantedById: primary.ownerId,
+        pinEnrolledAt: new Date(),
+      },
     });
 
     const inactive = await prisma.staff.create({
@@ -245,13 +261,20 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
     inactiveStaffId = inactive.id;
     await prisma.venueAccess.create({
-      data: { staffId: inactiveStaffId, venueId, grantedById: primary.ownerId },
+      // The fixture writes the PIN directly; the grant carries the enrolment
+      // setTabletPin would record (Story 8.3).
+      data: {
+        staffId: inactiveStaffId,
+        venueId,
+        grantedById: primary.ownerId,
+        pinEnrolledAt: new Date(),
+      },
     });
 
-    // Same organization, deliberately given no VenueAccess row at all —
-    // proves elevation is organization-scoped (matching how every other
-    // staff-kind endpoint in this app treats staff/venue access), not
-    // gated on the unpopulated VenueAccess model.
+    // Same organization, deliberately given no VenueAccess row: staff venue
+    // access applies to every staff-kind credential (Story 2.2, PRD section
+    // 16 item 3), so this staff member's PIN must not elevate a tablet at
+    // this venue until they are granted it (Story 8.1).
     const crossVenue = await prisma.staff.create({
       data: {
         organizationId: orgId,
@@ -427,9 +450,9 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
     });
   });
 
-  // ── Local-development PIN "108" — Kitchen Display / Order Tablet / Admin ──
-  // Console. Proves the real HTTP path end to end for whatever PIN is
-  // actually configured locally (KDS_VENUE_PINS / ADMIN_CONSOLE_PIN) — these
+  // ── Local-development PIN "108" — Kitchen Display / Order Tablet ──────────
+  // Proves the real HTTP path end to end for whatever PIN is actually
+  // configured locally (KDS_VENUE_PINS) — these
   // early-return, exactly like the block above, if this environment has not
   // configured the seeded venue/account with a real value, so this suite
   // stays honest in CI (which does not set KDS_VENUE_PINS) as well as local
@@ -459,41 +482,6 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
       await request(app.getHttpServer())
         .post('/api/kiosk/kds/auth')
         .send({ venueId: seededVenue.id, pin: '999' })
-        .expect(401);
-    });
-
-    it('Admin Console: PIN login against the configured owner account issues a real owner-role staff token, scoped to the real organisation', async () => {
-      const configuredPin = process.env.ADMIN_CONSOLE_PIN;
-      const configuredEmail = process.env.ADMIN_CONSOLE_EMAIL;
-      if (!configuredPin || !configuredEmail) {
-        return; // not configured in this environment
-      }
-
-      const res = await request(app.getHttpServer())
-        .post('/api/auth/admin-pin')
-        .send({ pin: configuredPin })
-        .expect(200);
-      expect(res.body.accessToken).toEqual(expect.any(String));
-      expect(res.body.user.email).toBe(configuredEmail);
-      expect(['owner', 'admin']).toContain(res.body.user.role);
-
-      // The issued token must be a genuine staff-tier JWT (no `kind` claim
-      // — the same shape a normal email/password login produces), carrying
-      // the real owner/admin's own role and real organisation, never a
-      // synthetic or device-tier identity. Decoded directly rather than
-      // exercised against a business-logic endpoint, so this assertion has
-      // no order/print/billing side effects.
-      const payload = JSON.parse(
-        Buffer.from((res.body.accessToken as string).split('.')[1], 'base64').toString('utf8'),
-      ) as { sub: string; role: string; organizationId: string; kind?: string };
-      expect(payload.kind).toBeUndefined();
-      expect(['owner', 'admin']).toContain(payload.role);
-      expect(payload.organizationId).toEqual(expect.any(String));
-
-      // An incorrect PIN must still fail.
-      await request(app.getHttpServer())
-        .post('/api/auth/admin-pin')
-        .send({ pin: '999999' })
         .expect(401);
     });
   });
@@ -532,8 +520,14 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         where: { action: 'CREATE_ORDER', resourceId: res.body.id as string, organizationId: orgId },
         orderBy: { timestamp: 'desc' },
       });
+      // The order itself still needs a Staff creator (Order.createdById), so
+      // device-originated orders keep this synthetic per-device actor; the
+      // audit model can now record devices directly (Story 12.15), and moving
+      // order creation off it is tracked separately (Story 12.16).
       expect(auditRow.actorEmail).toBe(`tablet-device+${deviceId}@verdura.internal`);
-      const actorStaff = await prisma.staff.findUniqueOrThrow({ where: { id: auditRow.actorId } });
+      const actorStaff = await prisma.staff.findUniqueOrThrow({
+        where: { id: auditRow.actorId ?? '' },
+      });
       expect(actorStaff.isActive).toBe(false);
     });
 
@@ -755,15 +749,40 @@ describe('Order Tablet device identity, elevation & manager step-up (integration
         .expect(401);
     });
 
-    it('staff elevation succeeds for a same-organization staff member with no VenueAccess row (VenueAccess is an unpopulated, unused-elsewhere schema model — real staff-venue scoping in this app is organization-wide, matching every other staff-kind endpoint)', async () => {
+    it('staff elevation refuses a same-organization staff member without a grant for the tablet’s venue, and admits them once granted with the PIN enrolled there (Stories 2.2, 8.1, 8.3)', async () => {
       await request(app.getHttpServer())
         .post('/api/tablet/elevate')
         .set('Authorization', `Bearer ${deviceToken}`)
         .send({ staffPin: CROSS_VENUE_PIN })
-        .expect(200)
-        .expect((res) => {
-          expect(res.body.staff).toMatchObject({ id: crossVenueStaffId, name: 'Cross Venue Cody' });
+        .expect(401);
+      const grant = await prisma.venueAccess.create({
+        data: { staffId: crossVenueStaffId, venueId, grantedById: managerId },
+      });
+      try {
+        // The grant alone does not enrol a PIN set before it (Story 8.3).
+        await request(app.getHttpServer())
+          .post('/api/tablet/elevate')
+          .set('Authorization', `Bearer ${deviceToken}`)
+          .send({ staffPin: CROSS_VENUE_PIN })
+          .expect(401);
+        await prisma.venueAccess.update({
+          where: { id: grant.id },
+          data: { pinEnrolledAt: new Date() },
         });
+        await request(app.getHttpServer())
+          .post('/api/tablet/elevate')
+          .set('Authorization', `Bearer ${deviceToken}`)
+          .send({ staffPin: CROSS_VENUE_PIN })
+          .expect(200)
+          .expect((res) => {
+            expect(res.body.staff).toMatchObject({
+              id: crossVenueStaffId,
+              name: 'Cross Venue Cody',
+            });
+          });
+      } finally {
+        await prisma.venueAccess.delete({ where: { id: grant.id } });
+      }
     });
 
     it('staff elevation rejects a wrong PIN', async () => {

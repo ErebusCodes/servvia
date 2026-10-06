@@ -128,11 +128,23 @@ public static class NativeTerminalBindingEvidence
         };
     }
 
+    /// <summary>
+    /// The file name of a WINDOWS executable path, computed the way Windows
+    /// computes it on every host. Inventories always come from Windows, so the
+    /// host's <see cref="Path.GetFileName(string)"/> is the wrong tool here:
+    /// outside Windows it splits only on <c>/</c> and would return
+    /// <c>C:\x\IPS.exe</c> whole. Windows treats both <c>\</c> and <c>/</c> as
+    /// separators, and a drive prefix such as <c>C:</c> is part of the root.
+    /// </summary>
     private static string FileNameOf(string path)
     {
-        try { return Path.GetFileName(path); }
-        catch (ArgumentException) { return path; }
+        var rootLength = path.Length >= 2 && path[1] == ':' && char.IsAsciiLetter(path[0]) ? 2 : 0;
+        var lastSeparator = path.LastIndexOfAny(WindowsDirectorySeparators);
+        var start = Math.Max(lastSeparator + 1, rootLength);
+        return path.Substring(start);
     }
+
+    private static readonly char[] WindowsDirectorySeparators = { '\\', '/' };
 
     private static string BuildVerdict(
         string expected,

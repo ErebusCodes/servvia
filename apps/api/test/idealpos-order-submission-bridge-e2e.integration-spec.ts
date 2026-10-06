@@ -36,6 +36,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { IdealposOrderDispatcherService } from '../src/pos-sync/idealpos-order-dispatcher.service';
 import { IDEALPOS_SUBMIT_ORDER_COMMAND_TYPE } from '../src/pos-sync/idealpos-order-dispatch.constants';
+import { deleteVenueGrants, grantVenues } from './venue-grants';
 
 describe('IdealPOS order submission: real connector protocol + real mock Bridge HTTP hop (integration)', () => {
   let app: INestApplication;
@@ -140,6 +141,7 @@ describe('IdealPOS order submission: real connector protocol + real mock Bridge 
     await prisma.menuItem.deleteMany({ where: { organizationId: orgId } });
     await prisma.table.deleteMany({ where: { venueId } });
     await prisma.category.deleteMany({ where: { organizationId: orgId } });
+    await deleteVenueGrants(prisma, orgId);
     await prisma.staff.deleteMany({ where: { organizationId: orgId } });
     await prisma.venue.deleteMany({ where: { organizationId: orgId } });
     await prisma.organization.delete({ where: { id: orgId } });
@@ -179,6 +181,7 @@ describe('IdealPOS order submission: real connector protocol + real mock Bridge 
         role: 'owner',
       },
     });
+    await grantVenues(prisma, owner.id, [venue.id]);
     const loginRes = await request(app.getHttpServer())
       .post('/api/auth/login')
       .send({ email: owner.email, password })

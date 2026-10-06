@@ -1,0 +1,38 @@
+# positive control (disposable; evaluate.mjs, no ledger)
+verdict PASS
+objective 9dccbd0080b94276639e690a25a412fdf4b6f2ae917809401bf64a2bad3ca2fc
+anchor eae2e3bb89a6e4e6cd0aabed2250b74f221f3796 (simulated, disposable)
+candidate 1e5e2f149593a7734674552b3dd2ca51a48c13be
+environment v22.23.3
+check node-tests exit 0 tests 121 skipped 0
+check telemetry-contract exit 0 tests 0 skipped 0
+check telemetry-boundaries exit 0 tests 0 skipped 0
+check telemetry-backfill exit 0 tests 0 skipped 0
+required RT-1 baseline FAILED behavioral
+required RT-2 baseline FAILED behavioral
+required RT-3 baseline FAILED behavioral
+required RT-4 baseline FAILED behavioral
+required RT-5 baseline FAILED behavioral
+required RT-6 baseline FAILED behavioral
+integrity findings []
+
+## check-telemetry-contract.log (head and tail)
+ok   record phase-start (clock) exits 0
+ok   record phase-end exits 0
+ok   the telemetry contract holds
+
+--- stderr ---
+
+## check-telemetry-boundaries.log (head and tail)
+ok   2 telemetry source file(s): built-ins only, git-only child processes, no network, no surveillance source
+
+ok   2 telemetry source file(s): built-ins only, git-only child processes, no network, no surveillance source
+
+--- stderr ---
+
+## check-telemetry-backfill.log (head and tail)
+ok   the log ends with a newline
+ok   the log hash chain verifies independently
+ok   the backfill of 7 governed stories is exact
+
+--- stderr ---

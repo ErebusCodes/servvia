@@ -162,3 +162,56 @@ test('a refused upstream connection destroys the client socket instead of hangin
     rmSync(distDir, { recursive: true, force: true });
   }
 });
+
+test('replaces client-supplied forwarding headers with the real client address (HTTP and WebSocket)', async () => {
+  const upstreamPort = await getFreePort();
+  const seen = [];
+  const upstream = createServer((req, res) => {
+    seen.push(req.headers);
+    res.end('ok');
+  });
+  upstream.on('upgrade', (req, socket) => {
+    seen.push(req.headers);
+    socket.end('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n');
+  });
+  await new Promise((resolve) => upstream.listen(upstreamPort, '127.0.0.1', resolve));
+  const distDir = makeDistDir();
+  const proxyPort = await getFreePort();
+  const child = spawn(
+    process.execPath,
+    [SCRIPT, distDir, String(proxyPort), `http://127.0.0.1:${upstreamPort}`],
+    { stdio: 'ignore' },
+  );
+  const forged =
+    'X-Forwarded-For: 203.0.113.9, 198.51.100.7\r\n' +
+    'X-Real-IP: 203.0.113.9\r\n' +
+    'Forwarded: for=203.0.113.9\r\n' +
+    'X-Forwarded-Proto: https\r\n';
+  try {
+    await waitForListening(proxyPort);
+    for (const request of [
+      `POST /api/auth/login HTTP/1.1\r\nHost: tablet.local\r\n${forged}Content-Length: 0\r\nConnection: close\r\n\r\n`,
+      'GET /socket.io/?transport=websocket HTTP/1.1\r\nHost: tablet.local\r\n' +
+        `${forged}Upgrade: websocket\r\nConnection: Upgrade\r\n` +
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n',
+    ]) {
+      const socket = net.connect(proxyPort, '127.0.0.1');
+      await new Promise((resolve) => socket.once('connect', resolve));
+      socket.write(request);
+      await new Promise((resolve) => socket.once('data', resolve));
+      socket.destroy();
+    }
+    assert.equal(seen.length, 2);
+    for (const headers of seen) {
+      assert.match(headers['x-forwarded-for'], /^(::ffff:)?127\.0\.0\.1$/);
+      assert.equal(headers['x-forwarded-proto'], 'http');
+      assert.equal(headers['x-forwarded-host'], 'tablet.local');
+      assert.equal(headers['x-real-ip'], undefined);
+      assert.equal(headers['forwarded'], undefined);
+    }
+  } finally {
+    child.kill();
+    upstream.close();
+    rmSync(distDir, { recursive: true, force: true });
+  }
+});

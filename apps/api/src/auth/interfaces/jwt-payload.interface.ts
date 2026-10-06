@@ -22,6 +22,8 @@ export interface JwtPayload {
   kind?: 'staff' | 'kds_device' | 'tablet_device' | 'tablet_staff' | 'tablet_manager';
   deviceId?: string;
   actingStaffId?: string;
+  /** Login session ID of a staff session, shared with its refresh token (Story 2.5). */
+  sid?: string;
   iat?: number;
   exp?: number;
 }
@@ -40,4 +42,6 @@ export interface AuthenticatedUser {
   kind?: 'staff' | 'kds_device' | 'tablet_device' | 'tablet_staff' | 'tablet_manager';
   deviceId?: string;
   actingStaffId?: string;
+  /** The `sid` claim of a staff login session; absent for other kinds. */
+  sessionId?: string;
 }

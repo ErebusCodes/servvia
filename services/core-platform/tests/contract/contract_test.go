@@ -43,7 +43,8 @@ func nestShapedClaims() map[string]jwt.MapClaims {
 		return c
 	}
 	return map[string]jwt.MapClaims{
-		"staff": times(jwt.MapClaims{"sub": staffID, "email": "owner@example.test", "role": "owner", "organizationId": orgID}),
+		"staff": times(jwt.MapClaims{"sub": staffID, "email": "owner@example.test", "role": "owner", "organizationId": orgID,
+			"sid": "50000000-0000-4000-8000-000000000005"}),
 		"kds_device": times(jwt.MapClaims{
 			"sub": "kds-device:" + venueID, "email": "kds-device+" + venueID + "@verdura.internal",
 			"role": "kitchen", "organizationId": orgID, "venueId": venueID, "kind": "kds_device",
@@ -153,6 +154,38 @@ type activeDevices struct{}
 
 func (activeDevices) TabletDeviceActive(context.Context, string) (bool, error) { return true, nil }
 
+// grantAll grants every staff member every venue. Contract tests check
+// response shapes; staff venue access is tested in venue_access_test.go and
+// against PostgreSQL in the integration suite.
+type grantAll struct{}
+
+func (grantAll) VenueAccess(context.Context, string, string, string) (identity.VenueAccessDecision, error) {
+	return identity.VenueAccessGranted, nil
+}
+
+// staffSessionStub answers both staff session stores. activeStaff admits
+// every staff token that carries a session ID; refusals are tested in
+// staff_session_test.go and against PostgreSQL and Redis in the integration
+// suite.
+type staffSessionStub struct {
+	active, revoked bool
+	err             error
+}
+
+func (s staffSessionStub) StaffActive(context.Context, string, string) (bool, error) {
+	return s.active, s.err
+}
+
+func (s staffSessionStub) SessionLive(context.Context, string, string) (bool, error) {
+	return !s.revoked, s.err
+}
+
+func staffSessionsOf(s staffSessionStub) identity.StaffSessions {
+	return identity.StaffSessions{Staff: s, Sessions: s}
+}
+
+var activeStaff = staffSessionsOf(staffSessionStub{active: true})
+
 func routesWith(store menu.Store, limiter ratelimit.Evaluator) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return server.Routes(server.Deps{
@@ -161,8 +194,8 @@ func routesWith(store menu.Store, limiter ratelimit.Evaluator) http.Handler {
 		Menu:          menu.NewHandler(store, logger),
 		Venues:        venues.NewHandler(venueStore{}, logger),
 		Verifier:      identity.NewVerifier(secret),
-		TabletDevices: activeDevices{},
-		RateLimiter:   ratelimit.New(limiter, 0, logger),
+		TabletDevices: activeDevices{}, VenueGrants: grantAll{}, StaffSessions: activeStaff,
+		RateLimiter: ratelimit.New(limiter, 0, logger),
 	})
 }
 

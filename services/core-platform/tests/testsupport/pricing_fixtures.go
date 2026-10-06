@@ -69,6 +69,10 @@ func SeedPricingFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool, org
 		VALUES($1,$2,'Pricing Fixture',$1,'{}','{}',40,$3,now())`
 	must(venue, f.Venue, f.Org, true)
 	must(venue, f.TaxlessVenue, f.Org, false)
+	// The staff member the fixture acts as holds both venues, also in a
+	// caller's organization (the parity suite's seeded owner): staff act only
+	// in granted venues, in Core and in the Nest API (Stories 2.2 and 2.10).
+	GrantVenueAccess(t, ctx, db, staffID, []string{staffID}, []string{f.Venue, f.TaxlessVenue})
 
 	cat, otherCat := UUID(), UUID()
 	category := `INSERT INTO "Category"(id,"organizationId",name,"isActive","visibleChannels","createdById","updatedAt")
@@ -144,6 +148,7 @@ func SeedPricingFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool, org
 			{`DELETE FROM "MenuItemVenueOverride" WHERE "venueId" = ANY($1)`, []any{venues}},
 			{`DELETE FROM "MenuItem" WHERE "categoryId" = ANY($1)`, []any{[]string{cat, otherCat}}},
 			{`DELETE FROM "Category" WHERE id = ANY($1)`, []any{[]string{cat, otherCat}}},
+			{`DELETE FROM "VenueAccess" WHERE "venueId" = ANY($1)`, []any{venues}},
 			{`DELETE FROM "Venue" WHERE id = ANY($1)`, []any{venues}},
 			{`DELETE FROM "Staff" WHERE id = $1`, []any{otherStaff}},
 			{`DELETE FROM "Organization" WHERE id = $1`, []any{f.OtherOrg}},
