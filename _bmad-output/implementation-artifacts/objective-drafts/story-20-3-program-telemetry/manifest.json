@@ -1,0 +1,104 @@
+{
+  "schema": "servvia.freeze-candidate-manifest/v1",
+  "status": "FREEZE CANDIDATE — NOT YET FROZEN",
+  "objectiveId": "story-20-3-program-telemetry",
+  "version": 1,
+  "baseline": "cc831dc629bba3b596287decce147080bf9f7f75",
+  "draftObjective": {
+    "path": "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/v1.objective.json",
+    "sha256": "9dccbd0080b94276639e690a25a412fdf4b6f2ae917809401bf64a2bad3ca2fc"
+  },
+  "inputs": {
+    "storySpec": {
+      "path": "_bmad-output/implementation-artifacts/spec-20-3-program-telemetry.md",
+      "intentContractSha256": "694bbfdf3b72c78c7dc0a0a05150aff7e9953dab8800b8b17c03c1da17d9b1e4"
+    },
+    "epicContext": {
+      "path": "_bmad-output/implementation-artifacts/epic-20-context.md",
+      "sha256": "bc56a8de6281670c6ffd665ed8258b90a7fcf5739b6c76ddfd38089fb8600346"
+    }
+  },
+  "toolchain": {
+    "node": {
+      "major": 22,
+      "validatedVersion": "22.23.3"
+    },
+    "note": "No npm dependencies, no services, no node_modules needed; git on PATH (the contract check builds fixture repositories)."
+  },
+  "derived": {
+    "backfill": [
+      {
+        "story": "1.3",
+        "events": 5,
+        "testDeclarationsAdded": 2,
+        "implementationElapsedMs": 503000,
+        "evaluationElapsedMs": 20652
+      },
+      {
+        "story": "12.3a",
+        "events": 5,
+        "testDeclarationsAdded": 6,
+        "implementationElapsedMs": 1378000,
+        "evaluationElapsedMs": 59571
+      },
+      {
+        "story": "12.5",
+        "events": 5,
+        "testDeclarationsAdded": 8,
+        "implementationElapsedMs": 2320000,
+        "evaluationElapsedMs": 71385
+      },
+      {
+        "story": "1.7",
+        "events": 5,
+        "testDeclarationsAdded": 0,
+        "implementationElapsedMs": 662000,
+        "evaluationElapsedMs": 144983
+      },
+      {
+        "story": "1.8",
+        "events": 5,
+        "testDeclarationsAdded": 0,
+        "implementationElapsedMs": 494000,
+        "evaluationElapsedMs": 106393
+      },
+      {
+        "story": "1.9",
+        "events": 5,
+        "testDeclarationsAdded": 0,
+        "implementationElapsedMs": 74000,
+        "evaluationElapsedMs": 286353
+      },
+      {
+        "story": "15.1",
+        "events": 5,
+        "testDeclarationsAdded": 5,
+        "implementationElapsedMs": 260000,
+        "evaluationElapsedMs": 68440
+      }
+    ],
+    "checkScriptSha256": {
+      "telemetry-contract": "1f6f425cf6987ee3b68bcfa7b608ea67e9bb8d67cfd4440b0428982c3ea9bd58",
+      "telemetry-boundaries": "976de599809383c4dbc86cd6eab56aebe1d225ec480d96905b2090a653755cee",
+      "telemetry-backfill": "cbeaa88aa464db3c8888f359a9ed45d252acb6cc5094a040c36b7d18571de166"
+    },
+    "forbiddenSurfaces": 98
+  },
+  "files": {
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/README.md": "a425474d2bcc419a1815d87814c6f231832acd7eee5a2d3401a5f00a9876b79c",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/evidence/EVIDENCE.md": "27c07bf2996a3ea82757a0576a087af3cb546e5d602ee9ce83f4548a6edb1270",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/evidence/adversarial-probes.mjs": "6f9ad9194a276a73176dbd41718114e23f24f01f943ea2df103dedb3db3afd24",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/evidence/adversarial-probes.out": "28110ce98fb3bd7d84f958bd8fb949a7a7074ffa6bc344d8c9978bc45f9942a4",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/evidence/backfill-positive-control.sh": "46b3b829a99e4d36e557fbc932f48d9389a8446f563684df42e34d8050790221",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/evidence/control-negative.txt": "e1410282ed4d7944069bdca347fa2b745bd8f26e4b521e052957766f09bb5340",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/evidence/control-positive.txt": "a4a47fe0b6145f6d8c0f8fe272368a2828886e898575d7d34b84a88bd4b03b06",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/generator/checks/telemetry-backfill.js": "624db602695f291d92c3472c9064406d9718f68bd9e8a2eae5c35af0ded448b9",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/generator/checks/telemetry-boundaries.js": "fe58383a6e349d73919b6ce009fa0dc98c216b62fd96450ca2b6cbe5eb49430a",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/generator/checks/telemetry-contract.js": "1f6f425cf6987ee3b68bcfa7b608ea67e9bb8d67cfd4440b0428982c3ea9bd58",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/generator/generate.mjs": "747b410ac0514d03d82a414f24baac217ec5788ae28733999d926dde951b481a",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/generator/history.json": "e7b9b2db8885320ea60bc26ca4e176e394da095bccb747c0ea1e0c1c5836dc4b",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/generator/inputs.json": "e437c842be5ecfbe7c56111246d0ab9cfbd5916f12d2fd51b58670a56eb390e7",
+    "_bmad-output/implementation-artifacts/objective-drafts/story-20-3-program-telemetry/provisioning/README.md": "b5a99c86439a1122d63720de5e330fa1c70e2d336072c28a7312a9a3741adaea",
+    "_bmad-output/implementation-artifacts/spec-20-3-program-telemetry.md": "1b57ca1ffc562cfb3033721ca456af15f84f5b02df98bb65a629d7654fd8aa14"
+  }
+}

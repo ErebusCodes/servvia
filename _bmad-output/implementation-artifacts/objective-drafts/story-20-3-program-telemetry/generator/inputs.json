@@ -1,0 +1,65 @@
+{
+  "schema": "servvia.story-20-3-generator-inputs/v1",
+  "status": "FREEZE CANDIDATE — NOT YET FROZEN. Generator inputs only; no authority.",
+  "baseline": "cc831dc629bba3b596287decce147080bf9f7f75",
+  "objectiveId": "story-20-3-program-telemetry",
+  "storyId": "20.3",
+  "version": 1,
+  "title": "Engineering-program telemetry: append-only lifecycle events, derived evaluator facts and an honest summary",
+  "specPath": "_bmad-output/implementation-artifacts/spec-20-3-program-telemetry.md",
+  "epicContextPath": "_bmad-output/implementation-artifacts/epic-20-context.md",
+  "telemetryDir": "tooling/telemetry",
+  "logPath": "_bmad-output/implementation-artifacts/telemetry/events.jsonl",
+  "allowedBuiltins": [
+    "node:fs",
+    "node:fs/promises",
+    "node:path",
+    "node:crypto",
+    "node:child_process",
+    "node:url",
+    "node:process"
+  ],
+  "requiredTests": [
+    {
+      "id": "RT-1",
+      "name": "telemetry: the event log is append-only and hash-chained",
+      "file": "tooling/telemetry/test/telemetry.test.mjs"
+    },
+    {
+      "id": "RT-2",
+      "name": "telemetry: unknown values stay unknown",
+      "file": "tooling/telemetry/test/telemetry.test.mjs"
+    },
+    {
+      "id": "RT-3",
+      "name": "telemetry: blocked time is kept separate from effort",
+      "file": "tooling/telemetry/test/telemetry.test.mjs"
+    },
+    {
+      "id": "RT-4",
+      "name": "telemetry: iterations and corrections are derived from the ledger",
+      "file": "tooling/telemetry/test/telemetry.test.mjs"
+    },
+    {
+      "id": "RT-5",
+      "name": "telemetry: deriving never writes evaluator state",
+      "file": "tooling/telemetry/test/telemetry.test.mjs"
+    },
+    {
+      "id": "RT-6",
+      "name": "telemetry: the summary is deterministic",
+      "file": "tooling/telemetry/test/telemetry.test.mjs"
+    }
+  ],
+  "floors": {
+    "evaluatorSelfTests": 115,
+    "provenance": "evaluator self-tests: node --test 'tooling/evaluator/test/*.test.mjs' at the baseline (tooling/evaluator identical to 7f21624) under Node 22.23.3, 115 passed of 115, 2026-10-06. telemetry-tests has no floor: the suite is new, and the six required tests prove it runs."
+  },
+  "toolchain": {
+    "node": {
+      "major": 22,
+      "validatedVersion": "22.23.3"
+    },
+    "note": "No npm dependencies, no services, no node_modules needed; git on PATH (the contract check builds fixture repositories)."
+  }
+}
