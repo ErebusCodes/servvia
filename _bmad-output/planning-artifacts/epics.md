@@ -2315,7 +2315,7 @@ So that forecasts improve from evidence and retrospectives feed planning.
 - Allowed surfaces (conceptual): a new repository tool under `tooling/telemetry/` (Node.js built-ins only) and its event log under `_bmad-output/implementation-artifacts/telemetry/`. No change to `tooling/evaluator/**`, frozen objectives, the PRD or product code.
 - Traceability: DOD-26; REL-24; TEST-21.
 - Depends on: none.
-- Status: READY. Comes before the next governed product story (accepted program revision 2, `7f21624`).
+- Status: IN REVIEW (2026-10-06). Comes before the next governed product story (accepted program revision 2, `7f21624`). Frozen at anchor `e5331d7` (objective `story-20-3-program-telemetry` v1, sha256 `9dccbd00…3ca2fc`, baseline `cc831dc`). Candidate `1def3d1` reached governed PASS / CANDIDATE_READY_FOR_ACCEPTANCE on the first iteration (evaluation record `e7793634…`, ledger integrity `31633439…`). Integrated `c1e39d4`. Awaiting orchestrator acceptance. The TAP residual stays open: no natural correction occurred.
 
 ### Story 20.4: Durable evidence retention and stronger evaluator isolation
 

@@ -195,10 +195,10 @@ development_status:
   19-3-native-settlement-parity-and-web-tablet-settlement-retiremen: backlog
   epic-19-retrospective: optional
 
-  epic-20: backlog  # added 2026-10-06: governed autonomous improvement loop (AIL-1..AIL-6); runs alongside product work
+  epic-20: in-progress  # added 2026-10-06: governed autonomous improvement loop (AIL-1..AIL-6); runs alongside product work
   20-1-governed-evaluator-in-ci: backlog  # AIL-1; early
   20-2-reusable-objective-preparation-tooling: backlog  # AIL-3; early
-  20-3-program-telemetry-and-retrospective-feedback: backlog  # AIL-5; early
+  20-3-program-telemetry-and-retrospective-feedback: review  # AIL-5; frozen e5331d7 (objective 9dccbd00); candidate 1def3d1 governed PASS (CANDIDATE_READY_FOR_ACCEPTANCE); integrated c1e39d4; awaiting orchestrator acceptance
   20-4-durable-evidence-retention-and-stronger-evaluator-isolation: backlog  # AIL-6; before production qualification (G3)
   20-5-lesson-extraction-and-promotion-phase-3: backlog  # AIL-4; BLOCKED until natural correction evidence (AIL-2, TAP residual); never manufactured
   epic-20-retrospective: optional
